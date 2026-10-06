@@ -3034,7 +3034,19 @@ fn build_tool_specs() -> Vec<ToolSpec> {
             "Add a rectangle with optional driving width/height values or formulas.",
             "add_rectangle_locked",
             Payload::Object,
-            dto_schema("LockedRectangleRequest: mode, anchor, corner_hint, optional width/height values or text, ctrl_held."),
+            object_schema(
+                json!({
+                    "mode": {"type": "string", "enum": ["two_point", "center"]},
+                    "anchor": point.clone(),
+                    "corner_hint": point.clone(),
+                    "width_mm": {"type": ["number", "null"], "description": "Optional driving width in millimeters."},
+                    "height_mm": {"type": ["number", "null"], "description": "Optional driving height in millimeters."},
+                    "width_text": {"type": ["string", "null"], "description": "Optional driving width formula."},
+                    "height_text": {"type": ["string", "null"], "description": "Optional driving height formula."},
+                    "ctrl_held": {"type": "boolean"}
+                }),
+                &["mode", "anchor", "corner_hint"],
+            ),
         ),
         ToolSpec::direct(
             "sketch_add_circle",
@@ -5312,6 +5324,63 @@ mod tests {
     mod print_intent;
     use super::*;
     mod cam_query_effects;
+
+    #[test]
+    fn dimensioned_rectangle_rejects_misspelled_drivers_without_mutating_the_sketch() {
+        let mut server = CadServer::new().unwrap();
+        server
+            .call_tool(
+                "sketch_begin",
+                json!({"plane":{"type":"origin_plane","plane":"xy"}}),
+            )
+            .unwrap();
+        let before = server.call_tool("sketch_active", json!({})).unwrap();
+        let schema = &tool_specs()
+            .iter()
+            .find(|tool| tool.name == "sketch_add_rectangle_locked")
+            .unwrap()
+            .input_schema;
+        let request = json!({
+            "mode":"two_point", "anchor":{"x":-30.,"y":-20.},
+            "corner_hint":{"x":30.,"y":20.}, "ctrl_held":true
+        });
+        for name in ["width", "height"] {
+            let mut invalid = request.clone();
+            invalid[name] = json!(60.);
+            assert!(schema_accepts(schema, &invalid).is_err());
+            let error = server
+                .call_tool("sketch_add_rectangle_locked", invalid)
+                .unwrap_err();
+            assert!(error.to_string().contains(name), "{error}");
+            assert_eq!(
+                server.call_tool("sketch_active", json!({})).unwrap(),
+                before
+            );
+        }
+        for drivers in [
+            json!({"width_mm":60.,"height_mm":40.}),
+            json!({"width_text":"60","height_text":"40"}),
+        ] {
+            let mut valid = request.clone();
+            valid
+                .as_object_mut()
+                .unwrap()
+                .extend(drivers.as_object().unwrap().clone());
+            schema_accepts(schema, &valid).unwrap();
+            let result = server
+                .call_tool("sketch_add_rectangle_locked", valid)
+                .unwrap();
+            assert_eq!(result["sketch"]["dimensions"].as_array().unwrap().len(), 2);
+            assert_eq!(result["sketch"]["dof"]["value"], 2);
+            server.call_tool("sketch_undo", json!({})).unwrap();
+            assert!(
+                server.call_tool("sketch_active", json!({})).unwrap()["entities"]
+                    .as_array()
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+    }
 
     #[test]
     fn section_review_is_a_shared_read_with_registered_modeling_disclosure() {

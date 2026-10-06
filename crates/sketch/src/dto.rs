@@ -844,6 +844,7 @@ pub struct RectangleRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LockedRectangleRequest {
     pub mode: RectangleMode,
     pub anchor: Vec2,
