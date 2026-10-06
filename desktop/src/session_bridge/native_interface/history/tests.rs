@@ -2,6 +2,7 @@ use super::super::tests::Fixture;
 use super::*;
 
 mod attached_reads;
+mod presentation;
 
 #[test]
 fn metadata_undo_retains_reserved_occurrence_ids_without_resetting_presentation() {

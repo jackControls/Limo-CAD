@@ -126,8 +126,16 @@ pub(super) fn prepare_edit_history(
                 | "assembly_update_contact_set"
                 | "assembly_delete_contact_set"
         );
-    let visibility = operation == "project_set_visibility";
-    if !snapshot_edit && !visibility {
+    // Presentation commands can advance the receipt without branching the
+    // geometry history. Named-view recall also changes project visibility.
+    let presentation = matches!(
+        operation,
+        "project_set_visibility"
+            | "construction_set_visibility"
+            | "recall_named_view"
+            | "clear_named_view"
+    );
+    if !snapshot_edit && !presentation {
         return Ok(None);
     }
     let before = super::native_history::HistoryState {
@@ -139,7 +147,7 @@ pub(super) fn prepare_edit_history(
         context: owner.clone(),
         engine_revision: next_revision,
     };
-    if visibility {
+    if presentation {
         history.advance_visibility(&before, after)?;
     } else {
         let model = super::parse_engine_envelope(engine.engine_call("project_export_model", ""))?;
