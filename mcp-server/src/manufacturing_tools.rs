@@ -118,7 +118,7 @@ impl CadServer {
             &meshes,
             &self.manager.body_appearances(),
             &instances,
-            &self.manager.assembly_document().component_structure,
+            &self.manager.assembly_document_ref().component_structure,
             &self.manager.print_intent(),
             &request.project,
         )

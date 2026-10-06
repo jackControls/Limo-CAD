@@ -92,7 +92,7 @@ impl NativeEngineHost {
                 &meshes,
                 &inner.manager.body_appearances(),
                 &instances,
-                &inner.manager.assembly_document().component_structure,
+                &inner.manager.assembly_document_ref().component_structure,
                 &inner.manager.print_intent(),
                 &request.project,
             )
