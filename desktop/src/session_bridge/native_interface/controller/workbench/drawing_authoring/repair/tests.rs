@@ -109,7 +109,7 @@ fn broken_detail_keeps_its_real_parent_pickable_and_repairs_in_one_history_entry
     };
     let mut editor = Editor {
         stamp: Some(stamp.clone()),
-        document: saved.clone(),
+        document: Arc::new(saved.clone()),
         tool: Some(Tool::Technical(technical::Tool::Repair)),
         ..Default::default()
     };

@@ -406,7 +406,7 @@ pub(super) fn apply(e: &Editor) -> Result<DrawingDocumentDto, String> {
         .ok_or("Choose replacement geometry first")?
         .value
         .clone();
-    let mut next = e.document.clone();
+    let mut next = e.document.as_ref().clone();
     let sheet = next
         .sheets
         .iter_mut()

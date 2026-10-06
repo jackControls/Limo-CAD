@@ -66,7 +66,7 @@ pub(super) struct Drag {
 #[derive(Resource, Default)]
 pub(super) struct Editor {
     pub stamp: Option<Stamp>,
-    pub document: DrawingDocumentDto,
+    pub document: Arc<DrawingDocumentDto>,
     pub serial: u64,
     pub selected: Option<u64>,
     pub pending_selected: Option<u64>,
@@ -116,9 +116,15 @@ impl Editor {
             self.center.cancel();
             self.technical.cancel();
         } else {
-            self.clear();
-            self.stamp = None;
+            self.retire();
         }
+    }
+    fn retire(&mut self) {
+        self.clear();
+        if self.stamp.is_some() || !self.document.sheets.is_empty() {
+            self.document = Arc::default();
+        }
+        self.stamp = None;
     }
     pub fn dirty(&self) -> bool {
         self.repair.pending.is_some() || (self.draft.is_some() && fields::dirty(&self.fields))
@@ -372,8 +378,7 @@ pub(in super::super) fn synchronize(
             .iter()
             .find(|s| Some(s.id) == document.active_sheet_id)
         else {
-            e.clear();
-            e.stamp = None;
+            e.retire();
             return Ok(());
         };
         let stamp = Stamp {
@@ -392,7 +397,7 @@ pub(in super::super) fn synchronize(
                 None
             };
             e.clear();
-            e.document = document.as_ref().clone();
+            e.document = Arc::clone(&document);
             e.stamp = Some(stamp.clone());
             if let Some(id) = selected.filter(|id| sheet.annotations.iter().any(|a| a.id() == *id))
             {
@@ -1068,6 +1073,89 @@ pub(in super::super) fn reduce(
 mod tests {
     use super::*;
     #[test]
+    fn annotation_editor_shares_paper_snapshots_and_releases_retired_documents() {
+        use crate::session_bridge::native_interface::tests::Fixture;
+        let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+        let fixture = Fixture::new();
+        let owner = fixture.owner();
+        fixture
+            .bridge
+            .apply_native_mutation(
+                &fixture.engine,
+                &owner,
+                "drawing_set_document",
+                &serde_json::to_value(super::super::tests::document()).unwrap(),
+                || Ok(()),
+            )
+            .unwrap();
+        let services = NativeServices {
+            engine: fixture.engine.clone(),
+            bridge: fixture.bridge.clone(),
+        };
+        let receipt = fixture
+            .bridge
+            .native_document_receipt(&fixture.engine, &owner)
+            .unwrap();
+        let document = Arc::new(fixture.engine.drawing_snapshot());
+        let old = Arc::downgrade(&document);
+        let mut state = Workbench {
+            paper_document: Some((receipt, document)),
+            ..default()
+        };
+        let mut app = crate::native_viewport::interface_scene_fixture();
+        let world = app.world_mut();
+        let camera = world.spawn(InterfaceCamera).id();
+        synchronize(world, camera, &services, &owner, (800., 240.), true, &state).unwrap();
+        let document = &state.paper_document.as_ref().unwrap().1;
+        assert!(Arc::ptr_eq(&world.resource::<Editor>().document, document));
+        world.resource_mut::<Editor>().select(1).unwrap();
+        world.resource_mut::<Editor>().fields[0].text = "Unapplied note".into();
+        synchronize(world, camera, &services, &owner, (800., 240.), true, &state).unwrap();
+        assert!(Arc::ptr_eq(&world.resource::<Editor>().document, document));
+        assert_eq!(world.resource::<Editor>().fields[0].text, "Unapplied note");
+        let mut revised = document.as_ref().clone();
+        revised.sheets[0].name = "Revised sheet".into();
+        fixture
+            .bridge
+            .apply_native_mutation(
+                &fixture.engine,
+                &owner,
+                "drawing_set_document",
+                &serde_json::to_value(revised).unwrap(),
+                || Ok(()),
+            )
+            .unwrap();
+        let receipt = fixture
+            .bridge
+            .native_document_receipt(&fixture.engine, &owner)
+            .unwrap();
+        state.paper_document = Some((receipt, Arc::new(fixture.engine.drawing_snapshot())));
+        synchronize(world, camera, &services, &owner, (800., 240.), true, &state).unwrap();
+        assert!(old.upgrade().is_none());
+        let document = &state.paper_document.as_ref().unwrap().1;
+        assert!(Arc::ptr_eq(&world.resource::<Editor>().document, document));
+        assert_eq!(
+            world.resource::<Editor>().document.sheets[0].name,
+            "Revised sheet"
+        );
+        let retired = Arc::downgrade(document);
+        state.paper_document = None;
+        let mut replacement = owner;
+        replacement.epoch += 1;
+        synchronize(
+            world,
+            camera,
+            &services,
+            &replacement,
+            (800., 240.),
+            false,
+            &state,
+        )
+        .unwrap();
+        assert!(retired.upgrade().is_none());
+        assert!(world.resource::<Editor>().document.sheets.is_empty());
+    }
+    #[test]
     fn idle_annotation_preview_borrows_the_saved_sheet() {
         let document = super::super::tests::document();
         let sheet = &document.sheets[0];
@@ -1104,7 +1192,7 @@ mod tests {
         let second = anchors::endpoint_ref(&projection.anchors[5], &projection);
         let mut e = Editor {
             stamp: Some(stamp.clone()),
-            document: document.clone(),
+            document: Arc::new(document.clone()),
             ..default()
         };
         e.cloud.click(&stamp, [30., 40.], &document).unwrap();
@@ -1199,7 +1287,7 @@ mod tests {
             epoch: 1,
         };
         let mut e = Editor {
-            document: super::super::tests::document(),
+            document: Arc::new(super::super::tests::document()),
             stamp: Some(Stamp {
                 owner: owner.clone(),
                 revision: 12,
