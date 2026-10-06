@@ -201,19 +201,19 @@ pub(in super::super) fn paint(
     let units = services.engine.document_units();
     let (sheet_w, sheet_h) = sheet_size(sheet);
     let sheet_mm = [sheet_w as f64, sheet_h as f64];
-    let source = edges::SourceKey::new(owner.clone(), receipt.revision, revision, sheet);
     if let Some(view) = &mut state.paper_view {
         view.navigation
-            .observe(owner, sheet.id, sheet_mm, pane(width, height, side))?;
+            .observe(owner.clone(), sheet.id, sheet_mm, pane(width, height, side))?;
         view.camera = camera;
-        view.source = source;
+        view.source
+            .refresh(&owner, receipt.revision, revision, sheet);
         view.width = width;
         view.height = height;
         view.side = side;
     } else {
         state.paper_view = Some(PaperView {
             camera,
-            source,
+            source: edges::SourceKey::new(owner.clone(), receipt.revision, revision, sheet),
             width,
             height,
             side,
@@ -375,17 +375,21 @@ fn draw(
     world.init_resource::<FrameCache>();
     let error = {
         let mut cache = world.resource_mut::<FrameCache>();
-        if cache.0.as_ref().is_none_or(|(saved, _)| saved != sheet) {
-            cache.0 = Some((
-                sheet.clone(),
-                frame::try_render(sheet, transform.sheet_mm[0], transform.sheet_mm[1]),
-            ));
+        let source = frame::Source::new(sheet, transform.sheet_mm);
+        if cache.0.as_ref().is_none_or(|(saved, _)| saved != &source) {
+            match frame::try_render(&source) {
+                Ok(art) => {
+                    cache.0 = Some((source.into_owned(), art));
+                    None
+                }
+                Err(error) => Some(error),
+            }
+        } else {
+            None
         }
-        cache.0.as_ref().unwrap().1.as_ref().err().cloned()
     };
     if let Some(error) = error {
-        let failed_sheet = sheet.clone();
-        let units = state.paper_key.as_ref().unwrap().2;
+        let (_, failed_sheet, units) = state.paper_key.take().unwrap();
         let view = state.paper_view.as_mut().unwrap();
         view.art_failure = Some(ArtFailure {
             source: view.source.clone(),
@@ -458,13 +462,7 @@ fn draw(
         .entity_mut(state.widgets.entity("drawing-projected-edges").unwrap())
         .insert(ImageNode::new(image));
     world.resource_scope(|world, cache: Mut<FrameCache>| {
-        let art = cache
-            .0
-            .as_ref()
-            .unwrap()
-            .1
-            .as_ref()
-            .expect("frame preflight succeeded");
+        let art = &cache.0.as_ref().unwrap().1;
         paint_primitives(
             world,
             camera,

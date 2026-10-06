@@ -623,8 +623,8 @@ fn inner(
             e.select(id)?;
             return Ok(true);
         }
-        let mark = drawing_paper::annotation_marks(world, world.resource::<Workbench>())
-            .into_iter()
+        let mark = drawing_paper::annotation_marks(world.resource::<Workbench>())
+            .iter()
             .find(|m| m.id == id)
             .ok_or("Annotation layout changed")?;
         let draft = Draft::new(

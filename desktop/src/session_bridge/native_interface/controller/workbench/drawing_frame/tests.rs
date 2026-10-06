@@ -194,7 +194,7 @@ fn saved_visible_and_dimension_dashes_change_only_frame_lines() {
     sheet.bom = serde_json::from_value(json!([
         {"id":1,"item_number":"1","part_number":"P1","description":"Plate","quantity":2.,"material":"Al"}
     ])).unwrap();
-    let solid = try_render(&sheet, 297., 210.).unwrap();
+    let solid = try_render(&Source::new(&sheet, [297., 210.])).unwrap();
     sheet.style.visible = DrawingLineStyleDto {
         width_mm: 0.5,
         dash_mm: vec![5., 2., 1.],
@@ -204,7 +204,7 @@ fn saved_visible_and_dimension_dashes_change_only_frame_lines() {
         dash_mm: vec![3., 1.],
     };
     let saved = sheet.clone();
-    let art = try_render(&sheet, 297., 210.).unwrap();
+    let art = try_render(&Source::new(&sheet, [297., 210.])).unwrap();
     assert_eq!(sheet, saved);
     let label_values = |art: &Art| {
         art.labels
@@ -293,12 +293,18 @@ fn saved_sub_minimum_dashes_are_exact_and_pathological_work_is_rejected_before_a
     assert!(art.finish().err().unwrap().contains("work"));
     let mut sheet = sheet();
     sheet.style.visible.dash_mm = vec![1e-100, 1e-100];
-    assert!(try_render(&sheet, 297., 210.)
+    assert!(try_render(&Source::new(&sheet, [297., 210.]))
         .err()
         .unwrap()
         .starts_with("Drawing frame:"));
     sheet.style.visible.dash_mm.clear();
-    assert_eq!(try_render(&sheet, 297., 210.).unwrap().segments.len(), 17);
+    assert_eq!(
+        try_render(&Source::new(&sheet, [297., 210.]))
+            .unwrap()
+            .segments
+            .len(),
+        17
+    );
 }
 
 #[test]

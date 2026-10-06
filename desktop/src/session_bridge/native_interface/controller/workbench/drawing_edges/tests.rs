@@ -52,7 +52,53 @@ fn pixel(image: &Image, x: u32, y: u32) -> [u8; 4] {
 }
 
 #[test]
-fn section_and_removed_section_stroke_cut_edges_with_react_layer_selection() {
+fn idle_refresh_shares_source_layout_without_retagging_saved_projection_stamps() {
+    let sheet = sheet();
+    let owner = owner();
+    let mut current = SourceKey::new(owner.clone(), 19, 7, &sheet);
+    let saved = current.clone();
+    let mut cache = EdgeCache::default();
+    let mut images = Assets::<Image>::default();
+    let image = cache
+        .prepare(&mut images, current.clone(), raster(), |_| {
+            Ok(projection(false))
+        })
+        .unwrap()
+        .image;
+    for _ in 0..64 {
+        current.refresh(&owner, 19, 7, &sheet);
+        assert!(Arc::ptr_eq(&saved.layout, &current.layout));
+        let ready = cache
+            .prepare(&mut images, current.clone(), raster(), |_| {
+                panic!("Idle drawing refresh must retain its projection")
+            })
+            .unwrap();
+        assert_eq!(ready.image, image);
+        assert!(!ready.source_changed);
+    }
+
+    current.refresh(&owner, 20, 7, &sheet);
+    assert!(Arc::ptr_eq(&saved.layout, &current.layout));
+    assert_eq!(saved.document_revision, 19);
+    assert!(current != saved);
+    cache.advance_sheet_selection(&owner, 19, 20);
+    assert!(cache.projections(&saved).is_none());
+    assert!(cache.projections(&current).is_some());
+    assert!(Arc::ptr_eq(
+        &saved.layout,
+        &cache.source.as_ref().unwrap().key.layout
+    ));
+    let ready = cache
+        .prepare(&mut images, current, raster(), |_| {
+            panic!("Committed sheet selection must reuse its retained projection")
+        })
+        .unwrap();
+    assert_eq!(ready.image, image);
+    assert_eq!(images.len(), 1);
+}
+
+#[test]
+fn section_and_removed_section_stroke_cut_edges_without_pruning_associations() {
     let anchor = json!({"body_id":1,"edge_id":1,"edge_key":"edge","endpoint":"start","fallback_point":[0.,0.,0.]});
     for (kind, ordinary, cut) in [
         ("section", true, true),
@@ -60,9 +106,9 @@ fn section_and_removed_section_stroke_cut_edges_with_react_layer_selection() {
         ("front", true, false),
     ] {
         let mut key = key();
-        key.views.truncate(1);
+        Arc::make_mut(&mut key.layout).views.truncate(1);
         if kind != "front" {
-            key.views[0].derivation = Some(
+            Arc::make_mut(&mut key.layout).views[0].derivation = Some(
                 serde_json::from_value(json!({
                     "type":kind,"parent_view_id":3,"first":anchor,"second":anchor,
                     "label":"A","hatch_angle_deg":45.,"hatch_spacing_mm":2.5
@@ -132,9 +178,9 @@ fn returning_to_a_sheet_moves_its_pixels_without_reprojection_or_rasterization()
     let original_pixels = images.get(&handle).unwrap().data.as_ref().unwrap().as_ptr();
     cache.advance_sheet_selection(&owner(), 19, 20);
     let mut second = key();
-    second.sheet_id = 2;
+    Arc::make_mut(&mut second.layout).sheet_id = 2;
     second.document_revision = 20;
-    second.views[0].position[1] += 20.;
+    Arc::make_mut(&mut second.layout).views[0].position[1] += 20.;
     cache
         .prepare(&mut images, second, raster(), |_| Ok(projection(true)))
         .unwrap();
@@ -182,7 +228,7 @@ fn warm_pixels_share_the_pixel_budget_and_changed_dpi_rasterizes_current_geometr
     let pixels = raster_bytes(images.get(&handle).unwrap()) / 4;
     cache.advance_sheet_selection(&owner(), 19, 20);
     let mut second = key();
-    second.sheet_id = 2;
+    Arc::make_mut(&mut second.layout).sheet_id = 2;
     second.document_revision = 20;
     cache
         .prepare_with_limits(
@@ -247,7 +293,7 @@ fn sheet_selection_reuses_the_previous_sheet_but_edits_and_undo_reproject() {
         .image;
     cache.advance_sheet_selection(&owner(), 19, 20);
     let mut second = key();
-    second.sheet_id = 2;
+    Arc::make_mut(&mut second.layout).sheet_id = 2;
     second.document_revision = 20;
     cache
         .prepare(&mut images, second, raster(), |_| Ok(projection(true)))
@@ -318,7 +364,7 @@ fn warm_sources_share_the_retained_geometry_budget_and_failed_switches_are_atomi
         .prepare(&mut images, key(), raster(), |_| Ok(projection(false)))
         .unwrap();
     let mut second = key();
-    second.sheet_id = 2;
+    Arc::make_mut(&mut second.layout).sheet_id = 2;
     cache
         .prepare(&mut images, second.clone(), raster(), |_| {
             Ok(projection(false))
@@ -344,8 +390,11 @@ fn warm_sources_share_the_retained_geometry_budget_and_failed_switches_are_atomi
         images.get(&cache.raster.as_ref().unwrap().2).unwrap().data,
         original
     );
-    assert_eq!(cache.source.as_ref().unwrap().key.sheet_id, 2);
-    assert_eq!(cache.previous_source.as_ref().unwrap().key.sheet_id, 1);
+    assert_eq!(cache.source.as_ref().unwrap().key.layout.sheet_id, 2);
+    assert_eq!(
+        cache.previous_source.as_ref().unwrap().key.layout.sheet_id,
+        1
+    );
     cache
         .prepare(&mut images, key(), raster(), |_| {
             panic!("Failure evicted the warm sheet")
@@ -356,7 +405,7 @@ fn warm_sources_share_the_retained_geometry_budget_and_failed_switches_are_atomi
         ..Default::default()
     };
     let mut third = key();
-    third.sheet_id = 3;
+    Arc::make_mut(&mut third.layout).sheet_id = 3;
     cache
         .prepare_with_limits(
             &mut images,
@@ -431,38 +480,34 @@ fn edge_cache_reuses_exact_source_and_repaints_at_changed_dpi_size_style_or_owne
         );
         assert_eq!(images.len(), 1);
     }
-    for next in [
-        {
-            let mut next = key();
-            next.document_revision += 1;
-            next
-        },
-        {
-            let mut next = key();
-            next.geometry_revision += 1;
-            next
-        },
-        {
-            let mut next = key();
-            next.owner.epoch += 1;
-            next
-        },
-        {
-            let mut next = key();
-            next.owner.document_id = "drawing-b".into();
-            next
-        },
-        {
-            let mut next = key();
-            next.views[0].position[0] += 1.;
-            next
-        },
-        {
-            let mut next = key();
-            next.visible.width_mm *= 2.;
-            next
-        },
-    ] {
+    for variant in 0..15 {
+        let mut next = key();
+        let mut owner = owner();
+        let mut sheet = sheet();
+        let mut document_revision = 19;
+        let mut geometry_revision = 7;
+        match variant {
+            0 => document_revision += 1,
+            1 => geometry_revision += 1,
+            2 => owner.epoch += 1,
+            3 => owner.document_id = "drawing-b".into(),
+            4 => sheet.views[0].position[0] += 1.,
+            5 => sheet.style.visible.width_mm *= 2.,
+            6 => sheet.style.hidden.width_mm *= 2.,
+            7 => sheet.style.hatch.width_mm *= 2.,
+            8 => sheet.style.cutting_plane.width_mm *= 2.,
+            9 => sheet.style.phantom.width_mm *= 2.,
+            10 => sheet.style.break_line.width_mm *= 2.,
+            11 => sheet.style.hatch_spacing_mm *= 2.,
+            12 => sheet.style.text_height_mm *= 2.,
+            13 => sheet.id += 1,
+            _ => owner.window_id = "other-window".into(),
+        }
+        next.refresh(&owner, document_revision, geometry_revision, &sheet);
+        assert!(
+            next != key(),
+            "Changed source variant {variant} reused its key"
+        );
         let mut calls = 0;
         assert!(
             cache
@@ -492,7 +537,7 @@ fn failed_or_oversized_render_is_explicit_atomic_and_not_retried_without_a_chang
         .image;
     let original = images.get(&first).unwrap().data.clone();
     let mut changed = key();
-    changed.owner.epoch += 1;
+    Arc::make_mut(&mut changed.layout).owner.epoch += 1;
     let mut calls = 0;
     let error = cache
         .prepare_with_limits(
@@ -518,7 +563,7 @@ fn failed_or_oversized_render_is_explicit_atomic_and_not_retried_without_a_chang
         ))
         .is_err());
     assert_eq!(images.get(&first).unwrap().data, original);
-    assert_eq!(cache.source.as_ref().unwrap().key.owner, owner());
+    assert_eq!(cache.source.as_ref().unwrap().key.layout.owner, owner());
     let huge = RasterKey {
         paper_scale: 1000.,
         ..raster()
@@ -550,10 +595,10 @@ fn failed_or_oversized_render_is_explicit_atomic_and_not_retried_without_a_chang
 #[test]
 fn hidden_dash_phase_runs_across_tessellated_segments_and_odd_patterns_repeat() {
     let mut k = key();
-    k.views.truncate(1);
-    k.views[0].position = [50., 30.];
+    Arc::make_mut(&mut k.layout).views.truncate(1);
+    Arc::make_mut(&mut k.layout).views[0].position = [50., 30.];
     for dash in [vec![4., 2.], vec![2.]] {
-        k.hidden.dash_mm = dash.clone();
+        Arc::make_mut(&mut k.layout).hidden.dash_mm = dash.clone();
         let source = Source::project(
             k.clone(),
             |_| {
@@ -585,9 +630,9 @@ fn hidden_dash_phase_runs_across_tessellated_segments_and_odd_patterns_repeat() 
 #[test]
 fn subpixel_widths_remain_visible_at_fractional_positions_and_both_dpi_scales() {
     let mut k = key();
-    k.views.truncate(1);
-    k.views[0].position = [25.25, 25.25];
-    k.visible.width_mm = 0.05;
+    Arc::make_mut(&mut k.layout).views.truncate(1);
+    Arc::make_mut(&mut k.layout).views[0].position = [25.25, 25.25];
+    Arc::make_mut(&mut k.layout).visible.width_mm = 0.05;
     let source = Source::project(
         k,
         |_| Ok(projection(false)),
@@ -663,7 +708,7 @@ fn maximum_zoom_rasterizes_only_the_visible_region_without_losing_late_edges_or_
 #[test]
 fn region_clips_to_paper_and_uses_exact_scale_instead_of_stretching_fractional_pixel_dimensions() {
     let mut k = key();
-    k.views.truncate(1);
+    Arc::make_mut(&mut k.layout).views.truncate(1);
     let raster = RasterKey {
         paper_scale: 1.37,
         render_scale: 2.,
@@ -695,8 +740,8 @@ fn region_clips_to_paper_and_uses_exact_scale_instead_of_stretching_fractional_p
 #[test]
 fn panning_a_crop_preserves_hidden_dash_phase_from_the_complete_polyline() {
     let mut k = key();
-    k.views.truncate(1);
-    k.views[0].position = [50., 30.];
+    Arc::make_mut(&mut k.layout).views.truncate(1);
+    Arc::make_mut(&mut k.layout).views[0].position = [50., 30.];
     let source = Source::project(
         k,
         |_| {
@@ -746,7 +791,7 @@ fn resolved_projection_basis_is_cached_by_exact_owner_revision_without_rewriting
     let mut cache = EdgeCache::default();
     let mut images = Assets::<Image>::default();
     let key = key();
-    let saved = serde_json::to_value(&key.views).unwrap();
+    let saved = serde_json::to_value(&key.layout.views).unwrap();
     let mut projected = 0;
     let basis = limo_cad_occt::drawing_projection_basis([0., 0., 1.], [0., 1., 0.]).unwrap();
     cache
@@ -764,13 +809,13 @@ fn resolved_projection_basis_is_cached_by_exact_owner_revision_without_rewriting
             |_, _| Ok(vec![]),
         )
         .unwrap();
-    assert_eq!(projected, key.views.len());
-    assert_eq!(cache.bases(&key).unwrap().len(), key.views.len());
+    assert_eq!(projected, key.layout.views.len());
+    assert_eq!(cache.bases(&key).unwrap().len(), key.layout.views.len());
     for (id, (view, _)) in cache.projections(&key).unwrap() {
         assert_eq!(cache.bases(&key).unwrap()[id], basis);
         assert_eq!(view.direction, [0., -1., 0.]);
     }
-    assert_eq!(serde_json::to_value(&key.views).unwrap(), saved);
+    assert_eq!(serde_json::to_value(&key.layout.views).unwrap(), saved);
     cache
         .prepare_sheet(
             &mut images,
@@ -787,8 +832,8 @@ fn resolved_projection_basis_is_cached_by_exact_owner_revision_without_rewriting
         let mut changed = key.clone();
         match variant {
             0 => changed.document_revision += 1,
-            1 => changed.owner.epoch += 1,
-            _ => changed.owner.document_id = "other".into(),
+            1 => Arc::make_mut(&mut changed.layout).owner.epoch += 1,
+            _ => Arc::make_mut(&mut changed.layout).owner.document_id = "other".into(),
         };
         assert!(cache.projections(&changed).is_none());
         assert!(cache.bases(&changed).is_none());
@@ -838,7 +883,7 @@ fn native_retention_purges_inactive_paper_caches_and_keeps_active_raster() {
         })
         .unwrap();
     let mut active = cold.clone();
-    active.owner.document_id = "drawing-b".into();
+    Arc::make_mut(&mut active.layout).owner.document_id = "drawing-b".into();
     let ready = cache
         .prepare(&mut images, active.clone(), raster(), |_| {
             Ok(projection(true))
@@ -847,7 +892,7 @@ fn native_retention_purges_inactive_paper_caches_and_keeps_active_raster() {
     let active_image = ready.image.clone();
     assert!(cache.previous_source.is_some());
     assert!(cache.previous_raster.is_some());
-    cache.evict_document(&cold.owner);
+    cache.evict_document(&cold.layout.owner);
     assert!(cache.previous_source.is_none());
     assert!(cache.previous_raster.is_none());
     assert!(cache.projections(&active).is_some());
@@ -859,7 +904,7 @@ fn native_retention_purges_inactive_paper_caches_and_keeps_active_raster() {
         .unwrap();
     assert!(!ready.source_changed);
     assert_eq!(ready.image, active_image);
-    cache.evict_document(&cache.source.as_ref().unwrap().key.owner.clone());
+    cache.evict_document(&cache.source.as_ref().unwrap().key.layout.owner.clone());
     assert!(cache.source.is_none());
     assert!(cache.raster.is_none());
 }

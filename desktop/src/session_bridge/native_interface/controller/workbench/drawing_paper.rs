@@ -124,14 +124,14 @@ pub(super) struct AngularDrag {
     pub vertex: [f64; 2],
     pub text: [f64; 2],
 }
-pub(super) fn annotation_marks(_world: &World, state: &Workbench) -> Vec<AnnotationMark> {
+pub(super) fn annotation_marks(state: &Workbench) -> &[AnnotationMark] {
     if state.paper_key.is_none() {
-        return vec![];
+        return &[];
     }
     state
         .paper_view
         .as_ref()
-        .map_or_else(Vec::new, |v| v.marks.clone())
+        .map_or(&[], |v| v.marks.as_slice())
 }
 
 pub(super) fn annotation_preview(
@@ -168,7 +168,7 @@ pub(super) fn annotation_preview(
 }
 
 #[derive(Resource, Default)]
-struct FrameCache(Option<(DrawingSheetDto, Result<annotations::Art, String>)>);
+struct FrameCache(Option<(frame::Source<'static>, annotations::Art)>);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum Ink {

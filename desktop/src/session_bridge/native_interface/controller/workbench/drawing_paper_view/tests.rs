@@ -445,6 +445,42 @@ fn annotation_failures_cache_exact_sheet_units_and_projection_owner_only() {
 }
 
 #[test]
+fn annotation_preview_reuses_frame_artwork_and_title_edits_refresh_it() {
+    let (mut app, handle, _, _) = crate::native_viewport::interface_shell::tests::fixture();
+    let owner = handle.frame().unwrap().context;
+    let world = app.world_mut();
+    let original = note_sheet();
+    let mut state = paper_fixture(world, &owner, &original);
+    super::super::annotation_preview(world, &mut state, &original).unwrap();
+    let segments = world
+        .resource::<FrameCache>()
+        .0
+        .as_ref()
+        .unwrap()
+        .1
+        .segments
+        .as_ptr();
+
+    let mut preview = original.clone();
+    let limo_cad_sketch::DrawingAnnotationDto::Note { text, .. } = &mut preview.annotations[0]
+    else {
+        panic!("Note fixture required")
+    };
+    *text = "Changed note".into();
+    super::super::annotation_preview(world, &mut state, &preview).unwrap();
+    assert_eq!(state.paper_labels[0].text, "Changed note");
+    let cache = world.resource::<FrameCache>().0.as_ref().unwrap();
+    assert_eq!(cache.1.segments.as_ptr(), segments);
+
+    preview.title_block.title = "Changed title".into();
+    super::super::annotation_preview(world, &mut state, &preview).unwrap();
+    let cache = world.resource::<FrameCache>().0.as_ref().unwrap();
+    let art = &cache.1;
+    assert_ne!(art.segments.as_ptr(), segments);
+    assert!(art.labels.iter().any(|label| label.text == "Changed title"));
+}
+
+#[test]
 fn frame_failure_is_atomic_cached_across_navigation_and_corrected_style_recovers() {
     let (mut app, handle, _, _) = crate::native_viewport::interface_shell::tests::fixture();
     let owner = handle.frame().unwrap().context;
@@ -468,8 +504,16 @@ fn frame_failure_is_atomic_cached_across_navigation_and_corrected_style_recovers
     let diagnostic = state.widgets.entity("drawing-render-error").unwrap();
     assert_eq!(world.get::<Text>(diagnostic).unwrap().0, error);
     let cache = world.resource::<FrameCache>().0.as_ref().unwrap();
-    assert_eq!(cache.0, invalid);
-    assert_eq!(cache.1.as_ref().err(), Some(&error));
+    assert!(cache.0 == frame::Source::new(&original, [297., 210.]));
+    let failed = state
+        .paper_view
+        .as_ref()
+        .unwrap()
+        .art_failure
+        .as_ref()
+        .unwrap();
+    assert_eq!(failed.sheet, invalid);
+    assert_eq!(failed.error, error);
     for _ in 0..2 {
         assert_eq!(repaint(world, &mut state).unwrap_err(), error);
     }
@@ -483,6 +527,9 @@ fn frame_failure_is_atomic_cached_across_navigation_and_corrected_style_recovers
         world.get::<Node>(diagnostic).unwrap().display,
         Display::None
     );
-    assert!(world.resource::<FrameCache>().0.as_ref().unwrap().1.is_ok());
+    assert!(
+        world.resource::<FrameCache>().0.as_ref().unwrap().0
+            == frame::Source::new(&original, [297., 210.])
+    );
     assert_eq!(world.resource::<Assets<Image>>().len(), 1);
 }

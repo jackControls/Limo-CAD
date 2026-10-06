@@ -1,6 +1,6 @@
 //! Batched projected edges for drawing paper. OCCT projections remain complete
-//! for associative annotations; one retained physical-resolution image replaces
-//! the old per-segment UI entities.
+//! for associative annotations; one retained physical-resolution image carries
+//! the visible strokes.
 use super::{paper_point, raster_stroke_width, Label};
 use crate::state::{DrawingProjectionBasis, ResolvedDrawingProjection};
 use bevy::{
@@ -18,6 +18,7 @@ use resvg::tiny_skia::{
     LineCap, LineJoin, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform,
 };
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 #[path = "drawing_edges/derived.rs"]
 mod derived;
@@ -27,11 +28,19 @@ mod presentation;
 pub(super) type Projections = BTreeMap<u64, (DrawingViewDto, DrawingProjectionDto)>;
 pub(super) type ProjectionBases = BTreeMap<u64, DrawingProjectionBasis>;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub(super) struct SourceKey {
-    owner: DocumentContext,
     document_revision: u64,
     geometry_revision: u64,
+    layout: Arc<SourceLayout>,
+}
+
+/// Immutable source metadata shared by paper, projection cache and drag stamps.
+/// Revision stamps stay in SourceKey so selecting a sheet cannot retag a saved
+/// drag or an error receipt through shared ownership.
+#[derive(Clone, PartialEq)]
+struct SourceLayout {
+    owner: DocumentContext,
     sheet_id: u64,
     views: Vec<DrawingViewDto>,
     visible: DrawingLineStyleDto,
@@ -43,9 +52,19 @@ pub(super) struct SourceKey {
     hatch_spacing_mm: f64,
     text_height_mm: f64,
 }
+
+impl PartialEq for SourceKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.document_revision == other.document_revision
+            && self.geometry_revision == other.geometry_revision
+            && (Arc::ptr_eq(&self.layout, &other.layout) || self.layout == other.layout)
+    }
+}
+
 impl SourceKey {
     pub(super) fn belongs_to_document(&self, owner: &DocumentContext) -> bool {
-        self.owner.window_id == owner.window_id && self.owner.document_id == owner.document_id
+        self.layout.owner.window_id == owner.window_id
+            && self.layout.owner.document_id == owner.document_id
     }
 
     pub(super) fn new(
@@ -55,9 +74,45 @@ impl SourceKey {
         sheet: &DrawingSheetDto,
     ) -> Self {
         Self {
-            owner,
             document_revision,
             geometry_revision,
+            layout: Arc::new(SourceLayout::new(owner, sheet)),
+        }
+    }
+
+    pub(super) fn refresh(
+        &mut self,
+        owner: &DocumentContext,
+        document_revision: u64,
+        geometry_revision: u64,
+        sheet: &DrawingSheetDto,
+    ) {
+        if !self.layout.matches(owner, sheet) {
+            self.layout = Arc::new(SourceLayout::new(owner.clone(), sheet));
+        }
+        self.document_revision = document_revision;
+        self.geometry_revision = geometry_revision;
+    }
+}
+
+impl SourceLayout {
+    fn matches(&self, owner: &DocumentContext, sheet: &DrawingSheetDto) -> bool {
+        &self.owner == owner
+            && self.sheet_id == sheet.id
+            && self.views == sheet.views
+            && self.visible == sheet.style.visible
+            && self.hidden == sheet.style.hidden
+            && self.hatch == sheet.style.hatch
+            && self.cutting_plane == sheet.style.cutting_plane
+            && self.phantom == sheet.style.phantom
+            && self.break_line == sheet.style.break_line
+            && self.hatch_spacing_mm == sheet.style.hatch_spacing_mm
+            && self.text_height_mm == sheet.style.text_height_mm
+    }
+
+    fn new(owner: DocumentContext, sheet: &DrawingSheetDto) -> Self {
+        Self {
+            owner,
             sheet_id: sheet.id,
             views: sheet.views.clone(),
             visible: sheet.style.visible.clone(),
@@ -181,7 +236,7 @@ impl EdgeCache {
             .into_iter()
             .flatten()
         {
-            if &source.key.owner == owner && source.key.document_revision == from {
+            if &source.key.layout.owner == owner && source.key.document_revision == from {
                 source.key.document_revision = to;
             }
         }
@@ -400,7 +455,7 @@ impl RasterKey {
         }
         let scale = f64::from(self.paper_scale) * f64::from(self.render_scale);
         let mut stroke = 0f64;
-        let section = source.views.iter().any(|view| {
+        let section = source.layout.views.iter().any(|view| {
             matches!(
                 view.derivation,
                 Some(
@@ -409,30 +464,30 @@ impl RasterKey {
                 )
             )
         });
-        let detail = source.views.iter().any(|view| {
+        let detail = source.layout.views.iter().any(|view| {
             matches!(
                 view.derivation,
                 Some(DrawingViewDerivationDto::Detail { .. })
             )
         });
-        let auxiliary = source.views.iter().any(|view| {
+        let auxiliary = source.layout.views.iter().any(|view| {
             matches!(
                 view.derivation,
                 Some(DrawingViewDerivationDto::Auxiliary { .. })
             )
         });
-        let broken = source.views.iter().any(|view| {
+        let broken = source.layout.views.iter().any(|view| {
             matches!(
                 view.derivation,
                 Some(DrawingViewDerivationDto::Broken { .. })
             )
         });
-        for style in [&source.visible, &source.hidden]
+        for style in [&source.layout.visible, &source.layout.hidden]
             .into_iter()
-            .chain(section.then_some(&source.hatch))
-            .chain(section.then_some(&source.cutting_plane))
-            .chain((detail || auxiliary).then_some(&source.phantom))
-            .chain(broken.then_some(&source.break_line))
+            .chain(section.then_some(&source.layout.hatch))
+            .chain(section.then_some(&source.layout.cutting_plane))
+            .chain((detail || auxiliary).then_some(&source.layout.phantom))
+            .chain(broken.then_some(&source.layout.break_line))
         {
             let width =
                 raster_stroke_width(style.width_mm as f32, self.paper_scale, self.render_scale)
@@ -530,7 +585,7 @@ impl Source {
         let mut metadata = 0usize;
         let mut retained = 0usize;
         let mut steps = 0.;
-        for view in &key.views {
+        for view in &key.layout.views {
             if !view.scale.is_finite()
                 || view.scale <= 0.
                 || view.position.iter().any(|v| !v.is_finite())
@@ -731,7 +786,7 @@ impl Source {
         let mut pixmap =
             Pixmap::new(width, height).ok_or("Unable to allocate drawing paper image")?;
         let factor = f64::from(key.paper_scale) * f64::from(key.render_scale);
-        for (view_key, art) in self.key.views.iter().zip(&self.view_art) {
+        for (view_key, art) in self.key.layout.views.iter().zip(&self.view_art) {
             if !art.decoration.visible(key, region) {
                 continue;
             }
@@ -830,9 +885,8 @@ impl Source {
     }
 }
 
-/// Same edge-layer selection as DrawingWorkspace's ViewGraphic. Section and
-/// removed-section derivations render cut loops; removed sections omit the
-/// ordinary projection. The complete projection remains available to anchors.
+/// Section and removed-section derivations render cut loops; removed sections
+/// omit the ordinary projection. Complete projections remain available to anchors.
 fn paths<'a>(
     view: &DrawingViewDto,
     projection: &'a DrawingProjectionDto,
@@ -854,14 +908,14 @@ fn paths<'a>(
             Some(DrawingViewDerivationDto::Section { .. })
         );
     [
-        (&projection.visible, &key.visible, false, !removed),
+        (&projection.visible, &key.layout.visible, false, !removed),
         (
             &projection.hidden,
-            &key.hidden,
+            &key.layout.hidden,
             true,
             !removed && view.show_hidden_lines,
         ),
-        (&projection.section, &key.visible, false, section),
+        (&projection.section, &key.layout.visible, false, section),
     ]
     .into_iter()
     .filter(|(_, _, _, enabled)| *enabled)

@@ -4,10 +4,88 @@ use super::{
     Fill, Ink, Label, LabelAlign,
 };
 use limo_cad_sketch::*;
+use std::borrow::Cow;
 
 const MIN_TEXT: f64 = 1.8;
 
-fn preflight(art: &mut CheckedArt, sheet: &DrawingSheetDto) {
+/// Frame rendering consumes only its visible metadata. Borrow it during cache
+/// lookup and retain an owned snapshot only when the frame changes.
+#[derive(PartialEq)]
+pub(super) struct Source<'a> {
+    paper_size: [f64; 2],
+    name: Cow<'a, str>,
+    format: DrawingSheetFormat,
+    projection_method: DrawingProjectionMethod,
+    tolerance_note: Cow<'a, DrawingToleranceNoteDto>,
+    title_block: Cow<'a, DrawingTitleBlockDto>,
+    style: Style<'a>,
+    revisions: Cow<'a, [DrawingRevisionDto]>,
+    bom: Cow<'a, [DrawingBomItemDto]>,
+    revision_table_position: Option<[f64; 2]>,
+    bom_table_position: Option<[f64; 2]>,
+}
+
+#[derive(PartialEq)]
+struct Style<'a> {
+    visible: Cow<'a, DrawingLineStyleDto>,
+    dimension: Cow<'a, DrawingLineStyleDto>,
+    text_height_mm: f64,
+    small_text_height_mm: f64,
+}
+
+impl<'a> Source<'a> {
+    pub(super) fn new(sheet: &'a DrawingSheetDto, paper_size: [f64; 2]) -> Self {
+        Self {
+            paper_size,
+            name: Cow::Borrowed(&sheet.name),
+            format: sheet.format,
+            projection_method: sheet.projection_method,
+            tolerance_note: Cow::Borrowed(&sheet.tolerance_note),
+            title_block: Cow::Borrowed(&sheet.title_block),
+            style: Style {
+                visible: Cow::Borrowed(&sheet.style.visible),
+                dimension: Cow::Borrowed(&sheet.style.dimension),
+                text_height_mm: sheet.style.text_height_mm,
+                small_text_height_mm: sheet.style.small_text_height_mm,
+            },
+            revisions: Cow::Borrowed(if sheet.revision_table_position.is_some() {
+                &sheet.revisions
+            } else {
+                &[]
+            }),
+            bom: Cow::Borrowed(if sheet.bom_table_position.is_some() {
+                &sheet.bom
+            } else {
+                &[]
+            }),
+            revision_table_position: sheet.revision_table_position,
+            bom_table_position: sheet.bom_table_position,
+        }
+    }
+
+    pub(super) fn into_owned(self) -> Source<'static> {
+        Source {
+            paper_size: self.paper_size,
+            name: Cow::Owned(self.name.into_owned()),
+            format: self.format,
+            projection_method: self.projection_method,
+            tolerance_note: Cow::Owned(self.tolerance_note.into_owned()),
+            title_block: Cow::Owned(self.title_block.into_owned()),
+            style: Style {
+                visible: Cow::Owned(self.style.visible.into_owned()),
+                dimension: Cow::Owned(self.style.dimension.into_owned()),
+                text_height_mm: self.style.text_height_mm,
+                small_text_height_mm: self.style.small_text_height_mm,
+            },
+            revisions: Cow::Owned(self.revisions.into_owned()),
+            bom: Cow::Owned(self.bom.into_owned()),
+            revision_table_position: self.revision_table_position,
+            bom_table_position: self.bom_table_position,
+        }
+    }
+}
+
+fn preflight(art: &mut CheckedArt, sheet: &Source<'_>) {
     let rows = sheet
         .revision_table_position
         .map_or(0, |_| sheet.revisions.len())
@@ -17,7 +95,7 @@ fn preflight(art: &mut CheckedArt, sheet: &DrawingSheetDto) {
     }
     let title = &sheet.title_block;
     for text in [
-        &sheet.name,
+        sheet.name.as_ref(),
         &title.title,
         &title.drawing_number,
         &title.company,
@@ -34,7 +112,7 @@ fn preflight(art: &mut CheckedArt, sheet: &DrawingSheetDto) {
         }
     }
     if sheet.revision_table_position.is_some() {
-        for row in &sheet.revisions {
+        for row in sheet.revisions.iter() {
             for text in [
                 &row.revision,
                 &row.date,
@@ -49,7 +127,7 @@ fn preflight(art: &mut CheckedArt, sheet: &DrawingSheetDto) {
         }
     }
     if sheet.bom_table_position.is_some() {
-        for row in &sheet.bom {
+        for row in sheet.bom.iter() {
             for text in [
                 &row.item_number,
                 &row.part_number,
@@ -259,19 +337,11 @@ fn grid(
     }
 }
 
-pub(super) fn try_render(
-    sheet: &DrawingSheetDto,
-    paper_width: f64,
-    paper_height: f64,
-) -> Result<Art, String> {
-    render_checked(sheet, paper_width, paper_height)
-        .map_err(|error| format!("Drawing frame: {error}"))
+pub(super) fn try_render(sheet: &Source<'_>) -> Result<Art, String> {
+    render_checked(sheet).map_err(|error| format!("Drawing frame: {error}"))
 }
-fn render_checked(
-    sheet: &DrawingSheetDto,
-    paper_width: f64,
-    paper_height: f64,
-) -> Result<Art, String> {
+fn render_checked(sheet: &Source<'_>) -> Result<Art, String> {
+    let [paper_width, paper_height] = sheet.paper_size;
     let mut art = CheckedArt::default();
     preflight(&mut art, sheet);
     if !art.ready() {
@@ -319,7 +389,7 @@ fn render_checked(
     };
     add(
         if title.title.is_empty() {
-            sheet.name.clone()
+            sheet.name.to_string()
         } else {
             title.title.clone()
         },
@@ -504,7 +574,7 @@ fn render_checked(
 
 #[cfg(test)]
 fn render(sheet: &DrawingSheetDto, width: f64, height: f64) -> Art {
-    try_render(sheet, width, height).expect("frame within presentation limits")
+    try_render(&Source::new(sheet, [width, height])).expect("frame within presentation limits")
 }
 
 #[cfg(test)]

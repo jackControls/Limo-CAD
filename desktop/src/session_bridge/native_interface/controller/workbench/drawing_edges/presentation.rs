@@ -28,6 +28,7 @@ pub(super) fn build(
     mut stroke_steps: f64,
 ) -> PaperPresentation {
     let view_bytes = key
+        .layout
         .views
         .len()
         .checked_mul(std::mem::size_of::<derived::ViewArtwork>())
@@ -38,7 +39,7 @@ pub(super) fn build(
         .ok_or("Derived view metadata exceeds the retained geometry budget")?;
     let mut view_art = Vec::new();
     view_art
-        .try_reserve_exact(key.views.len())
+        .try_reserve_exact(key.layout.views.len())
         .map_err(|_| "Unable to allocate derived-view metadata")?;
     let defaults = PaperGraphicsLimits::default();
     let mut budget = PaperGraphicsBudget::new(PaperGraphicsLimits {
@@ -51,7 +52,7 @@ pub(super) fn build(
         ..defaults
     });
     let mut hatches = Vec::new();
-    for view_key in &key.views {
+    for view_key in &key.layout.views {
         let (view, projection) = &projections[&view_key.id];
         let first = hatches.len();
         if let Some(
@@ -66,10 +67,10 @@ pub(super) fn build(
             let lines = section_hatch_tiled(
                 view,
                 projection,
-                &key.hatch,
+                &key.layout.hatch,
                 HatchPattern {
                     angle_deg: hatch_angle_deg + 90.,
-                    spacing_mm: key.hatch_spacing_mm,
+                    spacing_mm: key.layout.hatch_spacing_mm,
                 },
                 &mut budget,
             )?;
@@ -87,7 +88,12 @@ pub(super) fn build(
             decoration,
         });
     }
-    let marks = if key.views.iter().any(|view| view.derivation.is_some()) {
+    let marks = if key
+        .layout
+        .views
+        .iter()
+        .any(|view| view.derivation.is_some())
+    {
         sources(projections, &mut budget)?
     } else {
         vec![]

@@ -75,7 +75,7 @@ pub(super) fn paint(
     super::cloud_panel::paint(world, camera, e, paper, transform, state)?;
     super::center_panel::paint(world, camera, e, paper, transform, state)?;
     if e.tool.is_none() {
-        for mark in drawing_paper::annotation_marks(world, state) {
+        for mark in drawing_paper::annotation_marks(state) {
             let center = transform.to_screen(mark.center);
             if center[0] < transform.clip.x - 100.
                 || center[1] < transform.clip.y - 100.

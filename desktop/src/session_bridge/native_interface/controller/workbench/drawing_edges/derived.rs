@@ -115,7 +115,7 @@ impl Decoration {
                 Ok(128.)
             }
             Self::Broken { axis, gap, bounds } => {
-                let style = &key.break_line;
+                let style = &key.layout.break_line;
                 if !style.width_mm.is_finite()
                     || style.width_mm <= 0.
                     || style.dash_mm.iter().any(|n| !n.is_finite() || *n <= 0.)
@@ -205,7 +205,7 @@ impl Decoration {
                     stroke(
                         pixmap,
                         &path.finish().ok_or("Cannot build view break marks")?,
-                        &source.break_line,
+                        &source.layout.break_line,
                         key,
                     )?;
                 }

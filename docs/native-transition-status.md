@@ -33,8 +33,8 @@ replace the older public Windows/Linux release qualification.
 
 Cursor and Codex now register **`limo-cad`**. Their retired CAD entries were
 removed; the retired Grok entry was also removed. The Start menu, project/recipe
-associations and previous launch paths route to the new payload. Retired physical
-payloads remain preserved for the separately deferred deletion. Documents,
+associations and previous launch paths route to the new payload. The three retired
+physical payloads were deleted after the user's manual cleanup. Documents,
 recovery saves and the session registry remain intact. See
 [runtime identities and migration](limo-cad-runtime.md).
 
@@ -44,8 +44,9 @@ Unique retired work remains in the verified 104-head Git bundle at
 `%LOCALAPPDATA%/limo-cad/archives/Limo-CAD-retired-branches-20261003-051405.bundle`.
 Three inactive runtime trees moved to
 `D:/limo-cad-maintenance/retired-runtime-payloads`; all 229 files retained their
-hashes, recovering about 1.6 GiB on C:. These quarantined copies await physical
-deletion and are outside the configured launch paths. Active CAD windows,
+hashes, recovering about 1.6 GiB on C:. The subsequent manual deletion removed
+all 229 runtime files and recovered about 2.4 GiB on D:. Their separate hash
+manifests remain. Active CAD windows,
 documents, recovery saves, SDKs and session data were preserved.
 
 The complete identity migration moves native configuration to
@@ -102,6 +103,12 @@ The conversion includes:
   drawing edits, placement changes and revisiting retained tabs reuse it.
   Eviction releases the cache. Browser/history actions, units/name reads and
   synchronous exports borrow their source data under the existing engine guard.
+  Drawing panels and hit testing borrow retained annotation marks. Paper/cache
+  keys and saved drag receipts share immutable view/style metadata; revision
+  stamps remain independent so sheet selection cannot retag a saved receipt.
+  The title-block cache borrows only rendered metadata during lookup and retains
+  an owned snapshot after successful rendering. Annotation edits reuse frame
+  artwork; rejected frames move the existing sheet snapshot into the error receipt.
   Pose-vector copies, per-body replay invalidation and presentation resource
   granularity remain tracked in [#333](https://github.com/jackControls/Limo-CAD/issues/333).
 - An explicit Winit window-icon binding (#259). The deployed Windows small-icon

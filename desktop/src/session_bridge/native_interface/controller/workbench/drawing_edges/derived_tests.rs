@@ -199,11 +199,11 @@ fn aggregate_detail_mask_work_is_checked_and_irrelevant_clips_need_no_mask() {
         .is_err());
 
     let mut key = key;
-    key.views.truncate(1);
+    Arc::make_mut(&mut key.layout).views.truncate(1);
     for (center, radius) in [([200., 200.], 6.), ([25., 25.], 100.)] {
-        key.views[0].position = center;
+        Arc::make_mut(&mut key.layout).views[0].position = center;
         if let Some(DrawingViewDerivationDto::Detail { radius: r, .. }) =
-            &mut key.views[0].derivation
+            &mut Arc::make_mut(&mut key.layout).views[0].derivation
         {
             *r = radius;
         }
@@ -239,7 +239,9 @@ fn aggregate_detail_mask_work_is_checked_and_irrelevant_clips_need_no_mask() {
             .any(|p| p[3] != 0);
         assert_eq!(any,radius==100.,"Disjoint detail must be empty; fully enclosing detail keeps visible edges without a mask");
     }
-    if let Some(DrawingViewDerivationDto::Detail { center, .. }) = &mut key.views[0].derivation {
+    if let Some(DrawingViewDerivationDto::Detail { center, .. }) =
+        &mut Arc::make_mut(&mut key.layout).views[0].derivation
+    {
         center.topology_signature = Some("retired".into());
     }
     let error = Source::project(
