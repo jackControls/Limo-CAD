@@ -6,6 +6,7 @@ pub(super) enum NativeProject {
     Cold {
         model: String,
         geometry_revision: u64,
+        viewport_revision: u64,
         body_ids: Vec<limo_cad_core::BodyId>,
         errors: Vec<limo_cad_solid::KernelFeatureErrorDto>,
         sketches: limo_cad_sketch::RetainedSketchSessions,
@@ -29,6 +30,7 @@ impl NativeProject {
         let Self::Cold {
             model,
             geometry_revision,
+            viewport_revision,
             body_ids,
             errors,
             sketches,
@@ -68,6 +70,7 @@ impl NativeProject {
             .restore_sketch_session_retention(sketches)
             .map_err(|error| error.to_string())?;
         next.geometry_revision = next_revision;
+        next.viewport_revision = viewport_revision.wrapping_add(1);
         *self = Self::Warm(Box::new(next));
         Ok(())
     }
@@ -95,6 +98,7 @@ impl NativeEngineHost {
             .map_err(|e| e.to_string())?;
         let active_named_view = engine.manager.named_views().active;
         let geometry_revision = engine.geometry_revision;
+        let viewport_revision = engine.viewport_revision;
         let scene = engine.manager.solid_scene_ref();
         let mut body_ids: Vec<_> = scene.bodies.iter().map(|body| body.id).collect();
         body_ids.sort_unstable();
@@ -106,6 +110,7 @@ impl NativeEngineHost {
         *project = NativeProject::Cold {
             model,
             geometry_revision,
+            viewport_revision,
             body_ids,
             errors,
             sketches,

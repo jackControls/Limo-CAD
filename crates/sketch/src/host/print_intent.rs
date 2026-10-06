@@ -61,12 +61,17 @@ pub(super) fn guard(manager: &SketchManager, expected: &str) -> Result<(), Sessi
         .map_err(|error| SessionError::Solid(error.into()))
 }
 
-pub(super) fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> String {
-    // Bound print metadata and its optimistic project snapshot before JSON allocation.
+pub(super) fn handle_read_only(
+    manager: &SketchManager,
+    method: &str,
+    payload: &str,
+) -> Option<String> {
     if payload.len() > 32 * 1024 * 1024 {
-        return err_json("Print-intent payload exceeds 32 MiB, including its project snapshot");
+        return Some(err_json(
+            "Print-intent payload exceeds 32 MiB, including its project snapshot",
+        ));
     }
-    match method {
+    Some(match method {
         "print_intent_get" if matches!(payload.trim(), "" | "null" | "{}") => {
             ok_json(manager.print_intent())
         }
@@ -74,6 +79,18 @@ pub(super) fn handle(manager: &mut SketchManager, method: &str, payload: &str) -
         "print_intent_effective" => with_payload(payload, |request: EffectiveRequest| {
             manager.effective_print_intent(request.body_ids, Some(request.target))
         }),
+        _ => return None,
+    })
+}
+
+pub(super) fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> String {
+    if let Some(response) = handle_read_only(manager, method, payload) {
+        return response;
+    }
+    if payload.len() > 32 * 1024 * 1024 {
+        return err_json("Print-intent payload exceeds 32 MiB, including its project snapshot");
+    }
+    match method {
         "print_intent_set_part" => with_payload(payload, |request: SetPartRequest| {
             guard(manager, &request.expected_model_json)?;
             manager.set_part_print_intent(request.body_id, request.settings)

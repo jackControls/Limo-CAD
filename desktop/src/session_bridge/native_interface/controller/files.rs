@@ -833,7 +833,7 @@ fn execute(
         FileCommand::Rename => show_dialog(
             world,
             receipt,
-            DialogKind::Rename(services.engine.document_snapshot().name),
+            DialogKind::Rename(services.engine.document_name()),
         ),
         FileCommand::Exit => Ok(json!({"request_exit":true})),
         FileCommand::ApplyName(token) => {

@@ -242,10 +242,7 @@ pub(super) fn paint(
     if !state.target.is_empty() {
         for (axis, letter) in ["X", "Y", "Z"].into_iter().enumerate() {
             rows.push((
-                format!(
-                    "View offset {letter} ({:?})",
-                    engine.document_snapshot().settings.units
-                ),
+                format!("View offset {letter} ({:?})", engine.document_units()),
                 Some(Field::Translation(axis)),
                 None,
                 None,

@@ -814,6 +814,7 @@ fn projection_app(owner: &DocumentContext, bounds: InterfaceRect) -> App {
                 datum_planes: vec![],
                 profile_catalog: vec![],
                 body_appearances: vec![],
+                ..Default::default()
             }),
         },
     )

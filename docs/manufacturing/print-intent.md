@@ -94,9 +94,10 @@ or profile mappings; representing a setting never proves it was applied.
 Schema 12 protects this metadata from older readers that would discard it on
 save. Schema 11 migrates existing version-1 settings and source identity without
 introducing target references. Schema 10 and earlier migrate with empty intent
-and unchanged geometry; named layouts and existing metadata remain intact. Main's foundation
-is based on the existing multipart/layout PR, while Bevy uses the same schema
-and engine DTOs. New controls belong to Bevy; the legacy UI has no second editor.
+and unchanged geometry; named layouts and existing metadata remain intact. The
+print-intent, target-project, modifier, height-profile and verification work is
+consolidated on the Bevy integration branch. Engine and MCP share its schema
+and DTOs with the Bevy controls.
 
 ## Persistent target handoffs
 

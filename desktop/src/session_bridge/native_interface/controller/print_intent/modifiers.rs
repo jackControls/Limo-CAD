@@ -321,7 +321,7 @@ pub(super) fn create(world: &mut World, engine: &AppState) -> Result<Value, Stri
     let mut state = world.resource_mut::<State>();
     state.modifier_selection = value.id.clone();
     state.modifier_original = None;
-    state.modifier_draft = Some(Draft::new(value, engine.document_snapshot().settings.units));
+    state.modifier_draft = Some(Draft::new(value, engine.document_units()));
     state.modifier_draft.as_mut().unwrap().changed = true;
     state.draft = Default::default();
     state.original = Default::default();

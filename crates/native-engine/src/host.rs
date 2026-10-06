@@ -2,6 +2,7 @@
 //!
 //! Enable `native-occt` for execution. The default feature set permits SDK-free
 //! compilation of consumers; it does not supply a geometry kernel.
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -43,6 +44,8 @@ pub type NativeViewportSnapshot = (
 /// Geometry is shared with the engine and never copied to install a frame.
 #[derive(Debug, Clone, Default)]
 pub struct NativeViewportDocument {
+    /// Authored viewport data changes independently of the geometry revision.
+    pub metadata_revision: u64,
     pub scene: Arc<SolidSceneDto>,
     pub active_sketch: Option<SketchDto>,
     pub finished_sketches: Vec<SketchDto>,
@@ -69,6 +72,10 @@ mod manufacturing;
 mod retention;
 use retention::NativeProject;
 
+#[cfg(test)]
+#[path = "viewport_tests.rs"]
+mod viewport_tests;
+
 pub use limo_cad_occt::DrawingProjectionBasis;
 /// Projection and its actual orthonormal camera axes, computed together.
 pub struct ResolvedDrawingProjection {
@@ -80,6 +87,18 @@ struct NativeEngine {
     manager: SketchManager,
     kernel: OcctKernel,
     geometry_revision: u64,
+    viewport_revision: u64,
+    viewport_cache: RefCell<Option<CachedViewport>>,
+}
+
+struct CachedViewport {
+    document: Arc<NativeViewportDocument>,
+    placement: Option<CachedPlacement>,
+}
+
+struct CachedPlacement {
+    body_poses: Vec<BodyPoseDto>,
+    instance_body_poses: Vec<InstanceBodyPoseDto>,
 }
 
 impl NativeEngine {
@@ -89,6 +108,8 @@ impl NativeEngine {
             kernel: OcctKernel::new()
                 .map_err(|error| format!("native OCCT kernel failed to initialize: {error}"))?,
             geometry_revision: 1,
+            viewport_revision: 1,
+            viewport_cache: RefCell::new(None),
         })
     }
 
@@ -96,6 +117,43 @@ impl NativeEngine {
         SolidUpdateDto {
             document: self.manager.document_dto(),
             scene: self.manager.solid_scene(),
+        }
+    }
+
+    fn invalidate_viewport(&mut self) {
+        self.viewport_revision = self.viewport_revision.wrapping_add(1);
+        *self.viewport_cache.get_mut() = None;
+    }
+
+    fn invalidate_for_command(&mut self, method: &str) {
+        if method.starts_with("drawing_")
+            || method.starts_with("cam_")
+            || method.starts_with("print_intent_")
+            || method.starts_with("print_modifier_")
+            || method == "document_set_name"
+            || (matches!(method, "set_grid_snap" | "set_grid_step")
+                && !self.manager.has_active_sketch())
+        {
+            return;
+        }
+        if method.starts_with("assembly_")
+            || matches!(
+                method,
+                "recall_named_view"
+                    | "clear_named_view"
+                    | "set_named_views"
+                    | "upsert_named_view"
+                    | "rename_named_view"
+                    | "delete_named_view"
+                    | "project_set_visibility"
+                    | "construction_set_visibility"
+            )
+        {
+            if let Some(cached) = self.viewport_cache.get_mut() {
+                cached.placement = None;
+            }
+        } else {
+            self.invalidate_viewport();
         }
     }
 }
@@ -162,6 +220,7 @@ impl NativeEngineHost {
             .geometry_revision
             .checked_add(1)
             .ok_or("Geometry revision exhausted")?;
+        let next_viewport = current.active().viewport_revision.wrapping_add(1);
         let mut prepared = prepared
             .inner
             .lock()
@@ -175,6 +234,8 @@ impl NativeEngineHost {
             .remove(&id)
             .ok_or("Prepared edit was already consumed")?;
         next.warm_mut().geometry_revision = next_geometry;
+        next.warm_mut().invalidate_viewport();
+        next.warm_mut().viewport_revision = next_viewport;
         current.sessions.insert(id, next);
         Ok(())
     }
@@ -470,8 +531,13 @@ impl NativeEngineHost {
             return self.drawing_projection(payload);
         }
         let mut workspace = self.inner.lock().expect("engine lock poisoned");
+        if let Some(response) = host::handle_read_only(&workspace.active().manager, method, payload)
+        {
+            return response;
+        }
         let verification_owner = workspace.verification_owner_key();
         let inner = workspace.active_mut();
+        inner.invalidate_for_command(method);
         let result = host::handle(&mut inner.manager, method, payload);
         let succeeded = serde_json::from_str::<serde_json::Value>(&result)
             .ok()
@@ -493,8 +559,6 @@ impl NativeEngineHost {
             inner.geometry_revision = inner.geometry_revision.wrapping_add(1);
         }
         if succeeded {
-            // A committed edit invalidates captured evidence before a possible Undo.
-            // Observation failure must not turn a successful mutation into an error.
             let _ = limo_cad_export::slicer_verification::local_slicer_service()
                 .observe_owned_model(&verification_owner, || {
                     inner
@@ -708,7 +772,7 @@ impl NativeEngineHost {
         }
         match exact_interference_report(
             &inner.kernel,
-            &inner.manager.solid_scene(),
+            inner.manager.solid_scene_ref(),
             &solution.instance_body_poses,
             &request,
         ) {
@@ -766,7 +830,7 @@ impl NativeEngineHost {
                     .map_err(|e| e.to_string())?,
             )?;
         }
-        if !inner.manager.solid_scene().errors.is_empty() {
+        if !inner.manager.solid_scene_ref().errors.is_empty() {
             return Err("Resolve timeline errors before exporting STEP.".to_string());
         }
         inner
@@ -798,15 +862,15 @@ impl NativeEngineHost {
         };
         let inner = workspace.active();
         let scene = inner.manager.solid_scene_ref();
-        let assembly = inner.manager.assembly_document();
+        let assembly = inner.manager.assembly_document_ref();
         let content = limo_cad_occt::drawing_export::export_sheet_with_units(
-            &inner.manager.drawing_document(),
+            inner.manager.drawing_document_ref(),
             scene,
-            &assembly,
+            assembly,
             &request,
             inner.manager.document().settings().units,
             |r| {
-                let projection = limo_cad_occt::project_drawing(&inner.kernel, scene, &assembly, r)
+                let projection = limo_cad_occt::project_drawing(&inner.kernel, scene, assembly, r)
                     .map_err(|e| e.to_string())?;
                 completed(r, &projection);
                 Ok(projection)
@@ -842,12 +906,12 @@ impl NativeEngineHost {
         if !scene.errors.is_empty() {
             return Err("Resolve timeline errors before generating a drawing view.".into());
         }
-        let assembly = inner.manager.assembly_document();
+        let assembly = inner.manager.assembly_document_ref();
         let request =
-            limo_cad_occt::drawing_export::projection_request(view, sheet_views, scene, &assembly)?;
+            limo_cad_occt::drawing_export::projection_request(view, sheet_views, scene, assembly)?;
         let basis = limo_cad_occt::drawing_projection_basis(request.direction, request.up)
             .map_err(|error| error.to_string())?;
-        let projection = limo_cad_occt::project_drawing(&inner.kernel, scene, &assembly, &request)
+        let projection = limo_cad_occt::project_drawing(&inner.kernel, scene, assembly, &request)
             .map_err(|error| error.to_string())?;
         Ok(ResolvedDrawingProjection { projection, basis })
     }
@@ -866,7 +930,7 @@ impl NativeEngineHost {
         if !scene.errors.is_empty() {
             return Err("Resolve timeline errors before generating a drawing view.".into());
         }
-        let assembly = inner.manager.assembly_document();
+        let assembly = inner.manager.assembly_document_ref();
         let mut graphics = Vec::new();
         for view in &sheet.views {
             if view.derivation.is_some() {
@@ -875,7 +939,7 @@ impl NativeEngineHost {
                     sheet,
                     &projection,
                     scene,
-                    &assembly,
+                    assembly,
                     budget,
                 )?;
                 budget.append(&mut graphics, marks)?;
@@ -901,7 +965,7 @@ impl NativeEngineHost {
         match limo_cad_occt::project_drawing(
             &inner.kernel,
             scene,
-            &inner.manager.assembly_document(),
+            inner.manager.assembly_document_ref(),
             &request,
         ) {
             Ok(projection) => ok_json(projection),
@@ -938,10 +1002,10 @@ impl NativeEngineHost {
                 )
                 .map_err(|e| e.to_string())?;
         }
-        if !inner.manager.solid_scene().errors.is_empty() {
+        if !inner.manager.solid_scene_ref().errors.is_empty() {
             return Err("Resolve timeline errors before exporting STL.".to_string());
         }
-        let scene = inner.manager.solid_scene();
+        let scene = inner.manager.solid_scene_ref();
         let mut meshes = inner
             .kernel
             .tessellate_bodies(&request)
@@ -1007,10 +1071,10 @@ impl NativeEngineHost {
                 )
                 .map_err(|e| e.to_string())?;
         }
-        if !inner.manager.solid_scene().errors.is_empty() {
+        if !inner.manager.solid_scene_ref().errors.is_empty() {
             return Err("Resolve timeline errors before exporting 3MF.".to_string());
         }
-        let scene = inner.manager.solid_scene();
+        let scene = inner.manager.solid_scene_ref();
         let appearances = inner.manager.body_appearances();
         let mut meshes = inner
             .kernel
@@ -1046,7 +1110,7 @@ impl NativeEngineHost {
             &meshes,
             &appearances,
             &request,
-            &inner.manager.assembly_document().component_structure,
+            &inner.manager.assembly_document_ref().component_structure,
             &solution,
         )
         .map_err(|error| error.to_string())
@@ -1143,7 +1207,7 @@ impl NativeEngineHost {
                 let (meshes, solution, bed) = native_layout_inputs(inner, &request, None)?;
                 let layout = limo_cad_export::analyze_print_layout(
                     &meshes,
-                    &inner.manager.assembly_document().component_structure,
+                    &inner.manager.assembly_document_ref().component_structure,
                     &solution,
                     &bed,
                 )
@@ -1159,7 +1223,7 @@ impl NativeEngineHost {
                     limo_cad_export::manufacturing_report::manufacturing_preflight_report(
                         &meshes,
                         &inner.manager.body_appearances(),
-                        &inner.manager.assembly_document().component_structure,
+                        &inner.manager.assembly_document_ref().component_structure,
                         &solution,
                         &inner.manager.print_intent(),
                         &effective,
@@ -1215,6 +1279,7 @@ impl NativeEngineHost {
     ) -> String {
         let mut workspace = self.inner.lock().expect("engine lock poisoned");
         let inner = workspace.active_mut();
+        inner.invalidate_viewport();
         let plan = match prepare(&mut inner.manager) {
             Ok(plan) => plan,
             Err(error) => return reject_prepare(error.to_string()),
@@ -1264,14 +1329,10 @@ impl NativeEngineHost {
     pub fn viewport_frame(&self) -> NativeViewportFrame {
         let workspace = self.inner.lock().expect("engine lock poisoned");
         let inner = workspace.active();
-        let assembly = inner
-            .manager
-            .presentation_solution()
-            .expect("active named view must resolve");
-        NativeViewportFrame {
-            session_id: workspace.active_session_id.clone(),
-            geometry_revision: inner.geometry_revision,
+        let mut cache = inner.viewport_cache.borrow_mut();
+        let cached = cache.get_or_insert_with(|| CachedViewport {
             document: Arc::new(NativeViewportDocument {
+                metadata_revision: inner.viewport_revision,
                 scene: inner.manager.solid_scene_snapshot(),
                 active_sketch: inner.manager.active_snapshot(),
                 finished_sketches: inner.manager.finished_sketches(),
@@ -1279,8 +1340,24 @@ impl NativeEngineHost {
                 profile_catalog: inner.manager.profile_catalog(),
                 body_appearances: inner.manager.body_appearances(),
             }),
-            body_poses: assembly.body_poses,
-            instance_body_poses: assembly.instance_body_poses,
+            placement: None,
+        });
+        let placement = cached.placement.get_or_insert_with(|| {
+            let assembly = inner
+                .manager
+                .presentation_solution()
+                .expect("active named view must resolve");
+            CachedPlacement {
+                body_poses: assembly.body_poses,
+                instance_body_poses: assembly.instance_body_poses,
+            }
+        });
+        NativeViewportFrame {
+            session_id: workspace.active_session_id.clone(),
+            geometry_revision: inner.geometry_revision,
+            document: Arc::clone(&cached.document),
+            body_poses: placement.body_poses.clone(),
+            instance_body_poses: placement.instance_body_poses.clone(),
         }
     }
 }
@@ -1313,7 +1390,7 @@ fn check_native_layout(
     let (meshes, solution, bed) = native_layout_inputs(inner, request, draft)?;
     limo_cad_export::analyze_print_layout(
         &meshes,
-        &inner.manager.assembly_document().component_structure,
+        &inner.manager.assembly_document_ref().component_structure,
         &solution,
         &bed,
     )

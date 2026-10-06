@@ -48,14 +48,32 @@ fn guard(manager: &SketchManager, expected: &str) -> Result<(), SessionError> {
         .map_err(|error| SessionError::Solid(error.into()))
 }
 
+pub(super) fn handle_read_only(
+    manager: &SketchManager,
+    method: &str,
+    payload: &str,
+) -> Option<String> {
+    if payload.len() > 32 * 1024 * 1024 {
+        return Some(err_json(
+            "Print-intent payload exceeds 32 MiB, including its project snapshot",
+        ));
+    }
+    Some(match method {
+        "print_intent_height_binding" => with_payload(payload, |request: BindingRequest| {
+            manager.print_height_binding(request.body_id, request.layout)
+        }),
+        _ => return None,
+    })
+}
+
 pub(super) fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> String {
+    if let Some(response) = handle_read_only(manager, method, payload) {
+        return response;
+    }
     if payload.len() > 32 * 1024 * 1024 {
         return err_json("Print-intent payload exceeds 32 MiB, including its project snapshot");
     }
     match method {
-        "print_intent_height_binding" => with_payload(payload, |request: BindingRequest| {
-            manager.print_height_binding(request.body_id, request.layout)
-        }),
         "print_intent_upsert_height_range" => with_payload(payload, |request: RangeRequest| {
             guard(manager, &request.expected_model_json)?;
             manager.upsert_print_height_range(request.range)

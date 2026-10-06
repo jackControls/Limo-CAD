@@ -544,7 +544,7 @@ pub(crate) fn reduce(
     {
         return Err("The named-view controls have changed".into());
     }
-    let units = engine.document_snapshot().settings.units;
+    let units = engine.document_units();
     if let Command::Field(field) = command {
         let value = if let ControlInput::SetValue(value) = &action.control.input {
             value.clone()

@@ -275,8 +275,9 @@ fn browser_visibility_preserves_other_targets_and_roundtrips_the_project() {
         .find(|(_, node)| node.kind == Kind::Sketch)
         .unwrap()
         .1;
+    let sketch = action_node(&fixture.engine, sketch.id.0).unwrap();
     let name = sketch.name.as_ref().unwrap();
-    let first = visibility_arguments(&fixture.engine, sketch).unwrap();
+    let first = visibility_arguments(&fixture.engine, &sketch).unwrap();
     assert_eq!(first["hidden_sketch_names"], json!([name]));
     fixture
         .bridge
@@ -288,7 +289,7 @@ fn browser_visibility_preserves_other_targets_and_roundtrips_the_project() {
             || Ok(()),
         )
         .unwrap();
-    let second = visibility_arguments(&fixture.engine, sketch).unwrap();
+    let second = visibility_arguments(&fixture.engine, &sketch).unwrap();
     assert_eq!(second["hidden_sketch_names"], json!([]));
     assert_eq!(first["hidden_body_ids"], second["hidden_body_ids"]);
     assert_eq!(

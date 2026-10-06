@@ -17,12 +17,15 @@ pub(crate) struct Stage {
 }
 impl Stage {
     fn new(engine: &AppState, receipt: &DocumentReceipt, id: u64) -> Result<Self, String> {
-        let document = engine.document_snapshot();
-        let input_index = document
-            .features
-            .iter()
-            .position(|f| f.id.0 == id)
-            .ok_or("The feature no longer exists")?;
+        let (input_index, restore_index) = engine.with_document(|document| {
+            let features = document.features();
+            features
+                .features
+                .iter()
+                .position(|f| f.id.0 == id)
+                .map(|index| (index, features.rollback_index))
+                .ok_or("The feature no longer exists")
+        })?;
         let source = parse_engine_envelope(engine.engine_call("project_export_model", ""))?
             .as_str()
             .ok_or("Engine omitted the edit snapshot")?
@@ -31,7 +34,7 @@ impl Stage {
             engine: AppState::new(),
             source,
             input_index,
-            restore_index: document.rollback_index,
+            restore_index,
             usable: AtomicBool::new(false),
             receipt: receipt.clone(),
             feature_id: id,

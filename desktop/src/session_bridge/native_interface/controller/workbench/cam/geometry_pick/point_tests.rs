@@ -40,6 +40,7 @@ pub(super) fn setup(
                 datum_planes: vec![],
                 profile_catalog: vec![],
                 body_appearances: vec![],
+                ..Default::default()
             }),
         },
     )
@@ -268,6 +269,7 @@ fn wcs_release_cannot_cross_form_camera_focus_modal_or_source_changes() {
                                 datum_planes: vec![],
                                 profile_catalog: vec![],
                                 body_appearances: vec![],
+                                ..Default::default()
                             },
                         ),
                     },

@@ -213,7 +213,7 @@ pub(crate) fn open(
     state.modifier_selection.clear();
     state.modifier_original = None;
     state.modifier_draft = None;
-    state.units = engine.document_snapshot().settings.units;
+    state.units = engine.document_units();
     state.document = None;
     state.loaded_revision = None;
     state.generation = state

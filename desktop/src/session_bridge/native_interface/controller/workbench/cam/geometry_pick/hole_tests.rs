@@ -53,6 +53,7 @@ fn setup(
                 datum_planes: vec![],
                 profile_catalog: vec![],
                 body_appearances: vec![],
+                ..Default::default()
             }),
         },
     )

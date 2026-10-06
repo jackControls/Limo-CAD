@@ -524,7 +524,7 @@ fn queue_mutation(
                 })();
                 committed_feedback(&mut output, &mut editor, followup);
                 if matches!(kind, Completion::Finish)
-                    && engine.document_snapshot().features.iter().any(|f| !matches!(f.kind, limo_cad_core::FeatureKind::Sketch | limo_cad_core::FeatureKind::ConstructionPlane))
+                    && engine.with_document(|document| document.features().features.iter().any(|f| !matches!(f.kind, limo_cad_core::FeatureKind::Sketch | limo_cad_core::FeatureKind::ConstructionPlane)))
                 {
                     let receipt = bridge.native_document_receipt(engine, &owner)?;
                     let pending = worker::enqueue_operation(world, receipt.owner, receipt.revision, "solid_recompute".into(), json!({}), |world, services, result| {

@@ -98,7 +98,27 @@ fn hidden(node: &BrowserNode, presentation: &native_viewport::ViewportPresentati
         _ => false,
     }
 }
-fn visibility_arguments(engine: &AppState, node: &BrowserNode) -> Result<Value, String> {
+struct ActionNode {
+    kind: Kind,
+    name: Option<String>,
+    reference_id: Option<u64>,
+    has_children: bool,
+}
+
+fn action_node(engine: &AppState, id: u64) -> Result<ActionNode, String> {
+    engine.with_document(|document| {
+        find(document.browser(), id)
+            .map(|node| ActionNode {
+                kind: node.kind,
+                name: node.name.clone(),
+                reference_id: node.reference_id,
+                has_children: !node.children.is_empty(),
+            })
+            .ok_or_else(|| "The browser node no longer exists".into())
+    })
+}
+
+fn visibility_arguments(engine: &AppState, node: &ActionNode) -> Result<Value, String> {
     let mut value =
         crate::session_bridge::parse_engine_envelope(engine.engine_call("project_visibility", ""))?;
     let (key, target) = match node.kind {
@@ -143,10 +163,7 @@ pub(crate) fn reduce(
         | BrowserCommand::Visibility(id)
         | BrowserCommand::Edit(id) => id,
     };
-    let document = engine.document_snapshot();
-    let node = find(&document.browser, id)
-        .ok_or("The browser node no longer exists")?
-        .clone();
+    let node = action_node(engine, id)?;
     world.init_resource::<Browser>();
     let input = &action.control.input;
     if let ControlInput::Key(chord) = input {
@@ -156,7 +173,7 @@ pub(crate) fn reduce(
             && !chord.shift
             && matches!(chord.key.as_str(), "ArrowLeft" | "ArrowRight")
         {
-            if !node.children.is_empty() {
+            if node.has_children {
                 let mut state = world.resource_mut::<Browser>();
                 if chord.key == "ArrowLeft" {
                     state.collapsed.insert(id);
@@ -278,10 +295,8 @@ pub(crate) fn reduce(
                         Some(receipt.revision),
                         "project_set_visibility",
                         || {
-                            let document = services.engine.document_snapshot();
-                            let node = find(&document.browser, id)
-                                .ok_or("The visibility target no longer exists")?;
-                            visibility_arguments(&services.engine, node)
+                            let node = action_node(&services.engine, id)?;
+                            visibility_arguments(&services.engine, &node)
                         },
                         || guard.validate(),
                     )

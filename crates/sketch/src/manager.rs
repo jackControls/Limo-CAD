@@ -708,6 +708,11 @@ impl SketchManager {
         self.assembly.clone()
     }
 
+    /// Borrow assembly intent while a synchronous caller holds the host guard.
+    pub fn assembly_document_ref(&self) -> &AssemblyDocumentDto {
+        &self.assembly
+    }
+
     pub fn set_assembly_document(
         &mut self,
         mut document: AssemblyDocumentDto,

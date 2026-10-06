@@ -75,6 +75,18 @@ fn feature(document: &DocumentDto, id: u64) -> Result<&Feature, String> {
         .find(|feature| feature.id.0 == id)
         .ok_or("The history feature no longer exists".into())
 }
+
+fn require_feature(engine: &AppState, id: u64) -> Result<(), String> {
+    engine.with_document(|document| {
+        document
+            .features()
+            .features
+            .iter()
+            .any(|feature| feature.id.0 == id)
+            .then_some(())
+            .ok_or_else(|| "The history feature no longer exists".into())
+    })
+}
 fn idle(world: &World) -> Result<(), String> {
     if native_viewport::interface_view(world).2.mode == native_viewport::ViewportMode::Sketch
         || feature::panel(world).is_some()
@@ -130,22 +142,20 @@ pub(crate) fn reduce(
     world.init_resource::<History>();
     let input = &action.control.input;
     if *command == HistoryCommand::RollbackMarker {
-        let document = engine.document_snapshot();
+        let (rollback, count) = engine.document_history_position();
         let index = match input {
             ControlInput::Key(key) if !key.ctrl && !key.meta && !key.alt && !key.shift => {
                 match key.key.as_str() {
-                    "ArrowLeft" | "ArrowDown" => Some(document.rollback_index.saturating_sub(1)),
-                    "ArrowRight" | "ArrowUp" => {
-                        Some((document.rollback_index + 1).min(document.features.len()))
-                    }
+                    "ArrowLeft" | "ArrowDown" => Some(rollback.saturating_sub(1)),
+                    "ArrowRight" | "ArrowUp" => Some((rollback + 1).min(count)),
                     "Home" => Some(0),
-                    "End" => Some(document.features.len()),
+                    "End" => Some(count),
                     _ => None,
                 }
             }
             _ => None,
         };
-        if let Some(index) = index.filter(|index| *index != document.rollback_index) {
+        if let Some(index) = index.filter(|index| *index != rollback) {
             idle(world)?;
             let receipt = bridge.native_document_receipt(engine, &action.context)?;
             return mutation(
@@ -176,7 +186,7 @@ pub(crate) fn reduce(
         || matches!(input,ControlInput::Key(key) if key.key=="ContextMenu" || (key.key=="F10"&&key.shift));
     if let HistoryCommand::Select(id) = *command {
         let receipt = bridge.native_document_receipt(engine, &action.context)?;
-        feature(&engine.document_snapshot(), id)?;
+        require_feature(engine, id)?;
         if context_menu {
             let anchor = handle
                 .read_surface(|_, frame| {
@@ -245,7 +255,7 @@ pub(crate) fn reduce(
         HistoryCommand::Delete(id) => {
             idle(world)?;
             let receipt = bridge.native_document_receipt(engine, &action.context)?;
-            feature(&engine.document_snapshot(), id)?;
+            require_feature(engine, id)?;
             let mut state = world.resource_mut::<History>();
             state.menu = None;
             state.delete = Some(Target {
@@ -286,15 +296,22 @@ fn edit(
     id: u64,
 ) -> Result<Value, String> {
     idle(world)?;
-    let document = engine.document_snapshot();
-    let feature = feature(&document, id)?;
-    let result = match feature.kind {
+    let (kind, name) = engine.with_document(|document| {
+        document
+            .features()
+            .features
+            .iter()
+            .find(|feature| feature.id.0 == id)
+            .map(|feature| (feature.kind, feature.name.clone()))
+            .ok_or("The history feature no longer exists")
+    })?;
+    let result = match kind {
         FeatureKind::Sketch => crate::native_editor::execute(
             world,
             engine,
             bridge,
             &action.context,
-            crate::native_editor::EditorCommand::Edit(feature.name.clone()),
+            crate::native_editor::EditorCommand::Edit(name),
             || handle.validate_action(action),
         ),
         kind if feature::SolidFormKind::from_feature_kind(kind).is_some() => feature::reduce(
@@ -303,7 +320,7 @@ fn edit(
             world,
             &action.context,
             &feature::FeatureCommand::Open {
-                kind: feature::SolidFormKind::from_feature_kind(feature.kind).unwrap(),
+                kind: feature::SolidFormKind::from_feature_kind(kind).unwrap(),
                 feature_id: Some(id),
             },
             &ControlInput::Click,

@@ -1,6 +1,6 @@
 # Native transition status
 
-Checkpoint: **2026-10-05 UTC**. The default desktop on the Bevy integration branch
+Checkpoint: **2026-10-06 UTC**. The default desktop on the Bevy integration branch
 uses **Bevy `=0.20.0-rc.2`**, application version **0.2.2**, one native host and
 one shared CAD/CAM command path. The integration is tracked by
 [PR #124](https://github.com/jackControls/Limo-CAD/pull/124) and has not merged
@@ -60,10 +60,12 @@ Ordinary Rust/C++/JSONC comments and auxiliary workflow/probe comments were
 removed while preserving Rust documentation and interpreter directives.
 Stale TypeScript/React descriptions were corrected. Focused migration, archive,
 CAM-header/replay and workflow checks passed; strict scoped tooling Clippy passed.
-The comment-removal spacing issue in CAM documentation is corrected. Existing
-CAM argument-count/iterator lint debt and 17 native dead-code warnings remain;
-these checks do not establish a globally warning-free build. No large validation
-sweep was run for this cutover.
+The comment-removal spacing issue in CAM documentation is corrected. Strict
+all-target, all-feature Windows desktop Clippy and scoped native-engine/sketch
+Clippy pass on the current integration source. The October 6 follow-up scopes
+printer-only SVG resources to Windows and fixes macOS 6DoF lints; its hosted
+Windows and Ubuntu native-host jobs pass. This does not establish a globally
+warning-free build or qualify every platform. No large validation sweep was run.
 
 ## Implemented desktop
 
@@ -94,6 +96,14 @@ The conversion includes:
   IME caret placement follows visible field bounds and scale changes; provisional
   composition retains the existing editor checkpoint and committed text.
 - Restored inactive-tab eviction, including finished-sketch Undo/Redo (#222, #249).
+- Cached authored viewport metadata per native document, independently of
+  assembly placement. Immutable engine queries share this data with UI and MCP
+  and skip mutation evidence observation. Sketch/solid edits refresh metadata;
+  drawing edits, placement changes and revisiting retained tabs reuse it.
+  Eviction releases the cache. Browser/history actions, units/name reads and
+  synchronous exports borrow their source data under the existing engine guard.
+  Pose-vector copies, per-body replay invalidation and presentation resource
+  granularity remain tracked in [#333](https://github.com/jackControls/Limo-CAD/issues/333).
 - An explicit Winit window-icon binding (#259). The deployed Windows small-icon
   handle and native chrome capture confirm the title-bar fix. The packaged MCP
   passed schema-7 attach, rendered inspect and a read-only assembly query.

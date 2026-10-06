@@ -44,11 +44,7 @@ fn prepare(
             let svg = output["content"]
                 .as_str()
                 .ok_or("Drawing export returned no page")?;
-            let title = format!(
-                "{} — {}",
-                services.engine.document_snapshot().name,
-                sheet.name
-            );
+            let title = format!("{} — {}", services.engine.document_name(), sheet.name);
             Ok((native_print::Page::prepare(title, svg)?, sheet.id))
         })
 }
