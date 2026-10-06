@@ -106,6 +106,7 @@ pub(crate) enum Icon {
     MidpointLine,
     Rectangle,
     Circle,
+    Polygon,
     Arc,
     Slot,
     Point,
@@ -218,6 +219,7 @@ impl Icon {
             Self::MidpointLine => source!("midpointLine"),
             Self::Rectangle => source!("rect"),
             Self::Circle => source!("circle"),
+            Self::Polygon => source!("polygon"),
             Self::Arc => source!("arc"),
             Self::Slot => source!("slot"),
             Self::Point => source!("point"),
@@ -498,6 +500,15 @@ pub(crate) fn compact_glyph(
         size,
         GlyphInk::Muted,
     )
+}
+
+pub(crate) fn menu_ink(world: &mut World, owner: Entity) {
+    let mut glyphs = world.query::<&mut RibbonGlyph>();
+    for mut glyph in glyphs.iter_mut(world).filter(|glyph| glyph.owner == owner) {
+        if !glyph.icon.colored() {
+            glyph.ink = GlyphInk::Text;
+        }
+    }
 }
 
 pub(crate) fn center_glyph(world: &mut World, owner: Entity) {

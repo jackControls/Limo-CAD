@@ -37,7 +37,7 @@ fn sketch_palette_retires_the_dial_and_restores_it_after_finish() {
 }
 
 #[test]
-fn workspace_switcher_tracks_width_and_disables_other_workspaces_in_sketch() {
+fn workspace_switcher_keeps_its_caption_at_every_width_and_disables_other_workspaces_in_sketch() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
     let services = NativeServices {
@@ -55,7 +55,7 @@ fn workspace_switcher_tracks_width_and_disables_other_workspaces_in_sketch() {
         ..default()
     };
     let mut retained = None;
-    for width in [1440., 1360., 1440.] {
+    for width in [1440., 1360., 1024., 1440.] {
         state.widgets.begin();
         ribbon_menu::synchronize(
             world,
@@ -76,14 +76,16 @@ fn workspace_switcher_tracks_width_and_disables_other_workspaces_in_sketch() {
             .iter()
             .find(|child| world.get::<Text>(*child).is_some())
             .unwrap();
+        assert_eq!(world.get::<Node>(label).unwrap().width, px(100.));
         assert_eq!(
-            world.get::<Node>(label).unwrap().width,
-            px(if width > 1400. { 100. } else { 48. })
+            world
+                .get::<interface_shell::InterfaceCaption>(entity)
+                .unwrap()
+                .0,
+            "Solid Modeling"
         );
-        assert_eq!(
-            state.widgets.entity("workspace-sketch").is_some(),
-            width > 1400.
-        );
+        assert!(state.widgets.entity("workspace-sketch").is_some());
+        assert!(state.widgets.entity("workspace-sketch-badge").is_some());
         for name in ["Drawing", "Manufacture"] {
             let entry = world
                 .query::<&InterfaceControl>()

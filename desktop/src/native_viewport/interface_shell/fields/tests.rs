@@ -1,6 +1,227 @@
 use super::*;
 use crate::native_viewport::interface_shell::tests::fixture;
 
+fn drawing_field(app: &mut App, entity: Entity, index: usize) {
+    app.world_mut().entity_mut(entity).insert(DrawingDimension {
+        generation: 7,
+        index,
+    });
+    app.init_resource::<bevy::input_focus::InputFocus>();
+    app.world_mut()
+        .entity_mut(entity)
+        .insert((Node::default(), BorderColor::default()));
+}
+
+fn key(key: Key, text: Option<&str>) -> WindowEvent {
+    WindowEvent::KeyboardInput(KeyboardInput {
+        key_code: KeyCode::Unidentified(bevy::input::keyboard::NativeKeyCode::Unidentified),
+        logical_key: key,
+        state: ButtonState::Pressed,
+        text: text.map(Into::into),
+        repeat: false,
+        window: Entity::PLACEHOLDER,
+    })
+}
+
+#[test]
+fn drawing_autofocus_replaces_the_latest_preview_with_the_first_typed_number() {
+    let (mut app, handle, entity) = editor_fixture();
+    drawing_field(&mut app, entity, 0);
+    handle.blur();
+    after_window_input(app.world_mut(), &handle).unwrap();
+    let owner = handle.frame().unwrap().context;
+    request_focus(app.world_mut(), entity, &owner);
+    apply_requested_focus(app.world_mut());
+    assert_eq!(handle.focused_key(), Some(ControlKey(entity.to_bits())));
+    app.world_mut()
+        .get_mut::<InterfaceControl>(entity)
+        .unwrap()
+        .field = Field::Text {
+        value: "18.500".into(),
+        read_only: false,
+        selection: None,
+    };
+    app.world_mut()
+        .run_system_cached(synchronize_fields)
+        .unwrap();
+    flush_edits(app.world_mut()).unwrap();
+    assert_eq!(
+        app.world()
+            .get::<EditableText>(entity)
+            .unwrap()
+            .editor
+            .raw_selection()
+            .text_range(),
+        0..6
+    );
+    assert!(!has_uncommitted_edit(app.world(), entity));
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &key(Key::Character("3".into()), Some("3")),
+        None,
+        default()
+    )
+    .unwrap());
+    assert_eq!(
+        app.world().get::<EditableText>(entity).unwrap().value(),
+        "3"
+    );
+    assert!(has_uncommitted_edit(app.world(), entity));
+    assert!(handle.take_actions().unwrap().is_empty());
+}
+
+#[test]
+fn drawing_autofocus_waits_for_the_original_binding_to_be_published() {
+    let (mut app, handle, entity) = editor_fixture();
+    drawing_field(&mut app, entity, 0);
+    handle.blur();
+    after_window_input(app.world_mut(), &handle).unwrap();
+    app.world_mut()
+        .get_mut::<InterfaceControl>(entity)
+        .unwrap()
+        .binding += 1;
+    let owner = handle.frame().unwrap().context;
+    request_focus(app.world_mut(), entity, &owner);
+    apply_requested_focus(app.world_mut());
+    assert_eq!(handle.focused_key(), None);
+    assert!(app.world().resource::<RequestedFocus>().0.is_some());
+    app.update();
+    app.world_mut()
+        .run_system_cached(synchronize_fields)
+        .unwrap();
+    apply_requested_focus(app.world_mut());
+    assert_eq!(handle.focused_key(), Some(ControlKey(entity.to_bits())));
+    assert!(app.world().resource::<RequestedFocus>().0.is_none());
+    assert_eq!(
+        app.world()
+            .get::<EditableText>(entity)
+            .unwrap()
+            .editor
+            .raw_selection()
+            .text_range(),
+        0..2
+    );
+    assert!(handle.take_actions().unwrap().is_empty());
+}
+
+#[test]
+fn drawing_autofocus_rejects_rebound_fields_and_replaced_documents() {
+    for replace_document in [false, true] {
+        let (mut app, handle, entity) = editor_fixture();
+        drawing_field(&mut app, entity, 0);
+        handle.blur();
+        after_window_input(app.world_mut(), &handle).unwrap();
+        let owner = handle.frame().unwrap().context;
+        request_focus(app.world_mut(), entity, &owner);
+        if replace_document {
+            let mut frame = handle.frame().unwrap();
+            frame.context.epoch += 1;
+            handle.present(frame).unwrap();
+        } else {
+            app.world_mut()
+                .get_mut::<InterfaceControl>(entity)
+                .unwrap()
+                .binding += 1;
+        }
+        app.update();
+        apply_requested_focus(app.world_mut());
+        assert_eq!(handle.focused_key(), None);
+        assert!(app.world().resource::<EditorSession>().active.is_none());
+        assert!(handle.take_actions().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn drawing_tab_commits_then_cycles_dimensions_without_visiting_toolbar_controls() {
+    let (mut app, handle, first) = editor_fixture();
+    drawing_field(&mut app, first, 0);
+    let theme = ViewportUiTheme::from_palette(&default());
+    let mut control = InterfaceControl::button("Viewport", "Angle");
+    control.field = Field::Text {
+        value: "45.000".into(),
+        read_only: false,
+        selection: None,
+    };
+    let second = spawn_text_field(
+        &mut app.world_mut().commands(),
+        Entity::PLACEHOLDER,
+        Node::default(),
+        control,
+        theme,
+        &ViewportUiAssets::default(),
+    )
+    .unwrap();
+    app.world_mut().flush();
+    app.world_mut().entity_mut(second).insert((
+        ComputedNode {
+            size: Vec2::new(80., 24.),
+            inverse_scale_factor: 1.,
+            ..default()
+        },
+        UiGlobalTransform::from_translation(Vec2::new(160., 42.)),
+        bevy::ui::ComputedStackIndex(2),
+        InheritedVisibility::VISIBLE,
+    ));
+    drawing_field(&mut app, second, 1);
+    app.update();
+    app.world_mut()
+        .run_system_cached(bevy::ui::widget::update_editable_text_styles)
+        .unwrap();
+    app.world_mut()
+        .run_system_cached(bevy::ui::widget::update_editable_text_layout)
+        .unwrap();
+    apply_edit(app.world_mut(), first, TextEdit::SelectAll).unwrap();
+    for digit in ["3", "0"] {
+        assert!(before_window_input(
+            app.world_mut(),
+            &handle,
+            &key(Key::Character(digit.into()), Some(digit)),
+            None,
+            default()
+        )
+        .unwrap());
+    }
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &key(Key::Tab, None),
+        None,
+        default()
+    )
+    .unwrap());
+    assert_eq!(handle.focused_key(), Some(ControlKey(second.to_bits())));
+    let commits = handle.take_actions().unwrap();
+    assert_eq!(commits.len(), 1);
+    assert_eq!(commits[0].control.key, ControlKey(first.to_bits()));
+    assert_eq!(
+        commits[0].control.input,
+        ControlInput::SetValue("30".into())
+    );
+    assert_eq!(
+        app.world()
+            .get::<EditableText>(second)
+            .unwrap()
+            .editor
+            .raw_selection()
+            .text_range(),
+        0..6
+    );
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &key(Key::Tab, None),
+        None,
+        Modifiers {
+            shift: true,
+            ..default()
+        }
+    )
+    .unwrap());
+    assert_eq!(handle.focused_key(), Some(ControlKey(first.to_bits())));
+    assert!(handle.take_actions().unwrap().is_empty());
+}
+
 #[test]
 fn focusing_a_text_field_does_not_submit_a_missing_value_to_its_form() {
     let (mut app, handle, entity) = editor_fixture();

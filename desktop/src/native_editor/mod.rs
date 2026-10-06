@@ -1006,7 +1006,7 @@ pub(crate) fn synchronize_controls(
                 || !active_sketch
                 || (*slot < group.count && x + width <= (area.x + area.width - 156.) as f32);
             *slot += 1;
-            use crate::native_viewport::interface_shell::ribbon::{self, Icon};
+            use crate::native_viewport::interface_shell::ribbon;
             let node = if finish {
                 ribbon::finish_node(
                     if matches!(command, EditorCommand::Complete) {
@@ -1038,42 +1038,7 @@ pub(crate) fn synchronize_controls(
                     )
                 };
                 system.apply(world);
-                let icon = match &command {
-                    EditorCommand::Support(_)
-                    | EditorCommand::Begin(_)
-                    | EditorCommand::Edit(_) => Icon::Sketch,
-                    EditorCommand::Finish | EditorCommand::Complete => Icon::Finish,
-                    EditorCommand::Cancel => Icon::Cancel,
-                    EditorCommand::Palette(_) => Icon::Settings,
-                    EditorCommand::Interaction(command) => match command {
-                        InteractionCommand::Modify(ModifyTool::Trim) => Icon::Trim,
-                        InteractionCommand::Modify(ModifyTool::Extend) => Icon::Extend,
-                        InteractionCommand::Modify(ModifyTool::Break) => Icon::Break,
-                        InteractionCommand::Relation(relation) => Icon::Relation(relation.icon()),
-                        InteractionCommand::Dimension => Icon::Dimension,
-                        InteractionCommand::Form(kind) => match kind {
-                            FormKind::MoveCopy => Icon::MoveCopy,
-                            FormKind::Offset => Icon::Offset,
-                            FormKind::Fillet => Icon::Fillet,
-                            FormKind::Mirror => Icon::Mirror,
-                            FormKind::RectangularPattern => Icon::RectangularPattern,
-                            FormKind::CircularPattern => Icon::CircularPattern,
-                            _ => Icon::Pencil,
-                        },
-                        _ => Icon::Select,
-                    },
-                    EditorCommand::Size { .. } => Icon::Dimension,
-                    EditorCommand::Tool(tool) => match tool {
-                        CreateTool::Line => Icon::Line,
-                        CreateTool::MidpointLine => Icon::MidpointLine,
-                        CreateTool::Rectangle(_) => Icon::Rectangle,
-                        CreateTool::Circle(_) => Icon::Circle,
-                        CreateTool::Arc3Point | CreateTool::ArcCenter => Icon::Arc,
-                        CreateTool::Slot(_) => Icon::Slot,
-                        CreateTool::Point => Icon::Point,
-                        CreateTool::Spline => Icon::Spline,
-                    },
-                };
+                let icon = panel::icon(&command);
                 ribbon::decorate(world, entity, icon);
                 bind_command(world, entity, NativeCommand::Sketch(command.clone()))?;
                 editor.controls.insert(label.clone(), entity);

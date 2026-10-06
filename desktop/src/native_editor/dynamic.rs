@@ -469,10 +469,19 @@ pub(super) fn synchronize(
                         }),
                     )?;
                     panel.fields.insert(field, entity);
+                    world.entity_mut(entity).insert(fields::DrawingDimension {
+                        generation: editor.draft.generation,
+                        index,
+                    });
+                    if index == 0 {
+                        fields::request_focus(world, entity, owner);
+                    }
                     entity
                 };
                 let mut old = world.get::<InterfaceControl>(entity).unwrap().clone();
-                old.field = c.field;
+                if locked.is_some() || !fields::has_uncommitted_edit(world, entity) {
+                    old.field = c.field;
+                }
                 if world.get::<InterfaceControl>(entity) != Some(&old) {
                     world.entity_mut(entity).insert(old);
                 }

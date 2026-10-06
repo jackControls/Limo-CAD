@@ -567,6 +567,14 @@ pub(crate) fn synchronize(
             state.chrome.panel(
                 world,
                 camera,
+                &format!("tab-left-edge-{}", tab.owner.document_id),
+                node(x, 0., 1., 28.),
+                theme.edge,
+                42,
+            );
+            state.chrome.panel(
+                world,
+                camera,
                 &format!("tab-edge-{}", tab.owner.document_id),
                 node(x + 191., 0., 1., 28.),
                 theme.edge,

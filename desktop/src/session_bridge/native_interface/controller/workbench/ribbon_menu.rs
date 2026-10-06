@@ -181,7 +181,7 @@ pub(super) fn synchronize(
     let theme = crate::native_viewport::ui::theme(world);
     let locale = localization::locale(world);
     let workspace_label = dictionary::translate(locale, workspace_label_key(state.workspace));
-    let workspace_width = if width > 1400. { 108. } else { 56. };
+    let workspace_width = 108.;
     let workspace = centered_button(
         (&mut state.widgets, world, camera),
         (
@@ -198,22 +198,14 @@ pub(super) fn synchronize(
     let workspace_glyph = workspace_icon(state.workspace, theme.viewport.to_srgba().red > 0.7);
     ribbon::decorate(world, workspace, workspace_glyph);
     ribbon::replace_compact_glyph(world, workspace, workspace_glyph);
-    let caption_right = ribbon::workspace_caption(
-        world,
-        workspace,
-        if width > 1400. { workspace_label } else { "" },
-        workspace_width - 8.,
-    );
+    let caption_right =
+        ribbon::workspace_caption(world, workspace, workspace_label, workspace_width - 8.);
     state.widgets.glyph(
         (world, camera),
         "workspace-chevron",
         rect(
-            if width > 1400. {
-                (4. + caption_right + 2.).min(workspace_width - 12.)
-            } else {
-                workspace_width / 2. - 4.
-            },
-            if width > 1400. { 69. } else { 77. },
+            (4. + caption_right + 2.).min(workspace_width - 12.),
+            69.,
             8.,
             8.,
         ),
@@ -238,6 +230,7 @@ pub(super) fn synchronize(
         world.entity_mut(e).insert((
             TextLayout::new(Justify::Center, bevy::text::LineBreak::WordOrCharacter),
             bevy::text::LineHeight::Px(8.),
+            bevy::text::LetterSpacing::Px(0.8),
             TextColor(theme.mute),
         ));
     }
@@ -250,7 +243,17 @@ pub(super) fn synchronize(
         30,
     );
     if sketch {
-        if width > 1400. {
+        {
+            let mut badge = rect(workspace_width / 2. - 21., 82., 42., 10.);
+            badge.border_radius = BorderRadius::MAX;
+            state.widgets.panel(
+                world,
+                camera,
+                "workspace-sketch-badge",
+                badge,
+                theme.accent_soft,
+                42,
+            );
             state.widgets.text(
                 world,
                 camera,
@@ -538,17 +541,17 @@ fn menu(
         (&mut state.widgets, world, camera),
         "menu-card",
         rect(x, top, menu_width, menu_height),
-        theme.panel.with_alpha(1.),
+        theme.header.with_alpha(1.),
         5.,
         60,
     );
     let e = state.widgets.entity("menu-card").unwrap();
     world.entity_mut(e).insert(bevy::ui::BoxShadow::new(
-        theme.shadow,
+        Color::BLACK.with_alpha(0.4),
         px(0),
-        px(8),
+        px(12),
         px(0),
-        px(24),
+        px(32),
     ));
     let mut y = top + 4.;
     let workspace_entries: Vec<Value> = [Workspace::Solid, Workspace::Drawing, Workspace::Cam]
@@ -669,6 +672,7 @@ fn menu(
             62,
         )?;
         interface_shell::caption_size(world, entity, 11.);
+        ribbon::menu_ink(world, entity);
         if workspace && id == workspace_name(state.workspace) {
             state.widgets.glyph(
                 (world, camera),
