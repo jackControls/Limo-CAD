@@ -126,26 +126,28 @@ pub(super) fn prepare_edit_history(
                 | "assembly_update_contact_set"
                 | "assembly_delete_contact_set"
         );
-    if !snapshot_edit {
+    let visibility = operation == "project_set_visibility";
+    if !snapshot_edit && !visibility {
         return Ok(None);
     }
-    let model = super::parse_engine_envelope(engine.engine_call("project_export_model", ""))?;
-    let model = model
-        .as_str()
-        .ok_or("Engine did not return a complete edit snapshot")?;
     let before = super::native_history::HistoryState {
         context: owner.clone(),
         engine_revision: project.engine_revision,
     };
     let mut history = project.native_history.clone();
-    history.record_edit(
-        &before,
-        model.into(),
-        super::native_history::HistoryState {
-            context: owner.clone(),
-            engine_revision: next_revision,
-        },
-    )?;
+    let after = super::native_history::HistoryState {
+        context: owner.clone(),
+        engine_revision: next_revision,
+    };
+    if visibility {
+        history.advance_visibility(&before, after)?;
+    } else {
+        let model = super::parse_engine_envelope(engine.engine_call("project_export_model", ""))?;
+        let model = model
+            .as_str()
+            .ok_or("Engine did not return a complete edit snapshot")?;
+        history.record_edit(&before, model.into(), after)?;
+    }
     Ok(Some(history))
 }
 

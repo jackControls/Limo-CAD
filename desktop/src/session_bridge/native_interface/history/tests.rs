@@ -11,9 +11,13 @@ fn metadata_undo_retains_reserved_occurrence_ids_without_resetting_presentation(
     let target = current.clone();
     current["assembly"]["component_structure"]["next_occurrence_id"] = json!(500);
     current["print_intent"]["source_document_id"] = json!("83117445-4c07-4f27-bcbb-81077efce39c");
-    let (restored, presentation) =
-        prepare_history_restore(&fixture.engine, &current.to_string(), &target.to_string())
-            .unwrap();
+    let (restored, presentation) = prepare_history_restore(
+        &fixture.engine,
+        &current.to_string(),
+        &target.to_string(),
+        false,
+    )
+    .unwrap();
     let restored: Value = serde_json::from_str(&restored).unwrap();
     assert_eq!(
         restored["assembly"]["component_structure"]["next_occurrence_id"],
@@ -25,9 +29,13 @@ fn metadata_undo_retains_reserved_occurrence_ids_without_resetting_presentation(
     );
     let mut newer = target;
     newer["assembly"]["component_structure"]["next_occurrence_id"] = json!(700);
-    let (restored, _) =
-        prepare_history_restore(&fixture.engine, &restored.to_string(), &newer.to_string())
-            .unwrap();
+    let (restored, _) = prepare_history_restore(
+        &fixture.engine,
+        &restored.to_string(),
+        &newer.to_string(),
+        false,
+    )
+    .unwrap();
     let restored: Value = serde_json::from_str(&restored).unwrap();
     assert_eq!(
         restored["assembly"]["component_structure"]["next_occurrence_id"],
@@ -43,9 +51,13 @@ fn owned_geometry_history_keeps_namespace_and_rejects_foreign_snapshot_identity(
     let mut target = current.clone();
     current["print_intent"]["source_document_id"] = json!("83117445-4c07-4f27-bcbb-81077efce39c");
     target["document"]["name"] = json!("Earlier geometry history");
-    let (restored, presentation) =
-        prepare_history_restore(&fixture.engine, &current.to_string(), &target.to_string())
-            .unwrap();
+    let (restored, presentation) = prepare_history_restore(
+        &fixture.engine,
+        &current.to_string(),
+        &target.to_string(),
+        false,
+    )
+    .unwrap();
     let restored: Value = serde_json::from_str(&restored).unwrap();
     assert_eq!(
         restored["print_intent"]["source_document_id"],
@@ -58,10 +70,13 @@ fn owned_geometry_history_keeps_namespace_and_rejects_foreign_snapshot_identity(
     );
     target["print_intent"]["source_document_id"] = json!("f53a7155-aa4f-4080-990d-d3cae2ed8e77");
     let before = model(&fixture);
-    assert!(
-        prepare_history_restore(&fixture.engine, &current.to_string(), &target.to_string())
-            .is_err()
-    );
+    assert!(prepare_history_restore(
+        &fixture.engine,
+        &current.to_string(),
+        &target.to_string(),
+        false
+    )
+    .is_err());
     assert_eq!(
         model(&fixture),
         before,
@@ -104,6 +119,88 @@ fn model(fixture: &Fixture) -> Value {
     let raw =
         parse_engine_envelope(fixture.engine.engine_call("project_export_model", "")).unwrap();
     serde_json::from_str(raw.as_str().unwrap()).unwrap()
+}
+
+fn hide_sketch(fixture: &Fixture, owner: &DocumentContext) {
+    let mut visibility = model(fixture)["visibility"].clone();
+    visibility["hidden_sketch_names"] = json!(["Sketch1"]);
+    edit(fixture, owner, "project_set_visibility", visibility);
+}
+
+#[test]
+fn browser_visibility_keeps_feature_edit_undo_and_current_visibility() {
+    let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = part(&fixture);
+    let original = model(&fixture);
+    edit(
+        &fixture,
+        &owner,
+        "solid_edit_extrude",
+        json!({"feature_id":original["extrudes"][0]["feature_id"],"extrude":{
+            "sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body",
+            "extent":{"type":"distance","distance":25.},"taper_angle_deg":0.,
+            "flip":false,"target_body_ids":[]}}),
+    );
+    hide_sketch(&fixture, &owner);
+    let undone = fixture
+        .bridge
+        .apply_native_history(&fixture.engine, &owner, false, || Ok(()))
+        .unwrap();
+    assert_eq!(fixture.engine.document_snapshot().features.len(), 2);
+    assert_eq!(fixture.engine.viewport_snapshot().2.bodies.len(), 1);
+    assert!(fixture.engine.viewport_snapshot().2.errors.is_empty());
+    let restored = model(&fixture);
+    assert_eq!(restored["extrudes"][0]["extent"]["distance"], 10.0);
+    assert_eq!(
+        restored["visibility"]["hidden_sketch_names"],
+        json!(["Sketch1"])
+    );
+    let redone = fixture
+        .bridge
+        .apply_native_history(&fixture.engine, &undone.context, true, || Ok(()))
+        .unwrap();
+    assert_ne!(redone.context.epoch, undone.context.epoch);
+    assert_eq!(fixture.engine.document_snapshot().features.len(), 2);
+    let restored = model(&fixture);
+    assert_eq!(restored["extrudes"][0]["extent"]["distance"], 25.0);
+    assert_eq!(
+        restored["visibility"]["hidden_sketch_names"],
+        json!(["Sketch1"])
+    );
+}
+
+#[test]
+fn browser_visibility_keeps_deleted_feature_redo_and_current_visibility() {
+    let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = part(&fixture);
+    fixture
+        .bridge
+        .apply_native_history(&fixture.engine, &owner, false, || Ok(()))
+        .unwrap();
+    assert_eq!(fixture.engine.document_snapshot().features.len(), 1);
+    hide_sketch(&fixture, &owner);
+    assert!(
+        fixture
+            .bridge
+            .native_history_available(&fixture.engine, &owner)
+            .unwrap()
+            .1
+    );
+    let redone = fixture
+        .bridge
+        .apply_native_history(&fixture.engine, &owner, true, || Ok(()))
+        .unwrap();
+    assert_ne!(redone.context.epoch, owner.epoch);
+    assert_eq!(fixture.engine.document_snapshot().features.len(), 2);
+    assert_eq!(fixture.engine.viewport_snapshot().2.bodies.len(), 1);
+    let restored = model(&fixture);
+    assert_eq!(restored["extrudes"][0]["extent"]["distance"], 10.0);
+    assert_eq!(
+        restored["visibility"]["hidden_sketch_names"],
+        json!(["Sketch1"])
+    );
 }
 
 #[test]
@@ -368,22 +465,34 @@ fn owning_history_keeps_legacy_view_identity_through_first_rename_and_removes_ne
     let mut current = old.clone();
     current["views"][0]["id"] = json!("01234567-89ab-4cde-8123-456789abcdef");
     current["views"][0]["name"] = json!("Renamed layout");
-    let (restored, _) =
-        prepare_history_restore(&fixture.engine, &current.to_string(), &old.to_string()).unwrap();
+    let (restored, _) = prepare_history_restore(
+        &fixture.engine,
+        &current.to_string(),
+        &old.to_string(),
+        false,
+    )
+    .unwrap();
     let restored: Value = serde_json::from_str(&restored).unwrap();
     assert_eq!(restored["views"][0]["id"], current["views"][0]["id"]);
     assert_eq!(restored["views"][0]["name"], "Legacy layout");
-    let (absent, _) =
-        prepare_history_restore(&fixture.engine, &current.to_string(), &before.to_string())
-            .unwrap();
+    let (absent, _) = prepare_history_restore(
+        &fixture.engine,
+        &current.to_string(),
+        &before.to_string(),
+        false,
+    )
+    .unwrap();
     let absent: Value = serde_json::from_str(&absent).unwrap();
     assert!(absent["views"].as_array().unwrap().is_empty());
     let mut foreign = old;
     foreign["views"][0]["id"] = json!("01234567-89ab-4cde-8123-456789abcdee");
     foreign["views"][0]["name"] = json!("Renamed layout");
-    assert!(
-        prepare_history_restore(&fixture.engine, &current.to_string(), &foreign.to_string())
-            .is_err()
-    );
+    assert!(prepare_history_restore(
+        &fixture.engine,
+        &current.to_string(),
+        &foreign.to_string(),
+        false
+    )
+    .is_err());
     assert_eq!(model(&fixture), before);
 }

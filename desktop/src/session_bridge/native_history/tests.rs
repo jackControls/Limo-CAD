@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn visibility_revisions_preserve_edit_models_and_redo_but_expire_prepared_tickets() {
+    let mut history = SolidHistory::default();
+    history
+        .record_edit(&state(1, 1), "before edit".into(), state(1, 2))
+        .unwrap();
+    let stale = history.peek_edit_undo(&state(1, 2)).unwrap();
+    let original = history.edits[0].clone();
+    history
+        .advance_visibility(&state(1, 2), state(1, 3))
+        .unwrap();
+    assert!(Arc::ptr_eq(&original, &history.edits[0]));
+    assert!(history.preserves_visibility());
+    assert!(history
+        .commit_edit_undo(stale, "after edit".into(), state(2, 1))
+        .is_err());
+    let current = history.peek_edit_undo(&state(1, 3)).unwrap();
+    history
+        .commit_edit_undo(current, "after edit".into(), state(2, 1))
+        .unwrap();
+    let stale = history.peek_redo(&state(2, 1)).unwrap();
+    let original = history.redo[0].model.clone();
+    history
+        .advance_visibility(&state(2, 1), state(2, 2))
+        .unwrap();
+    assert!(Arc::ptr_eq(&original, &history.redo[0].model));
+    assert!(history.can_redo(&state(2, 2)));
+    assert!(history.commit_redo(stale, state(3, 1)).is_err());
+    assert!(history
+        .advance_visibility(&state(2, 2), state(3, 3))
+        .is_err());
+    assert!(history.can_redo(&state(2, 2)));
+    history.observe(&state(2, 3)).unwrap();
+    assert!(!history.can_redo(&state(2, 3)));
+    assert!(!history.preserves_visibility());
+}
+
+#[test]
 fn edit_snapshots_are_bounded_and_failed_or_stale_loads_do_not_pop_them() {
     let mut history = SolidHistory::default();
     for revision in 1..=40 {

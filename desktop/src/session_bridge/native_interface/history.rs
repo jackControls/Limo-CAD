@@ -44,6 +44,7 @@ fn prepare_history_restore(
     engine: &AppState,
     current: &str,
     target: &str,
+    preserve_visibility: bool,
 ) -> Result<(String, Option<MetadataPresentation>), String> {
     let mut current: Value = serde_json::from_str(current).map_err(|e| e.to_string())?;
     let mut target: Value = serde_json::from_str(target).map_err(|e| e.to_string())?;
@@ -83,6 +84,12 @@ fn prepare_history_restore(
             serde_json::from_value(target_views.clone()).map_err(|e| e.to_string())?;
         limo_cad_sketch::normalize_named_view_history_ids(&current_views, &mut historical)?;
         target["views"] = serde_json::to_value(historical).map_err(|e| e.to_string())?;
+    }
+    if preserve_visibility {
+        target["visibility"] = current
+            .get("visibility")
+            .ok_or("Current history model omitted project visibility")?
+            .clone();
     }
     let metadata_only = current == target;
     if target_intent.is_null() {
@@ -286,8 +293,12 @@ impl SessionBridgeState {
             let current = current
                 .as_str()
                 .ok_or("Engine did not return an Undo snapshot")?;
-            let (model_json, presentation) =
-                prepare_history_restore(engine, current, ticket.model_json())?;
+            let (model_json, presentation) = prepare_history_restore(
+                engine,
+                current,
+                ticket.model_json(),
+                publisher.active_mut().native_history.preserves_visibility(),
+            )?;
             let mut replacement = ProjectPublisher::new();
             let after_owner = context(&expected.window_id, &expected.document_id, &replacement);
             let mut history = publisher.active_mut().native_history.clone();
@@ -343,6 +354,7 @@ impl SessionBridgeState {
                                 .as_str()
                                 .ok_or("Engine did not return a Redo snapshot")?,
                             ticket.model_json(),
+                            publisher.active_mut().native_history.preserves_visibility(),
                         )?;
                         let mut replacement = ProjectPublisher::new();
                         let after_owner =

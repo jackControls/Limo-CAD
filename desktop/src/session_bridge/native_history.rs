@@ -82,6 +82,7 @@ pub(crate) struct SolidHistory {
     authorized: Option<HistoryState>,
     redo: Vec<RedoEntry>,
     edits: Vec<Arc<str>>,
+    preserve_visibility: bool,
 }
 
 impl Default for SolidHistory {
@@ -92,6 +93,7 @@ impl Default for SolidHistory {
             authorized: None,
             redo: Vec::new(),
             edits: Vec::new(),
+            preserve_visibility: false,
         }
     }
 }
@@ -135,9 +137,32 @@ impl SolidHistory {
         let serial = self.next_serial()?;
         self.redo.clear();
         self.edits.clear();
+        self.preserve_visibility = false;
         self.authorized = Some(state.clone());
         self.serial = serial;
         Ok(())
+    }
+
+    /// Adopt a successful visibility mutation without capturing geometry or
+    /// branching edit history. Prepared tickets still expire at the new revision.
+    pub(crate) fn advance_visibility(
+        &mut self,
+        before: &HistoryState,
+        after: HistoryState,
+    ) -> Result<(), &'static str> {
+        if before.context != after.context || after.engine_revision <= before.engine_revision {
+            return Err("Visibility history requires a newer revision of its owned document");
+        }
+        self.observe(before)?;
+        let serial = self.next_serial()?;
+        self.authorized = Some(after);
+        self.serial = serial;
+        self.preserve_visibility = true;
+        Ok(())
+    }
+
+    pub(crate) fn preserves_visibility(&self) -> bool {
+        self.preserve_visibility
     }
 
     pub(crate) fn can_redo(&self, state: &HistoryState) -> bool {
