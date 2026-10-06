@@ -396,6 +396,12 @@ fn legacy_json(m: &SketchManager) -> String {
     let mut model: serde_json::Value =
         serde_json::from_str(&m.export_project_model().unwrap()).unwrap();
     model["schema_version"] = 7.into();
+    model.as_object_mut().unwrap().remove("print_intent");
+    if let Some(views) = model["views"].as_array_mut() {
+        for view in views {
+            view.as_object_mut().unwrap().remove("id");
+        }
+    }
     for sketch in model["sketches"].as_array_mut().unwrap() {
         sketch.as_object_mut().unwrap().remove("support_boundary");
         sketch.as_object_mut().unwrap().remove("profile_identities");
