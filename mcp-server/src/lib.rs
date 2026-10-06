@@ -6579,6 +6579,10 @@ mod tests {
         assert!(server.live_snapshot_dirty);
 
         session::write_session(&id, "model.json", &updated_model).unwrap();
+        assert!(server.call_tool("cad_document", json!({})).is_err());
+        let recovered = server.call_tool("cad_refresh", json!({})).unwrap();
+        assert_eq!(recovered["refreshed"], true);
+        assert_eq!(recovered["attached_generation"], 2);
         assert_eq!(
             server.call_tool("cad_document", json!({})).unwrap()["name"],
             "Live script edit"
