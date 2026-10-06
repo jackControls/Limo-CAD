@@ -115,6 +115,9 @@ pub(super) fn synchronize(
                     InterfaceControl::button(format!("sketch/{key}"), format!("{label} tools"));
                 c.expanded = menu.then_some(editor.interaction.menu == Some(key));
                 c.disabled = !menu;
+                if !menu {
+                    c.role = "heading".into();
+                }
                 let mut bounds = rect(left, area.y as f32 + 54., width, 18.);
                 bounds.justify_content = JustifyContent::Center;
                 let entity = panel.widgets.button(

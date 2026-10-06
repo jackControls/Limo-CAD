@@ -1761,6 +1761,8 @@ fn update_controls(
             }
             let ink = if let Some(ribbon) = ribbon {
                 ribbon.ink(theme, control.disabled)
+            } else if control.role == "heading" {
+                theme.mute
             } else if control.disabled {
                 ribbon::css_mix(theme.mute, theme.panel, 0.4)
             } else {
