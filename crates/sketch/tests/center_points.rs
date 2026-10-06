@@ -489,7 +489,7 @@ fn deleting_part_of_a_center_rectangle_drops_the_unused_corner() {
 }
 
 #[test]
-fn moving_a_circle_with_a_shared_center_does_not_drag_its_neighbours() {
+fn transforms_of_a_circle_with_a_shared_anchor_reject_without_distortion() {
     let mut s = session();
     let created = s
         .add_rectangle(RectangleMode::TwoPoint, v(10.0, 10.0), v(50.0, 40.0))
@@ -505,24 +505,88 @@ fn moving_a_circle_with_a_shared_center_does_not_drag_its_neighbours() {
         .unwrap()
         .entities[0];
     assert_eq!(center_handles(&s.dto(), circle), vec![corner]);
-    let corner_before = point(&s.dto(), corner);
-
+    let original = serde_json::to_value(s.dto().entities).unwrap();
     s.move_copy_entities(&MoveCopyRequest {
         entity_ids: vec![circle],
         dx: 100.0,
         dy: 0.0,
-        copy: false,
+        copy: true,
     })
     .unwrap();
-    let dto = s.dto();
-    let moved = point(&dto, corner).distance(corner_before);
+    let copied = serde_json::to_value(s.dto()).unwrap();
+    s.undo().unwrap();
+    assert_eq!(serde_json::to_value(s.dto().entities).unwrap(), original);
+    let before = serde_json::to_value(s.dto()).unwrap();
+
+    let moved = s
+        .move_copy_entities(&MoveCopyRequest {
+            entity_ids: vec![circle],
+            dx: 100.0,
+            dy: 0.0,
+            copy: false,
+        })
+        .unwrap_err();
+    assert!(moved.to_string().contains("conflicts"));
+    assert_eq!(serde_json::to_value(s.dto()).unwrap(), before);
+    let scaled = s
+        .scale_entities(&ScaleRequest {
+            entity_ids: vec![circle],
+            origin: v(0.0, 0.0),
+            factor_text: "2".into(),
+        })
+        .unwrap_err();
+    assert!(scaled.to_string().contains("conflicts"));
+    assert_eq!(serde_json::to_value(s.dto()).unwrap(), before);
+    s.redo().unwrap();
+    assert_eq!(serde_json::to_value(s.dto()).unwrap(), copied);
+}
+
+#[test]
+fn scaling_about_an_acquired_circle_center_preserves_unselected_geometry() {
+    let mut s = session();
+    let rectangle = s
+        .add_rectangle(RectangleMode::TwoPoint, v(10.0, 10.0), v(50.0, 40.0))
+        .unwrap();
+    let circle = s
+        .add_circle_selective(
+            CircleMode::CenterDiameter,
+            v(10.0, 10.0),
+            v(18.0, 10.0),
+            false,
+        )
+        .unwrap()
+        .entities[0];
+    let before = s.dto();
+    s.scale_entities(&ScaleRequest {
+        entity_ids: vec![circle],
+        origin: v(10.0, 10.0),
+        factor_text: "2".into(),
+    })
+    .unwrap();
+    let after = s.dto();
+    for &point_id in &rectangle.entities[..4] {
+        assert!(point(&after, point_id).distance(point(&before, point_id)) < 1e-6);
+    }
     assert!(
-        moved < 100.0 - 1e-6,
-        "unselected geometry must not be dragged the whole delta, moved {moved}"
+        circle_center_of(&after, circle).distance(point(&before, rectangle.entities[0])) < 1e-6
     );
-    assert!(
-        circle_center_of(&dto, circle).distance(point(&dto, corner)) < 1e-6,
-        "the circle must stay on the point it was snapped to"
+    let radius = |dto: &SketchDto| match dto
+        .entities
+        .iter()
+        .find(|entity| entity.id() == circle)
+        .unwrap()
+    {
+        EntityDto::Circle { radius, .. } => *radius,
+        _ => panic!("Expected a circle"),
+    };
+    assert!((radius(&after) - 2.0 * radius(&before)).abs() < 1e-6);
+    s.undo().unwrap();
+    let mut restored = s.dto();
+    assert!(restored.can_redo);
+    restored.can_redo = before.can_redo;
+    assert_eq!(
+        serde_json::to_value(restored).unwrap(),
+        serde_json::to_value(before).unwrap()
     );
 }
 

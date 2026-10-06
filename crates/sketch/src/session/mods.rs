@@ -93,6 +93,28 @@ impl SketchSession {
             })
     }
 
+    /// An acquired point may follow a selected curve, but it must not carry
+    /// unselected lines, other curves or rectangle diagonals with it.
+    fn center_has_unselected_geometry(
+        &self,
+        point: EntityId,
+        selection: &BTreeSet<EntityId>,
+        points: &BTreeSet<EntityId>,
+    ) -> bool {
+        self.sketch.is_referenced_by_entity(point)
+            || self
+                .sketch
+                .relations_pointing_at(point)
+                .any(|constraint| match *constraint {
+                    Constraint::CenterCoincident { curve, .. } => !selection.contains(&curve),
+                    Constraint::SpanMidpoint { start, end, .. } => {
+                        !points.contains(&start) || !points.contains(&end)
+                    }
+                    Constraint::ArcEndpointCoincident { arc, .. } => !selection.contains(&arc),
+                    _ => false,
+                })
+    }
+
     /// Include the centers needed to preserve incidences inside a selection.
     /// Copy may duplicate a shared/acquired center without copying any external
     /// owner; an in-place transform must additionally exclude external anchors.
@@ -1879,6 +1901,20 @@ impl SketchSession {
                 None => return Err(SessionError::EntityNotFound(id)),
             }
         }
+        rigid_entities.extend(self.sketch.constraints().filter_map(|(_, constraint)| {
+            match *constraint {
+                Constraint::CenterCoincident { point, curve }
+                    if ids.contains(&curve)
+                        && !points.contains(&point)
+                        && self.center_has_unselected_geometry(point, ids, points) =>
+                {
+                    Some(point)
+                }
+                _ => None,
+            }
+        }));
+        rigid_entities.sort_unstable();
+        rigid_entities.dedup();
         let finite_point = |p: &Vec2| p.x.is_finite() && p.y.is_finite();
         for &id in &rigid_entities {
             let finite = match self.sketch.entity(id) {
