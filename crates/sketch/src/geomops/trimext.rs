@@ -86,9 +86,7 @@ pub fn line_circle(l: &LineSeg, c: &Circle) -> Vec<(Pt, f64)> {
         return Vec::new();
     }
 
-    if discriminant < 0.0 {}
-
-    let sqrt_disc = discriminant.sqrt();
+    let sqrt_disc = discriminant.max(0.0).sqrt();
     let mut results = Vec::new();
 
     let t1 = (-b - sqrt_disc) / (2.0 * a);
@@ -168,8 +166,7 @@ pub fn nearest_param_on_line(l: &LineSeg, p: Pt) -> f64 {
         return 0.0;
     }
 
-    let t = ((p.x - l.a.x) * dx + (p.y - l.a.y) * dy) / len_sq;
-    t
+    ((p.x - l.a.x) * dx + (p.y - l.a.y) * dy) / len_sq
 }
 
 pub fn trim_line_parts(l: &LineSeg, click: Pt, cuts: &[Pt]) -> Option<LineTrim> {
@@ -262,11 +259,11 @@ pub fn extend_line_to(l: &LineSeg, targets: &[Curve]) -> Option<LineSeg> {
                 if let Some((_, t, _)) = line_line(l, l2) {
                     if t > 1.0 + EPS {
                         let ext_len = (t - 1.0) * len;
-                        if ext_len <= max_ext + EPS {
-                            if best_extension.is_none() || ext_len < best_extension.unwrap().0 - EPS
-                            {
-                                best_extension = Some((ext_len, 0.0, t));
-                            }
+                        if ext_len <= max_ext + EPS
+                            && (best_extension.is_none()
+                                || ext_len < best_extension.unwrap().0 - EPS)
+                        {
+                            best_extension = Some((ext_len, 0.0, t));
                         }
                     }
                 }
@@ -275,11 +272,11 @@ pub fn extend_line_to(l: &LineSeg, targets: &[Curve]) -> Option<LineSeg> {
                 for (_pt, t) in line_circle(l, c) {
                     if t > 1.0 + EPS {
                         let ext_len = (t - 1.0) * len;
-                        if ext_len <= max_ext + EPS {
-                            if best_extension.is_none() || ext_len < best_extension.unwrap().0 - EPS
-                            {
-                                best_extension = Some((ext_len, 0.0, t));
-                            }
+                        if ext_len <= max_ext + EPS
+                            && (best_extension.is_none()
+                                || ext_len < best_extension.unwrap().0 - EPS)
+                        {
+                            best_extension = Some((ext_len, 0.0, t));
                         }
                     }
                 }
@@ -412,6 +409,36 @@ mod tests {
 
         assert_pt_eq(pt2, Pt { x: 2.0, y: 0.0 });
         assert_f64_eq(t2, 0.2);
+    }
+
+    #[test]
+    fn line_circle_tolerance_keeps_near_tangent_intersections_finite() {
+        let circle = Circle {
+            center: Pt { x: 0.0, y: 0.0 },
+            radius: 1.0,
+        };
+        for y in [1.0, 1.0 + EPS / 64.0] {
+            let line = LineSeg {
+                a: Pt { x: -1.0, y },
+                b: Pt { x: 1.0, y },
+            };
+            let intersections = line_circle(&line, &circle);
+            assert_eq!(intersections.len(), 1);
+            let (point, parameter) = intersections[0];
+            assert_pt_eq(point, Pt { x: 0.0, y });
+            assert_f64_eq(parameter, 0.5);
+        }
+        let miss = LineSeg {
+            a: Pt {
+                x: -1.0,
+                y: 1.0 + EPS,
+            },
+            b: Pt {
+                x: 1.0,
+                y: 1.0 + EPS,
+            },
+        };
+        assert!(line_circle(&miss, &circle).is_empty());
     }
 
     #[test]
