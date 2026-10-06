@@ -43,6 +43,10 @@ Technology to 7.9.3, the same OCCT line used by the macOS build. The manifest
 selects the reviewed storage fix from `native/occt-overlay` at port revision 2.
 Native SDK qualification compiles a bounded allocation/copy probe against the
 actual `TKMath` runtime; an unchanged header or runtime fails before packaging.
+The Rust task discovers the host's MSVC compiler and Windows SDK and supplies
+them to both CMake configuration and compilation. A fresh shell does not need a
+prior developer-shell setup, and an ambient MinGW compiler cannot qualify an
+MSVC SDK. Cross-built packages still need runtime qualification on their target.
 The manifest
 installs a dynamic Windows prefix for the selected target under:
 

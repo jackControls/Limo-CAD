@@ -2833,6 +2833,7 @@ version = "0.2.2"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
+ "find-msvc-tools",
  "flate2",
  "limo-cad-core",
  "limo-cad-export",

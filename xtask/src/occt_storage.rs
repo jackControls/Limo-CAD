@@ -40,22 +40,21 @@ pub fn verify(prefix: &Path) -> Result<()> {
         fs::write(source.join(name), content)?;
     }
     let build = staging.path().join("build");
-    crate::build_tools::run(
-        Command::new("cmake")
-            .arg("-S")
-            .arg(&source)
-            .arg("-B")
-            .arg(&build)
-            .args(["-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release"])
-            .arg(format!("-DOCCT_INCLUDE={}", sdk.include.display()))
-            .arg(format!("-DOCCT_LIB={}", sdk.lib.display())),
-    )?;
-    crate::build_tools::run(
-        Command::new("cmake")
-            .arg("--build")
-            .arg(&build)
-            .args(["--parallel", "1"]),
-    )?;
+    let mut configure = Command::new("cmake");
+    configure
+        .arg("-S")
+        .arg(&source)
+        .arg("-B")
+        .arg(&build)
+        .args(["-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release"])
+        .arg(format!("-DOCCT_INCLUDE={}", sdk.include.display()))
+        .arg(format!("-DOCCT_LIB={}", sdk.lib.display()));
+    let mut compile = Command::new("cmake");
+    compile.arg("--build").arg(&build).args(["--parallel", "1"]);
+    #[cfg(windows)]
+    select_msvc(&mut configure, &mut compile)?;
+    crate::build_tools::run(&mut configure)?;
+    crate::build_tools::run(&mut compile)?;
     let mut probe = Command::new(build.join(if cfg!(windows) {
         "limo_occt_storage_check.exe"
     } else {
@@ -80,6 +79,22 @@ pub fn verify(prefix: &Path) -> Result<()> {
     crate::build_tools::run(&mut probe)
 }
 
+#[cfg(windows)]
+fn select_msvc(configure: &mut Command, compile: &mut Command) -> Result<()> {
+    let target = format!("{}-pc-windows-msvc", env::consts::ARCH);
+    let compiler = find_msvc_tools::find_tool(&target, "cl.exe")
+        .with_context(|| format!("MSVC C++ compiler and Windows SDK required for {target}"))?;
+    configure.arg(format!(
+        "-DCMAKE_CXX_COMPILER:FILEPATH={}",
+        compiler.path().display()
+    ));
+    for (name, value) in compiler.env() {
+        configure.env(name, value);
+        compile.env(name, value);
+    }
+    Ok(())
+}
+
 pub fn verify_header(include: &Path) -> Result<()> {
     let expected = include_str!("../../native/occt-overlay/opencascade/math_DoubleTab.lxx")
         .replace("\r\n", "\n");
@@ -96,6 +111,38 @@ pub fn verify_header(include: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires installed MSVC, Windows SDK, CMake and Ninja"]
+    fn windows_probe_selects_native_msvc_over_ambient_cxx() {
+        let staging = tempfile::tempdir().unwrap();
+        fs::write(
+            staging.path().join("CMakeLists.txt"),
+            "cmake_minimum_required(VERSION 3.20)\nproject(compiler_probe LANGUAGES CXX)\nadd_executable(compiler_probe main.cpp)\n",
+        )
+        .unwrap();
+        fs::write(
+            staging.path().join("main.cpp"),
+            "#include <windows.h>\n#include <array>\n#ifndef _MSC_VER\n#error MSVC compiler required\n#endif\nint main() { return GetCurrentProcessId() && std::array<int, 1>{0}[0] == 0 ? 0 : 1; }\n",
+        )
+        .unwrap();
+        let build = staging.path().join("build");
+        let mut configure = Command::new("cmake");
+        configure
+            .arg("-S")
+            .arg(staging.path())
+            .arg("-B")
+            .arg(&build)
+            .args(["-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release"])
+            .env("CXX", "must-not-select-ambient-CXX.exe");
+        let mut compile = Command::new("cmake");
+        compile.arg("--build").arg(&build);
+        select_msvc(&mut configure, &mut compile).unwrap();
+        crate::build_tools::run(&mut configure).unwrap();
+        crate::build_tools::run(&mut compile).unwrap();
+        crate::build_tools::run(&mut Command::new(build.join("compiler_probe.exe"))).unwrap();
+    }
 
     #[test]
     fn checked_header_accepts_vcpkg_formatting_and_rejects_changed_storage() {

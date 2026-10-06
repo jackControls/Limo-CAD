@@ -29,4 +29,5 @@ flate2 = { workspace = true, features = ["rust_backend"] }
 sysinfo = { workspace = true, features = ["system"] }
 
 [target.'cfg(windows)'.dependencies]
+find-msvc-tools = "=0.1.14"
 windows = { workspace = true, features = ["Win32_UI_WindowsAndMessaging"] }
