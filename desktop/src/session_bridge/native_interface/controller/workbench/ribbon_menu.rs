@@ -67,6 +67,13 @@ fn icon(id: &str) -> Icon {
         _ => Icon::Square,
     }
 }
+fn workspace_icon(workspace: Workspace, light: bool) -> Icon {
+    match workspace {
+        Workspace::Solid => Icon::WorkspaceModel(light),
+        Workspace::Drawing => Icon::FileText,
+        Workspace::Cam => Icon::WorkspaceManufacture(light),
+    }
+}
 fn source(world: &mut World, controls: &HashMap<String, Entity>, id: &str) -> Option<Entity> {
     if id == "createSketch" {
         world
@@ -188,16 +195,28 @@ pub(super) fn synchronize(
         false,
         42,
     )?;
-    ribbon::decorate(world, workspace, Icon::Box);
-    ribbon::caption(
+    let workspace_glyph = workspace_icon(state.workspace, theme.viewport.to_srgba().red > 0.7);
+    ribbon::decorate(world, workspace, workspace_glyph);
+    ribbon::replace_compact_glyph(world, workspace, workspace_glyph);
+    ribbon::workspace_caption(
         world,
         workspace,
         if width > 1400. { workspace_label } else { "" },
+        workspace_width - 8.,
     );
     state.widgets.glyph(
         (world, camera),
         "workspace-chevron",
-        rect(workspace_width / 2. - 4., 77., 8., 8.),
+        rect(
+            if width > 1400. {
+                workspace_width - 12.
+            } else {
+                workspace_width / 2. - 4.
+            },
+            if width > 1400. { 69. } else { 77. },
+            8.,
+            8.,
+        ),
         Icon::ChevronDown,
         theme.mute,
         43,
@@ -231,6 +250,23 @@ pub(super) fn synchronize(
         30,
     );
     if sketch {
+        if width > 1400. {
+            state.widgets.text(
+                world,
+                camera,
+                "workspace-sketch",
+                rect(8., 82., workspace_width - 16., 10.),
+                dictionary::translate(locale, "ribbon.tabs.sketch"),
+                8.,
+                43,
+            );
+            world
+                .entity_mut(state.widgets.entity("workspace-sketch").unwrap())
+                .insert((
+                    TextLayout::justify(Justify::Center),
+                    TextColor(theme.accent),
+                ));
+        }
         if state.menu.as_deref() == Some("workspace") {
             menu((world, camera), width, 4., &[], controls, services, state)?;
         }
@@ -558,11 +594,11 @@ fn menu(
                 ),
                 "Drawing" => (
                     NativeCommand::Workbench(Command::Workspace(Workspace::Drawing)),
-                    false,
+                    state.sketch,
                 ),
                 "CAM" => (
                     NativeCommand::Workbench(Command::Workspace(Workspace::Cam)),
-                    false,
+                    state.sketch,
                 ),
                 _ => (NativeCommand::Workbench(Command::Dismiss), true),
             }
@@ -608,18 +644,28 @@ fn menu(
             None,
             command,
             rect(x + 4., y, 248., 28.),
-            Some(if workspace { Icon::Box } else { icon(id) }),
+            Some(if workspace {
+                workspace_icon(
+                    match id {
+                        "Drawing" => Workspace::Drawing,
+                        "CAM" => Workspace::Cam,
+                        _ => Workspace::Solid,
+                    },
+                    theme.viewport.to_srgba().red > 0.7,
+                )
+            } else {
+                icon(id)
+            }),
             62,
         )?;
         interface_shell::caption_size(world, entity, 11.);
-        if workspace && disabled {
-            state.widgets.text(
-                world,
-                camera,
-                &format!("pending-{index}"),
-                rect(x + 140., y + 7., 106., 14.),
-                dictionary::translate(locale, "workspace.unavailable"),
-                9.,
+        if workspace && id == workspace_name(state.workspace) {
+            state.widgets.glyph(
+                (world, camera),
+                &format!("workspace-check-{index}"),
+                rect(x + 230., y + 8., 12., 12.),
+                Icon::Finish,
+                theme.accent,
                 63,
             );
         }

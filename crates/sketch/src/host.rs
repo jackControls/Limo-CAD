@@ -126,6 +126,9 @@ enum CamPlanPayload {
 /// Dispatch observation through an immutable manager reference. A returned
 /// response is a read even when validation rejects its payload.
 pub fn handle_read_only(manager: &SketchManager, method: &str, payload: &str) -> Option<String> {
+    if viewport_preview(method) && viewport_payload(payload).is_some() {
+        return None;
+    }
     match method {
         "print_intent_get" | "print_intent_effective" => {
             return print_intent::handle_read_only(manager, method, payload)
@@ -245,6 +248,11 @@ pub fn handle_read_only(manager: &SketchManager, method: &str, payload: &str) ->
         "hole_definitions" => ok_json(manager.hole_definitions()),
         "datum_plane_definitions" => ok_json(manager.datum_plane_definitions()),
         "body_feature_definitions" => ok_json(manager.body_feature_definitions()),
+        "preview_creation_point" => {
+            with_payload(payload, |r: crate::dto::CreationPointPreviewRequest| {
+                manager.preview_creation_point(r)
+            })
+        }
         "preview_segment" => with_payload(payload, |r: SegmentRequest| manager.preview_segment(r)),
         "preview_creation" => with_payload(payload, |r: crate::dto::CreationPreviewRequest| {
             manager.preview_creation(r)
@@ -269,9 +277,82 @@ pub fn handle_read_only(manager: &SketchManager, method: &str, payload: &str) ->
     })
 }
 
+fn viewport_preview(method: &str) -> bool {
+    matches!(
+        method,
+        "preview_creation_point"
+            | "preview_segment"
+            | "preview_segment_locked"
+            | "preview_creation"
+            | "preview_rectangle_locked"
+            | "preview_circle_locked"
+    )
+}
+fn viewport_creation(method: &str) -> bool {
+    matches!(
+        method,
+        "add_line"
+            | "add_line_locked"
+            | "add_line_midpoint"
+            | "add_point"
+            | "add_rectangle"
+            | "add_rectangle_locked"
+            | "add_circle"
+            | "add_circle_locked"
+            | "add_arc_3pt"
+            | "add_arc_center"
+            | "add_slot"
+            | "add_spline"
+            | "polygon_create"
+    )
+}
+fn viewport_payload(payload: &str) -> Option<serde_json::Value> {
+    let value: serde_json::Value = serde_json::from_str(payload).ok()?;
+    value.get("viewport_snap").map(|_| value.clone())
+}
+fn dispatch_viewport(
+    manager: &mut SketchManager,
+    method: &str,
+    mut value: serde_json::Value,
+) -> String {
+    let context = value
+        .as_object_mut()
+        .unwrap()
+        .remove("viewport_snap")
+        .unwrap();
+    let context = match serde_json::from_value(context) {
+        Ok(context) => context,
+        Err(error) => return err_json(format!("bad viewport snap context: {error}")),
+    };
+    match manager.with_viewport_snap(context, |manager| {
+        handle(manager, method, &value.to_string())
+    }) {
+        Ok(response) => response,
+        Err(error) => err_json(error.to_string()),
+    }
+}
+
+/// Read-only previews may temporarily scope runtime snap distances under the
+/// engine lock. They must bypass geometry-cache invalidation and model fences.
+pub fn handle_viewport_preview(
+    manager: &mut SketchManager,
+    method: &str,
+    payload: &str,
+) -> Option<String> {
+    if !viewport_preview(method) {
+        return None;
+    }
+    viewport_payload(payload).map(|value| dispatch_viewport(manager, method, value))
+}
+
 /// Dispatch one engine call. Unknown methods and malformed payloads yield
 /// an error envelope, never a panic.
 pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> String {
+    if viewport_creation(method) || viewport_preview(method) {
+        if let Some(value) = viewport_payload(payload) {
+            return dispatch_viewport(manager, method, value);
+        }
+    }
     if let Some(response) = handle_read_only(manager, method, payload) {
         return response;
     }

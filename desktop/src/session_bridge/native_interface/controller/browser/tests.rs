@@ -2,6 +2,66 @@ use super::*;
 use crate::session_bridge::native_interface::tests::Fixture;
 
 #[test]
+fn entering_sketch_reveals_its_browser_row_without_overriding_later_collapse() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = fixture.owner();
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+    let mut app = native_viewport::interface_scene_fixture();
+    let world = app.world_mut();
+    world.init_resource::<Assets<Image>>();
+    world.init_resource::<ViewportUiAssets>();
+    world.spawn(InterfaceCamera);
+    let bounds = InterfaceRect {
+        x: 0.,
+        y: 120.,
+        width: 232.,
+        height: 700.,
+    };
+    let mut scroll = 0.;
+    synchronize(world, &services, &owner, 0, bounds, &mut scroll).unwrap();
+    crate::session_bridge::parse_engine_envelope(
+        fixture
+            .engine
+            .engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#),
+    )
+    .unwrap();
+    synchronize(world, &services, &owner, 1, bounds, &mut scroll).unwrap();
+    assert!(world
+        .query::<&InterfaceControl>()
+        .iter(world)
+        .any(|c| c.label == "Sketch1"));
+    let folder = world
+        .resource::<Browser>()
+        .document
+        .as_ref()
+        .unwrap()
+        .browser
+        .iter()
+        .find(|n| n.kind == Kind::SketchesFolder)
+        .unwrap()
+        .id
+        .0;
+    assert!(!world.resource::<Browser>().collapsed.contains(&folder));
+    world.resource_mut::<Browser>().collapsed.insert(folder);
+    crate::session_bridge::parse_engine_envelope(
+        fixture
+            .engine
+            .engine_call("add_point", r#"{"position":{"x":20.0,"y":30.0}}"#),
+    )
+    .unwrap();
+    synchronize(world, &services, &owner, 2, bounds, &mut scroll).unwrap();
+    assert!(world.resource::<Browser>().collapsed.contains(&folder));
+    assert!(!world
+        .query::<&InterfaceControl>()
+        .iter(world)
+        .any(|c| c.label == "Sketch1"));
+}
+
+#[test]
 fn face_sketch_origin_cancel_and_revisions_preserve_the_support_contract() {
     use crate::native_editor::{execute, support, EditorCommand};
     use limo_cad_sketch::FaceSketchOrigin;

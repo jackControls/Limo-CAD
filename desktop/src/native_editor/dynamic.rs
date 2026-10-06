@@ -48,6 +48,9 @@ pub(super) struct Sizes {
 }
 
 impl Sizes {
+    pub(super) fn has_locks(&self) -> bool {
+        !self.values.is_empty()
+    }
     fn set(&mut self, field: SizeField, text: String, units: UnitSystem, sketch: &SketchDto) {
         if text.trim().is_empty() {
             self.values.remove(&field);
@@ -250,7 +253,8 @@ pub(super) fn preview_points(
     {
         return Ok(None);
     }
-    let request = draft.sizes.request(tool, &[draft.points[0], raw], ctrl)?;
+    let mut request = draft.sizes.request(tool, &[draft.points[0], raw], ctrl)?;
+    snapping::attach(&mut request.arguments, draft.snap_context);
     let method = if matches!(tool, CreateTool::Rectangle(_)) {
         "preview_rectangle_locked"
     } else {
@@ -269,11 +273,12 @@ pub(super) fn line_preview(
     raw: SketchPoint,
     ctrl: bool,
 ) -> Result<limo_cad_sketch::PreviewDto, String> {
-    let request = draft.sizes.request(
+    let mut request = draft.sizes.request(
         CreateTool::Line,
         &[draft.points.last().copied().unwrap_or(raw), raw],
         ctrl,
     )?;
+    snapping::attach(&mut request.arguments, draft.snap_context);
     let value = crate::session_bridge::parse_engine_envelope(
         engine.engine_call("preview_segment_locked", &request.arguments.to_string()),
     )?;
@@ -520,6 +525,55 @@ mod tests {
             engine.engine_call(spec.engine_method, &payload),
         )
         .unwrap()
+    }
+    #[test]
+    fn snapped_cursor_keeps_typed_circle_preview_and_commit_on_the_same_direction() {
+        let engine = blank();
+        call(
+            &engine,
+            "add_point",
+            json!({"position":{"x":40.,"y":20.},"ctrl_held":true}),
+        );
+        let initial = active(&engine).unwrap().unwrap();
+        let mut draft = Draft::default();
+        draft.select(Some(CreateTool::Circle(CircleMode::TwoPoint)));
+        draft.prepare(SketchPoint::ZERO, false).unwrap();
+        draft
+            .sizes
+            .set(SizeField::Diameter, "25.4".into(), UnitSystem::Mm, &initial);
+        let context = limo_cad_sketch::ViewportSnapContext {
+            grid_step_mm: 10.,
+            point_tolerance_mm: 1.4,
+            grid_capture_mm: 0.7,
+        };
+        draft.snap_context = Some(context);
+        let raw = SketchPoint::new(39.4, 20.6);
+        let acquired = snapping::acquire(&engine, &draft, raw, false, context).unwrap();
+        assert_eq!(acquired.snapped_to, SketchPoint::new(40., 20.));
+        let preview = preview_points(&engine, &draft, raw, false)
+            .unwrap()
+            .unwrap();
+        let mut command = draft
+            .prepare(snapping::pick(&draft, raw, &acquired), false)
+            .unwrap()
+            .unwrap();
+        snapping::attach(&mut command.arguments, Some(context));
+        apply(&engine, command);
+        let after = active(&engine).unwrap().unwrap();
+        let (center, radius) = after
+            .entities
+            .iter()
+            .find_map(|entity| match entity {
+                limo_cad_sketch::EntityDto::Circle { center, radius, .. } => {
+                    Some((*center, *radius))
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(center.distance((preview[0] + preview[1]) * 0.5) < 1e-6);
+        assert!((radius - 12.7).abs() < 1e-6);
+        call(&engine, "undo", json!({}));
+        assert_eq!(active(&engine).unwrap().unwrap().entities, initial.entities);
     }
     #[test]
     fn typed_creation_drives_geometry_preview_and_single_undo() {

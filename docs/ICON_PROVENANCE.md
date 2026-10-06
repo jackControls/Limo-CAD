@@ -1,6 +1,6 @@
 # Limo CAD Icon Provenance
 
-Last reviewed: 2026-10-02
+Last reviewed: 2026-10-06
 
 This file records the source and design rationale for the NB product mark and
 the Bevy vectors in `assets/ribbon-icons`. It is an engineering
@@ -110,6 +110,12 @@ and duplication use the general-purpose plus/copy icons.
 The Manufacture workspace switcher and menu share an original mill-over-stock
 pictogram. Its machine-column, spindle and stock primitives live in the canonical source.
 
+The native `workspace-model-{dark,light}.svg` and
+`workspace-manufacture-{dark,light}.svg` port those same 64×64 cube and machine
+paths from the main-branch machining component. Each appearance keeps its
+steel-grey and muted-blue paints; the complete texture dims when disabled.
+Both the workspace switcher and menu use these assets.
+
 ## Licensed general-purpose icons
 
 The following registry IDs use `lucide-react` rather than product-owned paths:
@@ -134,6 +140,9 @@ SquareDashed, Undo2 and ZoomIn. Their source SVGs carry attribution, and
 renderer ports, not new command identities. The icon audit also checks these
 sources for external references and executable content. Visual parity remains
 part of the native-interface draft review.
+
+The workspace Drawing entry and sketch Return to Flat View action also port
+Lucide 0.474.0 FileText and Focus, with the same ISC notice.
 
 ## Contribution requirements
 

@@ -357,6 +357,12 @@ impl Widgets {
                 .spawn((UiTargetCamera(camera), InterfaceOccluder))
                 .id()
         });
+        if bounds.border != UiRect::default() {
+            let border = BorderColor::all(crate::native_viewport::ui::theme(world).edge);
+            if world.get::<BorderColor>(entity) != Some(&border) {
+                world.entity_mut(entity).insert(border);
+            }
+        }
         if world.get::<Node>(entity) != Some(&bounds) {
             world.entity_mut(entity).insert(bounds);
         }

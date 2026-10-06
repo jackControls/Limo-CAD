@@ -71,6 +71,7 @@ pub(crate) struct Draft {
     chain_start: Option<Vec2>,
     pub generation: u64,
     pub sizes: super::dynamic::Sizes,
+    pub snap_context: Option<limo_cad_sketch::ViewportSnapContext>,
 }
 
 fn encoded<T: Serialize>(operation: &'static str, value: T) -> Result<Prepared, String> {
@@ -273,6 +274,7 @@ impl Draft {
             .checked_add(1)
             .expect("Sketch gesture identities exhausted");
         self.sizes = Default::default();
+        self.snap_context = None;
     }
 
     pub fn instruction(&self) -> &'static str {

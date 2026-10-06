@@ -288,6 +288,7 @@ pub struct SketchSession {
     point_snap: bool,
     grid_step: f64,
     snap_tolerance: f64,
+    grid_capture_mm: Option<f64>,
     /// Runtime external references derived from the support face. These are
     /// rebuilt from stable edge ids when a face-hosted sketch is opened.
     reference_midpoints: Vec<(EdgeId, Vec2)>,
@@ -350,6 +351,7 @@ impl SketchSession {
             point_snap: true,
             grid_step: GRID_STEP_MM,
             snap_tolerance: SNAP_TOLERANCE_MM,
+            grid_capture_mm: None,
             reference_midpoints: Vec::new(),
             projected_edges: Vec::new(),
             projects_support_boundary: matches!(plane, PlaneRef::PlanarFace { .. }),
@@ -542,6 +544,53 @@ impl SketchSession {
         Ok(())
     }
 
+    pub(crate) fn replace_viewport_snap(
+        &mut self,
+        context: crate::dto::ViewportSnapContext,
+    ) -> Result<(f64, f64, Option<f64>), SessionError> {
+        if !context.point_tolerance_mm.is_finite()
+            || context.point_tolerance_mm <= 0.
+            || !context.grid_capture_mm.is_finite()
+            || context.grid_capture_mm <= 0.
+        {
+            return Err(SessionError::Solid(
+                "Viewport snap distances must be finite and positive".into(),
+            ));
+        }
+        let previous = (self.grid_step, self.snap_tolerance, self.grid_capture_mm);
+        self.set_grid_step(context.grid_step_mm)?;
+        self.snap_tolerance = context.point_tolerance_mm;
+        self.grid_capture_mm = Some(context.grid_capture_mm);
+        Ok(previous)
+    }
+
+    pub(crate) fn restore_viewport_snap(&mut self, previous: (f64, f64, Option<f64>)) {
+        (self.grid_step, self.snap_tolerance, self.grid_capture_mm) = previous;
+    }
+
+    fn grid_capture_distance(&self) -> f64 {
+        self.grid_capture_mm
+            .unwrap_or(self.grid_step * GRID_CAPTURE_FRACTION)
+    }
+
+    pub fn preview_creation_point(
+        &self,
+        request: crate::dto::CreationPointPreviewRequest,
+    ) -> PreviewDto {
+        let (snapped_to, snap) = self.snap_inner(
+            request.raw,
+            !request.ctrl_held,
+            request.allow_midpoint && !request.ctrl_held,
+            request.exclude_position,
+        );
+        PreviewDto {
+            snapped_to,
+            snap,
+            inferences: vec![],
+            tracking: None,
+        }
+    }
+
     pub(crate) fn project_state(&self, feature_id: limo_cad_core::FeatureId) -> ProjectSketchV2 {
         ProjectSketchV2 {
             feature_id,
@@ -577,6 +626,7 @@ impl SketchSession {
             point_snap: state.grid_snap,
             grid_step: GRID_STEP_MM,
             snap_tolerance: SNAP_TOLERANCE_MM,
+            grid_capture_mm: None,
             reference_midpoints: Vec::new(),
             projects_support_boundary: state.support_boundary.is_some(),
             profile_identities: state.profile_identities,
@@ -729,7 +779,7 @@ impl SketchSession {
             if exclude_position.is_some_and(|excluded| snapped.distance(excluded) <= MERGE_EPS) {
                 return (raw, SnapTarget::None);
             }
-            if snapped.distance(raw) <= step * GRID_CAPTURE_FRACTION {
+            if snapped.distance(raw) <= self.grid_capture_distance() {
                 return (snapped, SnapTarget::Grid);
             }
         }
@@ -1425,7 +1475,7 @@ impl SketchSession {
         }
         candidates
             .into_iter()
-            .filter(|point| point.distance(cursor) <= step * GRID_CAPTURE_FRACTION)
+            .filter(|point| point.distance(cursor) <= self.grid_capture_distance())
             .min_by(|a, b| a.distance(cursor).total_cmp(&b.distance(cursor)))
     }
 
@@ -1456,7 +1506,7 @@ impl SketchSession {
         }
         candidates
             .into_iter()
-            .filter(|point| point.distance(cursor) <= step * GRID_CAPTURE_FRACTION)
+            .filter(|point| point.distance(cursor) <= self.grid_capture_distance())
             .min_by(|a, b| a.distance(cursor).total_cmp(&b.distance(cursor)))
     }
 
@@ -2913,7 +2963,7 @@ impl SketchSession {
             return None;
         }
         let snapped = (v / self.grid_step).round() * self.grid_step;
-        ((snapped - v).abs() <= self.grid_step * GRID_CAPTURE_FRACTION).then_some(snapped)
+        ((snapped - v).abs() <= self.grid_capture_distance()).then_some(snapped)
     }
 
     /// 3-Point Arc: circumscribed circle through p1 (start), p2 (on-arc),

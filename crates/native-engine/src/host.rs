@@ -535,6 +535,11 @@ impl NativeEngineHost {
             return self.drawing_projection(payload);
         }
         let mut workspace = self.inner.lock().expect("engine lock poisoned");
+        if let Some(response) =
+            host::handle_viewport_preview(&mut workspace.active_mut().manager, method, payload)
+        {
+            return response;
+        }
         if let Some(response) = host::handle_read_only(&workspace.active().manager, method, payload)
         {
             return response;

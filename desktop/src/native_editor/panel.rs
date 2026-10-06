@@ -15,6 +15,57 @@ struct Panel {
     max_scroll: f32,
     form_area: Option<InterfaceRect>,
 }
+#[derive(Clone, Copy)]
+pub(super) struct RibbonGroup {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub left: f32,
+    pub width: f32,
+    pub count: usize,
+    pub menu: bool,
+}
+pub(super) fn ribbon_groups(area: InterfaceRect) -> Vec<RibbonGroup> {
+    let mut groups: Vec<_> = [
+        ("draw", "DRAW", 6, true),
+        ("edit", "EDIT", 5, true),
+        ("dimension", "DIMENSION", 1, false),
+        ("repeat", "REPEAT", 3, true),
+        ("constrain", "CONSTRAIN", 5, true),
+        ("selection", "SELECT", 1, false),
+    ]
+    .into_iter()
+    .map(|(key, label, count, menu)| RibbonGroup {
+        key,
+        label,
+        count,
+        menu,
+        left: 0.,
+        width: 0.,
+    })
+    .collect();
+    let available = (area.width as f32 - 156.).max(0.);
+    let width = |group: &RibbonGroup| {
+        group.count as f32 * 50. + if group.key == "dimension" { 20. } else { 8. }
+    };
+    let total = |groups: &[RibbonGroup]| groups.iter().map(width).sum::<f32>();
+    for slot in (1..6).rev() {
+        for index in (0..groups.len()).rev() {
+            if total(&groups) <= available {
+                break;
+            }
+            if groups[index].count > slot {
+                groups[index].count -= 1;
+            }
+        }
+    }
+    let mut left = area.x as f32 - 4.;
+    for group in &mut groups {
+        group.left = left;
+        group.width = width(group);
+        left += group.width;
+    }
+    groups
+}
 pub(super) fn group(command: &EditorCommand) -> &'static str {
     match command {
         EditorCommand::Palette(_) => "sketch/selection",
@@ -51,24 +102,19 @@ pub(super) fn synchronize(
         panel.widgets.begin();
         let window_height = interface_shell::window_ui_size(world).map_or(860., |size| size.y);
         if active {
-            let x = area.x as f32;
-            let compact = area.width < 1156.;
-            for (index, (key, label, mut left, mut width)) in [
-                ("draw", "DRAW", x, 298.),
-                ("edit", "EDIT", x + 300., 248.),
-                ("repeat", "REPEAT", x + 600., 148.),
-                ("constrain", "CONSTRAIN", x + 750., 248.),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                if compact {
-                    width = ((area.width as f32 - 156.) / 4.).max(72.);
-                    left = x + index as f32 * width;
-                }
+            for group in ribbon_groups(area) {
+                let RibbonGroup {
+                    key,
+                    label,
+                    left,
+                    width,
+                    menu,
+                    ..
+                } = group;
                 let mut c =
                     InterfaceControl::button(format!("sketch/{key}"), format!("{label} tools"));
-                c.expanded = Some(editor.interaction.menu == Some(key));
+                c.expanded = menu.then_some(editor.interaction.menu == Some(key));
+                c.disabled = !menu;
                 let mut bounds = rect(left, area.y as f32 + 54., width, 18.);
                 bounds.justify_content = JustifyContent::Center;
                 let entity = panel.widgets.button(
@@ -85,11 +131,40 @@ pub(super) fn synchronize(
                         },
                     ))),
                     bounds,
-                    Some(Icon::ChevronDown),
+                    None,
                     24,
                 )?;
                 interface_shell::caption_size(world, entity, 10.);
                 interface_shell::center_caption(world, entity);
+                interface_shell::ribbon::group_caption(world, entity, width - 12.);
+                if menu {
+                    let ink = crate::native_viewport::ui::theme(world).mute;
+                    panel.widgets.glyph(
+                        (world, camera),
+                        &format!("chevron-{key}"),
+                        Node {
+                            width: px(10.),
+                            height: px(10.),
+                            margin: UiRect::left(px(2.)),
+                            flex_shrink: 0.,
+                            ..default()
+                        },
+                        Icon::ChevronDown,
+                        ink,
+                        1,
+                    );
+                    panel
+                        .widgets
+                        .parent(world, &format!("chevron-{key}"), entity);
+                }
+                panel.widgets.panel(
+                    world,
+                    camera,
+                    &format!("divider-{key}"),
+                    rect(left + width - 1., area.y as f32 - 6., 1., 92.),
+                    crate::native_viewport::ui::theme(world).edge,
+                    24,
+                );
             }
             if let Some(menu) = editor.interaction.menu {
                 let rows: Vec<(String, EditorCommand)> = match menu {
@@ -197,14 +272,12 @@ pub(super) fn synchronize(
                 };
                 let rows_per_column = rows.len().div_ceil(columns).max(1);
                 let menu_width = 240. * columns as f32;
-                let left = (x + match menu {
-                    "edit" => 300.,
-                    "repeat" => 600.,
-                    "constrain" => 750.,
-                    _ => 0.,
-                })
-                .min((area.x + area.width) as f32 - menu_width)
-                .max(0.);
+                let left = ribbon_groups(area)
+                    .iter()
+                    .find(|group| group.key == menu)
+                    .map_or(area.x as f32, |group| group.left)
+                    .min((area.x + area.width) as f32 - menu_width)
+                    .max(0.);
                 let theme = crate::native_viewport::ui::theme(world);
                 panel.widgets.backdrop(
                     (world, camera),

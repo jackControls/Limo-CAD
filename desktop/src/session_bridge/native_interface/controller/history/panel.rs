@@ -92,7 +92,13 @@ pub(crate) fn synchronize(
             24,
         );
         if let Some(e) = state.widgets.entity("history-title") {
-            world.entity_mut(e).insert(TextColor(theme.mute));
+            let assets = world.resource::<ViewportUiAssets>().clone();
+            world.entity_mut(e).insert((
+                TextColor(theme.mute),
+                theme.text(&assets, 10., FontWeight::SEMIBOLD),
+                bevy::text::LetterSpacing::Px(2.),
+                TextLayout::no_wrap(),
+            ));
         }
         state.widgets.panel(
             world,

@@ -4978,6 +4978,30 @@ impl SketchManager {
         self.active.as_mut().ok_or(SessionError::NoActiveSketch)
     }
 
+    /// The native host already serializes engine calls. Restore view settings
+    /// after every dispatch so one window's zoom cannot leak into another caller.
+    pub(crate) fn with_viewport_snap(
+        &mut self,
+        context: crate::dto::ViewportSnapContext,
+        dispatch: impl FnOnce(&mut Self) -> String,
+    ) -> Result<String, SessionError> {
+        let previous = self.active_mut()?.replace_viewport_snap(context)?;
+        let result = dispatch(self);
+        self.active_mut()?.restore_viewport_snap(previous);
+        Ok(result)
+    }
+
+    pub fn preview_creation_point(
+        &self,
+        request: crate::dto::CreationPointPreviewRequest,
+    ) -> Result<PreviewDto, SessionError> {
+        Ok(self
+            .active
+            .as_ref()
+            .ok_or(SessionError::NoActiveSketch)?
+            .preview_creation_point(request))
+    }
+
     pub fn preview_segment(&self, request: SegmentRequest) -> Result<PreviewDto, SessionError> {
         let session = self.active.as_ref().ok_or(SessionError::NoActiveSketch)?;
         Ok(session.preview_segment(request.from, request.to_raw, request.ctrl_held))

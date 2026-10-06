@@ -1267,12 +1267,19 @@ pub(crate) fn caption_size(world: &mut World, entity: Entity, size: f32) {
     }
 }
 
-#[cfg(test)]
 pub(crate) fn caption_tracking(world: &mut World, entity: Entity, spacing: f32) {
     if let Some(label) = world.get::<InterfaceLabel>(entity).map(|label| label.0) {
         world
             .entity_mut(label)
             .insert(bevy::text::LetterSpacing::Px(spacing));
+    }
+}
+
+pub(crate) fn caption_weight(world: &mut World, entity: Entity, weight: FontWeight) {
+    if let Some(label) = world.get::<InterfaceLabel>(entity).map(|label| label.0) {
+        if let Some(mut font) = world.get_mut::<TextFont>(label) {
+            font.weight = weight;
+        }
     }
 }
 
