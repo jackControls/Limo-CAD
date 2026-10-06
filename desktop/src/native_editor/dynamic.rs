@@ -243,7 +243,7 @@ pub(super) fn preview_points(
     draft: &Draft,
     raw: SketchPoint,
     ctrl: bool,
-) -> Result<Option<Vec<SketchPoint>>, String> {
+) -> Result<Option<[SketchPoint; 2]>, String> {
     let Some(tool) = draft.tool else {
         return Ok(None);
     };
@@ -263,9 +263,7 @@ pub(super) fn preview_points(
     let value = crate::session_bridge::parse_engine_envelope(
         engine.engine_call(method, &request.arguments.to_string()),
     )?;
-    serde_json::from_value(value)
-        .map(Some)
-        .map_err(|e| e.to_string())
+    serde_json::from_value(value).map_err(|e| e.to_string())
 }
 pub(super) fn line_preview(
     engine: &AppState,
@@ -525,6 +523,64 @@ mod tests {
             engine.engine_call(spec.engine_method, &payload),
         )
         .unwrap()
+    }
+    #[test]
+    fn partial_rectangle_size_at_its_anchor_waits_for_the_other_axis() {
+        for mode in [RectangleMode::TwoPoint, RectangleMode::Center] {
+            for first in [SizeField::Width, SizeField::Height] {
+                let engine = blank();
+                let initial = active(&engine).unwrap().unwrap();
+                let mut draft = Draft::default();
+                draft.select(Some(CreateTool::Rectangle(mode)));
+                draft.prepare(SketchPoint::ZERO, true).unwrap();
+                draft
+                    .sizes
+                    .set(first, "60".into(), UnitSystem::Mm, &initial);
+                assert_eq!(
+                    preview_points(&engine, &draft, SketchPoint::ZERO, true).unwrap(),
+                    None
+                );
+                assert_eq!(active(&engine).unwrap().unwrap(), initial);
+                let command = draft.prepare(SketchPoint::ZERO, true).unwrap().unwrap();
+                let spec = limo_cad_mcp_mutate::lookup_mutate(command.operation).unwrap();
+                let payload =
+                    limo_cad_mcp_mutate::encode_payload(spec.payload, &command.arguments).unwrap();
+                assert!(crate::session_bridge::parse_engine_envelope(
+                    engine.engine_call(spec.engine_method, &payload)
+                )
+                .is_err());
+                assert_eq!(active(&engine).unwrap().unwrap(), initial);
+                let other = if first == SizeField::Width {
+                    SizeField::Height
+                } else {
+                    SizeField::Width
+                };
+                draft
+                    .sizes
+                    .set(other, "30".into(), UnitSystem::Mm, &initial);
+                let points = preview_points(&engine, &draft, SketchPoint::ZERO, true)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(active(&engine).unwrap().unwrap(), initial);
+                let result = apply(
+                    &engine,
+                    draft.prepare(SketchPoint::ZERO, true).unwrap().unwrap(),
+                );
+                draft.accepted(&result).unwrap();
+                let after = active(&engine).unwrap().unwrap();
+                assert_eq!(after.dimensions.len(), 2);
+                assert!(after
+                    .entities
+                    .iter()
+                    .filter_map(|entity| match entity {
+                        limo_cad_sketch::EntityDto::Point { position, .. } => Some(position),
+                        _ => None,
+                    })
+                    .any(|position| position.distance(points[1]) < 1e-6));
+                call(&engine, "undo", json!({}));
+                assert_eq!(active(&engine).unwrap().unwrap().entities, initial.entities);
+            }
+        }
     }
     #[test]
     fn snapped_cursor_keeps_typed_circle_preview_and_commit_on_the_same_direction() {

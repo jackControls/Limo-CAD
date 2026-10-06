@@ -5098,14 +5098,18 @@ impl SketchManager {
         self.active_mut()?.add_rectangle_locked(&request)
     }
 
+    /// An unfinished rectangle has no preview until both axes have a usable
+    /// extent. Invalid typed sizes still fail; committing remains strict.
     pub fn preview_rectangle_locked(
         &self,
         request: LockedRectangleRequest,
-    ) -> Result<[crate::Vec2; 2], SessionError> {
-        self.active
-            .as_ref()
-            .ok_or(SessionError::NoActiveSketch)?
-            .preview_rectangle_locked(&request)
+    ) -> Result<Option<[crate::Vec2; 2]>, SessionError> {
+        let sketch = self.active.as_ref().ok_or(SessionError::NoActiveSketch)?;
+        match sketch.preview_rectangle_locked(&request) {
+            Ok(points) => Ok(Some(points)),
+            Err(SessionError::DegenerateSegment) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     pub fn preview_circle_locked(

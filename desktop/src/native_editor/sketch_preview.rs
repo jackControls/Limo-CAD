@@ -27,11 +27,15 @@ fn arc(center: Vec2, radius: f64, start: f64, sweep: f64, out: &mut Vec<Segment>
 
 impl Draft {
     pub(crate) fn outline(&self, cursor: Vec2) -> Vec<Segment> {
+        self.outline_with_points(&self.points, cursor)
+    }
+
+    pub(crate) fn outline_with_points(&self, points: &[Vec2], cursor: Vec2) -> Vec<Segment> {
         let mut out = vec![];
         if !cursor.x.is_finite() || !cursor.y.is_finite() {
             return out;
         }
-        let (Some(tool), Some(&p1)) = (self.tool, self.points.first()) else {
+        let (Some(tool), Some(&p1)) = (self.tool, points.first()) else {
             return out;
         };
         match tool {
@@ -63,7 +67,7 @@ impl Draft {
                 arc(center, radius, 0., TAU, &mut out);
             }
             CreateTool::Arc3Point => {
-                let Some(&p2) = self.points.get(1) else {
+                let Some(&p2) = points.get(1) else {
                     return vec![[p1, cursor]];
                 };
                 let p3 = cursor;
@@ -87,7 +91,7 @@ impl Draft {
                 arc(center, center.distance(p1), start, sweep, &mut out);
             }
             CreateTool::ArcCenter => {
-                let Some(&start) = self.points.get(1) else {
+                let Some(&start) = points.get(1) else {
                     return vec![[p1, cursor]];
                 };
                 let a0 = (start.y - p1.y).atan2(start.x - p1.x);
@@ -101,7 +105,7 @@ impl Draft {
                 );
             }
             CreateTool::Slot(mode) => {
-                let Some(&p2) = self.points.get(1) else {
+                let Some(&p2) = points.get(1) else {
                     return vec![[p1, cursor]];
                 };
                 let axis = p2 - p1;
@@ -134,7 +138,7 @@ impl Draft {
                 }
             }
             CreateTool::Spline => {
-                let mut points = self.points.clone();
+                let mut points = points.to_vec();
                 if points.last() != Some(&cursor) {
                     points.push(cursor);
                 }

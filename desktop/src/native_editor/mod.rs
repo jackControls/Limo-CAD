@@ -217,9 +217,8 @@ fn preview(
             kind,
         });
         editor.draft.cursor = Some(raw);
-        let mut outline = editor.draft.clone();
-        if let Some(points) = dynamic::preview_points(engine, &editor.draft, raw, ctrl)? {
-            outline.points = vec![points[0]];
+        let resolved = dynamic::preview_points(engine, &editor.draft, raw, ctrl)?;
+        if let Some(points) = resolved {
             cursor = points[1];
         }
         cursor = dynamic::slot_cursor(&editor.draft, cursor)?;
@@ -231,8 +230,12 @@ fn preview(
         }
         let color = [1.; 4];
         let color_role = ViewportColorRole::SketchPreview;
+        let outline = if let Some(points) = &resolved {
+            editor.draft.outline_with_points(&points[..1], cursor)
+        } else {
+            editor.draft.outline(cursor)
+        };
         let segments = outline
-            .outline(cursor)
             .into_iter()
             .flatten()
             .flat_map(|point| basis.to_3d([point.x, point.y]).map(|v| v as f32))
