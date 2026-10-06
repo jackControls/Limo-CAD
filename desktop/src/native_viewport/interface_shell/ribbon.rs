@@ -572,12 +572,32 @@ pub(crate) fn caption(world: &mut World, entity: Entity, value: &str) {
     }
 }
 
-pub(crate) fn workspace_caption(world: &mut World, entity: Entity, value: &str, width: f32) {
+pub(crate) fn workspace_caption(world: &mut World, entity: Entity, value: &str, width: f32) -> f32 {
     caption(world, entity, value);
     super::caption_size(world, entity, 9.);
     let label = world.get::<InterfaceLabel>(entity).unwrap().0;
     let mut bounds = caption_bounds(false, value);
-    bounds.width = px(width);
+    let text_width = if value.is_empty() {
+        width
+    } else {
+        world
+            .get::<bevy::text::TextLayoutInfo>(label)
+            .filter(|layout| {
+                layout.size.x > 0. && layout.glyphs.iter().all(|glyph| glyph.line_index == 0)
+            })
+            .map_or(width, |layout| {
+                (layout.size.x / layout.scale_factor + 1.).min(width)
+            })
+    };
+    // NoWrap shapes to the text's intrinsic width. Center that shaped row
+    // together with its inline chevron, rather than relying on text alignment.
+    let left = if value.is_empty() {
+        0.
+    } else {
+        ((width - text_width - 10.) * 0.5).max(0.)
+    };
+    bounds.left = px(left);
+    bounds.width = px(text_width);
     bounds.height = px(12.);
     world
         .entity_mut(label)
@@ -591,6 +611,7 @@ pub(crate) fn workspace_caption(world: &mut World, entity: Entity, value: &str, 
         node.height = px(20.);
         node.margin.left = px(-10.);
     }
+    left + text_width
 }
 
 pub(super) fn caption_bounds(finish: bool, value: &str) -> Node {

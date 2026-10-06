@@ -198,7 +198,7 @@ pub(super) fn synchronize(
     let workspace_glyph = workspace_icon(state.workspace, theme.viewport.to_srgba().red > 0.7);
     ribbon::decorate(world, workspace, workspace_glyph);
     ribbon::replace_compact_glyph(world, workspace, workspace_glyph);
-    ribbon::workspace_caption(
+    let caption_right = ribbon::workspace_caption(
         world,
         workspace,
         if width > 1400. { workspace_label } else { "" },
@@ -209,7 +209,7 @@ pub(super) fn synchronize(
         "workspace-chevron",
         rect(
             if width > 1400. {
-                workspace_width - 12.
+                (4. + caption_right + 2.).min(workspace_width - 12.)
             } else {
                 workspace_width / 2. - 4.
             },
