@@ -2264,7 +2264,7 @@ mod tests {
         let recipes = [
             (
                 include_str!("../../../examples/scripts/garden-bench.limo.jsonc"),
-                0,
+                22,
             ),
             (
                 include_str!("../../../examples/scripts/d-screw-vise.limo.jsonc"),

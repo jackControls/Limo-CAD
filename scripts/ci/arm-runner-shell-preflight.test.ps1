@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Text;
 public sealed class FakeShellWindow {
     public string Title, ClassName = "Windows.UI.Core.CoreWindow", ProcessName, Executable;
-    public bool Visible = true, ChangeOwner, RejectClose, StayVisible;
+    public bool Visible = true, ChangeOwner, RejectClose, StayVisible, RejectHide;
     public int IdentityReads;
 }
 public static class HostedArmAccountWindow {
@@ -48,6 +48,13 @@ public static class HostedArmAccountWindow {
         if (value.RejectClose) return IntPtr.Zero;
         if (!value.StayVisible) value.Visible = false;
         return new IntPtr(1);
+    }
+    public static bool ShowWindowAsync(IntPtr window, int command) {
+        if (command != 0) throw new Exception("Unexpected shell hide action");
+        FakeShellWindow value = Windows[window.ToInt64()];
+        if (value.RejectHide) return false;
+        value.Visible = false;
+        return true;
     }
 }
 '@
@@ -170,6 +177,13 @@ try {
     Reset-Windows
     $value = Add-Shell 100 'Search'
     $value.StayVisible = $true
+    $report = Invoke-Case 'persistent-shell-hidden' 'closed' 1 100
+    if ($report.shell_windows[0].fallback -ne 'SW_HIDE') { throw 'Shell hide fallback evidence missing' }
+
+    Reset-Windows
+    $value = Add-Shell 100 'Search'
+    $value.StayVisible = $true
+    $value.RejectHide = $true
     $null = Invoke-Case 'visible-after-close-fails' 'failed' 1 100
 
     Reset-Windows
@@ -192,7 +206,7 @@ try {
     $refused = $false
     try { & $preflight -EvidencePath $escaped -Window 100 } catch { $refused = $true }
     if (-not $refused -or (Test-Path -LiteralPath $escaped) -or [HostedArmAccountWindow]::Closed.Count -ne 0) { throw 'Evidence path escape did not fail closed' }
-    Write-Output 'PASS: 22 managed shell-preflight cases; no desktop APIs invoked'
+    Write-Output 'PASS: 23 managed shell-preflight cases; no desktop APIs invoked'
 } finally {
     foreach ($name in $guardNames) { [Environment]::SetEnvironmentVariable($name, $original[$name]) }
 }

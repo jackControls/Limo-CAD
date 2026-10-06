@@ -32,6 +32,7 @@ public static class HostedArmAccountWindow {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr window, StringBuilder text, int count);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr window, StringBuilder text, int count);
     [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam, uint flags, uint timeout, out UIntPtr result);
+    [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr window, int command);
 }
 '@
 
@@ -138,7 +139,27 @@ function Close-ObservedShellWindows {
             [uint32]$owner = 0
             [void][HostedArmAccountWindow]::GetWindowThreadProcessId($shellWindow, [ref]$owner)
             if ($owner -ne $candidate.process_id) { break }
-            if ([DateTime]::UtcNow -ge $deadline) { throw 'The hosted runner shell window remained visible after WM_CLOSE' }
+            if ([DateTime]::UtcNow -ge $deadline) {
+                $current = Get-ShellWindow $shellWindow
+                if ($null -eq $current -or $current.process_id -ne $candidate.process_id -or
+                    $current.title -cne $candidate.title -or $current.process_name -cne $candidate.process_name -or
+                    -not [string]::Equals($current.executable, $candidate.executable, [StringComparison]::OrdinalIgnoreCase)) {
+                    throw 'Shell-window identity changed before the hosted-runner hide fallback'
+                }
+                if (-not [HostedArmAccountWindow]::ShowWindowAsync($shellWindow, 0)) {
+                    throw 'The verified hosted-runner shell window refused SW_HIDE'
+                }
+                $hideDeadline = [DateTime]::UtcNow.AddSeconds(2)
+                while ([HostedArmAccountWindow]::IsWindowVisible($shellWindow)) {
+                    [uint32]$hideOwner = 0
+                    [void][HostedArmAccountWindow]::GetWindowThreadProcessId($shellWindow, [ref]$hideOwner)
+                    if ($hideOwner -ne $candidate.process_id) { break }
+                    if ([DateTime]::UtcNow -ge $hideDeadline) { throw 'The hosted-runner shell window remained visible after SW_HIDE' }
+                    Start-Sleep -Milliseconds 50
+                }
+                $candidate | Add-Member -NotePropertyName fallback -NotePropertyValue 'SW_HIDE'
+                break
+            }
             Start-Sleep -Milliseconds 50
         }
         $candidate | Add-Member -NotePropertyName status -NotePropertyValue 'closed'
@@ -150,7 +171,7 @@ $report = [ordered]@{
     runner_arch = $env:RUNNER_ARCH
     status = 'inspecting'
     started_utc = [DateTime]::UtcNow.ToString('o')
-    method = 'WM_CLOSE to exactly matched system account/Start/Search windows; no input, account action or process termination'
+    method = 'WM_CLOSE to exactly matched system windows; verified Start/Search-only SW_HIDE fallback; no input, account action or process termination'
     windows = @()
     shell_windows = @()
     foreground = $null
