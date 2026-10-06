@@ -194,7 +194,17 @@ mod tests {
 
     #[test]
     fn lesson_catalog_excludes_flagship_and_arbitrary_sources() {
-        assert_eq!(catalog().len(), 4);
+        let ids: Vec<_> = catalog().iter().map(|lesson| lesson.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "fillet-basics",
+                "mounting-plate",
+                "component-edit-recovery",
+                "revolved-spacer",
+                "angle-bracket"
+            ]
+        );
         assert!(lesson("fillet-basics")
             .unwrap()
             .source

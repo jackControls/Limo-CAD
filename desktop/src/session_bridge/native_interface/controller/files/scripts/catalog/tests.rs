@@ -47,7 +47,7 @@ fn native_script_catalog_is_shared_and_source_only_including_flagship_recipes() 
         .any(|entry| entry.kind == "flagship-candidate"));
     assert_eq!(
         lessons::catalog().len(),
-        4,
+        5,
         "Quick lesson buttons remain separate"
     );
     let mut world = world();

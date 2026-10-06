@@ -2,7 +2,7 @@
 type: Concept
 title: Edit a shared component and recover a wrong dimension
 description: Edit a selected occurrence in place, undo an incorrect driving value and save the shared definition.
-status: implemented
+status: draft
 updated: 2026-10-06
 topics: assembly, sketch, dimensions, undo, mcp
 keywords: in place editing, selected occurrence, shared definition, driving dimension, wrong dimension, sketch undo, rotated part, local coordinates
