@@ -73,7 +73,7 @@ fn layer(
         color,
         color_role,
         width: 2.,
-        segments,
+        segments: segments.into(),
         ..default()
     })
 }

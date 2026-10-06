@@ -41,7 +41,7 @@ struct Editor {
     max_scroll: f32,
     error: Option<String>,
     original_view: ViewportPresentation,
-    original_preview: ViewportPreview,
+    original_preview: Arc<ViewportPreview>,
     preview_revision: u64,
 }
 #[derive(Resource, Default)]
@@ -71,7 +71,7 @@ fn restore(world: &mut World, e: &Editor) -> Result<(), String> {
     native_viewport::apply_interface_preview(world, &id, e.original_preview.clone())
 }
 fn markers(world: &mut World, e: &mut Editor, hover: Option<&Connector>) -> Result<(), String> {
-    let mut preview = e.original_preview.clone();
+    let mut preview = e.original_preview.as_ref().clone();
     let (_, camera, _, size) = native_viewport::interface_view(world);
     let length = (Vec3::from_array(camera.position).distance(Vec3::from_array(camera.target))
         * (camera.vertical_fov_degrees.to_radians() * 0.5).tan()
@@ -109,7 +109,7 @@ fn markers(world: &mut World, e: &mut Editor, hover: Option<&Connector>) -> Resu
             color_role: Default::default(),
             radius: length * 0.08,
             hollow: false,
-            positions: origin.to_array().to_vec(),
+            positions: origin.to_array().to_vec().into(),
         });
         for (direction, scale) in [(axis, 1.), (secondary, 0.65)] {
             preview.arrows.push(native_viewport::ViewportArrow {

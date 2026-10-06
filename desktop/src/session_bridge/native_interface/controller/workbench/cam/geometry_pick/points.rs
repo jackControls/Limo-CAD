@@ -393,7 +393,7 @@ pub(super) fn overlay(session: &Session) -> ViewportPreview {
             .collect();
         if !positions.is_empty() {
             preview.points.push(native_viewport::ViewportPointLayer {
-                positions,
+                positions: positions.into(),
                 radius: radius * if selected { 1.35 } else { 1. },
                 hollow: !selected,
                 color: if selected {

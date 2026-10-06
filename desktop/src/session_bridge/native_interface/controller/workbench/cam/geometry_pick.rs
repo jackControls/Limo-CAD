@@ -758,7 +758,7 @@ pub(in super::super) fn overlay(world: &World) -> Option<ViewportPreview> {
             preview.lines.push(ViewportLineLayer {
                 color,
                 width,
-                segments,
+                segments: segments.into(),
                 ..default()
             });
         }

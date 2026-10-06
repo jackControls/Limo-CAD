@@ -197,7 +197,7 @@ fn overlays_follow_recalled_parent_and_local_rotation_for_every_repeat_and_resto
     .unwrap();
     let baseline = ViewportPreview {
         lines: vec![ViewportLineLayer {
-            segments: vec![777., 0., 0., 778., 0., 0.],
+            segments: vec![777., 0., 0., 778., 0., 0.].into(),
             ..Default::default()
         }],
         ..Default::default()
@@ -245,7 +245,9 @@ fn overlays_follow_recalled_parent_and_local_rotation_for_every_repeat_and_resto
         .triangles
         .is_empty());
     assert_eq!(
-        native_viewport::interface_preview_snapshot(app.world()).lines[0].segments,
+        native_viewport::interface_preview_snapshot(app.world()).lines[0]
+            .segments
+            .as_slice(),
         [777., 0., 0., 778., 0., 0.]
     );
     synchronize_overlay(app.world_mut(), &mut state, &owner).unwrap();

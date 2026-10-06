@@ -424,7 +424,7 @@ pub(super) fn synchronize(
                     color: [1.; 4],
                     color_role: ViewportColorRole::SketchDimension,
                     width: 1.5,
-                    segments,
+                    segments: segments.into(),
                     ..default()
                 }]
             },

@@ -1086,11 +1086,11 @@ mod tests {
         let mut stamp = GpuStockStamp::default();
         let positions = square(20., 5.);
         let lines = [ViewportLineLayer {
-            segments: vec![0., 10., 4., 20., 10., 4.],
+            segments: vec![0., 10., 4., 20., 10., 4.].into(),
             playback: Some(super::super::ViewportLinePlayback {
                 path_id: 1,
                 completed_color: [1.; 4],
-                segment_times: vec![0., 1.],
+                segment_times: vec![0., 1.].into(),
                 single_tool: true,
                 removes_stock: true,
             }),
@@ -1256,11 +1256,12 @@ mod tests {
         let layer = ViewportLineLayer {
             segments: vec![
                 0.0, 10.0, 4.0, 20.0, 10.0, 4.0, 20.0, 10.0, 4.0, 20.0, 0.0, 4.0,
-            ],
+            ]
+            .into(),
             playback: Some(super::super::ViewportLinePlayback {
                 path_id: 3,
                 completed_color: [1.0; 4],
-                segment_times: vec![0.0, 2.0, 2.0, 3.0],
+                segment_times: vec![0.0, 2.0, 2.0, 3.0].into(),
                 single_tool: true,
                 removes_stock: true,
             }),

@@ -2,6 +2,7 @@
 //! and transient renderer data all belong to one exact document revision.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use bevy::prelude::{Resource, World};
 use limo_cad_core::{BodyId, DocumentDto};
@@ -234,7 +235,7 @@ struct Editor {
     id: u64,
     form: SolidForm,
     snapshot: Snapshot,
-    previous_preview: ViewportPreview,
+    previous_preview: Arc<ViewportPreview>,
     preview_revision: u64,
     preview_notice: Option<String>,
     pick_target: Option<SolidField>,
@@ -464,7 +465,7 @@ fn update_preview(editor: &mut Editor, world: &mut World) -> Result<(), String> 
                 next.lines.push(native_viewport::ViewportLineLayer {
                     color: [1., 0.66, 0.25, 1.],
                     width: 3.,
-                    segments,
+                    segments: segments.into(),
                     ..Default::default()
                 });
             }
@@ -513,7 +514,11 @@ fn update_preview(editor: &mut Editor, world: &mut World) -> Result<(), String> 
             color_role: Default::default(),
             radius: (distance * 0.003) as f32,
             hollow: false,
-            positions: point.into_iter().map(|v| v as f32).collect(),
+            positions: point
+                .into_iter()
+                .map(|v| v as f32)
+                .collect::<Vec<_>>()
+                .into(),
         });
     }
     native_viewport::apply_interface_preview(world, &model.owner.document_id, next)?;

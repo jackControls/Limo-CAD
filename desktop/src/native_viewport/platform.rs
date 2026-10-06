@@ -445,7 +445,7 @@ struct CameraResource {
 
 #[derive(Resource, Default)]
 struct PreviewResource {
-    value: ViewportPreview,
+    value: Arc<ViewportPreview>,
     /// Native sketch dimensions persist while transient creation/tool guides
     /// change. They never replace or take ownership of a feature preview.
     sketch_lines: Vec<super::ViewportLineLayer>,
@@ -4625,7 +4625,7 @@ pub(crate) fn interface_geometry_fixture_snapshot(world: &mut World) -> serde_js
     serde_json::json!({"sessions": sessions, "cache": cache})
 }
 
-pub(crate) fn interface_preview_snapshot(world: &World) -> ViewportPreview {
+pub(crate) fn interface_preview_snapshot(world: &World) -> Arc<ViewportPreview> {
     world.resource::<PreviewResource>().value.clone()
 }
 
@@ -4763,10 +4763,14 @@ fn ray_reference_quad(origin: Vec3, direction: Vec3, basis: PlaneBasis, half: f3
 pub(crate) fn apply_interface_preview(
     world: &mut World,
     session_id: &str,
-    preview: ViewportPreview,
+    preview: impl Into<Arc<ViewportPreview>>,
 ) -> Result<(), String> {
     if world.resource::<ModelResource>().session_id != session_id {
         return Err("Native viewport has not bound the requested document".into());
+    }
+    let preview = preview.into();
+    if Arc::ptr_eq(&world.resource::<PreviewResource>().value, &preview) {
+        return Ok(());
     }
     validate_preview(&preview)?;
     apply_preview_state(world, preview);
@@ -4811,7 +4815,7 @@ pub(crate) fn apply_interface_sketch_lines(
     Ok(())
 }
 
-fn apply_preview_state(world: &mut World, preview: ViewportPreview) {
+fn apply_preview_state(world: &mut World, preview: Arc<ViewportPreview>) {
     let mut resource = world.resource_mut::<PreviewResource>();
     if preview_mesh_content_changed(&resource.value, &preview) {
         resource.mesh_revision = resource.mesh_revision.wrapping_add(1);
@@ -5194,7 +5198,15 @@ fn validate_camera(camera: ViewportCamera) -> Result<(), String> {
 }
 
 fn preview_mesh_content_changed(current: &ViewportPreview, next: &ViewportPreview) -> bool {
-    current.triangles != next.triangles || current.arrows != next.arrows
+    current.triangles.len() != next.triangles.len()
+        || current.triangles.iter().zip(&next.triangles).any(|(a, b)| {
+            a.color != b.color
+                || a.material != b.material
+                || a.xray != b.xray
+                || (!Arc::ptr_eq(&a.positions, &b.positions) && a.positions != b.positions)
+                || (!Arc::ptr_eq(&a.normals, &b.normals) && a.normals != b.normals)
+        })
+        || current.arrows != next.arrows
 }
 
 /// A successful native File close retires this exact document's cached
@@ -6376,6 +6388,83 @@ mod tests {
         const {
             assert!(SNAP_MARKER_HALF_SIZE_PX >= 5.0);
         }
+    }
+
+    #[test]
+    fn retained_preview_reads_and_restores_share_buffers_without_changing_bevy_ticks() {
+        let mut app = interface_scene_fixture();
+        app.world_mut().resource_mut::<ModelResource>().session_id = "preview-owner".into();
+        let preview: ViewportPreview = serde_json::from_value(serde_json::json!({
+            "lines": [{"segments": [0., 0., 0., 1., 0., 0.], "playback": {
+                "pathId": 1, "completedColor": [1., 1., 1., 1.], "segmentTimes": [0., 1.]
+            }}],
+            "points": [{"positions": [0., 0., 0.]}],
+            "triangles": [{"positions": [0., 0., 0., 1., 0., 0., 0., 1., 0.],
+                "normals": [0., 0., 1., 0., 0., 1., 0., 0., 1.]}],
+            "annotations": [{"screen": [10., 20.], "text": "retained"}]
+        }))
+        .unwrap();
+        apply_interface_preview(app.world_mut(), "preview-owner", preview).unwrap();
+        let original = interface_preview_snapshot(app.world());
+        let revision = interface_preview_revision(app.world());
+        let mesh_revision = app.world().resource::<PreviewResource>().mesh_revision;
+        app.world_mut().clear_trackers();
+        let read = interface_preview_snapshot(app.world());
+        assert!(Arc::ptr_eq(&original, &read));
+        apply_interface_preview(app.world_mut(), "preview-owner", read).unwrap();
+        assert_eq!(interface_preview_revision(app.world()), revision);
+        assert!(!app
+            .world()
+            .get_resource_ref::<PreviewResource>()
+            .unwrap()
+            .is_changed());
+        assert!(apply_interface_preview(app.world_mut(), "stale-owner", original.clone()).is_err());
+
+        let mut overlay = original.as_ref().clone();
+        overlay.annotations[0].screen = [40., 50.];
+        assert!(Arc::ptr_eq(
+            &original.lines[0].segments,
+            &overlay.lines[0].segments
+        ));
+        assert!(Arc::ptr_eq(
+            &original.lines[0].playback.as_ref().unwrap().segment_times,
+            &overlay.lines[0].playback.as_ref().unwrap().segment_times
+        ));
+        assert!(Arc::ptr_eq(
+            &original.points[0].positions,
+            &overlay.points[0].positions
+        ));
+        assert!(Arc::ptr_eq(
+            &original.triangles[0].positions,
+            &overlay.triangles[0].positions
+        ));
+        assert!(Arc::ptr_eq(
+            &original.triangles[0].normals,
+            &overlay.triangles[0].normals
+        ));
+        apply_interface_preview(app.world_mut(), "preview-owner", overlay).unwrap();
+        assert_eq!(
+            app.world().resource::<PreviewResource>().mesh_revision,
+            mesh_revision
+        );
+
+        let mut edited = original.as_ref().clone();
+        Arc::make_mut(&mut edited.triangles[0].positions)[0] = 5.;
+        assert_eq!(original.triangles[0].positions[0], 0.);
+        assert!(!Arc::ptr_eq(
+            &original.triangles[0].positions,
+            &edited.triangles[0].positions
+        ));
+        apply_interface_preview(app.world_mut(), "preview-owner", edited).unwrap();
+        assert_eq!(
+            app.world().resource::<PreviewResource>().mesh_revision,
+            mesh_revision + 1
+        );
+        apply_interface_preview(app.world_mut(), "preview-owner", original.clone()).unwrap();
+        assert!(Arc::ptr_eq(
+            &original,
+            &interface_preview_snapshot(app.world())
+        ));
     }
 
     #[test]

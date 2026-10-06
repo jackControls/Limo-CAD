@@ -374,7 +374,7 @@ pub(super) fn overlay(session: &Session) -> ViewportPreview {
         }
         if !positions.is_empty() {
             preview.triangles.push(ViewportTriangleLayer {
-                positions,
+                positions: positions.into(),
                 color: if hover {
                     [1., 0.67, 0.17, 0.5]
                 } else {

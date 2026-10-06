@@ -34,13 +34,13 @@ mod tests {
         let line = ViewportLineLayer {
             color: [0.2, 0.3, 0.4, 0.68],
             color_role: ViewportColorRole::SketchPreview,
-            segments: vec![0., 0., 0., 20., 10., 0.],
+            segments: vec![0., 0., 0., 20., 10., 0.].into(),
             ..Default::default()
         };
         let point = ViewportPointLayer {
             color: [0.2, 0.3, 0.4, 0.4],
             color_role: ViewportColorRole::SketchDimension,
-            positions: vec![20., 10., 0.],
+            positions: vec![20., 10., 0.].into(),
             ..Default::default()
         };
         let dark = viewport_palette(ResolvedTheme::Dark);
@@ -64,8 +64,8 @@ mod tests {
                     0.4
                 ]
             );
-            assert_eq!(line.segments, [0., 0., 0., 20., 10., 0.]);
-            assert_eq!(point.positions, [20., 10., 0.]);
+            assert_eq!(line.segments.as_slice(), [0., 0., 0., 20., 10., 0.]);
+            assert_eq!(point.positions.as_slice(), [20., 10., 0.]);
         }
         assert_ne!(dark.preview, light.preview);
         assert_ne!(dark.dimension, light.dimension);

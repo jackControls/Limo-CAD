@@ -196,7 +196,7 @@ mod tests {
         let mut path = ViewportLinePlayback {
             path_id: 2,
             completed_color: DONE,
-            segment_times: vec![0.0, 10.0],
+            segment_times: vec![0.0, 10.0].into(),
             single_tool: false,
             removes_stock: false,
         };
@@ -215,7 +215,7 @@ mod tests {
             !path.is_valid_for(12),
             "each segment must have exactly two times"
         );
-        path.segment_times = vec![10.0, 0.0];
+        path.segment_times = vec![10.0, 0.0].into();
         assert!(!path.is_valid_for(6));
     }
 

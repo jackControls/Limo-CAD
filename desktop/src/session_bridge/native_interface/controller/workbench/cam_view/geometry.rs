@@ -102,13 +102,13 @@ pub(super) fn stock(setup: &CamSetupDto, fill: bool) -> ViewportPreview {
     preview.lines.push(ViewportLineLayer {
         color: [0.62, 0.68, 0.75, 0.5],
         width: 1.,
-        segments: edges,
+        segments: edges.into(),
         ..Default::default()
     });
     if fill && !matches!(setup.resolved_stock, CamResolvedStockDto::ModelBody { .. }) {
         preview.triangles.push(ViewportTriangleLayer {
             color: [0.62, 0.68, 0.75, 0.16],
-            positions: triangles,
+            positions: triangles.into(),
             ..Default::default()
         });
     }
@@ -260,7 +260,7 @@ pub(super) fn paths(
             .map(|(color, segments)| ViewportLineLayer {
                 color,
                 width: 2.,
-                segments,
+                segments: segments.into(),
                 ..Default::default()
             })
             .collect(),

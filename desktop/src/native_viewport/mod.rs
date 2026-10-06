@@ -227,10 +227,10 @@ pub struct ViewportPresentation {
     pub hovered_profile: Option<ProfileRefDto>,
     /// Host-neutral rigid poses. Kept with the small presentation stream so
     /// live motion never clones or retessellates the OCCT scene.
-    #[serde(default, deserialize_with = "deserialize_shared_poses")]
+    #[serde(default, deserialize_with = "deserialize_shared_values")]
     pub body_poses: std::sync::Arc<Vec<BodyPoseDto>>,
     /// Per-occurrence display rows; several rows may reuse one source body.
-    #[serde(default, deserialize_with = "deserialize_shared_poses")]
+    #[serde(default, deserialize_with = "deserialize_shared_values")]
     pub instance_body_poses: std::sync::Arc<Vec<InstanceBodyPoseDto>>,
     /// Desktop CAM simulation stock is retained directly by Bevy rather than
     /// travelling through transient preview JSON.
@@ -247,7 +247,7 @@ pub struct ViewportPresentation {
     pub cam_tool_hidden: bool,
 }
 
-fn deserialize_shared_poses<'de, T, D>(deserializer: D) -> Result<std::sync::Arc<Vec<T>>, D::Error>
+fn deserialize_shared_values<'de, T, D>(deserializer: D) -> Result<std::sync::Arc<Vec<T>>, D::Error>
 where
     T: Deserialize<'de>,
     D: serde::Deserializer<'de>,
@@ -392,8 +392,8 @@ pub struct ViewportLineLayer {
     #[serde(default)]
     pub pattern: ViewportLinePattern,
     /// World-space line segments, packed as x0, y0, z0, x1, y1, z1.
-    #[serde(default)]
-    pub segments: Vec<f32>,
+    #[serde(default, deserialize_with = "deserialize_shared_values")]
+    pub segments: std::sync::Arc<Vec<f32>>,
     /// CAM-only timing; absent on ordinary modeling/selection guides.
     pub playback: Option<ViewportLinePlayback>,
     /// Retain timed travel while the path display is hidden.
@@ -407,7 +407,8 @@ pub struct ViewportLinePlayback {
     pub path_id: u64,
     pub completed_color: [f32; 4],
     /// Start/end seconds per line segment, retained at timeline creation.
-    pub segment_times: Vec<f64>,
+    #[serde(deserialize_with = "deserialize_shared_values")]
+    pub segment_times: std::sync::Arc<Vec<f64>>,
     /// The complete timeline proves one known cutter; absent proof uses CPU stock.
     #[serde(default)]
     pub single_tool: bool,
@@ -437,7 +438,7 @@ fn default_line_width() -> f32 {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewportPointLayer {
-    /// sRGBA from the DOM theme/presentation material.
+    /// sRGBA from the interface palette.
     #[serde(default)]
     pub color: [f32; 4],
     #[serde(skip)]
@@ -450,8 +451,8 @@ pub struct ViewportPointLayer {
     #[serde(default)]
     pub hollow: bool,
     /// World-space point positions, packed as x, y, z.
-    #[serde(default)]
-    pub positions: Vec<f32>,
+    #[serde(default, deserialize_with = "deserialize_shared_values")]
+    pub positions: std::sync::Arc<Vec<f32>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
@@ -461,12 +462,12 @@ pub struct ViewportTriangleLayer {
     /// triangle list because profile topology is owned by the command layer.
     #[serde(default)]
     pub color: [f32; 4],
-    #[serde(default)]
-    pub positions: Vec<f32>,
+    #[serde(default, deserialize_with = "deserialize_shared_values")]
+    pub positions: std::sync::Arc<Vec<f32>>,
     /// Optional world-space vertex normals, packed one-for-one with
     /// positions. When omitted the native renderer computes flat normals.
-    #[serde(default)]
-    pub normals: Vec<f32>,
+    #[serde(default, deserialize_with = "deserialize_shared_values")]
+    pub normals: std::sync::Arc<Vec<f32>>,
     /// Physical CAM stock uses the normal lit/depth-writing model pipeline;
     /// command fills retain their translucent unlit overlay presentation.
     #[serde(default)]
@@ -598,8 +599,8 @@ pub struct ViewportSnapMarker {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewportPreview {
-    /// Small, transient presentation layers only. Committed sketches and OCCT
-    /// tessellations continue to travel through the direct Rust snapshot path.
+    /// Transient presentation layers share immutable geometry when retained by
+    /// interaction drafts. Committed tessellations use the engine snapshot path.
     #[serde(default)]
     pub lines: Vec<ViewportLineLayer>,
     #[serde(default)]

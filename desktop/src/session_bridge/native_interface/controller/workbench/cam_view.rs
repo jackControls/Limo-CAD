@@ -79,7 +79,7 @@ struct Pending {
 struct Applied {
     owner: DocumentContext,
     preview_revision: u64,
-    before_preview: ViewportPreview,
+    before_preview: Arc<ViewportPreview>,
     before_presentation: ViewportPresentation,
     after_presentation: ViewportPresentation,
     before_stock: Option<ViewportCamStock>,
@@ -618,7 +618,7 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
                     .push(crate::native_viewport::ViewportPointLayer {
                         color: [0.94, 0.67, 0.29, 0.95],
                         radius: (span as f32 * 0.003).clamp(0.08, 1.2),
-                        positions: contacts,
+                        positions: contacts.into(),
                         ..default()
                     });
             }

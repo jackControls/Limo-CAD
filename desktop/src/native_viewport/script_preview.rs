@@ -1257,18 +1257,19 @@ mod tests {
             value: ViewportPreview {
                 lines: vec![ViewportLineLayer {
                     color: [0.2, 0.4, 1.0, 1.0],
-                    segments: vec![-10.0, 20.0, 7.0, 50.0, 20.0, 7.0],
+                    segments: vec![-10.0, 20.0, 7.0, 50.0, 20.0, 7.0].into(),
                     playback: Some(ViewportLinePlayback {
                         path_id: 7,
                         single_tool: true,
                         removes_stock: true,
                         completed_color: [0.2, 0.4, 1.0, 1.0],
-                        segment_times: vec![0.0, 1.0],
+                        segment_times: vec![0.0, 1.0].into(),
                     }),
                     ..default()
                 }],
                 ..default()
-            },
+            }
+            .into(),
             revision: 1,
             mesh_revision: 1,
             sketch_lines: Vec::new(),
@@ -1290,13 +1291,15 @@ mod tests {
                     [0.0, 0.0, 1.0],
                 )
             };
-            renderer
-                .app
-                .world_mut()
-                .resource_mut::<PreviewResource>()
-                .value
-                .lines[0]
-                .segments = [start, end].concat();
+            Arc::make_mut(
+                &mut renderer
+                    .app
+                    .world_mut()
+                    .resource_mut::<PreviewResource>()
+                    .value,
+            )
+            .lines[0]
+                .segments = [start, end].concat().into();
             renderer
                 .app
                 .world_mut()

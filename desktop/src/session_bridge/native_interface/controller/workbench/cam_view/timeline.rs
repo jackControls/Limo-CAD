@@ -8,21 +8,24 @@ pub(super) fn paths(
     id: u64,
     first_command: usize,
 ) -> Result<Vec<ViewportLineLayer>, String> {
-    let layer = |color, pattern, removes_stock| ViewportLineLayer {
-        color,
-        width: 2.,
-        pattern,
-        playback: Some(ViewportLinePlayback {
-            path_id: id,
-            completed_color: [0.18, 0.48, 1., 1.],
-            segment_times: Vec::new(),
-            single_tool: single_tool_timeline(result),
-            removes_stock,
-        }),
-        ..default()
-    };
-    let mut rapid = layer([0.94, 0.67, 0.29, 0.8], ViewportLinePattern::Dotted, false);
-    let mut cutting = layer([0.34, 0.84, 0.64, 0.95], ViewportLinePattern::Solid, true);
+    let single_tool = single_tool_timeline(result);
+    let layer =
+        |color, pattern, removes_stock, segments: Vec<f32>, times: Vec<f64>| ViewportLineLayer {
+            color,
+            width: 2.,
+            pattern,
+            segments: segments.into(),
+            playback: Some(ViewportLinePlayback {
+                path_id: id,
+                completed_color: [0.18, 0.48, 1., 1.],
+                segment_times: times.into(),
+                single_tool,
+                removes_stock,
+            }),
+            ..default()
+        };
+    let (mut rapid, mut rapid_times) = (Vec::new(), Vec::new());
+    let (mut cutting, mut cutting_times) = (Vec::new(), Vec::new());
     let mut count = 0;
     for step in result
         .steps
@@ -49,10 +52,10 @@ pub(super) fn paths(
                 "Simulation path exceeds 65,000 display segments; use a smaller NC program or select one CAM operation".into(),
             );
         }
-        let target = if step.kind == CamSimulationStepKind::Rapid {
-            &mut rapid
+        let (vertices, timing) = if step.kind == CamSimulationStepKind::Rapid {
+            (&mut rapid, &mut rapid_times)
         } else {
-            &mut cutting
+            (&mut cutting, &mut cutting_times)
         };
         let start = step.cumulative_seconds - step.duration_seconds;
         let mut from = step
@@ -64,23 +67,34 @@ pub(super) fn paths(
                 .point_at_fraction(segment as f64 / segments as f64)
                 .map_err(|e| e.to_string())?
                 .unwrap();
-            target
-                .segments
-                .extend(geometry::model_point(from, result.wcs));
-            target
-                .segments
-                .extend(geometry::model_point(to, result.wcs));
-            target.playback.as_mut().unwrap().segment_times.extend([
+            vertices.extend(geometry::model_point(from, result.wcs));
+            vertices.extend(geometry::model_point(to, result.wcs));
+            timing.extend([
                 start + step.duration_seconds * (segment - 1) as f64 / segments as f64,
                 start + step.duration_seconds * segment as f64 / segments as f64,
             ]);
             from = to;
         }
     }
-    Ok([rapid, cutting]
-        .into_iter()
-        .filter(|layer| !layer.segments.is_empty())
-        .collect())
+    Ok([
+        layer(
+            [0.94, 0.67, 0.29, 0.8],
+            ViewportLinePattern::Dotted,
+            false,
+            rapid,
+            rapid_times,
+        ),
+        layer(
+            [0.34, 0.84, 0.64, 0.95],
+            ViewportLinePattern::Solid,
+            true,
+            cutting,
+            cutting_times,
+        ),
+    ]
+    .into_iter()
+    .filter(|layer| !layer.segments.is_empty())
+    .collect())
 }
 
 pub(super) fn step_at(result: &CamSimulationResultDto, time: f64) -> Option<&CamSimulationStepDto> {

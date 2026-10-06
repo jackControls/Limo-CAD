@@ -861,14 +861,24 @@ fn actual_preview_and_invalid_fields_never_mutate_the_model_and_cancel_restores_
         lines: vec![ViewportLineLayer {
             color: [1., 0., 0., 1.],
             width: 2.,
-            segments: vec![0., 0., 0., 2., 3., 4.],
+            segments: vec![0., 0., 0., 2., 3., 4.].into(),
             ..Default::default()
         }],
         ..Default::default()
     };
     native_viewport::apply_interface_preview(app.world_mut(), &owner.document_id, prior.clone())
         .unwrap();
+    let retained = native_viewport::interface_preview_snapshot(app.world());
     let id = open(&fixture, app.world_mut(), &owner, None);
+    assert!(Arc::ptr_eq(
+        &retained,
+        &app.world()
+            .resource::<NativeFeature>()
+            .editor
+            .as_ref()
+            .unwrap()
+            .previous_preview
+    ));
     assert!(panel(app.world()).unwrap().can_apply);
     let visible = native_viewport::interface_preview_snapshot(app.world());
     assert!(
@@ -919,6 +929,10 @@ fn actual_preview_and_invalid_fields_never_mutate_the_model_and_cancel_restores_
     .unwrap();
     assert_eq!(cancelled["preview_restored"], true);
     assert!(super::panel(app.world()).is_none());
+    assert!(Arc::ptr_eq(
+        &retained,
+        &native_viewport::interface_preview_snapshot(app.world())
+    ));
     assert_eq!(
         native_viewport::interface_preview_snapshot(app.world()).lines[0].segments,
         prior.lines[0].segments
@@ -1128,7 +1142,7 @@ fn focused_escape_closes_its_form_without_overwriting_a_newer_preview() {
         lines: vec![ViewportLineLayer {
             color: [0., 1., 0., 1.],
             width: 2.,
-            segments: vec![4., 5., 6., 7., 8., 9.],
+            segments: vec![4., 5., 6., 7., 8., 9.].into(),
             ..Default::default()
         }],
         ..Default::default()

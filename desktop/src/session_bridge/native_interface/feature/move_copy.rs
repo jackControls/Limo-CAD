@@ -140,7 +140,10 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
                 body_id,
                 [1., 0.65, 0.25, if request.copy { 0.45 } else { 0.25 }],
             )?;
-            for p in fill.positions.as_chunks_mut::<3>().0 {
+            for p in std::sync::Arc::make_mut(&mut fill.positions)
+                .as_chunks_mut::<3>()
+                .0
+            {
                 let v = display_q * DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64) + display_t;
                 if !v.as_vec3().is_finite() {
                     return Err("The move exceeds the renderer's range".into());
@@ -169,7 +172,7 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
         next.lines.push(ViewportLineLayer {
             color: [1., 0.8, 0.5, 1.],
             width: 2.,
-            segments,
+            segments: segments.into(),
             ..Default::default()
         });
         if editor.form.move_mode() == Some(MoveMode::Free) {
@@ -214,7 +217,8 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
                     pair.iter()
                         .flat_map(|p| (q * xyz(*p) + t).as_vec3().to_array())
                 })
-                .collect();
+                .collect::<Vec<_>>()
+                .into();
             next.lines.push(ViewportLineLayer {
                 color: [0.45, 0.72, 1., 1.],
                 width: 3.,
@@ -238,7 +242,10 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
         let t = pose
             .map(|p| DVec3::from_array(p.translation))
             .unwrap_or(DVec3::ZERO);
-        for p in fill.positions.as_chunks_mut::<3>().0 {
+        for p in std::sync::Arc::make_mut(&mut fill.positions)
+            .as_chunks_mut::<3>()
+            .0
+        {
             let v = q * DVec3::new(p[0] as f64, p[1] as f64, p[2] as f64) + t;
             p.copy_from_slice(&v.as_vec3().to_array());
         }
@@ -255,7 +262,7 @@ pub(super) fn preview(editor: &mut Editor, world: &mut World) -> Result<Viewport
             color_role: Default::default(),
             radius: (eye.distance(DVec3::from_array(p)) * 0.0015) as f32,
             hollow: false,
-            positions: p.map(|v| v as f32).to_vec(),
+            positions: p.map(|v| v as f32).to_vec().into(),
         });
     }
     Ok(next)
@@ -341,7 +348,8 @@ impl Gizmo {
             };
             let segments = (0..64)
                 .flat_map(|n| [at(n), at(n + 1)].into_iter().flatten())
-                .collect();
+                .collect::<Vec<_>>()
+                .into();
             preview.lines.push(ViewportLineLayer {
                 color: ring_color,
                 width: if hover == Some(Handle::Rotate(i)) {
@@ -357,7 +365,7 @@ impl Gizmo {
                 color_role: Default::default(),
                 radius: (self.length * 6.5 / 96.) as f32,
                 hollow: false,
-                positions: self.bead(i).as_vec3().to_array().to_vec(),
+                positions: self.bead(i).as_vec3().to_array().to_vec().into(),
             });
         }
     }

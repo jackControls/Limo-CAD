@@ -101,7 +101,7 @@ pub(super) fn references(
         }
         triangles.push(crate::native_viewport::ViewportTriangleLayer {
             color: [0.45, 0.72, 1., 0.14],
-            positions,
+            positions: positions.into(),
             xray: true,
             ..Default::default()
         });
@@ -268,7 +268,7 @@ pub(super) fn references(
             [0.45, 0.72, 1., 1.]
         },
         width: 3.,
-        segments,
+        segments: segments.into(),
         ..Default::default()
     });
     Ok(ViewportPreview {
@@ -339,7 +339,7 @@ pub(super) fn face_fill(
         }
     }
     Ok(crate::native_viewport::ViewportTriangleLayer {
-        positions,
+        positions: positions.into(),
         color,
         ..Default::default()
     })
@@ -362,7 +362,7 @@ fn plane_quad(
         segments.extend(points[(i + 1) % 4]);
     }
     lines.push(ViewportLineLayer {
-        segments,
+        segments: segments.into(),
         color: [color[0], color[1], color[2], 1.],
         width: 2.,
         ..Default::default()
@@ -371,7 +371,8 @@ fn plane_quad(
         positions: [0, 1, 2, 0, 2, 3]
             .into_iter()
             .flat_map(|i| points[i])
-            .collect(),
+            .collect::<Vec<_>>()
+            .into(),
         color,
         ..Default::default()
     });
@@ -489,7 +490,7 @@ pub(super) fn build(
         lines: vec![ViewportLineLayer {
             color,
             width: 2.,
-            segments,
+            segments: segments.into(),
             ..Default::default()
         }],
         arrows: vec![ViewportArrow {
@@ -744,7 +745,7 @@ fn hole_guides(
     }
     triangles.push(crate::native_viewport::ViewportTriangleLayer {
         color: [0.45, 0.72, 1., 0.14],
-        positions: fill,
+        positions: fill.into(),
         xray: true,
         ..Default::default()
     });

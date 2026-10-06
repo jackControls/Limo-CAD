@@ -84,7 +84,7 @@ impl Draft {
 }
 #[derive(Default)]
 pub(super) struct Overlays {
-    original: Option<ViewportPreview>,
+    original: Option<Arc<ViewportPreview>>,
     revision: Option<u64>,
     key: String,
     hidden: bool,
@@ -450,7 +450,7 @@ pub(super) fn synchronize_overlay(
         .original
         .get_or_insert_with(|| native_viewport::interface_preview_snapshot(world))
         .clone();
-    let mut preview = original;
+    let mut preview = original.as_ref().clone();
     let mut labels = vec![];
     for modifier in zones {
         let (vertices, edges) = primitive(&modifier.primitive);
@@ -477,7 +477,8 @@ pub(super) fn synchronize_overlay(
                 positions: vertices
                     .iter()
                     .flat_map(|p| transform.transform_point(Vec3::from_array(*p)).to_array())
-                    .collect(),
+                    .collect::<Vec<_>>()
+                    .into(),
                 xray: true,
                 ..Default::default()
             });
@@ -487,7 +488,8 @@ pub(super) fn synchronize_overlay(
                 segments: edges
                     .iter()
                     .flat_map(|p| transform.transform_point(Vec3::from_array(*p)).to_array())
-                    .collect(),
+                    .collect::<Vec<_>>()
+                    .into(),
                 ..Default::default()
             });
             let center = transform.translation.to_array().map(|v| v as f64);

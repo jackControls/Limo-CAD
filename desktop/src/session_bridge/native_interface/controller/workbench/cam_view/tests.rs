@@ -326,7 +326,7 @@ fn marker(value: f32) -> ViewportPreview {
         lines: vec![ViewportLineLayer {
             color: [0.2, 0.7, 0.3, 1.],
             width: 1.,
-            segments: vec![value, 0., 0., value, 1., 0.],
+            segments: vec![value, 0., 0., value, 1., 0.].into(),
             ..default()
         }],
         ..default()

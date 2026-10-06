@@ -225,7 +225,8 @@ fn preview(
             .into_iter()
             .flatten()
             .flat_map(|point| basis.to_3d([point.x, point.y]).map(|v| v as f32))
-            .collect();
+            .collect::<Vec<_>>()
+            .into();
         let (_, camera, _, size) = native_viewport::interface_view(world);
         let distance = Vec3::from_array(camera.position).distance(Vec3::from_array(
             basis.to_3d([cursor.x, cursor.y]).map(|v| v as f32),
@@ -239,7 +240,8 @@ fn preview(
             .iter()
             .chain(std::iter::once(&cursor))
             .flat_map(|p| basis.to_3d([p.x, p.y]).map(|v| v as f32))
-            .collect();
+            .collect::<Vec<_>>()
+            .into();
         native_viewport::apply_interface_preview(
             world,
             &owner.document_id,
