@@ -126,7 +126,10 @@ pub(super) fn prepare_edit_history(
                 | "assembly_update_contact_set"
                 | "assembly_delete_contact_set"
         );
-    let visibility = operation == "project_set_visibility";
+    let visibility = matches!(
+        operation,
+        "project_set_visibility" | "construction_set_visibility"
+    );
     if !snapshot_edit && !visibility {
         return Ok(None);
     }

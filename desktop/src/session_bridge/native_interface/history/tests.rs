@@ -121,15 +121,32 @@ fn model(fixture: &Fixture) -> Value {
     serde_json::from_str(raw.as_str().unwrap()).unwrap()
 }
 
-fn hide_sketch(fixture: &Fixture, owner: &DocumentContext) {
-    let mut visibility = model(fixture)["visibility"].clone();
-    visibility["hidden_sketch_names"] = json!(["Sketch1"]);
-    edit(fixture, owner, "project_set_visibility", visibility);
+fn hide_sketch(fixture: &Fixture, owner: &DocumentContext, operation: &str) {
+    let arguments = match operation {
+        "construction_set_visibility" => json!({"visible":false,"sketch_names":["Sketch1"]}),
+        "project_set_visibility" => {
+            let mut visibility = model(fixture)["visibility"].clone();
+            visibility["hidden_sketch_names"] = json!(["Sketch1"]);
+            visibility
+        }
+        _ => panic!("Unexpected visibility operation: {operation}"),
+    };
+    edit(fixture, owner, operation, arguments);
 }
 
 #[test]
 fn browser_visibility_keeps_feature_edit_undo_and_current_visibility() {
     let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
+    assert_visibility_keeps_feature_edit_undo("project_set_visibility");
+}
+
+#[test]
+fn construction_visibility_keeps_feature_edit_undo_and_current_visibility() {
+    let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
+    assert_visibility_keeps_feature_edit_undo("construction_set_visibility");
+}
+
+fn assert_visibility_keeps_feature_edit_undo(operation: &str) {
     let fixture = Fixture::new();
     let owner = part(&fixture);
     let original = model(&fixture);
@@ -142,7 +159,7 @@ fn browser_visibility_keeps_feature_edit_undo_and_current_visibility() {
             "extent":{"type":"distance","distance":25.},"taper_angle_deg":0.,
             "flip":false,"target_body_ids":[]}}),
     );
-    hide_sketch(&fixture, &owner);
+    hide_sketch(&fixture, &owner, operation);
     let undone = fixture
         .bridge
         .apply_native_history(&fixture.engine, &owner, false, || Ok(()))
@@ -173,6 +190,16 @@ fn browser_visibility_keeps_feature_edit_undo_and_current_visibility() {
 #[test]
 fn browser_visibility_keeps_deleted_feature_redo_and_current_visibility() {
     let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
+    assert_visibility_keeps_deleted_feature_redo("project_set_visibility");
+}
+
+#[test]
+fn construction_visibility_keeps_deleted_feature_redo_and_current_visibility() {
+    let _lock = super::super::super::tests::TEST_LOCK.lock().unwrap();
+    assert_visibility_keeps_deleted_feature_redo("construction_set_visibility");
+}
+
+fn assert_visibility_keeps_deleted_feature_redo(operation: &str) {
     let fixture = Fixture::new();
     let owner = part(&fixture);
     fixture
@@ -180,7 +207,7 @@ fn browser_visibility_keeps_deleted_feature_redo_and_current_visibility() {
         .apply_native_history(&fixture.engine, &owner, false, || Ok(()))
         .unwrap();
     assert_eq!(fixture.engine.document_snapshot().features.len(), 1);
-    hide_sketch(&fixture, &owner);
+    hide_sketch(&fixture, &owner, operation);
     assert!(
         fixture
             .bridge
