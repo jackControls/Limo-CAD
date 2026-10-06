@@ -1277,6 +1277,49 @@ pub(crate) fn compact_label(world: &mut World, entity: Entity, inset: f32) {
     world.entity_mut(entity).insert(InterfaceFlat);
 }
 
+#[derive(Component)]
+struct CaptionClip(Entity);
+
+/// Clip the painted caption while retaining the control's full accessible name
+/// and hit area. Bevy clips descendants, so the text needs its own container.
+pub(crate) fn clip_caption(world: &mut World, entity: Entity, inset: f32, trailing: f32) {
+    let label = world.get::<InterfaceLabel>(entity).unwrap().0;
+    let clip = if let Some(clip) = world.get::<CaptionClip>(entity) {
+        clip.0
+    } else {
+        let clip = world.spawn_empty().id();
+        world
+            .entity_mut(entity)
+            .add_child(clip)
+            .insert(CaptionClip(clip));
+        world.entity_mut(clip).add_child(label);
+        caption_node(
+            world,
+            entity,
+            Node {
+                min_width: px(0.),
+                flex_shrink: 0.,
+                ..default()
+            },
+        );
+        clip
+    };
+    let bounds = Node {
+        position_type: PositionType::Absolute,
+        left: px(inset),
+        right: px(trailing),
+        top: px(0.),
+        bottom: px(0.),
+        min_width: px(0.),
+        align_items: AlignItems::Center,
+        overflow: Overflow::clip(),
+        ..default()
+    };
+    if world.get::<Node>(clip) != Some(&bounds) {
+        world.entity_mut(clip).insert(bounds);
+    }
+}
+
 pub(crate) fn caption_node(world: &mut World, entity: Entity, node: Node) {
     if let Some(label) = world.get::<InterfaceLabel>(entity).map(|label| label.0) {
         if world.get::<Node>(label) != Some(&node) {

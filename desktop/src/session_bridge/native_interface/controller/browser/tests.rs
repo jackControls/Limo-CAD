@@ -2,6 +2,157 @@ use super::*;
 use crate::session_bridge::native_interface::tests::Fixture;
 
 #[test]
+fn long_browser_names_clip_before_actions_at_multiple_scales() {
+    use bevy::camera::{ComputedCameraValues, RenderTargetInfo, Viewport};
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::text::TextLayoutInfo;
+    use bevy::ui::{CalculatedClip, UiGlobalTransform};
+
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = fixture.owner();
+    let document_name =
+        "Garden bench / named stock, face laps and referenced joinery / review assembly";
+    let sketch_name =
+        "Left rear leg and back post / 65 x 65 x 790 mm stock from A-B-C / mounting faces";
+    for (operation, arguments) in [
+        ("cad_set_document_name", json!({"name":document_name})),
+        (
+            "sketch_begin",
+            json!({"name":sketch_name,"plane":{"type":"origin_plane","plane":"xy"}}),
+        ),
+    ] {
+        fixture
+            .bridge
+            .apply_native_mutation(&fixture.engine, &owner, operation, &arguments, || Ok(()))
+            .unwrap();
+    }
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+    let mut app = native_viewport::interface_scene_fixture();
+    app.add_schedule(Schedule::new(PostUpdate))
+        .add_plugins((bevy::text::TextPlugin, bevy::ui::UiPlugin))
+        .init_resource::<Assets<Image>>()
+        .init_resource::<Assets<bevy::image::TextureAtlasLayout>>()
+        .init_resource::<Time<bevy::time::Real>>()
+        .init_resource::<bevy::input_focus::InputFocus>();
+    app.world_mut().spawn((
+        Camera2d,
+        InterfaceCamera,
+        Camera {
+            computed: ComputedCameraValues {
+                target_info: Some(RenderTargetInfo {
+                    physical_size: UVec2::new(1600, 1200),
+                    scale_factor: 1.,
+                }),
+                ..default()
+            },
+            viewport: Some(Viewport {
+                physical_size: UVec2::new(1600, 1200),
+                ..default()
+            }),
+            ..default()
+        },
+    ));
+    app.world_mut()
+        .run_system_once(crate::native_viewport::ui::load_system_font)
+        .unwrap();
+    let mut scroll = 0.;
+    for (width, scale) in [(168., 1.), (240., 1.5), (360., 2.)] {
+        app.world_mut().resource_mut::<bevy::ui::UiScale>().0 = scale;
+        for _ in 0..2 {
+            synchronize(
+                app.world_mut(),
+                &services,
+                &owner,
+                2,
+                InterfaceRect {
+                    x: 0.,
+                    y: 120.,
+                    width,
+                    height: 440.,
+                },
+                &mut scroll,
+            )
+            .unwrap();
+            app.world_mut().run_schedule(PostUpdate);
+        }
+        let world = app.world_mut();
+        let row = world
+            .query::<(Entity, &InterfaceControl)>()
+            .iter(world)
+            .find(|(_, control)| control.label == sketch_name)
+            .unwrap()
+            .0;
+        let label = world
+            .query::<(Entity, &Text)>()
+            .iter(world)
+            .find(|(_, text)| text.0 == sketch_name)
+            .unwrap()
+            .0;
+        let layout = world.get::<TextLayoutInfo>(label).unwrap();
+        assert!(
+            !layout.glyphs.is_empty(),
+            "The regression must shape actual text"
+        );
+        assert!(
+            layout.size.x > width as f32 * scale,
+            "Use a name that actually overflows"
+        );
+        let clip = world.get::<CalculatedClip>(label).unwrap().clone();
+        for action in [format!("Edit {sketch_name}"), format!("Hide {sketch_name}")] {
+            let center = world
+                .query::<(&InterfaceControl, &UiGlobalTransform)>()
+                .iter(world)
+                .find(|(control, _)| control.label == action)
+                .unwrap()
+                .1
+                .translation;
+            assert!(
+                !clip.contains_point(center),
+                "The caption paints over {action}"
+            );
+        }
+        let row_center = world.get::<UiGlobalTransform>(row).unwrap().translation;
+        assert!(
+            clip.contains_point(Vec2::new(90. * scale, row_center.y)),
+            "The caption must retain a visible region"
+        );
+        let title = world.resource::<Browser>().labels["document"];
+        let units = world.resource::<Browser>().labels["units"];
+        let units_center = world.get::<UiGlobalTransform>(units).unwrap().translation;
+        assert!(
+            !world
+                .get::<CalculatedClip>(title)
+                .unwrap()
+                .contains_point(units_center),
+            "The document title paints over its units"
+        );
+        let title_layout = world.get::<TextLayoutInfo>(title).unwrap();
+        assert!(!title_layout.glyphs.is_empty());
+    }
+    let containers: Vec<_> = app
+        .world()
+        .resource::<Browser>()
+        .text_boxes
+        .values()
+        .copied()
+        .collect();
+    hide(app.world_mut());
+    assert!(containers
+        .iter()
+        .all(|entity| app.world().get_entity(*entity).is_err()));
+    assert!(app.world().resource::<Browser>().text_boxes.is_empty());
+    assert!(app
+        .world_mut()
+        .query::<&Text>()
+        .iter(app.world())
+        .all(|text| text.0 != sketch_name && text.0 != document_name));
+}
+
+#[test]
 fn entering_sketch_reveals_its_browser_row_without_overriding_later_collapse() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();

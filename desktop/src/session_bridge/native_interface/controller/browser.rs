@@ -29,6 +29,7 @@ struct Browser {
     active_sketch: Option<String>,
     widgets: HashMap<String, (Entity, BrowserCommand, Icon)>,
     labels: HashMap<String, Entity>,
+    text_boxes: HashMap<String, Entity>,
 }
 
 fn find(nodes: &[BrowserNode], id: u64) -> Option<&BrowserNode> {
@@ -450,8 +451,18 @@ fn text(
             ))
             .id()
     });
-    if world.get::<Node>(entity) != Some(&bounds) {
-        world.entity_mut(entity).insert(bounds);
+    let container = *state.text_boxes.entry(key.into()).or_insert_with(|| {
+        let container = world.spawn((UiTargetCamera(camera), ZIndex(30))).id();
+        world.entity_mut(container).add_child(entity);
+        world.entity_mut(entity).insert(Node {
+            min_width: px(0.),
+            flex_shrink: 0.,
+            ..default()
+        });
+        container
+    });
+    if world.get::<Node>(container) != Some(&bounds) {
+        world.entity_mut(container).insert(bounds);
     }
     if world.get::<Text>(entity).is_none_or(|text| text.0 != value) {
         world.entity_mut(entity).insert(Text::new(value));
@@ -584,12 +595,12 @@ pub(crate) fn synchronize(
         badge.border = UiRect::all(px(1.));
         badge.border_radius = BorderRadius::all(px(3.));
         badge.justify_content = JustifyContent::Center;
-        world.entity_mut(units).insert((
-            badge,
-            BorderColor::all(theme.edge),
-            TextColor(theme.mute),
-            TextLayout::justify(Justify::Center),
-        ));
+        world
+            .entity_mut(state.text_boxes["units"])
+            .insert((badge, BorderColor::all(theme.edge)));
+        world
+            .entity_mut(units)
+            .insert((TextColor(theme.mute), TextLayout::justify(Justify::Center)));
         *scroll = scroll
             .min((visible.len() as f32 * 24. - (height - 66.)).max(0.))
             .max(0.);
@@ -639,6 +650,19 @@ pub(crate) fn synchronize(
                 expanded,
                 false,
             )?;
+            let row = state.widgets[&format!("row-{id}")].0;
+            interface_shell::clip_caption(
+                world,
+                row,
+                indent - x + 37.,
+                if n.kind == Kind::Sketch {
+                    48.
+                } else if can_hide {
+                    26.
+                } else {
+                    6.
+                },
+            );
             if n.kind == Kind::Sketch {
                 let entity = state.widgets[&format!("row-{id}")].0;
                 let active = state.active_sketch.as_deref() == Some(name);
@@ -748,6 +772,9 @@ pub(crate) fn hide(world: &mut World) {
             world.despawn(entity);
         }
         for (_, entity) in state.labels.drain() {
+            world.despawn(entity);
+        }
+        for (_, entity) in state.text_boxes.drain() {
             world.despawn(entity);
         }
         world.insert_resource(state);
