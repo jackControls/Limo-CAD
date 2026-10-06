@@ -1091,6 +1091,9 @@ fn widget(
         interface_shell::caption_size(world, entity, 12.);
         interface_shell::center_caption(world, entity);
     }
+    if key == "cancel" {
+        interface_shell::caption_weight(world, entity, FontWeight::NORMAL);
+    }
     if key == "close" {
         world
             .entity_mut(entity)

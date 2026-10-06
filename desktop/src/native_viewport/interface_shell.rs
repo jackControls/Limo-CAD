@@ -43,6 +43,7 @@ type StyledControlQuery<'w, 's> = Query<
         Option<&'static InterfaceCaption>,
         Option<&'static InterfaceFlat>,
         Option<&'static InterfaceReference>,
+        Option<&'static PrimaryButton>,
         &'static mut Node,
         &'static mut BackgroundColor,
         &'static mut BorderColor,
@@ -1678,6 +1679,7 @@ fn update_controls(
         caption,
         flat,
         reference,
+        primary,
         mut node,
         mut background,
         mut border,
@@ -1719,10 +1721,15 @@ fn update_controls(
         } else {
             theme.panel
         };
+        let fill = if primary.is_some() && control.disabled {
+            fill.with_alpha(0.4)
+        } else {
+            fill
+        };
         if background.0 != fill {
             background.0 = fill;
         }
-        let edge = BorderColor::all(
+        let mut edge = BorderColor::all(
             if shared.focused == Some(key) || (reference.is_some() && active) {
                 theme.accent
             } else if ribbon.is_some() || flat.is_some() {
@@ -1731,6 +1738,9 @@ fn update_controls(
                 theme.edge
             },
         );
+        if primary.is_some() && control.disabled {
+            edge = BorderColor::all(theme.edge.with_alpha(0.4));
+        }
         if *border != edge {
             *border = edge;
         }
@@ -1763,6 +1773,10 @@ fn update_controls(
                 ribbon.ink(theme, control.disabled)
             } else if control.role == "heading" {
                 theme.mute
+            } else if primary.is_some() && control.disabled {
+                // Match the reference's opacity on the whole submit button:
+                // blend its white caption over the dialog footer, too.
+                ribbon::css_mix(theme.ink, theme.header, 0.4)
             } else if control.disabled {
                 ribbon::css_mix(theme.mute, theme.panel, 0.4)
             } else {

@@ -14,7 +14,7 @@ Stacked base: PR124 (`feat/bevy-interface`), commit
 | Drawing acquisition | Only Line presents a snap marker; other tools use fixed engine defaults | Share cursor acquisition across every creation tool, including polygon center placement. Origin and point capture use 14 logical pixels; grid capture uses 7. The grid interval follows the visible 1–2–5 lattice at the current zoom. |
 | Sketch tool groups | Dimension and Select are combined into other groups; dividers are missing | Restore DRAW, EDIT, DIMENSION, REPEAT, CONSTRAIN and SELECT, with vertical dividers and centered inline captions/chevrons. Compact layouts retain group menus for secondary commands. |
 | Additional chrome | Palette and browser typography, borders, rows and active-sketch presentation differ | Match palette width/spacing/title/footer, Flat View icon, browser heading/divider/units badge, plane labels, active sketch emphasis and automatic folder expansion, plus history caption treatment. |
-| Feature panels used in a combined workflow | Missing header icons, larger titles, plain field labels and full-width footer buttons | Use the reference's Lucide header artwork, 12 px titles, tracked 10 px uppercase field labels, directional header wash, header/footer dividers, compact right-aligned Cancel/OK buttons and 20 px right inset. |
+| Feature panels used in a combined workflow | Missing header icons, larger titles, plain field labels and full-width footer buttons | Use the reference's Lucide header artwork, 12 px titles, tracked 10 px uppercase field labels, directional header wash, header/footer dividers, compact right-aligned Cancel/OK buttons, regular Cancel text, 40% disabled submit opacity and 20 px right inset. |
 
 ## Launch diagnosis
 
