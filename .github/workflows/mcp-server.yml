@@ -113,6 +113,19 @@ jobs:
           runner-cache-key: windows-2025-x64-windows-msvc
           msvc-component: Microsoft.VisualStudio.Component.VC.Tools.x86.x64
 
+      - name: Lint native Rust workspaces
+        if: matrix.shard == 'core'
+        shell: pwsh
+        env:
+          OCCT_ROOT: ${{ steps.occt.outputs.root }}
+          CARGO_TARGET_DIR: ${{ github.workspace }}/mcp-server/target
+        run: |
+          $env:Path = "$env:OCCT_ROOT\bin;$env:Path"
+          cargo clippy --locked --workspace --all-targets --all-features --no-deps -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw "Native workspace lint failed" }
+          cargo clippy --locked --manifest-path mcp-server/Cargo.toml --all-targets --all-features --no-deps -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw "MCP lint failed" }
+
       - name: MCP server tests
         id: native-tests
         shell: pwsh
@@ -248,6 +261,15 @@ jobs:
           test -n "$package"
           sudo dpkg-deb --extract "$package" /
           popd
+
+      - name: Lint native Rust workspaces
+        if: matrix.shard == 'core'
+        env:
+          OCCT_ROOT: /usr
+          CARGO_TARGET_DIR: ${{ github.workspace }}/mcp-server/target
+        run: |
+          cargo clippy --locked --workspace --all-targets --all-features --no-deps -- -D warnings
+          cargo clippy --locked --manifest-path mcp-server/Cargo.toml --all-targets --all-features --no-deps -- -D warnings
 
       - name: MCP server tests
         id: native-tests

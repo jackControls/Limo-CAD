@@ -30,6 +30,8 @@ jobs:
       - uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4
       - name: Install pinned WASM packager
         run: cargo xtask bootstrap --wasm
+      - name: Lint WASM engine targets
+        run: cargo clippy --locked -p limo-cad-wasm --target wasm32-unknown-unknown --all-targets --no-deps -- -D warnings
       - name: Build Rust engine bindings
         run: cargo xtask build-wasm
       - name: Exercise the exported facade in Chrome
@@ -50,9 +52,7 @@ jobs:
           cargo fmt --manifest-path desktop/Cargo.toml --all -- --check
           cargo fmt --manifest-path mcp-server/Cargo.toml --all -- --check
       - name: Lint all host-neutral targets
-        run: cargo clippy --locked --workspace --all-targets
-      - name: Reject warnings in repository task targets
-        run: cargo clippy --locked --no-deps -p xtask --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --no-deps -- -D warnings
       - name: Fetch and verify embedded material catalog
         run: cargo xtask materials --fetch --check
       - name: Fetch and verify embedded printer profiles
