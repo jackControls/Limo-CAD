@@ -270,6 +270,83 @@ fn painted_panel_blocks_geometry_and_underlying_controls_but_not_its_children() 
     assert!(!handle.owns_pointer([230., 160.]));
 }
 
+#[test]
+fn canvas_input_respects_topmost_panels_controls_and_owner_changes() {
+    let (mut app, handle, button, _) = fixture();
+    let cursor = [140., 140.];
+    let paper = app
+        .world_mut()
+        .spawn((
+            InterfaceOccluder,
+            InterfaceCanvasOccluder("drawing"),
+            ComputedNode {
+                size: Vec2::new(160., 80.),
+                inverse_scale_factor: 1.,
+                ..default()
+            },
+            UiGlobalTransform::from_translation(Vec2::new(60., 42.)),
+            ComputedStackIndex(2),
+            InheritedVisibility::VISIBLE,
+        ))
+        .id();
+    app.update();
+    assert!(handle.owns_pointer(cursor));
+    assert!(handle.canvas_owns_pointer("drawing", cursor));
+    assert!(!handle.canvas_owns_pointer("viewport", cursor));
+    click(&handle).unwrap();
+    assert!(handle.take_actions().unwrap().is_empty());
+
+    app.world_mut()
+        .entity_mut(paper)
+        .remove::<InterfaceCanvasOccluder>();
+    app.update();
+    assert!(handle.owns_pointer(cursor));
+    assert!(!handle.canvas_owns_pointer("drawing", cursor));
+    app.world_mut()
+        .entity_mut(paper)
+        .insert(InterfaceCanvasOccluder("drawing"));
+    app.update();
+    assert!(handle.canvas_owns_pointer("drawing", cursor));
+
+    let overlay = app
+        .world_mut()
+        .spawn((
+            InterfaceOccluder,
+            ComputedNode {
+                size: Vec2::new(80., 24.),
+                inverse_scale_factor: 1.,
+                ..default()
+            },
+            UiGlobalTransform::from_translation(Vec2::new(60., 42.)),
+            ComputedStackIndex(3),
+            InheritedVisibility::VISIBLE,
+        ))
+        .id();
+    app.update();
+    assert!(!handle.canvas_owns_pointer("drawing", cursor));
+    app.world_mut().despawn(overlay);
+    app.update();
+    assert!(handle.canvas_owns_pointer("drawing", cursor));
+
+    app.world_mut()
+        .entity_mut(button)
+        .insert(ComputedStackIndex(4));
+    app.update();
+    assert!(!handle.canvas_owns_pointer("drawing", cursor));
+    click(&handle).unwrap();
+    assert_eq!(handle.take_actions().unwrap().len(), 1);
+    app.world_mut()
+        .entity_mut(button)
+        .insert(ComputedStackIndex(1));
+    app.world_mut()
+        .entity_mut(paper)
+        .insert(CalculatedClip::FullyClipped);
+    app.update();
+    assert!(!handle.canvas_owns_pointer("drawing", cursor));
+    click(&handle).unwrap();
+    assert_eq!(handle.take_actions().unwrap().len(), 1);
+}
+
 fn request(handle: &NativeInterfaceHandle) -> ControlRequest {
     let inspected = handle.inspect().unwrap();
     ControlRequest::Click {

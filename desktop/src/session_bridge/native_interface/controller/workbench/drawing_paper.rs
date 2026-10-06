@@ -287,6 +287,17 @@ fn arrow_texture(world: &mut World) -> Handle<Image> {
     handle
 }
 
+fn mark_paper_input(world: &mut World, entity: Entity) {
+    if world
+        .get::<interface_shell::InterfaceCanvasOccluder>(entity)
+        .is_none()
+    {
+        world
+            .entity_mut(entity)
+            .insert(interface_shell::InterfaceCanvasOccluder("drawing"));
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn paint_primitives(
     world: &mut World,
@@ -316,6 +327,7 @@ fn paint_primitives(
         }
         widgets.panel(world, camera, &key, node, Color::WHITE, fill_layer);
         widgets.parent(world, &key, paper);
+        mark_paper_input(world, widgets.entity(&key).unwrap());
     }
     for (index, segment) in segments.iter().enumerate() {
         let (x1, y1) = place(0., 0., scale, segment.x1, segment.y1);
@@ -356,6 +368,7 @@ fn paint_primitives(
         );
         widgets.parent(world, &key, paper);
         if let Some(entity) = widgets.entity(&key) {
+            mark_paper_input(world, entity);
             if segment.arrow {
                 let texture = arrow_texture(world);
                 world.entity_mut(entity).insert(ImageNode {
@@ -389,6 +402,7 @@ fn paint_primitives(
         );
         widgets.parent(world, &box_key, paper);
         let label_box = widgets.entity(&box_key).unwrap();
+        mark_paper_input(world, label_box);
         world
             .entity_mut(label_box)
             .insert(UiTransform::from_rotation(Rot2::radians(label.angle)));

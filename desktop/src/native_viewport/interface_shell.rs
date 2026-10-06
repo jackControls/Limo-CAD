@@ -76,6 +76,7 @@ type OccluderQuery<'w, 's> = Query<
         Ref<'static, ComputedStackIndex>,
         Option<Ref<'static, CalculatedClip>>,
         Ref<'static, InheritedVisibility>,
+        Option<Ref<'static, InterfaceCanvasOccluder>>,
     ),
     With<InterfaceOccluder>,
 >;
@@ -180,6 +181,18 @@ pub(crate) struct InterfaceTextRevision(pub u64);
 #[derive(Component, Clone, Default)]
 pub(crate) struct InterfaceOccluder;
 
+/// Painted canvas content still blocks model picking, but accepts input owned
+/// by that canvas. Controls and panels above it retain their normal ownership.
+#[derive(Component, Clone, Copy)]
+pub(crate) struct InterfaceCanvasOccluder(pub &'static str);
+
+#[derive(Clone, Copy)]
+enum HitTarget {
+    Control(ControlKey),
+    Canvas(&'static str),
+    Occluder,
+}
+
 impl InterfaceControl {
     pub fn button(surface: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
@@ -251,7 +264,7 @@ struct Shared {
     desired_frame: Option<InterfaceFrame>,
     presented_frame: Option<InterfaceFrame>,
     presented_ui_scale: f32,
-    hit_order: Vec<(Option<ControlKey>, HitArea)>,
+    hit_order: Vec<(HitTarget, HitArea)>,
     receipt: RenderReceipt,
     submission_waiter: Option<u64>,
     render_dirty: bool,
@@ -610,6 +623,19 @@ impl NativeInterfaceHandle {
                 .hit_order
                 .iter()
                 .any(|(_, area)| area.contains(point))
+        })
+    }
+
+    pub(crate) fn canvas_owns_pointer(&self, canvas: &str, point: [f64; 2]) -> bool {
+        self.shared.lock().is_ok_and(|shared| {
+            shared
+                .hit_order
+                .iter()
+                .rev()
+                .find(|(_, area)| area.contains(point))
+                .is_some_and(
+                    |(target, _)| matches!(target, HitTarget::Canvas(owner) if *owner == canvas),
+                )
         })
     }
 
@@ -1145,7 +1171,10 @@ fn hit(shared: &Shared, point: [f64; 2]) -> Option<ControlKey> {
         .iter()
         .rev()
         .find(|(_, area)| area.contains(point))
-        .and_then(|(key, _)| *key)
+        .and_then(|(target, _)| match target {
+            HitTarget::Control(key) => Some(*key),
+            HitTarget::Canvas(_) | HitTarget::Occluder => None,
+        })
 }
 
 fn valid_rect(rect: InterfaceRect) -> bool {
@@ -1796,6 +1825,7 @@ fn publish_layout(
     controls: RenderedControlQuery,
     occluders: OccluderQuery,
     mut removed_occluders: RemovedComponents<InterfaceOccluder>,
+    mut removed_canvas_owners: RemovedComponents<InterfaceCanvasOccluder>,
     mut removed: RemovedComponents<InterfaceControl>,
     mut removed_clips: RemovedComponents<CalculatedClip>,
     mut last_revision: Local<Option<u64>>,
@@ -1805,7 +1835,8 @@ fn publish_layout(
     };
     let removed = removed.read().count() > 0
         || removed_clips.read().count() > 0
-        || removed_occluders.read().count() > 0;
+        || removed_occluders.read().count() > 0
+        || removed_canvas_owners.read().count() > 0;
     if *last_revision == Some(shared.revision)
         && !removed
         && scale
@@ -1813,12 +1844,13 @@ fn publish_layout(
             .is_none_or(|scale| scale.0 == shared.presented_ui_scale)
         && !occluders
             .iter()
-            .any(|(node, transform, stack, clip, visibility)| {
+            .any(|(node, transform, stack, clip, visibility, canvas)| {
                 node.is_changed()
                     || transform.is_changed()
                     || stack.is_changed()
                     || clip.as_ref().is_some_and(|clip| clip.is_changed())
                     || visibility.is_changed()
+                    || canvas.as_ref().is_some_and(|canvas| canvas.is_changed())
             })
         && !controls.iter().any(
             |(_, control, node, transform, stack, clip, visibility, _, text)| {
@@ -1902,15 +1934,18 @@ fn publish_layout(
     let mut hits: Vec<_> = stacked
         .iter()
         .filter(|(_, control, _)| control.visible)
-        .map(|(stack, control, area)| (*stack, Some(control.key), area.clone()))
+        .map(|(stack, control, area)| (*stack, HitTarget::Control(control.key), area.clone()))
         .collect();
-    for (node, transform, stack, clip, visibility) in &occluders {
+    for (node, transform, stack, clip, visibility, canvas) in &occluders {
         if !visibility.get() {
             continue;
         }
         let area = HitArea::new(&node, &transform, clip.as_deref(), frame.surface);
         if area.bounds.width > 0. && area.bounds.height > 0. {
-            hits.push((stack.0, None, area));
+            let target = canvas
+                .as_ref()
+                .map_or(HitTarget::Occluder, |canvas| HitTarget::Canvas(canvas.0));
+            hits.push((stack.0, target, area));
         }
     }
     hits.sort_by_key(|(stack, _, _)| *stack);

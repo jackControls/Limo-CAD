@@ -47,6 +47,28 @@ fn setup(fixture: &Fixture) -> (App, NativeInterfaceHandle, NativeServices) {
     )
     .unwrap();
     state.widgets.finish(world);
+    let clip = state
+        .paper_view
+        .as_ref()
+        .unwrap()
+        .navigation
+        .transform()
+        .clip;
+    world
+        .entity_mut(state.widgets.entity("drawing-content-clip").unwrap())
+        .insert((
+            ComputedNode {
+                size: Vec2::new(clip.width as f32, clip.height as f32),
+                inverse_scale_factor: 1.,
+                ..default()
+            },
+            UiGlobalTransform::from_translation(Vec2::new(
+                (clip.x + clip.width * 0.5) as f32,
+                (clip.y + clip.height * 0.5) as f32,
+            )),
+            ComputedStackIndex(7),
+            InheritedVisibility::VISIBLE,
+        ));
     runtime::synchronize(world, camera, &services, &owner, (860., 240.), true, &state).unwrap();
     let mut frame = handle.frame().unwrap();
     frame.context = owner;
@@ -118,6 +140,8 @@ fn mcp_paper_click_places_a_note_with_native_history() {
     let before = fixture.engine.engine_call("project_export_model", "");
     let world = app.world_mut();
     let cursor = point(world, [70., 80.]);
+    assert!(handle.owns_pointer(cursor));
+    assert!(handle.canvas_owns_pointer("drawing", cursor));
     {
         let mut editor = world.resource_mut::<runtime::Editor>();
         editor.tool = Some(runtime::Tool::Note);
@@ -264,6 +288,30 @@ fn mcp_paper_rejects_world_points_overlays_and_retired_owners() {
     )
     .unwrap_err()
     .contains("outside"));
+    let overlay = world
+        .spawn((
+            interface_shell::InterfaceOccluder,
+            ComputedNode {
+                size: Vec2::new(100., 40.),
+                inverse_scale_factor: 1.,
+                ..default()
+            },
+            UiGlobalTransform::from_translation(Vec2::new(cursor[0] as f32, cursor[1] as f32)),
+            ComputedStackIndex(99),
+            InheritedVisibility::VISIBLE,
+        ))
+        .id();
+    interface_shell::tests::publish_layout_once(world, handle.clone());
+    assert!(!handle.canvas_owns_pointer("drawing", cursor));
+    assert!(drive(
+        world,
+        &handle,
+        &services,
+        json!({"gesture":"click","canvas":"drawing","point":cursor})
+    )
+    .unwrap_err()
+    .contains("covers"));
+    world.despawn(overlay);
     world.spawn((
         InterfaceControl::button("document/session", "Overlay"),
         ComputedNode {

@@ -155,7 +155,9 @@ pub(crate) fn drive(
             return Err("Point is outside the canvas".into());
         }
         if handle.owns_pointer(point)
-            && !(drawing && workbench::drawing_canvas_control(world, handle, point))
+            && !(drawing
+                && (handle.canvas_owns_pointer("drawing", point)
+                    || workbench::drawing_canvas_control(world, handle, point)))
         {
             return Err("A native control covers that canvas point".into());
         }

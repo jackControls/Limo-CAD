@@ -414,6 +414,7 @@ fn draw(
         7,
     );
     let parent = state.widgets.entity("drawing-content-clip").unwrap();
+    mark_paper_input(world, parent);
     world.get_mut::<Node>(parent).unwrap().overflow = Overflow::clip();
     world.entity_mut(parent).insert(bevy::ui::LayoutConfig {
         use_rounding: false,
@@ -433,6 +434,7 @@ fn draw(
     );
     state.widgets.parent(world, "drawing-paper", parent);
     let paper = state.widgets.entity("drawing-paper").unwrap();
+    mark_paper_input(world, paper);
     world.get_mut::<Node>(paper).unwrap().overflow = Overflow::clip();
     world.entity_mut(paper).insert(bevy::ui::LayoutConfig {
         use_rounding: false,
@@ -461,6 +463,10 @@ fn draw(
     world
         .entity_mut(state.widgets.entity("drawing-projected-edges").unwrap())
         .insert(ImageNode::new(image));
+    mark_paper_input(
+        world,
+        state.widgets.entity("drawing-projected-edges").unwrap(),
+    );
     world.resource_scope(|world, cache: Mut<FrameCache>| {
         let art = &cache.0.as_ref().unwrap().1;
         paint_primitives(
