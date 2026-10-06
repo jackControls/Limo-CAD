@@ -1718,6 +1718,7 @@ fn clamp_await_timeout_ms(timeout_ms: u64) -> u64 {
 /// Poll disk until the inbox seq has an applied/failed receipt and (for
 /// applied) an explicit publisher generation has caught up to the engine, or
 /// until `timeout_ms` elapses. `timeout_ms == 0` is a single observation.
+/// Waiting uses monotonic time independently of publisher wall-clock timestamps.
 ///
 /// Does **not** write `model.json`. Does **not** claim in-process co-link.
 pub fn await_inbox_apply(
@@ -1739,11 +1740,11 @@ fn await_inbox_apply_observing(
     require_valid_session_id(session_id)?;
     let timeout_ms = clamp_await_timeout_ms(timeout_ms);
     let poll_ms = poll_ms.clamp(1, 1_000);
-    let started = now_ms();
-    let deadline = started.saturating_add(timeout_ms);
+    let started = std::time::Instant::now();
+    let timeout = std::time::Duration::from_millis(timeout_ms);
 
     loop {
-        let elapsed_ms = now_ms().saturating_sub(started);
+        let elapsed_ms = started.elapsed().as_millis() as u64;
         let receipt = inbox_op_receipt(session_id, seq)?;
         let replacement_session_id = match &receipt {
             InboxReceipt::Applied {
@@ -1861,7 +1862,7 @@ fn await_inbox_apply_observing(
                     return Ok(result);
                 }
 
-                if timeout_ms == 0 || now_ms() >= deadline {
+                if timeout_ms == 0 || started.elapsed() >= timeout {
                     let mut result = json!({
                         "status": "timeout",
                         "timed_out": true,
@@ -1889,7 +1890,7 @@ fn await_inbox_apply_observing(
                 }
             }
             InboxReceipt::Pending => {
-                if timeout_ms == 0 || now_ms() >= deadline {
+                if timeout_ms == 0 || started.elapsed() >= timeout {
                     let status = if timeout_ms == 0 {
                         "pending"
                     } else {
@@ -1916,7 +1917,7 @@ fn await_inbox_apply_observing(
             }
         }
 
-        let remaining = deadline.saturating_sub(now_ms());
+        let remaining = timeout.saturating_sub(started.elapsed()).as_millis() as u64;
         let sleep_ms = poll_ms.min(remaining.max(1));
         std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
     }
