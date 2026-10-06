@@ -4,7 +4,7 @@
 use super::*;
 use crate::native_viewport::winit_host::{cancel_native_pointer, prepare_native_input, Modifiers};
 use crate::session_bridge::native_interface::controller::{
-    cancel_canvas_navigation, navigate_canvas_input, reduce_control_input,
+    cancel_canvas_navigation, navigate_canvas_input, reduce_control_input, workbench,
 };
 use bevy::{
     input::mouse::MouseButtonInput,
@@ -21,9 +21,28 @@ enum Gesture {
     Drag,
 }
 
+#[derive(Clone, Copy, Default, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum PointerButton {
+    #[default]
+    Left,
+    Middle,
+}
+
+impl From<PointerButton> for MouseButton {
+    fn from(button: PointerButton) -> Self {
+        match button {
+            PointerButton::Left => Self::Left,
+            PointerButton::Middle => Self::Middle,
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct Request {
     gesture: Gesture,
+    #[serde(default)]
+    button: PointerButton,
     #[serde(default)]
     canvas: Option<String>,
     point: Option<[f64; 2]>,
@@ -84,29 +103,38 @@ pub(crate) fn drive(
     }
     let request: Request =
         serde_json::from_value(request.clone()).map_err(|e| format!("Canvas gesture: {e}"))?;
-    let canvas_name = request.canvas.as_deref().unwrap_or("viewport");
-    if canvas_name != "viewport" {
-        return Err("The native drawing canvas is not available yet".into());
-    }
-    let bounds = handle.read_surface(|context, frame| {
+    let (drawing, bounds) = handle.read_surface(|context, frame| {
         if context != owner {
             return Err("Canvas gesture belongs to a retired document".to_owned());
         }
         if !frame.modal_stack.is_empty() {
             return Err("Close the current dialog before using the canvas".to_owned());
         }
+        let canvas_name = request.canvas.as_deref().unwrap_or_else(|| {
+            if frame.canvases.iter().any(|canvas| canvas.name == "drawing") {
+                "drawing"
+            } else {
+                "viewport"
+            }
+        });
+        if !matches!(canvas_name, "viewport" | "drawing") {
+            return Err(format!("Unknown native canvas: {canvas_name}"));
+        }
         frame
             .canvases
             .iter()
             .find(|c| c.name == canvas_name)
-            .map(|c| c.bounds)
-            .ok_or_else(|| "The model canvas is unavailable".to_owned())
+            .map(|c| (canvas_name == "drawing", c.bounds))
+            .ok_or_else(|| format!("The {canvas_name} canvas is unavailable"))
     })??;
     services
         .bridge
         .with_native_document_owner(&services.engine, owner, || Ok(()))?;
     let point = match (request.point, request.world) {
         (Some(point), None) => point,
+        (None, Some(_)) if drawing => {
+            return Err("Drawing gestures require client point coordinates from inspect".into());
+        }
         (None, Some(point)) => {
             let point = native_viewport::interface_world_point(world, &owner.document_id, point)?
                 .ok_or("The requested world point is behind the camera")?;
@@ -126,15 +154,26 @@ pub(crate) fn drive(
         if !inside(bounds, point) {
             return Err("Point is outside the canvas".into());
         }
-        if handle.owns_pointer(point) {
+        if handle.owns_pointer(point)
+            && !(drawing && workbench::drawing_canvas_control(world, handle, point))
+        {
             return Err("A native control covers that canvas point".into());
         }
     }
-    initialize(world);
+    if !drawing {
+        initialize(world);
+    }
     if request.gesture == Gesture::DoubleClick
-        && world.resource::<Editor>().draft.tool != Some(CreateTool::Spline)
+        && (drawing
+            || request.button != PointerButton::Left
+            || world.resource::<Editor>().draft.tool != Some(CreateTool::Spline))
     {
-        return Err("Double-click editing is not migrated for this native tool yet".into());
+        return Err(if drawing {
+            "Use click to select a drawing annotation"
+        } else {
+            "Double-click completes an active sketch spline"
+        }
+        .into());
     }
     let mut windows = world.query_filtered::<Entity, With<PrimaryWindow>>();
     let window = windows
@@ -148,7 +187,7 @@ pub(crate) fn drive(
     })];
     if request.gesture != Gesture::Move {
         events.push(WindowEvent::MouseButtonInput(MouseButtonInput {
-            button: MouseButton::Left,
+            button: request.button.into(),
             state: ButtonState::Pressed,
             window,
         }));
@@ -167,7 +206,7 @@ pub(crate) fn drive(
         }
         if request.release.unwrap_or(true) {
             events.push(WindowEvent::MouseButtonInput(MouseButtonInput {
-                button: MouseButton::Left,
+                button: request.button.into(),
                 state: ButtonState::Released,
                 window,
             }));
@@ -210,8 +249,17 @@ pub(crate) fn drive(
                 if worker::busy(world) {
                     return Ok(value);
                 }
+                result = value;
+                result["handled"] = json!(true);
             }
-            if !input.consumed {
+            if drawing {
+                if workbench::drawing_author_input(world, handle, services, &input)? {
+                    result = json!({"handled":true,"drawing":true});
+                }
+                if worker::busy(world) {
+                    return Ok(result);
+                }
+            } else if !input.consumed {
                 let value = process_one(world, handle, services, &input)?;
                 if value["handled"] == true || value["mutation_pending"] == true {
                     result = value;
@@ -236,7 +284,11 @@ pub(crate) fn drive(
         }
         Ok(result)
     })();
-    world.resource_mut::<Editor>().press = None;
+    if drawing {
+        workbench::cancel_drawing_author_input(world);
+    } else {
+        world.resource_mut::<Editor>().press = None;
+    }
     cancel_canvas_navigation(world);
     if result.is_err() {
         mechanism::cancel(world);
@@ -244,6 +296,9 @@ pub(crate) fn drive(
     cancel_native_pointer(world, handle);
     let report_poses = request.poses || request.lifecycle.is_some();
     result.and_then(|value| {
+        if drawing {
+            return Ok(value);
+        }
         let mut value = mechanism::tick(world, handle, services, owner)?.unwrap_or(value);
         if report_poses {
             let (_, _, view, _) = native_viewport::interface_view(world);

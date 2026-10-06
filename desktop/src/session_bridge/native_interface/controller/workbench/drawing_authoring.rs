@@ -105,6 +105,8 @@ pub(super) fn place_note(sheet_id: u64, position: [f64; 2]) -> AddNote {
 #[cfg(test)]
 mod integration_tests;
 #[cfg(test)]
+mod mcp_tests;
+#[cfg(test)]
 mod tests;
 
 #[cfg(test)]

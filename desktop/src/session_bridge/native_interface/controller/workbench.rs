@@ -211,6 +211,32 @@ pub(crate) fn drawing_author_input(
 ) -> Result<bool, String> {
     drawing_authoring::process(world, handle, services, input)
 }
+
+/// Geometry and annotation handles belong to the paper canvas; form controls do not.
+pub(crate) fn drawing_canvas_control(
+    world: &World,
+    handle: &NativeInterfaceHandle,
+    cursor: [f64; 2],
+) -> bool {
+    handle.hit_key(cursor).is_some_and(|key| {
+        matches!(
+            world
+                .get::<NativeCommandBinding>(Entity::from_bits(key.0))
+                .map(|binding| &binding.command),
+            Some(NativeCommand::Drawing(drawing_editor::Command::Annotation(
+                _,
+                drawing_authoring::Command::Select(_)
+                    | drawing_authoring::Command::Anchor(_)
+                    | drawing_authoring::Command::Circle(_)
+                    | drawing_authoring::Command::Line(_)
+                    | drawing_authoring::Command::Center(_)
+                    | drawing_authoring::Command::CenterGrip(_, _)
+                    | drawing_authoring::Command::CloudEdge(_, _)
+                    | drawing_authoring::Command::Chamfer(_)
+            )))
+        )
+    })
+}
 pub(crate) fn cancel_drawing_author_input(world: &mut World) {
     drawing_authoring::cancel_input(world);
 }
