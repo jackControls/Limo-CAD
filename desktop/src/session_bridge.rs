@@ -282,7 +282,7 @@ fn clear_closed_tombstone(session_id: &str) -> Result<(), String> {
 
 fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
     limo_cad_session_storage::atomic_write(path, content.as_bytes())
-        .map_err(|error| format!("could not publish {}: {error}", path.display()))
+        .map_err(|error| format!("could not publish session state: {error}"))
 }
 
 impl SessionBridgeState {
@@ -861,7 +861,7 @@ fn retire_project_publisher(
 ) -> String {
     let previous = publisher.active_mut().session_id.clone();
     if let Err(error) = write_closed_tombstone(&previous) {
-        eprintln!("session bridge could not retire replaced document {previous}: {error}");
+        eprintln!("session bridge could not retire replaced document: {error}");
     }
     publisher
         .by_project
@@ -1047,9 +1047,7 @@ impl SessionBridgeState {
                 if let Some(project) = publisher.by_project.get(project_session_id) {
                     let session_id = project.session_id.clone();
                     if let Err(error) = write_closed_tombstone(&session_id) {
-                        eprintln!(
-                            "session bridge could not tombstone closed tab {session_id}: {error}"
-                        );
+                        eprintln!("session bridge could not tombstone closed tab: {error}");
                     }
                 }
                 publisher.drop_project(project_session_id);
@@ -1071,8 +1069,7 @@ impl SessionBridgeState {
             for project in publisher.by_project.values() {
                 if let Err(error) = write_closed_tombstone(&project.session_id) {
                     eprintln!(
-                        "session bridge could not tombstone destroyed window session {}: {error}",
-                        project.session_id
+                        "session bridge could not tombstone destroyed window session: {error}"
                     );
                 }
             }
