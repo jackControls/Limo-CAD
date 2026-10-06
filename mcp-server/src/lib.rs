@@ -410,17 +410,17 @@ impl CadServer {
             if name == "drawing_export" {
                 let request: limo_cad_occt::drawing_export::DrawingExportRequest =
                     serde_json::from_value(arguments).map_err(|e| e.to_string())?;
-                let scene = self.manager.solid_scene();
+                let scene = self.manager.solid_scene_ref();
                 let content = limo_cad_occt::drawing_export::export_sheet(
-                    &self.manager.drawing_document(),
-                    &scene,
-                    &self.manager.assembly_document(),
+                    self.manager.drawing_document_ref(),
+                    scene,
+                    self.manager.assembly_document_ref(),
                     &request,
                     |r| {
                         limo_cad_occt::project_drawing(
                             &self.kernel,
-                            &scene,
-                            &self.manager.assembly_document(),
+                            scene,
+                            self.manager.assembly_document_ref(),
                             r,
                         )
                         .map_err(|e| e.to_string())
@@ -432,22 +432,22 @@ impl CadServer {
                     serde_json::from_value(arguments).map_err(|e| e.to_string())?;
                 let review = limo_cad_occt::section_review::inspect(
                     &self.kernel,
-                    &self.manager.solid_scene(),
-                    &self.manager.assembly_document(),
+                    self.manager.solid_scene_ref(),
+                    self.manager.assembly_document_ref(),
                     &request,
                 )?;
                 serde_json::to_value(review).map_err(|e| e.to_string())?
             } else if name == "drawing_projection" {
                 let request: limo_cad_occt::DrawingProjectionRequest =
                     serde_json::from_value(arguments).map_err(|e| e.to_string())?;
-                let scene = self.manager.solid_scene();
+                let scene = self.manager.solid_scene_ref();
                 if !scene.errors.is_empty() {
                     return Err("Resolve timeline errors before generating a drawing view.".into());
                 }
                 let projection = limo_cad_occt::project_drawing(
                     &self.kernel,
-                    &scene,
-                    &self.manager.assembly_document(),
+                    scene,
+                    self.manager.assembly_document_ref(),
                     &request,
                 )
                 .map_err(|e| e.to_string())?;
@@ -519,7 +519,7 @@ impl CadServer {
                 }
                 serde_json::to_value(limo_cad_occt::exact_interference_report(
                     &self.kernel,
-                    &self.manager.solid_scene(),
+                    self.manager.solid_scene_ref(),
                     &solution.instance_body_poses,
                     &request,
                 )?)
@@ -701,7 +701,7 @@ impl CadServer {
                 }
                 json!({ "calls": self.tool_trace.clone() })
             }
-            "cad_compare_solids" => compare_solids_summary(&self.manager.solid_scene()),
+            "cad_compare_solids" => compare_solids_summary(self.manager.solid_scene_ref()),
             "cad_submit" => self.submit_inbox_op(&arguments)?,
             "cad_await_apply" => self.await_inbox_apply(&arguments)?,
             "cad_session_status" => self.session_status()?,
@@ -844,9 +844,9 @@ impl CadServer {
         }
 
         result.map(|mut report| {
-            let scene = self.manager.solid_scene();
+            let scene = self.manager.solid_scene_ref();
             let definitions = self.manager.hole_definitions();
-            let built = summary::summarize(&scene, &definitions);
+            let built = summary::summarize(scene, &definitions);
             report["summary"] = built.json(detail_full);
             report["warnings"] = Value::Array(summary::warnings(
                 &built,
@@ -869,9 +869,9 @@ impl CadServer {
         if self.attached_document_id.is_some() {
             self.refresh_read_only_snapshot()?;
         }
-        let scene = self.manager.solid_scene();
+        let scene = self.manager.solid_scene_ref();
         let definitions = self.manager.hole_definitions();
-        let built = summary::summarize(&scene, &definitions);
+        let built = summary::summarize(scene, &definitions);
         let mut value = built.json(full);
         value["warnings"] = Value::Array(summary::warnings(&built, &definitions, &[]));
         Ok(value)
@@ -896,9 +896,9 @@ impl CadServer {
         if self.attached_document_id.is_some() {
             self.refresh_read_only_snapshot()?;
         }
-        let scene = self.manager.solid_scene();
+        let scene = self.manager.solid_scene_ref();
         let definitions = self.manager.hole_definitions();
-        let built = summary::summarize(&scene, &definitions);
+        let built = summary::summarize(scene, &definitions);
         summary::check(&built, expected, tolerance)
     }
 
@@ -1015,7 +1015,7 @@ impl CadServer {
             .filter(|body| feature_id.is_none() || body["feature_id"].as_u64() == feature_id)
             .filter_map(|body| body["id"].as_u64())
             .collect();
-        let scene = self.manager.solid_scene();
+        let scene = self.manager.solid_scene_ref();
         let definitions = self.manager.hole_definitions();
         Ok(json!({
             "feature_id": feature_id,
@@ -1024,7 +1024,7 @@ impl CadServer {
             "origin": origin,
             "size": size,
             "operation": operation,
-            "summary": summary::summarize(&scene, &definitions).json(false),
+            "summary": summary::summarize(scene, &definitions).json(false),
         }))
     }
 
@@ -1092,9 +1092,9 @@ impl CadServer {
         if self.attached_document_id.is_some() {
             self.refresh_read_only_snapshot()?;
         }
-        let scene = self.manager.solid_scene();
+        let scene = self.manager.solid_scene_ref();
         let definitions = self.manager.hole_definitions();
-        let built = summary::summarize(&scene, &definitions);
+        let built = summary::summarize(scene, &definitions);
         let (dx, dy) = match arguments.get("frame").and_then(Value::as_str) {
             None | Some("world") => (0.0, 0.0),
             Some("bbox_min") => built
@@ -1646,7 +1646,7 @@ impl CadServer {
     }
 
     fn export_mesh(&mut self, name: &str, arguments: Value) -> Result<Value, String> {
-        if !self.manager.solid_scene().errors.is_empty() {
+        if !self.manager.solid_scene_ref().errors.is_empty() {
             return Err("Resolve timeline errors before exporting mesh files.".to_string());
         }
         let request: MeshExportRequest = if arguments.is_null() {
@@ -1665,7 +1665,7 @@ impl CadServer {
                 )
                 .map_err(|e| e.to_string())?;
         }
-        let scene = self.manager.solid_scene();
+        let scene = self.manager.solid_scene_ref();
         let appearances = self.manager.body_appearances();
         let mut meshes = self
             .kernel
@@ -1712,7 +1712,7 @@ impl CadServer {
                 &meshes,
                 &appearances,
                 &request,
-                &self.manager.assembly_document().component_structure,
+                &self.manager.assembly_document_ref().component_structure,
                 &solution,
             )
             .map_err(|e| e.to_string())?
@@ -1736,7 +1736,7 @@ impl CadServer {
     }
 
     fn tessellate_tool(&mut self, arguments: Value) -> Result<Value, String> {
-        if !self.manager.solid_scene().errors.is_empty() {
+        if !self.manager.solid_scene_ref().errors.is_empty() {
             return Err("Resolve timeline errors before tessellating.".to_string());
         }
         let request: MeshExportRequest = if arguments.is_null() {
@@ -1745,7 +1745,7 @@ impl CadServer {
             serde_json::from_value(arguments)
                 .map_err(|error| format!("bad tessellate arguments: {error}"))?
         };
-        let scene = self.manager.solid_scene();
+        let scene = self.manager.solid_scene_ref();
         let mut meshes = self
             .kernel
             .tessellate_bodies(&request)
@@ -1802,7 +1802,7 @@ impl CadServer {
                     .map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
-        let scene = self.manager.solid_scene();
+        let scene = self.manager.solid_scene_ref();
         let errors: Vec<String> = scene
             .errors
             .iter()
@@ -1863,7 +1863,7 @@ impl CadServer {
             };
             let layout = limo_cad_export::analyze_print_layout(
                 &meshes,
-                &self.manager.assembly_document().component_structure,
+                &self.manager.assembly_document_ref().component_structure,
                 &solution,
                 &bed,
             )
@@ -1883,7 +1883,7 @@ impl CadServer {
                 limo_cad_export::manufacturing_report::manufacturing_preflight_report(
                     &meshes,
                     &appearances,
-                    &self.manager.assembly_document().component_structure,
+                    &self.manager.assembly_document_ref().component_structure,
                     &solution,
                     &self.manager.print_intent(),
                     &effective,
