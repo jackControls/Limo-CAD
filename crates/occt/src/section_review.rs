@@ -55,6 +55,12 @@ pub struct SectionReviewRequest {
     pub probe_mm: Option<f64>,
     #[serde(default = "deflection")]
     pub deflection_mm: f64,
+    /// Request a disposable, capped OCCT half-solid for the modeling viewport.
+    #[serde(default)]
+    pub include_cutaway: bool,
+    /// Retain coordinates above the plane; false retains those below it.
+    #[serde(default)]
+    pub keep_positive: bool,
 }
 impl SectionReviewRequest {
     pub fn projection_request(&self) -> Result<DrawingProjectionRequest, String> {
@@ -101,6 +107,8 @@ pub struct SectionReview {
     pub section: Vec<DrawingPolylineDto>,
     pub probe_spans: Vec<SectionSpan>,
     pub svg: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cutaway: Option<limo_cad_solid::KernelBodyDto>,
 }
 
 /// Shared native/hosted read. Source scope and error handling are identical.
@@ -113,7 +121,11 @@ pub fn inspect(
     let projection =
         crate::project_drawing(kernel, scene, assembly, &request.projection_request()?)
             .map_err(|e| e.to_string())?;
-    present(request, projection)
+    let mut report = present(request, projection)?;
+    if request.include_cutaway {
+        report.cutaway = Some(kernel.section_mesh(request).map_err(|e| e.to_string())?);
+    }
+    Ok(report)
 }
 
 /// Half-open crossings avoid double-counting contour vertices. Zero-length
@@ -190,6 +202,7 @@ pub fn present(
             section: vec![],
             probe_spans: vec![],
             svg: String::new(),
+            cutaway: None,
         });
     }
     if bounds[2] - bounds[0] < 1e-8 || bounds[3] - bounds[1] < 1e-8 {
@@ -209,6 +222,7 @@ pub fn present(
         section: projection.section,
         probe_spans: spans,
         svg,
+        cutaway: None,
     })
 }
 
@@ -354,6 +368,8 @@ mod tests {
                 offset_mm: 2.,
                 probe_mm: None,
                 deflection_mm: 0.01,
+                include_cutaway: false,
+                keep_positive: false,
             };
             assert_eq!(
                 req.projection_request()

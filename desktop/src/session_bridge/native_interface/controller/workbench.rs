@@ -168,6 +168,11 @@ pub(crate) fn modal(world: &World) -> Option<&'static str> {
         })
 }
 pub(crate) fn escape(world: &mut World) {
+    // Nonmodal 3D inspection keeps ordinary camera gestures available.
+    if section_review::in_3d(world) {
+        section_review::escape(world);
+        return;
+    }
     if cam::modal(world).is_some() {
         cam::escape(world);
         return;

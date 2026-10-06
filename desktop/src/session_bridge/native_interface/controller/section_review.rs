@@ -16,6 +16,7 @@ pub(crate) enum Field {
     Plane,
     Offset,
     Probe,
+    Side,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
@@ -24,6 +25,7 @@ pub(crate) enum Command {
     Inspect,
     CopySvg,
     Close,
+    ToggleView,
 }
 #[derive(Resource, Default)]
 struct State {
@@ -36,6 +38,9 @@ struct State {
     plane: String,
     offset: String,
     probe: String,
+    side: String,
+    in_3d: bool,
+    cutaway: Option<Arc<limo_cad_solid::KernelBodyDto>>,
     report: Option<SectionReview>,
     image: Option<Handle<Image>>,
     message: String,
@@ -46,6 +51,7 @@ impl State {
         self.generation = self.generation.saturating_add(1);
         self.report = None;
         self.image = None;
+        self.cutaway = None;
         self.message = message.into();
     }
     fn current(&self, owner: &DocumentContext, revision: u64, generation: u64) -> bool {
@@ -60,6 +66,7 @@ impl State {
             Field::Plane => &self.plane,
             Field::Offset => &self.offset,
             Field::Probe => &self.probe,
+            Field::Side => &self.side,
         }
     }
     fn choices(&self, field: Field) -> Option<Vec<ChoiceOption>> {
@@ -73,6 +80,10 @@ impl State {
                 ("xy".into(), "XY - through Z".into()),
                 ("xz".into(), "XZ - through Y".into()),
                 ("yz".into(), "YZ - through X".into()),
+            ],
+            Field::Side => vec![
+                ("negative".into(), "Below plane".into()),
+                ("positive".into(), "Above plane".into()),
             ],
             _ => return None,
         };
@@ -108,6 +119,8 @@ impl State {
                 Some(coordinate(&self.probe, units)?)
             },
             deflection_mm: 0.01,
+            include_cutaway: true,
+            keep_positive: self.side == "positive",
         };
         req.projection_request()?;
         Ok(req)
@@ -154,6 +167,8 @@ pub(crate) fn reduce(
             .collect();
         state.body = body.id.0.to_string();
         state.plane = "yz".into();
+        state.side = "negative".into();
+        state.in_3d = false;
         let xs: Vec<_> = body
             .mesh
             .positions
@@ -205,6 +220,7 @@ pub(crate) fn reduce(
             Field::Plane => state.plane = value,
             Field::Offset => state.offset = value,
             Field::Probe => state.probe = value,
+            Field::Side => state.side = value,
         }
         state.invalidate("Section inputs changed. Inspect to refresh.");
         return Ok(json!({"handled":true}));
@@ -216,7 +232,13 @@ pub(crate) fn reduce(
         let mut state = world.resource_mut::<State>();
         state.visible = false;
         state.invalidate("");
+        native_viewport::section_view::clear(world);
         return Ok(json!({"closed":true}));
+    }
+    if *command == Command::ToggleView {
+        let mut state = world.resource_mut::<State>();
+        state.in_3d = !state.in_3d;
+        return Ok(json!({"view":if state.in_3d {"cutaway"} else {"diagram"}}));
     }
     if *command == Command::CopySvg {
         let svg = state
@@ -267,7 +289,7 @@ pub(crate) fn reduce(
                         .is_some_and(|s| s.current(&owner, current, generation)) {
                         return Err("The section review changed before the result arrived".into());
                     }
-                    let (report,image)=match result {
+                    let (mut report,image)=match result {
                         Ok((_,prepared))=>prepared,
                         Err(error)=> {
                             world.resource_mut::<State>().message=error.clone();
@@ -286,6 +308,7 @@ pub(crate) fn reduce(
                     } else {
                         "Source-body section in mm. Enter a probe height to measure material spans.".into()
                     };
+                    state.cutaway=report.cutaway.take().map(Arc::new);
                     state.report=Some(report);state.image=image;
                     Ok(response)
                 },
@@ -297,6 +320,36 @@ pub(crate) fn reduce(
 fn rasterize(svg: &str) -> Result<Image, String> {
     let mut options = resvg::usvg::Options::default();
     options.fontdb_mut().load_system_fonts();
+    // usvg's default Arial/Times families need not exist on Linux. Resolve an
+    // installed family explicitly, including the generic used by our SVGs.
+    let families = [
+        "Segoe UI",
+        "Arial",
+        "DejaVu Sans",
+        "Noto Sans",
+        "Liberation Sans",
+    ];
+    let family = families
+        .iter()
+        .find_map(|wanted| {
+            options
+                .fontdb
+                .faces()
+                .flat_map(|f| &f.families)
+                .find(|(name, _)| name == wanted)
+                .map(|(name, _)| name.clone())
+        })
+        .or_else(|| {
+            options
+                .fontdb
+                .faces()
+                .next()
+                .and_then(|f| f.families.first())
+                .map(|(n, _)| n.clone())
+        })
+        .ok_or("Install a system font to render section diagram labels")?;
+    options.fontdb_mut().set_sans_serif_family(&family);
+    options.font_family = family;
     let tree = resvg::usvg::Tree::from_str(svg, &options).map_err(|e| e.to_string())?;
     let mut pixmap =
         resvg::tiny_skia::Pixmap::new(800, 600).ok_or("Unable to allocate section image")?;
@@ -339,7 +392,12 @@ pub(crate) fn synchronize(
             state.invalidate("");
             state.owner = Some(owner.clone());
         }
+        if state.in_3d && workbench::workspace(world) == workbench::Workspace::Drawing {
+            state.visible = false;
+            state.invalidate("");
+        }
         if !state.visible {
+            native_viewport::section_view::clear(world);
             return Ok(());
         }
         let revision = services
@@ -368,6 +426,20 @@ pub(crate) fn synchronize(
                     .unwrap_or_default();
             }
         }
+        if state.in_3d {
+            if let Some(report) = &state.report {
+                native_viewport::section_view::show(
+                    world,
+                    &owner.document_id,
+                    &report.request,
+                    state.cutaway.clone(),
+                )?;
+            } else {
+                native_viewport::section_view::clear(world);
+            }
+        } else {
+            native_viewport::section_view::clear(world);
+        }
         paint(world, camera, &mut state, width, height)
     })();
     state.widgets.finish(world);
@@ -379,6 +451,7 @@ pub(crate) fn escape(world: &mut World) -> bool {
     if let Some(mut state) = world.get_resource_mut::<State>().filter(|s| s.visible) {
         state.visible = false;
         state.invalidate("");
+        native_viewport::section_view::clear(world);
         true
     } else {
         false
@@ -388,13 +461,18 @@ pub(crate) fn escape(world: &mut World) -> bool {
 pub(crate) fn modal(world: &World) -> Option<&'static str> {
     world
         .get_resource::<State>()
-        .filter(|s| s.visible)
+        .filter(|s| s.visible && !s.in_3d)
         .map(|_| "section-review")
 }
+pub(crate) fn in_3d(world: &World) -> bool {
+    world
+        .get_resource::<State>()
+        .is_some_and(|s| s.visible && s.in_3d)
+}
 
-fn control(label: &str) -> InterfaceControl {
+fn control(label: &str, in_3d: bool) -> InterfaceControl {
     let mut control = InterfaceControl::button("document/section", label);
-    control.modal_scope = Some("section-review".into());
+    control.modal_scope = (!in_3d).then(|| "section-review".into());
     control
 }
 
@@ -405,10 +483,14 @@ fn paint(
     width: f32,
     height: f32,
 ) -> Result<(), String> {
-    let w = (width - 32.).clamp(280., 760.);
-    let x = (width - w) / 2.;
+    let w = (width - 32.).clamp(280., if state.in_3d { 480. } else { 760. });
+    let x = if state.in_3d { 16. } else { (width - w) / 2. };
     let y = 130.;
-    let h = (height - y - 24.).max(230.);
+    let h = if state.in_3d {
+        280.
+    } else {
+        (height - y - 24.).max(280.)
+    };
     let theme = native_viewport::ui::theme(world);
     state.widgets.panel(
         world,
@@ -427,7 +509,7 @@ fn paint(
         14.,
         72,
     );
-    let close = control("Close section analysis");
+    let close = control("Close section analysis", state.in_3d);
     state.widgets.button(
         world,
         camera,
@@ -439,7 +521,7 @@ fn paint(
         None,
         72,
     )?;
-    let mut copy = control("Copy section SVG");
+    let mut copy = control("Copy section SVG", state.in_3d);
     copy.disabled = state.report.as_ref().is_none_or(|r| r.svg.is_empty()) || worker::busy(world);
     state.widgets.button(
         world,
@@ -472,6 +554,7 @@ fn paint(
             Field::Probe,
             format!("Probe {} coordinate (optional)", labels[1]),
         ),
+        (4, Field::Side, "Retained side".into()),
     ] {
         let fx = x + 12. + (index % 2) as f32 * (col + 12.);
         let fy = y + 38. + (index / 2) as f32 * 51.;
@@ -484,7 +567,7 @@ fn paint(
             10.,
             72,
         );
-        let mut control = control(&label);
+        let mut control = control(&label, state.in_3d);
         control.disabled = worker::busy(world);
         let mut caption = None;
         if let Some(options) = state.choices(field) {
@@ -526,7 +609,18 @@ fn paint(
             72,
         )?;
     }
-    let mut inspect = control("Inspect section");
+    state.widgets.button(
+        world,
+        camera,
+        "section-mode",
+        control("Switch section view", state.in_3d),
+        Some(if state.in_3d { "Diagram" } else { "3D cutaway" }),
+        NativeCommand::SectionReview(state.generation, Command::ToggleView),
+        chrome::rect(x + col + 24., y + 157., col, 28.),
+        None,
+        72,
+    )?;
+    let mut inspect = control("Inspect section", state.in_3d);
     inspect.disabled = worker::busy(world) || state.bodies.is_empty();
     state.widgets.button(
         world,
@@ -535,7 +629,7 @@ fn paint(
         inspect,
         Some("Inspect"),
         NativeCommand::SectionReview(state.generation, Command::Inspect),
-        chrome::rect(x + 12., y + 143., 92., 28.),
+        chrome::rect(x + 12., y + 195., 92., 28.),
         None,
         72,
     )?;
@@ -543,20 +637,30 @@ fn paint(
         world,
         camera,
         "section-message",
-        chrome::rect(x + 116., y + 142., w - 128., 35.),
+        chrome::rect(x + 116., y + 194., w - 128., 46.),
         &state.message,
         10.,
         72,
     );
-    if let Some(image) = &state.image {
-        let iw = (w - 24.).min((h - 186.).max(0.) * 4. / 3.);
+    if state.in_3d {
+        state.widgets.text(
+            world,
+            camera,
+            "section-3d-hint",
+            chrome::rect(x + 12., y + 247., w - 24., 25.),
+            "Source body only. Orange = cut face. Orbit / pan / zoom; close to restore.",
+            10.,
+            72,
+        );
+    } else if let Some(image) = &state.image {
+        let iw = (w - 24.).min((h - 250.).max(0.) * 4. / 3.);
         let ih = iw * 3. / 4.;
         if ih > 20. {
             state.widgets.panel(
                 world,
                 camera,
                 "section-preview",
-                chrome::rect(x + (w - iw) / 2., y + 180., iw, ih),
+                chrome::rect(x + (w - iw) / 2., y + 244., iw, ih),
                 Color::WHITE,
                 71,
             );
@@ -573,6 +677,27 @@ fn paint(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn three_d_inspection_keeps_camera_navigation_available_and_escape_closes() {
+        let mut world = World::new();
+        world.insert_resource(State {
+            visible: true,
+            in_3d: true,
+            ..Default::default()
+        });
+        assert_eq!(modal(&world), None);
+        assert!(in_3d(&world));
+        assert!(control("Inspect", true).modal_scope.is_none());
+        assert!(escape(&mut world));
+        assert!(!in_3d(&world));
+        world.resource_mut::<State>().visible = true;
+        world.resource_mut::<State>().in_3d = false;
+        assert_eq!(modal(&world), Some("section-review"));
+        assert_eq!(
+            control("Inspect", false).modal_scope.as_deref(),
+            Some("section-review")
+        );
+    }
     #[test]
     fn prepared_query_runs_off_thread_without_replacing_scene_or_advancing_history() {
         use crate::session_bridge::native_interface::tests::Fixture;

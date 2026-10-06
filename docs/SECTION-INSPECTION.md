@@ -11,14 +11,16 @@ or drawing sheets and without changing source geometry.
    export and Bevy screenshot capture already existed. The modeling ribbon's
    Section Analysis command was a disabled placeholder. Expose the shared
    engine through a disposable Bevy panel and MCP read, with sampled material
-   intervals across the section. No second drawing engine or chart dependency.
+   intervals, a flat diagram and an orbitable, capped 3D half-solid. Both retain
+   OCCT as their geometry authority. No second drawing engine or chart dependency.
 2. **Interactive geometric measurements.** Drawing dimensions already exist;
    modeling's Measure placeholder still needs a general selected-point/edge/face
    tool. Reuse the topology references and measurement/unit forms. The section
    probe here is a directional material-span measurement, not automatic minimum
    wall thickness.
-3. **3D inspection and comparison presentation.** Build clipping-plane/cap
-   display and cross-section zoom/picking alongside the Bevy renderer. Exact
+3. **Further 3D inspection and comparison presentation.** Axial source-body
+   clipping/caps are included here. Add assembly/oblique sections and section
+   picking alongside the Bevy renderer. Exact
    assembly interference and source-solid comparison already exist; improve
    discoverability and visual evidence before adding another geometry API.
 4. **Engineering report composition.** Named views, screenshot capture and
@@ -46,6 +48,24 @@ saved by a client without creating a drawing sheet. XY uses X/Y, XZ X/Z, YZ Y/Z
 as horizontal/vertical axes. The offset refers to Z, Y, X respectively.
 The Bevy panel's Copy SVG button places the current diagram on the native
 clipboard for saving or pasting into another tool; Escape closes the panel.
+Switch to **3D cutaway** to inspect the retained half-solid in the modeling
+viewport. Choose Below/Above plane and Inspect; orange surfaces identify the
+cut faces. Normal orbit, pan, zoom, orientation and Fit controls remain available.
+Fit frames the inspected source body. Diagram restores the flat section preview;
+Close restores the source scene with its original visibility choices. Temporary
+cut faces are not selectable as modeling topology. Other bodies and occurrence
+poses are excluded from this source-definition review.
+
+Persistent drawing sections remain in the Drawing workspace, with associative
+parent views, cutting-line annotations, hatching and SVG/DXF export. The modeling
+inspector does not create or change those sheets.
+
+Optional `include_cutaway` (default false) also returns `cutaway`, a tessellation
+of an exact OCCT half-solid. `keep_positive` (default false) retains coordinates
+above the plane instead of below. The viewport and drawings share the same
+`BRepPrimAPI_MakeHalfSpace` / `BRepAlgoAPI_Common` clipping helper. The cutaway
+copies source geometry before clipping/tessellation and is limited to one million
+vertices, one million triangles and 100,000 edge points.
 
 Intersections come from the existing OCCT drawing-section pipeline; hatching
 uses the existing bounded paper-graphics code. Probe distances use the sampled

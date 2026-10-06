@@ -22,6 +22,9 @@ pub(crate) struct Snapshot {
     pub instances: Vec<Instance>,
 }
 pub(crate) fn snapshot(world: &World, hidden: &[u64]) -> Result<Snapshot, String> {
+    if section_view::active(world) {
+        return Err("Close section inspection before selecting source faces".into());
+    }
     let model = world.resource::<ModelResource>();
     if model.document.scene.bodies.len() > MAX_INSTANCES
         || model.instance_body_poses.len() > MAX_INSTANCES

@@ -1350,6 +1350,10 @@ pub(crate) fn reduce_control_input(
                 }
                 return Ok(json!({"cancelled":true}));
             }
+            if section_review::in_3d(world) {
+                section_review::escape(world);
+                return Ok(json!({"cancelled":true}));
+            }
             if matches!(
                 world
                     .get::<NativeCommandBinding>(Entity::from_bits(action.control.key.0))

@@ -174,6 +174,14 @@ mod ffi {
         fn apply_job(self: Pin<&mut Kernel>, job: &FfiJob) -> Result<()>;
         fn body_ids(self: &Kernel) -> Vec<u64>;
         fn mesh(self: &Kernel, body_id: u64) -> Result<FfiMesh>;
+        fn section_mesh(
+            self: &Kernel,
+            body_id: u64,
+            axis: u8,
+            offset: f64,
+            keep_positive: bool,
+            deflection: f64,
+        ) -> Result<FfiMesh>;
         fn mesh_with_deflection(
             self: &Kernel,
             body_id: u64,
@@ -223,6 +231,31 @@ impl std::fmt::Debug for OcctKernel {
 }
 
 impl OcctKernel {
+    pub fn section_mesh(
+        &self,
+        request: &crate::section_review::SectionReviewRequest,
+    ) -> Result<KernelBodyDto, OcctError> {
+        request.projection_request().map_err(OcctError)?;
+        let raw = self
+            .inner
+            .section_mesh(
+                request.body_id.0,
+                request.plane.axis() as u8,
+                request.offset_mm,
+                request.keep_positive,
+                request.deflection_mm,
+            )
+            .map_err(|e| OcctError(e.to_string()))?;
+        if raw.positions.len() > 3_000_000
+            || raw.indices.len() > 3_000_000
+            || raw.edge_points.len() > 300_000
+        {
+            return Err(OcctError(
+                "Section cutaway exceeds the viewport geometry budget".into(),
+            ));
+        }
+        from_ffi_mesh(raw)
+    }
     pub fn new() -> Result<Self, OcctError> {
         let inner = ffi::new_kernel();
         if inner.is_null() {
