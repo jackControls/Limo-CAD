@@ -159,6 +159,7 @@ pub(crate) fn modal(world: &World) -> Option<&'static str> {
     cam::modal(world)
         .or_else(|| cam_export::modal(world))
         .or_else(|| cam_view::modal(world))
+        .or_else(|| section_review::modal(world))
         .or_else(|| {
             world
                 .get_resource::<Workbench>()

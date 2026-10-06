@@ -534,6 +534,9 @@ impl NativeEngineHost {
         if method == "drawing_projection" {
             return self.drawing_projection(payload);
         }
+        if method == "solid_section_review" {
+            return self.section_review(payload);
+        }
         let mut workspace = self.inner.lock().expect("engine lock poisoned");
         if let Some(response) = host::handle_read_only(&workspace.active().manager, method, payload)
         {
@@ -950,6 +953,25 @@ impl NativeEngineHost {
             }
         }
         Ok(graphics)
+    }
+
+    pub fn section_review(&self, payload: &str) -> String {
+        let result = (|| {
+            let request: limo_cad_occt::section_review::SectionReviewRequest =
+                serde_json::from_str(payload).map_err(|e| format!("bad request payload: {e}"))?;
+            let workspace = self.inner.lock().map_err(|_| "engine lock poisoned")?;
+            let inner = workspace.active();
+            limo_cad_occt::section_review::inspect(
+                &inner.kernel,
+                inner.manager.solid_scene_ref(),
+                inner.manager.assembly_document_ref(),
+                &request,
+            )
+        })();
+        match result {
+            Ok(review) => ok_json(review),
+            Err(error) => err_json(error),
+        }
     }
 
     pub fn drawing_projection(&self, payload: &str) -> String {

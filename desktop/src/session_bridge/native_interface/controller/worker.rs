@@ -291,14 +291,47 @@ pub(crate) fn enqueue_query(
         + Send
         + 'static,
 ) -> Result<Value, String> {
+    enqueue_prepared_query(
+        world,
+        owner,
+        revision,
+        operation,
+        arguments,
+        |_| Ok(()),
+        move |world, services, result| {
+            complete(world, services, result.map(|(receipt, ())| receipt))
+        },
+    )
+}
+
+/// Prepare CPU presentation data on the same ordered worker, without encoding
+/// textures into query JSON or blocking the input thread on fonts/rasterization.
+pub(crate) fn enqueue_prepared_query<P: Send + 'static>(
+    world: &mut World,
+    owner: DocumentContext,
+    revision: u64,
+    operation: String,
+    arguments: Value,
+    prepare: impl FnOnce(&Value) -> Result<P, String> + Send + 'static,
+    complete: impl FnOnce(
+            &mut World,
+            &NativeServices,
+            Result<(NativeMutationResult, P), String>,
+        ) -> Result<Value, String>
+        + Send
+        + 'static,
+) -> Result<Value, String> {
+    let prepared = Arc::new(Mutex::new(None));
+    let output = prepared.clone();
     let label = operation.clone();
     enqueue(
         world,
         label,
         move |services, guard| {
-            services
-                .bridge
-                .with_native_document_receipt(&services.engine, &owner, |current| {
+            let result = services.bridge.with_native_document_receipt(
+                &services.engine,
+                &owner,
+                |current| {
                     if current != revision {
                         return Err("The model changed before the preview could run".into());
                     }
@@ -313,9 +346,26 @@ pub(crate) fn enqueue_query(
                         engine_revision: revision,
                         value,
                     })
-                })
+                },
+            )?;
+            // Dispatch already admitted this control. The host may now disable
+            // it in its busy frame; CPU preparation grants no new authority.
+            *output
+                .lock()
+                .map_err(|_| "Query preparation lock poisoned")? = Some(prepare(&result.value)?);
+            Ok(result)
         },
-        complete,
+        move |world, services, result| {
+            let result = result.and_then(|result| {
+                let data = prepared
+                    .lock()
+                    .map_err(|_| "Query preparation lock poisoned")?
+                    .take()
+                    .ok_or("Query returned no prepared data")?;
+                Ok((result, data))
+            });
+            complete(world, services, result)
+        },
         |_| false,
     )
 }

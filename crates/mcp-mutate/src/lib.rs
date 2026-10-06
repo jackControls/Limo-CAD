@@ -33,6 +33,7 @@ pub fn is_live_engine_query(method: &str) -> bool {
             | "solid_export_preflight"
             | "drawing_export"
             | "drawing_projection"
+            | "solid_section_review"
             | "assembly_document"
             | "assembly_swept_collision_check"
             | "assembly_preview_joint_coordinates"

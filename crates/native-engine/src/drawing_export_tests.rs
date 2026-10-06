@@ -9,6 +9,76 @@ fn value(json: String) -> Value {
 }
 
 #[test]
+fn section_inspection_reads_real_material_and_leaves_model_and_revision_unchanged() {
+    let state = NativeEngineHost::new();
+    value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#));
+    value(state.engine_call("add_rectangle", r#"{"mode":"two_point","p1":{"x":10.0,"y":20.0},"p2":{"x":50.0,"y":50.0},"ctrl_held":true}"#));
+    value(state.engine_call("end_sketch", ""));
+    value(state.solid_extrude(r#"{"sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body","extent":{"type":"distance","distance":6.0},"taper_angle_deg":0.0,"flip":false,"target_body_ids":[]}"#));
+    let body_id = state.viewport_snapshot().2.bodies[0].id;
+    value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#));
+    value(state.engine_call("add_rectangle", r#"{"mode":"two_point","p1":{"x":20.0,"y":30.0},"p2":{"x":40.0,"y":40.0},"ctrl_held":true}"#));
+    value(state.engine_call("end_sketch", ""));
+    value(state.solid_extrude(&json!({"sketch_name":"Sketch2","profile_indices":[0],"operation":"cut","extent":{"type":"distance","distance":6.},"taper_angle_deg":0.,"flip":false,"target_body_ids":[body_id]}).to_string()));
+    let body_id = state.viewport_snapshot().2.bodies[0].id;
+    let before = value(state.engine_call("project_export_model", ""));
+    let revision = state.geometry_revision();
+    for (plane, offset, probe, expected, bounds) in [
+        ("xy", 3., 35., 10., [10., 20., 50., 50.]),
+        ("xz", 35., 3., 10., [10., 0., 50., 6.]),
+        ("yz", 30., 3., 10., [20., 0., 50., 6.]),
+    ] {
+        let report = value(
+            state.engine_call(
+                "solid_section_review",
+                &json!({"body_id":body_id,"plane":plane,"offset_mm":offset,"probe_mm":probe})
+                    .to_string(),
+            ),
+        );
+        assert_eq!(
+            report["probe_spans"].as_array().unwrap().len(),
+            2,
+            "{report}"
+        );
+        for span in report["probe_spans"].as_array().unwrap() {
+            assert!(
+                (span["length_mm"].as_f64().unwrap() - expected).abs() < 1e-6,
+                "{report}"
+            );
+        }
+        for (i, expected) in bounds.into_iter().enumerate() {
+            assert!(
+                (report["bounds_mm"][i].as_f64().unwrap() - expected).abs() < 1e-6,
+                "{report}"
+            );
+        }
+        assert!(
+            report["svg"].as_str().unwrap().contains("material")
+                || report["svg"].as_str().unwrap().contains("probe spans")
+        );
+        if let Ok(path) = std::env::var("LIMO_SECTION_QA_SVG") {
+            if plane == "xy" {
+                std::fs::write(path, report["svg"].as_str().unwrap()).unwrap();
+            }
+        }
+    }
+    let empty = value(state.engine_call(
+        "solid_section_review",
+        &json!({"body_id":body_id,"plane":"xy","offset_mm":60.}).to_string(),
+    ));
+    assert!(empty["bounds_mm"].is_null());
+    assert_eq!(empty["svg"], "");
+    let bad: Value = serde_json::from_str(&state.engine_call(
+        "solid_section_review",
+        r#"{"body_id":999,"plane":"xy","offset_mm":3}"#,
+    ))
+    .unwrap();
+    assert_eq!(bad["ok"], false);
+    assert_eq!(value(state.engine_call("project_export_model", "")), before);
+    assert_eq!(state.geometry_revision(), revision);
+}
+
+#[test]
 fn native_straight_export_uses_loaded_document_units_and_preserves_exact_project() {
     let state = NativeEngineHost::new();
     value(state.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#));

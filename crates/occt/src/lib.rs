@@ -7,6 +7,7 @@
 pub mod drawing_export;
 mod drawing_instances;
 pub mod drawing_presentation;
+pub mod section_review;
 pub use drawing_instances::{project_drawing, resolve_drawing_anchor, resolve_drawing_line};
 mod interference;
 pub use interference::{exact_interference_report, exact_pair_result};
