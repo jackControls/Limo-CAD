@@ -811,7 +811,7 @@ pub(super) fn synchronize(
                 c.field = Field::Toggle(form.option);
                 c.selected = Some(form.option);
                 c.role = "checkbox".into();
-                panel.widgets.button(
+                let option = panel.widgets.button(
                     world,
                     camera,
                     "form-option",
@@ -824,6 +824,7 @@ pub(super) fn synchronize(
                     None,
                     31,
                 )?;
+                interface_shell::checkbox_button(world, option, camera, form.option);
             } else {
                 panel.widgets.text(
                     world,
