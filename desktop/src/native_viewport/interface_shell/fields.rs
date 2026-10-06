@@ -11,7 +11,7 @@ use bevy::{
     ui::{ComputedUiRenderTargetInfo, UiGlobalTransform, UiScale, UiSystems},
     window::{Ime, PrimaryWindow, WindowEvent},
 };
-use limo_cad_interface::{ControlInput, ControlKey, Field};
+use limo_cad_interface::{ControlInput, ControlKey, DocumentContext, Field};
 use std::collections::VecDeque;
 
 use super::{
@@ -42,6 +42,7 @@ type EditableFieldQuery<'w, 's> = Query<
         &'static mut Node,
         &'static mut BorderColor,
         Option<&'static mut Outline>,
+        Option<&'static DrawingDimension>,
     ),
 >;
 
@@ -92,6 +93,72 @@ struct EditorSession {
     active: Option<NativeInterfaceAction>,
 }
 
+/// Dimensions that replace their preview value on keyboard entry and keep
+/// Tab within the current construction gesture.
+#[derive(Component)]
+pub(crate) struct DrawingDimension {
+    pub generation: u64,
+    pub index: usize,
+}
+
+#[derive(Resource, Default)]
+struct RequestedFocus(Option<(Entity, u64, DocumentContext)>);
+
+pub(crate) fn request_focus(world: &mut World, entity: Entity, owner: &DocumentContext) {
+    let binding = world.get::<InterfaceControl>(entity).unwrap().binding;
+    world.insert_resource(RequestedFocus(Some((entity, binding, owner.clone()))));
+}
+
+/// A moving preview must never replace a number or expression being typed,
+/// including the interval between submitting it and the reducer accepting it.
+pub(crate) fn has_uncommitted_edit(world: &World, entity: Entity) -> bool {
+    world.get::<NativeTextField>(entity).is_some_and(|field| {
+        field.queued.is_some()
+            || world.get::<EditableText>(entity).is_some_and(|editor| {
+                editor.is_composing() || editor.value() != field.baseline.as_str()
+            })
+    })
+}
+
+fn apply_requested_focus(world: &mut World) {
+    let Some((entity, binding, owner)) = world.resource_mut::<RequestedFocus>().0.take() else {
+        return;
+    };
+    let handle = world.resource::<NativeInterfaceHandle>().clone();
+    if world
+        .get::<InterfaceControl>(entity)
+        .is_none_or(|control| control.binding != binding || !control.visible || control.disabled)
+        || handle
+            .frame()
+            .is_none_or(|frame| frame.context != owner || !frame.modal_stack.is_empty())
+    {
+        return;
+    }
+    // Newly spawned editors can need another text/layout pass before their
+    // hit areas are published. Retain the original owner and binding while
+    // waiting; never resolve this request against a replacement gesture.
+    let action = handle
+        .resolve_retained(ControlKey(entity.to_bits()))
+        .ok()
+        .filter(|action| action.context == owner && action.control.binding() == binding);
+    let Some(action) = action else {
+        world.resource_mut::<RequestedFocus>().0 = Some((entity, binding, owner));
+        handle.request_redraw();
+        return;
+    };
+    if validate_editor(world, &handle, &action).is_err()
+        || handle.prepare_activation(&action).is_err()
+    {
+        return;
+    }
+    if let Err(error) = after_window_input(world, &handle) {
+        eprintln!("Drawing field focus failed: {error}");
+    }
+    if let Some(mut focus) = world.get_resource_mut::<bevy::input_focus::InputFocus>() {
+        focus.set(entity, bevy::input_focus::FocusCause::Navigated);
+    }
+}
+
 pub(crate) fn install(app: &mut App) {
     if app
         .world()
@@ -101,8 +168,15 @@ pub(crate) fn install(app: &mut App) {
         app.add_systems(First, super::ime_diagnostics::observe_configuration);
     }
     app.init_resource::<EditorSession>()
+        .init_resource::<RequestedFocus>()
         .init_resource::<ime_popup::ImeCandidateWindow>()
         .add_systems(Update, synchronize_fields.after(super::InterfaceReduction))
+        .add_systems(
+            PostUpdate,
+            apply_requested_focus
+                .after(InterfaceLayout)
+                .before(update_ime),
+        )
         .add_systems(
             PostUpdate,
             update_ime
@@ -589,6 +663,11 @@ pub(crate) fn before_window_input(
                 if let Some(commit) = commit_active(world, handle)? {
                     handle.enqueue_action(commit)?;
                 }
+                if input.logical_key == Key::Tab
+                    && focus_drawing_dimension(world, handle, entity, modifiers.shift)?
+                {
+                    return Ok(true);
+                }
                 if input.logical_key == Key::Enter && submits_on_enter(world, entity) {
                     handle.key(limo_cad_interface::KeyChord::plain("Enter"))?;
                 }
@@ -652,8 +731,63 @@ pub(crate) fn after_window_input(
         handle.enqueue_action(commit)?;
     }
     let action = next.map(|key| handle.resolve_retained(key)).transpose()?;
+    if let Some(entity) = next.map(|key| Entity::from_bits(key.0)) {
+        if world.get::<DrawingDimension>(entity).is_some() {
+            apply_edit(world, entity, TextEdit::SelectAll)?;
+            handle.invalidate_presentation();
+        }
+    }
     world.resource_mut::<EditorSession>().active = action;
     Ok(())
+}
+
+fn focus_drawing_dimension(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    current: Entity,
+    backwards: bool,
+) -> Result<bool, String> {
+    let Some(group) = world.get::<DrawingDimension>(current) else {
+        return Ok(false);
+    };
+    let generation = group.generation;
+    let owner = handle
+        .resolve_retained(ControlKey(current.to_bits()))?
+        .context;
+    let mut fields = world.query::<(Entity, &DrawingDimension, &InterfaceControl)>();
+    let mut candidates: Vec<_> = fields
+        .iter(world)
+        .filter(|(_, group, control)| {
+            group.generation == generation && control.visible && !control.disabled
+        })
+        .filter_map(|(entity, group, _)| {
+            handle
+                .resolve_retained(ControlKey(entity.to_bits()))
+                .ok()
+                .filter(|action| {
+                    action.context == owner && validate_editor(world, handle, action).is_ok()
+                })
+                .map(|action| (group.index, action))
+        })
+        .collect();
+    candidates.sort_by_key(|(index, _)| *index);
+    let Some(index) = candidates
+        .iter()
+        .position(|(_, action)| active_entity(action) == current)
+    else {
+        return Ok(false);
+    };
+    let next = if backwards {
+        (index + candidates.len() - 1) % candidates.len()
+    } else {
+        (index + 1) % candidates.len()
+    };
+    handle.prepare_activation(&candidates[next].1)?;
+    after_window_input(world, handle)?;
+    if next == index {
+        apply_edit(world, current, TextEdit::SelectAll)?;
+    }
+    Ok(true)
 }
 
 pub(crate) fn after_pointer_input(
@@ -837,8 +971,17 @@ fn synchronize_fields(
             bevy::input_focus::FocusCause::Navigated,
         );
     }
-    for (entity, control, mut field, mut editor, mut revision, mut node, mut border, outline) in
-        &mut fields
+    for (
+        entity,
+        control,
+        mut field,
+        mut editor,
+        mut revision,
+        mut node,
+        mut border,
+        outline,
+        dimension,
+    ) in &mut fields
     {
         let Field::Text { value, .. } = &control.field else {
             continue;
@@ -846,7 +989,13 @@ fn synchronize_fields(
         if field.binding != control.binding || field.baseline != *value {
             editor.editor.set_text(value);
             editor.pending_edits.clear();
-            editor.queue_edit(TextEdit::TextEnd(false));
+            editor.queue_edit(
+                if focused == Some(ControlKey(entity.to_bits())) && dimension.is_some() {
+                    TextEdit::SelectAll
+                } else {
+                    TextEdit::TextEnd(false)
+                },
+            );
             field.baseline.clone_from(value);
             field.binding = control.binding;
             field.queued = None;

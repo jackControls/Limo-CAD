@@ -66,6 +66,46 @@ pub(super) fn ribbon_groups(area: InterfaceRect) -> Vec<RibbonGroup> {
     }
     groups
 }
+pub(super) fn icon(command: &EditorCommand) -> Icon {
+    match command {
+        EditorCommand::Support(_) | EditorCommand::Begin(_) | EditorCommand::Edit(_) => {
+            Icon::Sketch
+        }
+        EditorCommand::Finish | EditorCommand::Complete => Icon::Finish,
+        EditorCommand::Cancel => Icon::Cancel,
+        EditorCommand::Palette(_) => Icon::Settings,
+        EditorCommand::Interaction(command) => match command {
+            InteractionCommand::Modify(ModifyTool::Trim) => Icon::Trim,
+            InteractionCommand::Modify(ModifyTool::Extend) => Icon::Extend,
+            InteractionCommand::Modify(ModifyTool::Break) => Icon::Break,
+            InteractionCommand::Relation(relation) => Icon::Relation(relation.icon()),
+            InteractionCommand::Dimension => Icon::Dimension,
+            InteractionCommand::Form(kind) => match kind {
+                FormKind::MoveCopy => Icon::MoveCopy,
+                FormKind::Offset => Icon::Offset,
+                FormKind::Fillet => Icon::Fillet,
+                FormKind::Mirror => Icon::Mirror,
+                FormKind::RectangularPattern => Icon::RectangularPattern,
+                FormKind::CircularPattern => Icon::CircularPattern,
+                FormKind::Polygon => Icon::Polygon,
+                _ => Icon::Pencil,
+            },
+            _ => Icon::Select,
+        },
+        EditorCommand::Size { .. } => Icon::Dimension,
+        EditorCommand::Tool(tool) => match tool {
+            CreateTool::Line => Icon::Line,
+            CreateTool::MidpointLine => Icon::MidpointLine,
+            CreateTool::Rectangle(_) => Icon::Rectangle,
+            CreateTool::Circle(_) => Icon::Circle,
+            CreateTool::Arc3Point | CreateTool::ArcCenter => Icon::Arc,
+            CreateTool::Slot(_) => Icon::Slot,
+            CreateTool::Point => Icon::Point,
+            CreateTool::Spline => Icon::Spline,
+        },
+    }
+}
+
 pub(super) fn group(command: &EditorCommand) -> &'static str {
     match command {
         EditorCommand::Palette(_) => "sketch/selection",
@@ -174,21 +214,21 @@ pub(super) fn synchronize(
                 );
             }
             if let Some(menu) = editor.interaction.menu {
-                let rows: Vec<(String, EditorCommand)> = match menu {
+                let mut rows: Vec<(String, EditorCommand)> = match menu {
                     "draw" => [
                         CreateTool::Line,
-                        CreateTool::MidpointLine,
-                        CreateTool::Point,
+                        CreateTool::Arc3Point,
+                        CreateTool::ArcCenter,
+                        CreateTool::Spline,
                         CreateTool::Rectangle(RectangleMode::TwoPoint),
                         CreateTool::Rectangle(RectangleMode::Center),
                         CreateTool::Circle(CircleMode::CenterDiameter),
                         CreateTool::Circle(CircleMode::TwoPoint),
-                        CreateTool::Arc3Point,
-                        CreateTool::ArcCenter,
                         CreateTool::Slot(SlotMode::CenterToCenter),
                         CreateTool::Slot(SlotMode::Overall),
                         CreateTool::Slot(SlotMode::CenterPoint),
-                        CreateTool::Spline,
+                        CreateTool::MidpointLine,
+                        CreateTool::Point,
                     ]
                     .into_iter()
                     .map(|t| (t.label().into(), EditorCommand::Tool(t)))
@@ -271,8 +311,27 @@ pub(super) fn synchronize(
                         rows
                     }
                 };
-                let top = area.y as f32 + 74.;
-                let columns = if top + rows.len() as f32 * 28. + 8. > window_height {
+                if menu == "draw" {
+                    let polygon = rows.pop().unwrap();
+                    rows.insert(8, polygon);
+                }
+                let top = area.y as f32 + 86.;
+                let separator_before = |command: &EditorCommand| {
+                    menu == "draw"
+                        && matches!(
+                            command,
+                            EditorCommand::Tool(
+                                CreateTool::Rectangle(RectangleMode::TwoPoint)
+                                    | CreateTool::MidpointLine
+                            )
+                        )
+                };
+                let extra = rows
+                    .iter()
+                    .filter(|(_, command)| separator_before(command))
+                    .count() as f32
+                    * 9.;
+                let columns = if top + rows.len() as f32 * 28. + extra + 8. > window_height {
                     2
                 } else {
                     1
@@ -296,17 +355,48 @@ pub(super) fn synchronize(
                     rect(0., 0., (area.x + area.width) as f32, window_height),
                     59,
                 )?;
+                let mut menu_bounds = rect(
+                    left,
+                    top,
+                    menu_width,
+                    rows_per_column as f32 * 28. + extra + 8.,
+                );
+                menu_bounds.border = UiRect::all(px(1.));
+                menu_bounds.border_radius = BorderRadius::all(px(4.));
                 panel.widgets.panel(
                     world,
                     camera,
                     "menu",
-                    rect(left, top, menu_width, rows_per_column as f32 * 28. + 8.),
-                    theme.panel.with_alpha(1.),
+                    menu_bounds,
+                    theme.header.with_alpha(1.),
                     60,
                 );
+                world
+                    .entity_mut(panel.widgets.entity("menu").unwrap())
+                    .insert(bevy::ui::BoxShadow::new(
+                        Color::BLACK.with_alpha(0.4),
+                        px(0.),
+                        px(12.),
+                        px(0.),
+                        px(32.),
+                    ));
+                let mut y = top + 4.;
                 for (index, (label, command)) in rows.into_iter().enumerate() {
                     let left = left + (index / rows_per_column) as f32 * 240.;
                     let row = index % rows_per_column;
+                    if row == 0 {
+                        y = top + 4.;
+                    } else if separator_before(&command) {
+                        panel.widgets.panel(
+                            world,
+                            camera,
+                            &format!("menu-separator-{index}"),
+                            rect(left + 8., y + 4., 224., 1.),
+                            theme.edge,
+                            61,
+                        );
+                        y += 9.;
+                    }
                     let mut control = InterfaceControl::button(group(&command), &label);
                     control.modal_scope = Some("sketch-menu".into());
                     control.role = "menuitem".into();
@@ -317,17 +407,21 @@ pub(super) fn synchronize(
                         command,
                         EditorCommand::Interaction(InteractionCommand::Delete)
                     ) && editor.interaction.selection.is_empty();
-                    panel.widgets.button(
+                    let glyph = icon(&command);
+                    let entity = panel.widgets.button(
                         world,
                         camera,
                         &format!("menu-{menu}-{index}"),
                         control,
                         None,
                         NativeCommand::Sketch(command),
-                        rect(left + 4., top + 4. + row as f32 * 28., 232., 28.),
-                        None,
+                        rect(left + 4., y, 232., 28.),
+                        Some(glyph),
                         61,
                     )?;
+                    interface_shell::caption_size(world, entity, 12.);
+                    interface_shell::ribbon::menu_ink(world, entity);
+                    y += 28.;
                 }
             }
         }

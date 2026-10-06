@@ -1773,9 +1773,9 @@ fn synchronize(
         services,
         &owner,
         InterfaceRect {
-            x: if width > 1400. { 116. } else { 64. },
+            x: 116.,
             y: 34.,
-            width: (width - if width > 1400. { 128. } else { 76. }).max(1.) as f64,
+            width: (width - 128.).max(1.) as f64,
             height: 72.,
         },
         InterfaceRect {

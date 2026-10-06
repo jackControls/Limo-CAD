@@ -50,7 +50,7 @@ pub(super) fn synchronize(
                 world
                     .get::<NativeCommandBinding>(*entity)
                     .map(|b| &b.command),
-                Some(NativeCommand::Orient(_))
+                Some(NativeCommand::Orient(_) | NativeCommand::ClearSelection)
             ) {
                 world.get_mut::<InterfaceControl>(*entity).unwrap().visible = false;
             }
