@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use std::{
     collections::BTreeSet,
     fs,
-    io::Write,
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
@@ -454,6 +454,7 @@ pub(super) fn wait_for_interface(client: &mut Client, session: &str) -> Result<(
 pub(super) struct Driver {
     pid: u32,
     helper: PathBuf,
+    diagnostics: PathBuf,
 }
 impl Driver {
     pub(super) fn new(pid: u32, out: &Path) -> Result<Self> {
@@ -476,8 +477,11 @@ impl Driver {
         let helper = root.join("native-input-windows.ps1");
         #[cfg(target_os = "linux")]
         let helper = root.join("native-input-linux.sh");
-        let _ = out;
-        Ok(Self { pid, helper })
+        Ok(Self {
+            pid,
+            helper,
+            diagnostics: out.join("input-helper.jsonl"),
+        })
     }
     fn source(&self) -> &'static str {
         if cfg!(target_os = "macos") {
@@ -513,21 +517,30 @@ impl Driver {
         };
         #[cfg(target_os = "macos")]
         let mut command = Command::new(&self.helper);
-        command.arg(self.pid.to_string()).arg(operation);
+        command
+            .arg(self.pid.to_string())
+            .arg(operation)
+            .env("LIMO_CAD_INPUT_HELPER_EVIDENCE", &self.diagnostics);
         command
     }
     pub(super) fn invoke(&self, operation: &str, input: Option<&str>) -> Result<String> {
         let mut command = self.command(operation);
+        let mut stdout = tempfile::tempfile()?;
+        let mut stderr = tempfile::tempfile()?;
+        let stdin = match input {
+            Some(input) => {
+                let mut file = tempfile::tempfile()?;
+                file.write_all(input.as_bytes())?;
+                file.seek(SeekFrom::Start(0))?;
+                Stdio::from(file)
+            }
+            None => Stdio::null(),
+        };
         command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stdin(stdin)
+            .stdout(Stdio::from(stdout.try_clone()?))
+            .stderr(Stdio::from(stderr.try_clone()?));
         let mut child = command.spawn().context("Start OS input helper")?;
-        if let Some(input) = input {
-            child.stdin.take().unwrap().write_all(input.as_bytes())?;
-        } else {
-            drop(child.stdin.take());
-        }
         let deadline = Instant::now() + Duration::from_secs(20);
         while child.try_wait()?.is_none() {
             if Instant::now() >= deadline {
@@ -537,13 +550,14 @@ impl Driver {
             }
             thread::sleep(Duration::from_millis(25));
         }
-        let output = child.wait_with_output()?;
+        let status = child.wait()?;
+        let stderr = helper_output(&mut stderr)?;
         ensure!(
-            output.status.success(),
+            status.success(),
             "OS input helper {operation} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
+            String::from_utf8_lossy(&stderr)
         );
-        String::from_utf8(output.stdout).context("OS helper output was not UTF-8")
+        String::from_utf8(helper_output(&mut stdout)?).context("OS helper output was not UTF-8")
     }
     pub(super) fn event(&self, operation: &str) -> Result<()> {
         self.invoke(operation, None).map(|_| ())
@@ -565,4 +579,37 @@ impl Driver {
             thread::sleep(Duration::from_millis(25));
         }
     }
+}
+
+fn helper_output(file: &mut fs::File) -> Result<Vec<u8>> {
+    const LIMIT: u64 = 1024 * 1024;
+    ensure!(
+        file.metadata()?.len() <= LIMIT,
+        "OS helper output exceeds 1 MiB"
+    );
+    file.seek(SeekFrom::Start(0))?;
+    let mut bytes = Vec::new();
+    file.take(LIMIT + 1).read_to_end(&mut bytes)?;
+    ensure!(
+        bytes.len() as u64 <= LIMIT,
+        "OS helper output exceeds 1 MiB"
+    );
+    Ok(bytes)
+}
+
+#[cfg(windows)]
+#[test]
+fn native_driver_drains_large_receipts_without_pipe_backpressure() {
+    let staging = tempfile::tempdir().unwrap();
+    let helper = staging.path().join("emit.ps1");
+    fs::write(&helper, "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\nif ([Console]::In.ReadToEnd().Length -ne 131072) { throw 'missing helper input' }\n[Console]::Write(('a' * 131072))\n[Console]::Error.Write(('b' * 131072))\n").unwrap();
+    let driver = Driver {
+        pid: std::process::id(),
+        helper,
+        diagnostics: staging.path().join("stages.jsonl"),
+    };
+    let input = "c".repeat(131072);
+    let output = driver.invoke("focus", Some(&input)).unwrap();
+    assert_eq!(output.len(), 131072);
+    assert!(output.bytes().all(|byte| byte == b'a'));
 }

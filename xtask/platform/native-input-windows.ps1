@@ -2,6 +2,13 @@ param([int]$OwnedPid, [string]$Operation)
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+function Write-InputStage([string]$stage) {
+    if (-not [string]::IsNullOrEmpty($env:LIMO_CAD_INPUT_HELPER_EVIDENCE)) {
+        $row = [ordered]@{ operation = $Operation; stage = $stage; utc = [DateTime]::UtcNow.ToString('o') } | ConvertTo-Json -Compress
+        [IO.File]::AppendAllText($env:LIMO_CAD_INPUT_HELPER_EVIDENCE, $row + "`n", [Text.UTF8Encoding]::new($false))
+    }
+}
+Write-InputStage 'start'
 if ($Operation -eq 'accessibility') {
     & (Join-Path $PSScriptRoot 'native-accessibility-windows.ps1') -OwnedPid $OwnedPid
     exit $LASTEXITCODE
@@ -80,7 +87,7 @@ public static class NativePlatformInput {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern IntPtr GetKeyboardLayout(uint thread);
     [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam, uint flags, uint timeout, out UIntPtr result);
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
+    [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr window, int command);
     [DllImport("user32.dll", SetLastError = true)] public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out RECT rect);
     [DllImport("user32.dll", SetLastError = true)] public static extern bool GetClientRect(IntPtr window, out RECT rect);
@@ -90,8 +97,6 @@ public static class NativePlatformInput {
     [DllImport("user32.dll", SetLastError = true)] public static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll", SetLastError = true)] public static extern bool GetClipCursor(out RECT rect);
     [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(POINT point);
-    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint thread, uint attachedTo, bool attach);
-    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
     [DllImport("user32.dll", SetLastError = true)] public static extern uint SendInput(uint count, INPUT[] input, int size);
     public static void Key(ushort key, bool up) {
         var input = new INPUT { type = 1, data = new UNION { keyboard = new KEYBDINPUT { key = key, flags = up ? 2u : 0u } } };
@@ -110,6 +115,7 @@ public static class NativePlatformInput {
     }
 }
 '@
+Write-InputStage 'interop-ready'
 function Get-WindowEvidence([IntPtr]$window) {
     [uint32]$owner = 0
     [void][NativePlatformInput]::GetWindowThreadProcessId($window, [ref]$owner)
@@ -166,24 +172,24 @@ if ($windows.Count -ne 1) {
 if ($Operation -eq 'focus' -and -not [string]::IsNullOrEmpty($env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE)) {
 
 
+    Write-InputStage 'runner-preflight-start'
     & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE
+    Write-InputStage 'runner-preflight-complete'
 }
-[void][NativePlatformInput]::ShowWindow($windows[0], 9)
-[uint32]$foregroundOwner = 0
-$foregroundThread = [NativePlatformInput]::GetWindowThreadProcessId([NativePlatformInput]::GetForegroundWindow(), [ref]$foregroundOwner)
-$helperThread = [NativePlatformInput]::GetCurrentThreadId()
-$attached = $foregroundThread -ne $helperThread -and [NativePlatformInput]::AttachThreadInput($helperThread, $foregroundThread, $true)
-try { [void][NativePlatformInput]::SetForegroundWindow($windows[0]) }
-finally { if ($attached) { [void][NativePlatformInput]::AttachThreadInput($helperThread, $foregroundThread, $false) } }
+[void][NativePlatformInput]::ShowWindowAsync($windows[0], 9)
+Write-InputStage 'restore-requested'
+[void][NativePlatformInput]::SetForegroundWindow($windows[0])
+Write-InputStage 'foreground-requested'
 if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0] -and $Operation -eq 'focus') {
 
 
 
-    if (-not [NativePlatformInput]::SetWindowPos($windows[0], [IntPtr]::new(-1), 0, 0, 0, 0, 0x53)) {
+    if (-not [NativePlatformInput]::SetWindowPos($windows[0], [IntPtr]::new(-1), 0, 0, 0, 0, 0x4053)) {
         $raiseError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         throw "Cannot raise owned native window (Win32 error $raiseError); no mouse input was sent. $(Get-FocusEvidence $windows[0] ([IntPtr]::Zero))"
     }
     try {
+        Write-InputStage 'fallback-raise-requested'
         Start-Sleep -Milliseconds 100
         $rect = [NativePlatformInput+RECT]::new()
         if (-not [NativePlatformInput]::GetWindowRect($windows[0], [ref]$rect)) { throw 'Cannot locate owned native window' }
@@ -214,7 +220,7 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0] -and $Operation
         try { [NativePlatformInput]::Click(); Start-Sleep -Milliseconds 100 }
         finally { [void][NativePlatformInput]::SetCursorPos($previous.x, $previous.y) }
     } finally {
-        [void][NativePlatformInput]::SetWindowPos($windows[0], [IntPtr]::new(-2), 0, 0, 0, 0, 0x53)
+        [void][NativePlatformInput]::SetWindowPos($windows[0], [IntPtr]::new(-2), 0, 0, 0, 0, 0x4053)
     }
 }
 $deadline = [DateTime]::UtcNow.AddSeconds(5)
@@ -223,8 +229,9 @@ if ([NativePlatformInput]::GetForegroundWindow() -ne $windows[0]) {
     [uint32]$currentOwner = 0
     $current = [NativePlatformInput]::GetForegroundWindow()
     [void][NativePlatformInput]::GetWindowThreadProcessId($current, [ref]$currentOwner)
-    throw "Cannot focus the owned native window; this runner needs an interactive desktop (target=$($windows[0]), foreground=$current, foreground PID=$currentOwner, input queues attached=$attached). $(Get-FocusEvidence $windows[0] ([IntPtr]::Zero))"
+    throw "Cannot focus the owned native window; this runner needs an interactive desktop (target=$($windows[0]), foreground=$current, foreground PID=$currentOwner). $(Get-FocusEvidence $windows[0] ([IntPtr]::Zero))"
 }
+Write-InputStage 'focus-confirmed'
 if ($Operation -eq 'focus') { exit 0 }
 if ($Operation -eq 'ime-session') {
     & (Join-Path $PSScriptRoot 'native-windows-ime-session.ps1') -ImeOwnedPid $OwnedPid -ImeWindow $windows[0]
