@@ -139,7 +139,11 @@ pub(super) fn synchronize(
                 )?;
                 interface_shell::caption_size(world, entity, 10.);
                 interface_shell::center_caption(world, entity);
-                interface_shell::ribbon::group_caption(world, entity, width - 12.);
+                interface_shell::ribbon::group_caption(
+                    world,
+                    entity,
+                    width - if menu { 12. } else { 0. },
+                );
                 if menu {
                     let ink = crate::native_viewport::ui::theme(world).mute;
                     panel.widgets.glyph(
