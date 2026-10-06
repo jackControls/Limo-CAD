@@ -337,7 +337,7 @@ pub(crate) fn synchronize(
             camera,
             "product-mark-text",
             node(5.5, 10., 20., 8.),
-            "NB",
+            "LC",
             7.,
             67,
         );
