@@ -31,7 +31,6 @@
       "duration_ms": 700
     },
     {"view": "isometric", "fit": true},
-
     {"id": "bench_present_front_leg_left_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_front_leg_left_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [], "hidden_sketch_names": {"$ref": "bench_present_front_leg_left_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_front_leg_left_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -59,7 +58,6 @@
     },
     {"id": "bench_present_front_leg_left_begin_profile_view", "view": "top", "fit": true, "duration_ms": 550, "target": "active_sketch"},
     {"id": "bench_present_front_leg_left_begin_profile_read", "note": "Left front leg: 65 x 65 mm profile, viewed square-on before the feature.", "duration_ms": 1000},
-
     {
       "id": "front_leg_left_add_constraint",
       "call": {
@@ -96,6 +94,26 @@
         }
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "front_leg_left_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Front leg and arm post / stock from A-B-C / Stock 630 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "front_leg_left_extrude_feature_name"
+    },
     {"id": "bench_hide_finished_after_front_leg_left_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
       "let": {
@@ -118,7 +136,6 @@
     {"id": "bench_present_front_leg_left_begin_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_front_leg_left_extrude", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_front_leg_left_extrude", "pointer": "/hidden_datum_plane_ids"}}}},
     {"id": "bench_present_front_leg_left_begin_result_view", "view": "isometric", "fit": true, "duration_ms": 550, "body_id": {"$ref": "front_leg_left_body"}},
     {"id": "bench_present_front_leg_left_begin_result_read", "note": "Left front leg: stock extruded 630 mm. The result remains isolated for inspection.", "duration_ms": 1200},
-
     {
       "id": "front_leg_left_set_body_appearance",
       "call": {
@@ -179,7 +196,6 @@
         "arguments": {"occurrence_id": {"$ref": "front_leg_left_instance_1"}, "grounded": true}
       }
     },
-
     {"id": "bench_present_front_leg_right_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_front_leg_right_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}], "hidden_sketch_names": {"$ref": "bench_present_front_leg_right_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_front_leg_right_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -242,6 +258,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "front_leg_right_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Right front leg and arm post / stock from A-B-C / Stock 630 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "front_leg_right_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_front_leg_right_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -317,7 +353,6 @@
     },
     {"id": "bench_present_front_leg_right_placed_view", "view": "isometric", "fit": true, "duration_ms": 550},
     {"id": "bench_present_front_leg_right_placed_read", "note": "Right front leg placed in the assembly.", "duration_ms": 700},
-
     {"id": "bench_present_rear_leg_left_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_rear_leg_left_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}], "hidden_sketch_names": {"$ref": "bench_present_rear_leg_left_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_rear_leg_left_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -380,6 +415,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "rear_leg_left_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Left rear leg and back post / stock from A-B-C / Stock 790 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "rear_leg_left_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_rear_leg_left_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -455,7 +510,6 @@
     },
     {"id": "bench_present_rear_leg_left_placed_view", "view": "isometric", "fit": true, "duration_ms": 550},
     {"id": "bench_present_rear_leg_left_placed_read", "note": "Left rear leg placed in the assembly.", "duration_ms": 700},
-
     {"id": "bench_present_rear_leg_right_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_rear_leg_right_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}], "hidden_sketch_names": {"$ref": "bench_present_rear_leg_right_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_rear_leg_right_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -518,6 +572,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "rear_leg_right_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Right rear leg and back post / stock from A-B-C / Stock 790 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "rear_leg_right_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_rear_leg_right_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -599,7 +673,6 @@
       "duration_ms": 700
     },
     {"view": "isometric", "fit": true},
-
     {"id": "bench_present_apron_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_apron_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}], "hidden_sketch_names": {"$ref": "bench_present_apron_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_apron_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -662,6 +735,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "apron_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Long apron — face lap / stock from A-B-C / Stock 155 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "apron_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_apron_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -751,7 +844,6 @@
         "arguments": {"occurrence_id": {"$ref": "apron_instance_2"}, "local_pose": {"translation": [65, 445, 260], "rotation": [0, 0, 0, 1]}}
       }
     },
-
     {"id": "bench_present_upper_side_rail_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_upper_side_rail_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}], "hidden_sketch_names": {"$ref": "bench_present_upper_side_rail_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_upper_side_rail_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -814,6 +906,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "upper_side_rail_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Upper side rail — face lap / stock from A-B-C / Stock 90 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "upper_side_rail_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_upper_side_rail_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -909,7 +1021,6 @@
         }
       }
     },
-
     {"id": "bench_present_lower_side_rail_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_lower_side_rail_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}], "hidden_sketch_names": {"$ref": "bench_present_lower_side_rail_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_lower_side_rail_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -972,6 +1083,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "lower_side_rail_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Lower side rail — face lap / stock from A-B-C / Stock 90 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "lower_side_rail_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_lower_side_rail_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -1073,7 +1204,6 @@
       "duration_ms": 700
     },
     {"view": "isometric", "fit": true},
-
     {"id": "bench_present_center_bearer_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_center_bearer_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}], "hidden_sketch_names": {"$ref": "bench_present_center_bearer_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_center_bearer_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -1136,6 +1266,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "center_bearer_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Center seat bearer / stock from A-B-C / Stock 90 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "center_bearer_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_center_bearer_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -1211,7 +1361,6 @@
     },
     {"id": "bench_present_center_bearer_placed_view", "view": "isometric", "fit": true, "duration_ms": 550},
     {"id": "bench_present_center_bearer_placed_read", "note": "Center seat bearer placed in the assembly.", "duration_ms": 700},
-
     {"id": "bench_present_bearer_block_front_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_bearer_block_front_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}], "hidden_sketch_names": {"$ref": "bench_present_bearer_block_front_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_bearer_block_front_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -1274,6 +1423,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bearer_block_front_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Front center bearer support block / stock from A-B-C / Stock 65 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bearer_block_front_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_bearer_block_front_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -1355,7 +1524,6 @@
     },
     {"id": "bench_present_bearer_block_front_placed_view", "view": "isometric", "fit": true, "duration_ms": 550},
     {"id": "bench_present_bearer_block_front_placed_read", "note": "Front bearer block placed in the assembly.", "duration_ms": 700},
-
     {"id": "bench_present_bearer_block_rear_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_bearer_block_rear_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}], "hidden_sketch_names": {"$ref": "bench_present_bearer_block_rear_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_bearer_block_rear_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -1418,6 +1586,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bearer_block_rear_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Rear center bearer support block / stock from A-B-C / Stock 65 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bearer_block_rear_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_bearer_block_rear_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -1497,7 +1685,6 @@
     },
     {"id": "bench_present_bearer_block_rear_placed_view", "view": "isometric", "fit": true, "duration_ms": 550},
     {"id": "bench_present_bearer_block_rear_placed_read", "note": "Rear bearer block placed in the assembly.", "duration_ms": 700},
-
     {"id": "bench_present_stretcher_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_stretcher_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}], "hidden_sketch_names": {"$ref": "bench_present_stretcher_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_stretcher_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -1561,6 +1748,26 @@
         }
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "stretcher_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Lower stretcher — bearing on rails / stock from A-B-C / Stock 35 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "stretcher_extrude_feature_name"
+    },
     {"id": "bench_hide_finished_after_stretcher_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
       "let": {
@@ -1610,6 +1817,26 @@
         "operation": "solid_fillet",
         "arguments": {"body_id": {"$ref": "stretcher_body"}, "edge_ids": {"$ref": "stretcher_edges_136"}, "radius": 3, "tangent_chain": false}
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "stretcher_fillet"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "stretcher fillet / Fillet R3 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "stretcher_fillet_feature_name"
     },
     {
       "id": "stretcher_set_body_appearance",
@@ -1667,7 +1894,6 @@
       "duration_ms": 700
     },
     {"view": "isometric", "fit": true},
-
     {"id": "bench_present_seat_front_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_seat_front_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}], "hidden_sketch_names": {"$ref": "bench_present_seat_front_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_seat_front_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -1695,7 +1921,6 @@
     },
     {"id": "bench_present_seat_front_begin_profile_view", "view": "top", "fit": true, "duration_ms": 550, "target": "active_sketch"},
     {"id": "bench_present_seat_front_begin_profile_read", "note": "Front seat slat: 1200 x 85 mm profile, viewed square-on before the feature.", "duration_ms": 1000},
-
     {
       "id": "seat_front_add_constraint",
       "call": {
@@ -1731,6 +1956,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_front_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Front seat slat — post notches / stock from A-B-C / Stock 35 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_front_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_seat_front_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -1807,7 +2052,6 @@
     },
     {"id": "bench_present_seat_front_begin_2_profile_view", "view": "top", "fit": true, "duration_ms": 550, "target": "active_sketch"},
     {"id": "bench_present_seat_front_begin_2_profile_read", "note": "Front seat slat: 69 x 62 mm profile, viewed square-on before the feature.", "duration_ms": 1000},
-
     {
       "id": "seat_front_add_constraint_2",
       "call": {
@@ -1828,7 +2072,6 @@
       }
     },
     {"id": "seat_front_finish_2", "call": {"group": "sketch/draw", "operation": "sketch_finish", "arguments": {}}},
-
     {"id": "seat_front_profiles_2", "call": {"group": "sketch/draw", "operation": "sketch_profiles", "arguments": {}}},
     {
       "id": "seat_front_extrude_2",
@@ -1848,6 +2091,26 @@
           "target_body_ids": [{"$ref": "seat_front_body"}]
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_front_extrude_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Front seat slat — post notches / left post clearance / Cut through all"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_front_extrude_2_feature_name"
     },
     {"id": "bench_hide_finished_after_seat_front_extrude_2", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {"id": "bench_present_seat_front_begin_2_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_seat_front_extrude_2", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_seat_front_extrude_2", "pointer": "/hidden_datum_plane_ids"}}}},
@@ -1906,7 +2169,6 @@
     },
     {"id": "bench_present_seat_front_begin_3_profile_view", "view": "top", "fit": true, "duration_ms": 550, "target": "active_sketch"},
     {"id": "bench_present_seat_front_begin_3_profile_read", "note": "Front seat slat: 69 x 62 mm profile, viewed square-on before the feature.", "duration_ms": 1000},
-
     {
       "id": "seat_front_add_constraint_3",
       "call": {
@@ -1946,6 +2208,26 @@
           "target_body_ids": [{"$ref": "seat_front_body"}]
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_front_extrude_3"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Front seat slat — post notches / right post clearance / Cut through all"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_front_extrude_3_feature_name"
     },
     {"id": "bench_hide_finished_after_seat_front_extrude_3", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {"id": "bench_present_seat_front_begin_3_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_seat_front_extrude_3", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_seat_front_extrude_3", "pointer": "/hidden_datum_plane_ids"}}}},
@@ -2000,7 +2282,6 @@
     },
     {"id": "bench_present_seat_front_placed_view", "view": "isometric", "fit": true, "duration_ms": 550},
     {"id": "bench_present_seat_front_placed_read", "note": "Front seat slat placed in the assembly.", "duration_ms": 700},
-
     {"id": "bench_present_seat_second_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_seat_second_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}], "hidden_sketch_names": {"$ref": "bench_present_seat_second_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_seat_second_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -2063,6 +2344,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_second_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Second seat slat — post relief / stock from A-B-C / Stock 35 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_second_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_seat_second_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -2159,7 +2460,6 @@
       }
     },
     {"id": "seat_second_finish_2", "call": {"group": "sketch/draw", "operation": "sketch_finish", "arguments": {}}},
-
     {"id": "seat_second_profiles_2", "call": {"group": "sketch/draw", "operation": "sketch_profiles", "arguments": {}}},
     {
       "id": "seat_second_extrude_2",
@@ -2179,6 +2479,26 @@
           "target_body_ids": [{"$ref": "seat_second_body"}]
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_second_extrude_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Second seat slat — post relief / left post clearance / Cut through all"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_second_extrude_2_feature_name"
     },
     {"id": "bench_hide_finished_after_seat_second_extrude_2", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {"id": "bench_present_seat_second_begin_2_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_seat_second_extrude_2", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_seat_second_extrude_2", "pointer": "/hidden_datum_plane_ids"}}}},
@@ -2277,6 +2597,26 @@
         }
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_second_extrude_3"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Second seat slat — post relief / right post clearance / Cut through all"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_second_extrude_3_feature_name"
+    },
     {"id": "bench_hide_finished_after_seat_second_extrude_3", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {"id": "bench_present_seat_second_begin_3_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_seat_second_extrude_3", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_seat_second_extrude_3", "pointer": "/hidden_datum_plane_ids"}}}},
     {"id": "bench_present_seat_second_begin_3_result_view", "view": "isometric", "fit": true, "duration_ms": 550, "body_id": {"$ref": "seat_second_body"}},
@@ -2330,7 +2670,6 @@
     },
     {"id": "bench_present_seat_second_placed_view", "view": "isometric", "fit": true, "duration_ms": 550},
     {"id": "bench_present_seat_second_placed_read", "note": "Second seat slat placed in the assembly.", "duration_ms": 700},
-
     {"id": "bench_present_seat_middle_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_seat_middle_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}], "hidden_sketch_names": {"$ref": "bench_present_seat_middle_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_seat_middle_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -2394,6 +2733,26 @@
         }
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_middle_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Seat slat / stock from A-B-C / Stock 35 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_middle_extrude_feature_name"
+    },
     {"id": "bench_hide_finished_after_seat_middle_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
       "let": {
@@ -2448,6 +2807,26 @@
           "tangent_chain": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_middle_fillet"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "seat middle fillet / Fillet R3 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_middle_fillet_feature_name"
     },
     {
       "id": "seat_middle_set_body_appearance",
@@ -2521,7 +2900,6 @@
         }
       }
     },
-
     {"id": "bench_present_seat_rear_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_seat_rear_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}], "hidden_sketch_names": {"$ref": "bench_present_seat_rear_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_seat_rear_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -2584,6 +2962,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_rear_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Rear seat slat — post notches / stock from A-B-C / Stock 35 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_rear_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_seat_rear_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -2680,7 +3078,6 @@
       }
     },
     {"id": "seat_rear_finish_2", "call": {"group": "sketch/draw", "operation": "sketch_finish", "arguments": {}}},
-
     {"id": "seat_rear_profiles_2", "call": {"group": "sketch/draw", "operation": "sketch_profiles", "arguments": {}}},
     {
       "id": "seat_rear_extrude_2",
@@ -2700,6 +3097,26 @@
           "target_body_ids": [{"$ref": "seat_rear_body"}]
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_rear_extrude_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Rear seat slat — post notches / left post clearance / Cut through all"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_rear_extrude_2_feature_name"
     },
     {"id": "bench_hide_finished_after_seat_rear_extrude_2", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {"id": "bench_present_seat_rear_begin_2_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_seat_rear_extrude_2", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_seat_rear_extrude_2", "pointer": "/hidden_datum_plane_ids"}}}},
@@ -2798,6 +3215,26 @@
         }
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_rear_extrude_3"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Rear seat slat — post notches / right post clearance / Cut through all"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_rear_extrude_3_feature_name"
+    },
     {"id": "bench_hide_finished_after_seat_rear_extrude_3", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {"id": "bench_present_seat_rear_begin_3_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_seat_rear_extrude_3", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_seat_rear_extrude_3", "pointer": "/hidden_datum_plane_ids"}}}},
     {"id": "bench_present_seat_rear_begin_3_result_view", "view": "isometric", "fit": true, "duration_ms": 550, "body_id": {"$ref": "seat_rear_body"}},
@@ -2858,7 +3295,6 @@
       "duration_ms": 700
     },
     {"view": "front", "fit": true},
-
     {"id": "bench_present_back_rail_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_back_rail_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}, {"$ref": "seat_rear_body"}], "hidden_sketch_names": {"$ref": "bench_present_back_rail_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_back_rail_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -2921,6 +3357,26 @@
           "target_body_ids": []
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "back_rail_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Back rail — face lap / stock from A-B-C / Stock 55 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "back_rail_extrude_feature_name"
     },
     {"id": "bench_hide_finished_after_back_rail_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
@@ -3016,10 +3472,6 @@
       "duration_ms": 700
     },
     {"view": "front", "fit": true},
-
-
-
-
     {"id": "bench_present_picket_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_picket_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}, {"$ref": "seat_rear_body"}, {"$ref": "back_rail_body"}], "hidden_sketch_names": {"$ref": "bench_present_picket_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_picket_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -3047,8 +3499,6 @@
     },
     {"id": "bench_present_picket_begin_profile_view", "view": "top", "fit": true, "duration_ms": 550, "target": "active_sketch"},
     {"id": "bench_present_picket_begin_profile_read", "note": "Crowned back picket: 85 x 25 mm profile, viewed square-on before the feature.", "duration_ms": 1000},
-
-
     {
       "id": "picket_add_constraint",
       "call": {
@@ -3085,6 +3535,26 @@
         }
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "picket_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Back picket — editable height / stock from A-B-C / Stock 315 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "picket_extrude_feature_name"
+    },
     {"id": "bench_hide_finished_after_picket_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
       "let": {
@@ -3107,7 +3577,6 @@
     {"id": "bench_present_picket_begin_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}, {"$ref": "seat_rear_body"}, {"$ref": "back_rail_body"}], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_picket_extrude", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_picket_extrude", "pointer": "/hidden_datum_plane_ids"}}}},
     {"id": "bench_present_picket_begin_result_view", "view": "isometric", "fit": true, "duration_ms": 550, "body_id": {"$ref": "picket_body"}},
     {"id": "bench_present_picket_begin_result_read", "note": "Crowned back picket: stock extruded 315 mm. The result remains isolated for inspection.", "duration_ms": 1200},
-
     {
       "chapter": "Crown and decorative slot",
       "note": "Round the two top shoulders through the board thickness. These are editable edge features, not a frozen imported shape.",
@@ -3147,6 +3616,26 @@
         "arguments": {"body_id": {"$ref": "picket_body"}, "edge_ids": {"$ref": "picket_edges_276"}, "radius": 40, "tangent_chain": false}
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "picket_fillet"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "picket fillet / Fillet R40 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "picket_fillet_feature_name"
+    },
     {"view": "isometric", "fit": true, "body_id": {"$ref": "picket_body"}, "duration_ms": 300},
     {
       "let": {
@@ -3178,6 +3667,26 @@
         "operation": "solid_fillet",
         "arguments": {"body_id": {"$ref": "picket_body"}, "edge_ids": {"$ref": "picket_edges_278"}, "radius": 3, "tangent_chain": true}
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "picket_fillet_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "picket fillet 2 / Fillet R3 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "picket_fillet_2_feature_name"
     },
     {
       "chapter": "Crown and decorative slot",
@@ -3278,7 +3787,6 @@
     },
     {"id": "bench_present_picket_begin_2_profile_view", "view": "front", "fit": true, "duration_ms": 550, "target": "active_sketch"},
     {"id": "bench_present_picket_begin_2_profile_read", "note": "Picket decoration: 18 mm slot width, 100 mm between end centers, located from the mid-thickness datum.", "duration_ms": 1000},
-
     {
       "let": {
         "picket_slot_axis": {
@@ -3386,6 +3894,26 @@
         }
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "picket_extrude_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Back picket — editable height / datum-located decorative slot / Cut symmetric"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "picket_extrude_2_feature_name"
+    },
     {"id": "bench_hide_finished_after_picket_extrude_2", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {"id": "bench_present_picket_begin_2_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}, {"$ref": "seat_rear_body"}, {"$ref": "back_rail_body"}], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_picket_extrude_2", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_picket_extrude_2", "pointer": "/hidden_datum_plane_ids"}}}},
     {"id": "bench_present_picket_begin_2_result_view", "view": "isometric", "fit": true, "duration_ms": 550, "body_id": {"$ref": "picket_body"}},
@@ -3429,8 +3957,6 @@
         }
       }
     },
-
-
     {"id": "bench_present_picket_restore", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": {"$ref": "bench_present_picket_visibility", "pointer": "/hidden_body_ids"}, "hidden_sketch_names": {"$ref": "bench_hide_finished_after_picket_extrude_2", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_picket_extrude_2", "pointer": "/hidden_datum_plane_ids"}}}},
     {
       "id": "picket_set_occurrence_pose",
@@ -3585,10 +4111,6 @@
       "duration_ms": 700
     },
     {"view": "isometric", "fit": true},
-
-
-
-
     {"id": "bench_present_arm_rail_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_arm_rail_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}, {"$ref": "seat_rear_body"}, {"$ref": "back_rail_body"}, {"$ref": "picket_body"}], "hidden_sketch_names": {"$ref": "bench_present_arm_rail_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_arm_rail_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -3616,8 +4138,6 @@
     },
     {"id": "bench_present_arm_rail_begin_profile_view", "view": "top", "fit": true, "duration_ms": 550, "target": "active_sketch"},
     {"id": "bench_present_arm_rail_begin_profile_read", "note": "Arm support rail: 28 x 415 mm profile, viewed square-on before the feature.", "duration_ms": 1000},
-
-
     {
       "id": "arm_rail_add_constraint",
       "call": {
@@ -3654,6 +4174,26 @@
         }
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "arm_rail_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Continuous arm support rail / stock from A-B-C / Stock 65 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "arm_rail_extrude_feature_name"
+    },
     {"id": "bench_hide_finished_after_arm_rail_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
       "let": {
@@ -3676,7 +4216,6 @@
     {"id": "bench_present_arm_rail_begin_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}, {"$ref": "seat_rear_body"}, {"$ref": "back_rail_body"}, {"$ref": "picket_body"}], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_arm_rail_extrude", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_arm_rail_extrude", "pointer": "/hidden_datum_plane_ids"}}}},
     {"id": "bench_present_arm_rail_begin_result_view", "view": "isometric", "fit": true, "duration_ms": 550, "body_id": {"$ref": "arm_rail_body"}},
     {"id": "bench_present_arm_rail_begin_result_read", "note": "Arm support rail: stock extruded 65 mm. The result remains isolated for inspection.", "duration_ms": 1200},
-
     {
       "id": "arm_rail_set_body_appearance",
       "call": {
@@ -3715,8 +4254,6 @@
         }
       }
     },
-
-
     {"id": "bench_present_arm_rail_restore", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": {"$ref": "bench_present_arm_rail_visibility", "pointer": "/hidden_body_ids"}, "hidden_sketch_names": {"$ref": "bench_hide_finished_after_arm_rail_extrude", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_arm_rail_extrude", "pointer": "/hidden_datum_plane_ids"}}}},
     {
       "id": "arm_rail_set_occurrence_pose",
@@ -3751,10 +4288,6 @@
       "duration_ms": 700
     },
     {"view": "isometric", "fit": true},
-
-
-
-
     {"id": "bench_present_arm_left_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_arm_left_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}, {"$ref": "seat_rear_body"}, {"$ref": "back_rail_body"}, {"$ref": "picket_body"}, {"$ref": "arm_rail_body"}], "hidden_sketch_names": {"$ref": "bench_present_arm_left_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_arm_left_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -3782,8 +4315,6 @@
     },
     {"id": "bench_present_arm_left_begin_profile_view", "view": "top", "fit": true, "duration_ms": 550, "target": "active_sketch"},
     {"id": "bench_present_arm_left_begin_profile_read", "note": "Left armrest: 100 x 402 mm profile, viewed square-on before the feature.", "duration_ms": 1000},
-
-
     {
       "id": "arm_left_add_constraint",
       "call": {
@@ -3820,6 +4351,26 @@
         }
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "arm_left_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Left armrest — eased edges / stock from A-B-C / Stock 35 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "arm_left_extrude_feature_name"
+    },
     {"id": "bench_hide_finished_after_arm_left_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
       "let": {
@@ -3842,7 +4393,6 @@
     {"id": "bench_present_arm_left_begin_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}, {"$ref": "seat_rear_body"}, {"$ref": "back_rail_body"}, {"$ref": "picket_body"}, {"$ref": "arm_rail_body"}], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_arm_left_extrude", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_arm_left_extrude", "pointer": "/hidden_datum_plane_ids"}}}},
     {"id": "bench_present_arm_left_begin_result_view", "view": "isometric", "fit": true, "duration_ms": 550, "body_id": {"$ref": "arm_left_body"}},
     {"id": "bench_present_arm_left_begin_result_read", "note": "Left armrest: stock extruded 35 mm. The result remains isolated for inspection.", "duration_ms": 1200},
-
     {
       "let": {
         "arm_left_edges_336": {
@@ -3879,6 +4429,26 @@
         "arguments": {"body_id": {"$ref": "arm_left_body"}, "edge_ids": {"$ref": "arm_left_edges_336"}, "radius": 18, "tangent_chain": false}
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "arm_left_fillet"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "arm left fillet / Fillet R18 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "arm_left_fillet_feature_name"
+    },
     {"view": "isometric", "fit": true, "body_id": {"$ref": "arm_left_body"}, "duration_ms": 300},
     {
       "let": {
@@ -3907,6 +4477,26 @@
         "operation": "solid_fillet",
         "arguments": {"body_id": {"$ref": "arm_left_body"}, "edge_ids": {"$ref": "arm_left_edges_338"}, "radius": 3, "tangent_chain": false}
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "arm_left_fillet_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "arm left fillet 2 / Fillet R3 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "arm_left_fillet_2_feature_name"
     },
     {"id": "bench_part_arm_left_finished_view", "view": "isometric", "fit": true, "body_id": {"$ref": "arm_left_body"}, "duration_ms": 600},
     {
@@ -3947,8 +4537,6 @@
         }
       }
     },
-
-
     {"id": "bench_present_arm_left_restore", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": {"$ref": "bench_present_arm_left_visibility", "pointer": "/hidden_body_ids"}, "hidden_sketch_names": {"$ref": "bench_hide_finished_after_arm_left_extrude", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_arm_left_extrude", "pointer": "/hidden_datum_plane_ids"}}}},
     {
       "id": "arm_left_set_occurrence_pose",
@@ -3960,10 +4548,6 @@
     },
     {"id": "bench_present_arm_left_placed_view", "view": "isometric", "fit": true, "duration_ms": 550},
     {"id": "bench_present_arm_left_placed_read", "note": "Left armrest placed in the assembly.", "duration_ms": 700},
-
-
-
-
     {"id": "bench_present_arm_right_visibility", "call": {"group": "document/appearance", "operation": "project_visibility", "arguments": {}}},
     {"id": "bench_present_arm_right_begin_profile_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}, {"$ref": "seat_rear_body"}, {"$ref": "back_rail_body"}, {"$ref": "picket_body"}, {"$ref": "arm_rail_body"}, {"$ref": "arm_left_body"}], "hidden_sketch_names": {"$ref": "bench_present_arm_right_visibility", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_present_arm_right_visibility", "pointer": "/hidden_datum_plane_ids"}}}},
     {
@@ -3991,8 +4575,6 @@
     },
     {"id": "bench_present_arm_right_begin_profile_view", "view": "top", "fit": true, "duration_ms": 550, "target": "active_sketch"},
     {"id": "bench_present_arm_right_begin_profile_read", "note": "Right armrest: 100 x 402 mm profile, viewed square-on before the feature.", "duration_ms": 1000},
-
-
     {
       "id": "arm_right_add_constraint",
       "call": {
@@ -4029,6 +4611,26 @@
         }
       }
     },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "arm_right_extrude"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Right armrest — eased edges / stock from A-B-C / Stock 35 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "arm_right_extrude_feature_name"
+    },
     {"id": "bench_hide_finished_after_arm_right_extrude", "call": {"group": "solid/reference", "operation": "construction_set_visibility", "arguments": {"visible": false}}},
     {
       "let": {
@@ -4051,7 +4653,6 @@
     {"id": "bench_present_arm_right_begin_result_isolate", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": [{"$ref": "front_leg_left_body"}, {"$ref": "front_leg_right_body"}, {"$ref": "rear_leg_left_body"}, {"$ref": "rear_leg_right_body"}, {"$ref": "apron_body"}, {"$ref": "upper_side_rail_body"}, {"$ref": "lower_side_rail_body"}, {"$ref": "center_bearer_body"}, {"$ref": "bearer_block_front_body"}, {"$ref": "bearer_block_rear_body"}, {"$ref": "stretcher_body"}, {"$ref": "seat_front_body"}, {"$ref": "seat_second_body"}, {"$ref": "seat_middle_body"}, {"$ref": "seat_rear_body"}, {"$ref": "back_rail_body"}, {"$ref": "picket_body"}, {"$ref": "arm_rail_body"}, {"$ref": "arm_left_body"}], "hidden_sketch_names": {"$ref": "bench_hide_finished_after_arm_right_extrude", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_arm_right_extrude", "pointer": "/hidden_datum_plane_ids"}}}},
     {"id": "bench_present_arm_right_begin_result_view", "view": "isometric", "fit": true, "duration_ms": 550, "body_id": {"$ref": "arm_right_body"}},
     {"id": "bench_present_arm_right_begin_result_read", "note": "Right armrest: stock extruded 35 mm. The result remains isolated for inspection.", "duration_ms": 1200},
-
     {
       "let": {
         "arm_right_edges_352": {
@@ -4089,6 +4690,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "arm_right_fillet"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "arm right fillet / Fillet R18 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "arm_right_fillet_feature_name"
+    },
+    {
       "let": {
         "arm_right_edges_354": {
           "$select": {
@@ -4115,6 +4736,26 @@
         "operation": "solid_fillet",
         "arguments": {"body_id": {"$ref": "arm_right_body"}, "edge_ids": {"$ref": "arm_right_edges_354"}, "radius": 3, "tangent_chain": false}
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "arm_right_fillet_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "arm right fillet 2 / Fillet R3 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "arm_right_fillet_2_feature_name"
     },
     {"id": "bench_part_arm_right_finished_view", "view": "isometric", "fit": true, "body_id": {"$ref": "arm_right_body"}, "duration_ms": 600},
     {
@@ -4155,8 +4796,6 @@
         }
       }
     },
-
-
     {"id": "bench_present_arm_right_restore", "call": {"group": "document/appearance", "operation": "project_set_visibility", "arguments": {"hidden_body_ids": {"$ref": "bench_present_arm_right_visibility", "pointer": "/hidden_body_ids"}, "hidden_sketch_names": {"$ref": "bench_hide_finished_after_arm_right_extrude", "pointer": "/hidden_sketch_names"}, "hidden_datum_plane_ids": {"$ref": "bench_hide_finished_after_arm_right_extrude", "pointer": "/hidden_datum_plane_ids"}}}},
     {
       "id": "arm_right_set_occurrence_pose",
@@ -4236,6 +4875,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "apron_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "apron hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "apron_hole_feature_name"
+    },
+    {
       "let": {
         "front_leg_left_drilling_face_362": {
           "$select": {
@@ -4284,6 +4943,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "front_leg_left_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "front leg left hole / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "front_leg_left_hole_feature_name"
     },
     {
       "let": {
@@ -4336,6 +5015,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "front_leg_right_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "front leg right hole / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "front_leg_right_hole_feature_name"
+    },
+    {
       "let": {
         "rear_leg_left_drilling_face_364": {
           "$select": {
@@ -4386,6 +5085,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "rear_leg_left_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "rear leg left hole / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "rear_leg_left_hole_feature_name"
+    },
+    {
       "let": {
         "rear_leg_right_drilling_face_365": {
           "$select": {
@@ -4434,6 +5153,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "rear_leg_right_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "rear leg right hole / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "rear_leg_right_hole_feature_name"
     },
     {
       "let": {
@@ -4494,6 +5233,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "upper_side_rail_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "upper side rail hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "upper_side_rail_hole_feature_name"
     },
     {
       "let": {
@@ -4566,6 +5325,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "front_leg_left_hole_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "front leg left hole 2 / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "front_leg_left_hole_2_feature_name"
+    },
+    {
       "let": {
         "rear_leg_left_drilling_face_368": {
           "$select": {
@@ -4622,6 +5401,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "rear_leg_left_hole_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "rear leg left hole 2 / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "rear_leg_left_hole_2_feature_name"
     },
     {
       "let": {
@@ -4694,6 +5493,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "front_leg_right_hole_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "front leg right hole 2 / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "front_leg_right_hole_2_feature_name"
+    },
+    {
       "let": {
         "rear_leg_right_drilling_face_370": {
           "$select": {
@@ -4764,6 +5583,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "rear_leg_right_hole_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "rear leg right hole 2 / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "rear_leg_right_hole_2_feature_name"
+    },
+    {
       "let": {
         "lower_side_rail_drilling_face_371": {
           "$select": {
@@ -4824,6 +5663,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "lower_side_rail_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "lower side rail hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "lower_side_rail_hole_feature_name"
+    },
+    {
       "let": {
         "stretcher_drilling_face_372": {
           "$select": {
@@ -4876,6 +5735,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "stretcher_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "stretcher hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "stretcher_hole_feature_name"
+    },
+    {
       "let": {
         "lower_side_rail_drilling_face_373": {
           "$select": {
@@ -4924,6 +5803,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "lower_side_rail_hole_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "lower side rail hole 2 / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "lower_side_rail_hole_2_feature_name"
     },
     {
       "let": {
@@ -4976,6 +5875,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bearer_block_front_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bearer block front hole / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bearer_block_front_hole_feature_name"
+    },
+    {
       "let": {
         "bearer_block_front_drilling_face_375": {
           "$select": {
@@ -5019,6 +5938,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bearer_block_front_hole_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bearer block front hole 2 / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bearer_block_front_hole_2_feature_name"
     },
     {
       "let": {
@@ -5065,6 +6004,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "center_bearer_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "center bearer hole / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "center_bearer_hole_feature_name"
     },
     {
       "let": {
@@ -5117,6 +6076,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bearer_block_rear_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bearer block rear hole / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bearer_block_rear_hole_feature_name"
+    },
+    {
       "let": {
         "bearer_block_rear_drilling_face_378": {
           "$select": {
@@ -5160,6 +6139,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bearer_block_rear_hole_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bearer block rear hole 2 / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bearer_block_rear_hole_2_feature_name"
     },
     {
       "let": {
@@ -5209,6 +6208,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_front_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "seat front hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_front_hole_feature_name"
     },
     {
       "let": {
@@ -5276,6 +6295,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "upper_side_rail_hole_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "upper side rail hole 2 / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "upper_side_rail_hole_2_feature_name"
+    },
+    {
       "let": {
         "center_bearer_drilling_face_381": {
           "$select": {
@@ -5339,6 +6378,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "center_bearer_hole_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "center bearer hole 2 / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "center_bearer_hole_2_feature_name"
+    },
+    {
       "let": {
         "seat_second_drilling_face_382": {
           "$select": {
@@ -5386,6 +6445,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_second_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "seat second hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_second_hole_feature_name"
     },
     {
       "let": {
@@ -5437,6 +6516,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_middle_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "seat middle hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_middle_hole_feature_name"
+    },
+    {
       "let": {
         "seat_rear_drilling_face_384": {
           "$select": {
@@ -5484,6 +6583,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "seat_rear_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "seat rear hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "seat_rear_hole_feature_name"
     },
     {
       "let": {
@@ -5565,6 +6684,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "back_rail_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "back rail hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "back_rail_hole_feature_name"
+    },
+    {
       "let": {
         "rear_leg_left_drilling_face_386": {
           "$select": {
@@ -5623,6 +6762,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "rear_leg_left_hole_3"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "rear leg left hole 3 / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "rear_leg_left_hole_3_feature_name"
     },
     {
       "let": {
@@ -5685,6 +6844,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "rear_leg_right_hole_3"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "rear leg right hole 3 / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "rear_leg_right_hole_3_feature_name"
+    },
+    {
       "let": {
         "picket_drilling_face_388": {
           "$select": {
@@ -5729,6 +6908,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "picket_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "picket hole / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "picket_hole_feature_name"
     },
     {
       "let": {
@@ -5783,6 +6982,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "arm_rail_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "arm rail hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "arm_rail_hole_feature_name"
+    },
+    {
       "let": {
         "arm_left_drilling_face_390": {
           "$select": {
@@ -5827,6 +7046,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "arm_left_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "arm left hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "arm_left_hole_feature_name"
     },
     {
       "let": {
@@ -5875,6 +7114,26 @@
       }
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "arm_rail_hole_2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "arm rail hole 2 / Hole Ø3.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "arm_rail_hole_2_feature_name"
+    },
+    {
       "let": {
         "arm_right_drilling_face_392": {
           "$select": {
@@ -5919,6 +7178,26 @@
           "flip": false
         }
       }
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "arm_right_hole"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "arm right hole / Hole Ø5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "arm_right_hole_feature_name"
     },
     {
       "chapter": "Physical assembly joints",

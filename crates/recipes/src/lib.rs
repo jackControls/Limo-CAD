@@ -2,6 +2,8 @@
 //! The app, MCP and xtask all discover these recipes through this catalog.
 use serde_json::{json, Value};
 
+pub mod authoring;
+
 pub struct Recipe {
     pub id: &'static str,
     pub source: &'static str,
@@ -157,6 +159,44 @@ pub fn catalog(include_source: bool) -> Value {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn flagship_creations_have_explicit_history_names() {
+        for id in ["garden-bench", "d-screw-vise", "vertical-axis-turbine"] {
+            let source = find(id).unwrap().source;
+            limo_cad_script::Script::parse(source).unwrap();
+            let source = source
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let document: Value = serde_json::from_str(&source).unwrap();
+            let steps = document["steps"].as_array().unwrap();
+            let mut names = 0;
+            for (index, step) in steps.iter().enumerate() {
+                let Some(operation) = step["call"]["operation"].as_str() else {
+                    continue;
+                };
+                let Some(naming) = authoring::feature_name_step(
+                    step["id"].as_str().unwrap(),
+                    operation,
+                    &step["call"]["arguments"],
+                ) else {
+                    continue;
+                };
+                assert_eq!(
+                    steps.get(index + 1),
+                    Some(&naming),
+                    "{id}: unnamed {operation} at step {index}"
+                );
+                names += 1;
+            }
+            assert!(
+                names > 50,
+                "The regression must cover the full flagship source"
+            );
+        }
+    }
 
     #[test]
     fn recipe_links_select_only_installed_source() {

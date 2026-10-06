@@ -1,6 +1,6 @@
-
-
-
+// Native editable manufacturing candidate. Millimetres.
+// Authored by crates/recipes/examples/author_vise.rs; geometry is built only by native MCP replay.
+// Print poses and clearances are design intent; physical fit/load/creep and slicer qualification remain required.
 {
   "$schema": "./limo-cad-script.schema.json",
   "checks": [
@@ -443,6 +443,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thread coupon / 40 mm male_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thread coupon / 40 mm male / Stock 40.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thread coupon / 40 mm male_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Thread coupon / 40 mm male_before_sketch_visibility",
           "pointer": ""
         },
@@ -669,6 +689,26 @@
         "operation": "solid_extrude"
       },
       "id": "Thread coupon / full bridge engagement_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thread coupon / full bridge engagement_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thread coupon / full bridge engagement / Stock 28.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thread coupon / full bridge engagement_build_feature_name"
     },
     {
       "call": {
@@ -935,6 +975,26 @@
         "operation": "solid_extrude"
       },
       "id": "Guide coupon / supported rail base_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Guide coupon / supported rail base_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Guide coupon / supported rail base / Stock 4.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Guide coupon / supported rail base_build_feature_name"
     },
     {
       "call": {
@@ -1266,6 +1326,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Guide coupon / production dovetail_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Guide coupon / production dovetail / Add 40.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Guide coupon / production dovetail_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Guide coupon / production dovetail_before_sketch_visibility",
           "pointer": ""
         },
@@ -1461,6 +1541,26 @@
         "operation": "solid_extrude"
       },
       "id": "Guide coupon / production socket stock_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Guide coupon / production socket stock_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Guide coupon / production socket stock / Stock 20.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Guide coupon / production socket stock_build_feature_name"
     },
     {
       "call": {
@@ -1828,6 +1928,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Guide coupon / production running clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Guide coupon / production running clearance / Cut 42.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Guide coupon / production running clearance_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Guide coupon / production running clearance_before_sketch_visibility",
           "pointer": ""
         },
@@ -1903,6 +2023,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "coupon_female_thread"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "coupon female thread / Hole Ø20.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "coupon_female_thread_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "body_id": {
             "$ref": "screw_body_id",
             "pointer": ""
@@ -1935,6 +2075,26 @@
         "operation": "solid_external_thread"
       },
       "id": "coupon_male_thread"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "coupon_male_thread"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "coupon male thread / External thread"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "coupon_male_thread_feature_name"
     },
     {
       "call": {
@@ -2118,6 +2278,26 @@
         "operation": "solid_extrude"
       },
       "id": "Thread coupon / production shallow flat_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thread coupon / production shallow flat_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thread coupon / production shallow flat / Cut 6.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thread coupon / production shallow flat_build_feature_name"
     },
     {
       "call": {

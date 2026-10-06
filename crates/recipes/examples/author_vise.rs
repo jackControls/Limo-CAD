@@ -146,9 +146,11 @@ struct Author {
 }
 impl Author {
     fn call(&mut self, id: &str, group: &str, operation: &str, arguments: Value) {
+        let name = limo_cad_recipes::authoring::feature_name_step(id, operation, &arguments);
         self.steps.push(
             json!({"id":id,"call":{"group":group,"operation":operation,"arguments":arguments}}),
         );
+        self.steps.extend(name);
     }
     fn bind(&mut self, name: &str, value: Value) {
         self.steps.push(json!({"let":{name:value}}));

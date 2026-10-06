@@ -99,6 +99,7 @@ impl Author {
         }
     }
     fn call(&mut self, id: &str, _group: &str, op: &str, args: Value) {
+        let name = limo_cad_recipes::authoring::feature_name_step(id, op, &args);
         let catalog: Value =
             serde_json::from_str(include_str!("../../../interface/catalog.json")).unwrap();
         let mut group = None;
@@ -125,6 +126,7 @@ impl Author {
             }
         }
         self.steps.push(json!({"id":id,"call":{"group":group.unwrap_or_else(||panic!("Unregistered operation {op}")),"operation":op,"arguments":args}}));
+        self.steps.extend(name);
     }
     fn bind(&mut self, name: &str, value: Value) {
         self.steps.push(json!({"let":{name:value}}));

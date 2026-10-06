@@ -1,6 +1,6 @@
-
-
-
+// Native editable manufacturing candidate. Millimetres.
+// Authored by crates/recipes/examples/author_vise.rs; geometry is built only by native MCP replay.
+// Print poses and clearances are design intent; physical fit/load/creep and slicer qualification remain required.
 {
   "$schema": "./limo-cad-script.schema.json",
   "checks": [
@@ -2080,6 +2080,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Frame deck / 230 by 160 by 14_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Frame deck / 230 by 160 by 14 / Stock 14.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Frame deck / 230 by 160 by 14_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Frame deck / 230 by 160 by 14_before_sketch_visibility",
           "pointer": ""
         },
@@ -2347,6 +2367,26 @@
     },
     {
       "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Frame / rounded deck corners"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Frame / rounded deck corners / Fillet R6.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Frame / rounded deck corners_feature_name"
+    },
+    {
+      "call": {
         "arguments": {},
         "group": "document/appearance",
         "operation": "project_visibility"
@@ -2531,6 +2571,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Fixed jaw / 100 mm face and 25 mm stock_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Fixed jaw / 100 mm face and 25 mm stock / Add 66.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Fixed jaw / 100 mm face and 25 mm stock_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Fixed jaw / 100 mm face and 25 mm stock_before_sketch_visibility",
           "pointer": ""
         },
@@ -2678,6 +2738,26 @@
       "id": "Fixed jaw / reinforced 8 mm root"
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Fixed jaw / reinforced 8 mm root"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Fixed jaw / reinforced 8 mm root / Fillet R8.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Fixed jaw / reinforced 8 mm root_feature_name"
+    },
+    {
       "let": {
         "Fixed jaw / rounded touched rim_edges": {
           "$select": {
@@ -2745,6 +2825,26 @@
         "operation": "solid_fillet"
       },
       "id": "Fixed jaw / rounded touched rim"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Fixed jaw / rounded touched rim"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Fixed jaw / rounded touched rim / Fillet R2.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Fixed jaw / rounded touched rim_feature_name"
     },
     {
       "call": {
@@ -3015,6 +3115,26 @@
         "operation": "solid_extrude"
       },
       "id": "Captured rail left / 45 degree flanks_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Captured rail left / 45 degree flanks_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Captured rail left / 45 degree flanks / Add 197.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Captured rail left / 45 degree flanks_build_feature_name"
     },
     {
       "call": {
@@ -3310,6 +3430,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Captured rail right / 45 degree flanks_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Captured rail right / 45 degree flanks / Add 197.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Captured rail right / 45 degree flanks_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Captured rail right / 45 degree flanks_before_sketch_visibility",
           "pointer": ""
         },
@@ -3572,6 +3712,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge key socket left / axial load shoulder_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge key socket left / axial load shoulder / Cut 6.1 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge key socket left / axial load shoulder_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Bridge key socket left / axial load shoulder_before_sketch_visibility",
           "pointer": ""
         },
@@ -3773,6 +3933,26 @@
         "operation": "solid_extrude"
       },
       "id": "Bridge bolt left / frame clearance_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge bolt left / frame clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge bolt left / frame clearance / Cut 14.2 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge bolt left / frame clearance_build_feature_name"
     },
     {
       "call": {
@@ -4128,6 +4308,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge nut left / underside captive pocket_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge nut left / underside captive pocket / Cut 10.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge nut left / underside captive pocket_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Bridge nut left / underside captive pocket_before_sketch_visibility",
           "pointer": ""
         },
@@ -4292,6 +4492,26 @@
         "operation": "solid_extrude"
       },
       "id": "Bridge key socket right / axial load shoulder_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge key socket right / axial load shoulder_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge key socket right / axial load shoulder / Cut 6.1 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge key socket right / axial load shoulder_build_feature_name"
     },
     {
       "call": {
@@ -4461,6 +4681,26 @@
         "operation": "solid_extrude"
       },
       "id": "Bridge bolt right / frame clearance_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge bolt right / frame clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge bolt right / frame clearance / Cut 14.2 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge bolt right / frame clearance_build_feature_name"
     },
     {
       "call": {
@@ -4816,6 +5056,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge nut right / underside captive pocket_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge nut right / underside captive pocket / Cut 10.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge nut right / underside captive pocket_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Bridge nut right / underside captive pocket_before_sketch_visibility",
           "pointer": ""
         },
@@ -4980,6 +5240,26 @@
         "operation": "solid_extrude"
       },
       "id": "Mount slot 0-0 / outboard 20 by 7_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Mount slot 0-0 / outboard 20 by 7_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Mount slot 0-0 / outboard 20 by 7 / Cut 14.2 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Mount slot 0-0 / outboard 20 by 7_build_feature_name"
     },
     {
       "call": {
@@ -5152,6 +5432,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Mount slot 0-1 / outboard 20 by 7_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Mount slot 0-1 / outboard 20 by 7 / Cut 14.2 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Mount slot 0-1 / outboard 20 by 7_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Mount slot 0-1 / outboard 20 by 7_before_sketch_visibility",
           "pointer": ""
         },
@@ -5320,6 +5620,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Mount slot 1-0 / outboard 20 by 7_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Mount slot 1-0 / outboard 20 by 7 / Cut 14.2 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Mount slot 1-0 / outboard 20 by 7_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Mount slot 1-0 / outboard 20 by 7_before_sketch_visibility",
           "pointer": ""
         },
@@ -5484,6 +5804,26 @@
         "operation": "solid_extrude"
       },
       "id": "Mount slot 1-1 / outboard 20 by 7_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Mount slot 1-1 / outboard 20 by 7_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Mount slot 1-1 / outboard 20 by 7 / Cut 14.2 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Mount slot 1-1 / outboard 20 by 7_build_feature_name"
     },
     {
       "call": {
@@ -5710,6 +6050,26 @@
         "operation": "solid_extrude"
       },
       "id": "Carriage / 72 mm captured bearing length_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Carriage / 72 mm captured bearing length_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Carriage / 72 mm captured bearing length / Stock 20.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Carriage / 72 mm captured bearing length_build_feature_name"
     },
     {
       "call": {
@@ -5977,6 +6337,26 @@
         "operation": "solid_extrude"
       },
       "id": "Moving jaw / 100 mm gripping face_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Moving jaw / 100 mm gripping face_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Moving jaw / 100 mm gripping face / Add 66.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Moving jaw / 100 mm gripping face_build_feature_name"
     },
     {
       "call": {
@@ -6341,6 +6721,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw gusset left / load into long carriage_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw gusset left / load into long carriage / Add 15.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw gusset left / load into long carriage_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Jaw gusset left / load into long carriage_before_sketch_visibility",
           "pointer": ""
         },
@@ -6638,6 +7038,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw gusset right / load into long carriage_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw gusset right / load into long carriage / Add 15.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw gusset right / load into long carriage_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Jaw gusset right / load into long carriage_before_sketch_visibility",
           "pointer": ""
         },
@@ -6724,6 +7144,26 @@
         "operation": "solid_fillet"
       },
       "id": "Moving jaw / rounded touched rim"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Moving jaw / rounded touched rim"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Moving jaw / rounded touched rim / Fillet R2.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Moving jaw / rounded touched rim_feature_name"
     },
     {
       "call": {
@@ -7034,6 +7474,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw dovetail left / profile clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw dovetail left / profile clearance / Cut 74.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw dovetail left / profile clearance_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Jaw dovetail left / profile clearance_before_sketch_visibility",
           "pointer": ""
         },
@@ -7321,6 +7781,26 @@
         "operation": "solid_extrude"
       },
       "id": "Jaw dovetail right / profile clearance_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw dovetail right / profile clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw dovetail right / profile clearance / Cut 74.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw dovetail right / profile clearance_build_feature_name"
     },
     {
       "call": {
@@ -7685,6 +8165,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Carriage / fixed-root clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Carriage / fixed-root clearance / Cut 112.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Carriage / fixed-root clearance_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Carriage / fixed-root clearance_before_sketch_visibility",
           "pointer": ""
         },
@@ -7886,6 +8386,26 @@
         "operation": "solid_extrude"
       },
       "id": "Jaw / full round thrust chamber_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw / full round thrust chamber_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw / full round thrust chamber / Cut 29.400000000000006 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw / full round thrust chamber_build_feature_name"
     },
     {
       "call": {
@@ -8094,6 +8614,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw / removable keeper slot_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw / removable keeper slot / Cut 47.4 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw / removable keeper slot_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Jaw / removable keeper slot_before_sketch_visibility",
           "pointer": ""
         },
@@ -8258,6 +8798,26 @@
         "operation": "solid_extrude"
       },
       "id": "Jaw / open keeper rear relief_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw / open keeper rear relief_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw / open keeper rear relief / Cut 47.4 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw / open keeper rear relief_build_feature_name"
     },
     {
       "call": {
@@ -8523,6 +9083,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw / 45 degree keeper shoulder left_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw / 45 degree keeper shoulder left / Cut 47.4 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw / 45 degree keeper shoulder left_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Jaw / 45 degree keeper shoulder left_before_sketch_visibility",
           "pointer": ""
         },
@@ -8784,6 +9364,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw / 45 degree keeper shoulder right_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw / 45 degree keeper shoulder right / Cut 47.4 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw / 45 degree keeper shoulder right_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Jaw / 45 degree keeper shoulder right_before_sketch_visibility",
           "pointer": ""
         },
@@ -8949,6 +9549,26 @@
         "operation": "solid_extrude"
       },
       "id": "Jaw / keeper pin clearance_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw / keeper pin clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw / keeper pin clearance / Cut 112.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw / keeper pin clearance_build_feature_name"
     },
     {
       "call": {
@@ -9214,6 +9834,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw / keeper pin clearance / print roof_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw / keeper pin clearance / print roof / Cut 112.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw / keeper pin clearance / print roof_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Jaw / keeper pin clearance / print roof_before_sketch_visibility",
           "pointer": ""
         },
@@ -9379,6 +10019,26 @@
         "operation": "solid_extrude"
       },
       "id": "Jaw / recessed keeper pin head_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw / recessed keeper pin head_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw / recessed keeper pin head / Cut 11.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw / recessed keeper pin head_build_feature_name"
     },
     {
       "call": {
@@ -9640,6 +10300,26 @@
         "operation": "solid_extrude"
       },
       "id": "Jaw / recessed keeper pin head / print roof_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw / recessed keeper pin head / print roof_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw / recessed keeper pin head / print roof / Cut 11.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw / recessed keeper pin head / print roof_build_feature_name"
     },
     {
       "call": {
@@ -10031,6 +10711,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Jaw / keeper nut pocket_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Jaw / keeper nut pocket / Cut 15.700000000000003 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Jaw / keeper nut pocket_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Jaw / keeper nut pocket_before_sketch_visibility",
           "pointer": ""
         },
@@ -10294,6 +10994,26 @@
         "operation": "solid_extrude"
       },
       "id": "Threaded bridge / central housing_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Threaded bridge / central housing_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Threaded bridge / central housing / Stock 57.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Threaded bridge / central housing_build_feature_name"
     },
     {
       "call": {
@@ -10565,6 +11285,26 @@
         "operation": "solid_extrude"
       },
       "id": "Threaded bridge / broad load crossbeam_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Threaded bridge / broad load crossbeam_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Threaded bridge / broad load crossbeam / Add 16.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Threaded bridge / broad load crossbeam_build_feature_name"
     },
     {
       "call": {
@@ -10866,6 +11606,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge gusset left / thread reaction into keyed feet_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge gusset left / thread reaction into keyed feet / Add 28.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge gusset left / thread reaction into keyed feet_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Bridge gusset left / thread reaction into keyed feet_before_sketch_visibility",
           "pointer": ""
         },
@@ -11127,6 +11887,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge gusset right / thread reaction into keyed feet_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge gusset right / thread reaction into keyed feet / Add 28.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge gusset right / thread reaction into keyed feet_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Bridge gusset right / thread reaction into keyed feet_before_sketch_visibility",
           "pointer": ""
         },
@@ -11291,6 +12071,26 @@
         "operation": "solid_extrude"
       },
       "id": "Bridge foot left / deck seat_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge foot left / deck seat_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge foot left / deck seat / Add 11.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge foot left / deck seat_build_feature_name"
     },
     {
       "call": {
@@ -11499,6 +12299,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge key left / replaceable shear shoulder_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge key left / replaceable shear shoulder / Add 5.799999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge key left / replaceable shear shoulder_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Bridge key left / replaceable shear shoulder_before_sketch_visibility",
           "pointer": ""
         },
@@ -11700,6 +12520,26 @@
         "operation": "solid_extrude"
       },
       "id": "Bridge bolt left / self-supporting bore_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge bolt left / self-supporting bore_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge bolt left / self-supporting bore / Cut 27.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge bolt left / self-supporting bore_build_feature_name"
     },
     {
       "call": {
@@ -11965,6 +12805,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge bolt left / self-supporting bore / print roof_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge bolt left / self-supporting bore / print roof / Cut 27.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge bolt left / self-supporting bore / print roof_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Bridge bolt left / self-supporting bore / print roof_before_sketch_visibility",
           "pointer": ""
         },
@@ -12129,6 +12989,26 @@
         "operation": "solid_extrude"
       },
       "id": "Bridge foot right / deck seat_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge foot right / deck seat_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge foot right / deck seat / Add 11.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge foot right / deck seat_build_feature_name"
     },
     {
       "call": {
@@ -12301,6 +13181,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge key right / replaceable shear shoulder_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge key right / replaceable shear shoulder / Add 5.799999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge key right / replaceable shear shoulder_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Bridge key right / replaceable shear shoulder_before_sketch_visibility",
           "pointer": ""
         },
@@ -12466,6 +13366,26 @@
         "operation": "solid_extrude"
       },
       "id": "Bridge bolt right / self-supporting bore_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge bolt right / self-supporting bore_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge bolt right / self-supporting bore / Cut 27.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge bolt right / self-supporting bore_build_feature_name"
     },
     {
       "call": {
@@ -12731,6 +13651,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge bolt right / self-supporting bore / print roof_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge bolt right / self-supporting bore / print roof / Cut 27.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge bolt right / self-supporting bore / print roof_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Bridge bolt right / self-supporting bore / print roof_before_sketch_visibility",
           "pointer": ""
         },
@@ -12817,6 +13757,26 @@
         "operation": "solid_fillet"
       },
       "id": "Bridge / soft top edges"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Bridge / soft top edges"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Bridge / soft top edges / Fillet R3.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Bridge / soft top edges_feature_name"
     },
     {
       "let": {
@@ -13099,6 +14059,26 @@
         "operation": "solid_extrude"
       },
       "id": "Screw / 24 mm rounded-thread blank_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Screw / 24 mm rounded-thread blank_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Screw / 24 mm rounded-thread blank / Stock 175.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Screw / 24 mm rounded-thread blank_build_feature_name"
     },
     {
       "call": {
@@ -13411,6 +14391,26 @@
         "operation": "solid_extrude"
       },
       "id": "Screw / 18 mm removable-fitting stub_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Screw / 18 mm removable-fitting stub_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Screw / 18 mm removable-fitting stub / Add 18.200000000000003 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Screw / 18 mm removable-fitting stub_build_feature_name"
     },
     {
       "call": {
@@ -13862,6 +14862,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Screw grip / thick comfortable T profile_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Screw grip / thick comfortable T profile / Add 20.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Screw grip / thick comfortable T profile_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Screw grip / thick comfortable T profile_before_sketch_visibility",
           "pointer": ""
         },
@@ -14022,6 +15042,26 @@
       "id": "Grip / rounded upper transition 0"
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Grip / rounded upper transition 0"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Grip / rounded upper transition 0 / Fillet R4.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Grip / rounded upper transition 0_feature_name"
+    },
+    {
       "let": {
         "Grip / rounded upper transition 1_edges": {
           "$select": {
@@ -14090,6 +15130,26 @@
         "operation": "solid_fillet"
       },
       "id": "Grip / rounded upper transition 1"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Grip / rounded upper transition 1"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Grip / rounded upper transition 1 / Fillet R4.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Grip / rounded upper transition 1_feature_name"
     },
     {
       "let": {
@@ -14162,6 +15222,26 @@
       "id": "Grip / rounded upper transition 2"
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Grip / rounded upper transition 2"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Grip / rounded upper transition 2 / Fillet R4.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Grip / rounded upper transition 2_feature_name"
+    },
+    {
       "let": {
         "Grip / rounded upper transition 3_edges": {
           "$select": {
@@ -14230,6 +15310,26 @@
         "operation": "solid_fillet"
       },
       "id": "Grip / rounded upper transition 3"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Grip / rounded upper transition 3"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Grip / rounded upper transition 3 / Fillet R4.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Grip / rounded upper transition 3_feature_name"
     },
     {
       "let": {
@@ -14302,6 +15402,26 @@
       "id": "Grip / rounded lower wing 0"
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Grip / rounded lower wing 0"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Grip / rounded lower wing 0 / Fillet R2.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Grip / rounded lower wing 0_feature_name"
+    },
+    {
       "let": {
         "Grip / rounded lower wing 1_edges": {
           "$select": {
@@ -14370,6 +15490,26 @@
         "operation": "solid_fillet"
       },
       "id": "Grip / rounded lower wing 1"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Grip / rounded lower wing 1"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Grip / rounded lower wing 1 / Fillet R2.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Grip / rounded lower wing 1_feature_name"
     },
     {
       "let": {
@@ -14452,6 +15592,26 @@
       "id": "Grip / rear touch rim"
     },
     {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Grip / rear touch rim"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Grip / rear touch rim / Chamfer 0.6 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Grip / rear touch rim_feature_name"
+    },
+    {
       "let": {
         "Grip / front touch rim_edges": {
           "$select": {
@@ -14530,6 +15690,26 @@
         "operation": "solid_chamfer"
       },
       "id": "Grip / front touch rim"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Grip / front touch rim"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Grip / front touch rim / Chamfer 0.6 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Grip / front touch rim_feature_name"
     },
     {
       "chapter": "Rounded contact surfaces, deliberate running fits",
@@ -14719,6 +15899,26 @@
         "operation": "solid_extrude"
       },
       "id": "Screw / axial M5 clearance_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Screw / axial M5 clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Screw / axial M5 clearance / Cut 26.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Screw / axial M5 clearance_build_feature_name"
     },
     {
       "call": {
@@ -15110,6 +16310,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Screw / captive fitting nut_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Screw / captive fitting nut / Cut 5.299999999999997 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Screw / captive fitting nut_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Screw / captive fitting nut_before_sketch_visibility",
           "pointer": ""
         },
@@ -15314,6 +16534,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Screw / nut loading throat from print flat_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Screw / nut loading throat from print flat / Cut 8.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Screw / nut loading throat from print flat_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Screw / nut loading throat from print flat_before_sketch_visibility",
           "pointer": ""
         },
@@ -15478,6 +16718,26 @@
         "operation": "solid_extrude"
       },
       "id": "Screw / sliding nut-support keyway_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Screw / sliding nut-support keyway_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Screw / sliding nut-support keyway / Cut 3.481197846482992 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Screw / sliding nut-support keyway_build_feature_name"
     },
     {
       "call": {
@@ -15751,6 +17011,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thrust fitting / full round neck_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thrust fitting / full round neck / Stock 15.799999999999997 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thrust fitting / full round neck_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Thrust fitting / full round neck_before_sketch_visibility",
           "pointer": ""
         },
@@ -15988,6 +17268,26 @@
         "operation": "solid_extrude"
       },
       "id": "Thrust fitting / 32 mm load head_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thrust fitting / 32 mm load head_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thrust fitting / 32 mm load head / Add 10.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thrust fitting / 32 mm load head_build_feature_name"
     },
     {
       "call": {
@@ -16268,6 +17568,26 @@
         "operation": "solid_extrude"
       },
       "id": "Thrust fitting / D socket_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thrust fitting / D socket_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thrust fitting / D socket / Cut 18.099999999999994 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thrust fitting / D socket_build_feature_name"
     },
     {
       "call": {
@@ -16563,6 +17883,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thrust fitting / D key bearing_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thrust fitting / D key bearing / Add 18.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thrust fitting / D key bearing_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Thrust fitting / D key bearing_before_sketch_visibility",
           "pointer": ""
         },
@@ -16763,6 +18103,26 @@
         "operation": "solid_extrude"
       },
       "id": "Thrust fitting / captive nut support ledge_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thrust fitting / captive nut support ledge_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thrust fitting / captive nut support ledge / Add 4.531197846482989 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thrust fitting / captive nut support ledge_build_feature_name"
     },
     {
       "call": {
@@ -16972,6 +18332,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thrust fitting / axial retaining screw_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thrust fitting / axial retaining screw / Cut 9.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thrust fitting / axial retaining screw_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Thrust fitting / axial retaining screw_before_sketch_visibility",
           "pointer": ""
         },
@@ -17173,6 +18553,26 @@
         "operation": "solid_extrude"
       },
       "id": "Thrust fitting / recessed M5 socket head_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thrust fitting / recessed M5 socket head_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thrust fitting / recessed M5 socket head / Cut 6.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thrust fitting / recessed M5 socket head_build_feature_name"
     },
     {
       "call": {
@@ -17416,6 +18816,26 @@
         "operation": "solid_extrude"
       },
       "id": "Keeper / 11.2 mm cross plate_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper / 11.2 mm cross plate_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper / 11.2 mm cross plate / Stock 46.4 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper / 11.2 mm cross plate_build_feature_name"
     },
     {
       "call": {
@@ -17826,6 +19246,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper / diagonal opening-load ear left_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper / diagonal opening-load ear left / Add 46.4 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper / diagonal opening-load ear left_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Keeper / diagonal opening-load ear left_before_sketch_visibility",
           "pointer": ""
         },
@@ -18117,6 +19557,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper / diagonal opening-load ear right_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper / diagonal opening-load ear right / Add 46.4 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper / diagonal opening-load ear right_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Keeper / diagonal opening-load ear right_before_sketch_visibility",
           "pointer": ""
         },
@@ -18322,6 +19782,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper / sleeve running clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper / sleeve running clearance / Cut 14.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper / sleeve running clearance_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Keeper / sleeve running clearance_before_sketch_visibility",
           "pointer": ""
         },
@@ -18522,6 +20002,26 @@
         "operation": "solid_extrude"
       },
       "id": "Keeper / downward installation throat_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper / downward installation throat_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper / downward installation throat / Cut 17.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper / downward installation throat_build_feature_name"
     },
     {
       "call": {
@@ -18810,6 +20310,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper / cross-pin clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper / cross-pin clearance / Cut 62.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper / cross-pin clearance_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Keeper / cross-pin clearance_before_sketch_visibility",
           "pointer": ""
         },
@@ -19071,6 +20591,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper / cross-pin clearance / print roof_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper / cross-pin clearance / print roof / Cut 62.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper / cross-pin clearance / print roof_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Keeper / cross-pin clearance / print roof_before_sketch_visibility",
           "pointer": ""
         },
@@ -19236,6 +20776,26 @@
         "operation": "solid_extrude"
       },
       "id": "Keeper / cross-pin axial slot front_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper / cross-pin axial slot front_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper / cross-pin axial slot front / Cut 62.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper / cross-pin axial slot front_build_feature_name"
     },
     {
       "call": {
@@ -19501,6 +21061,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper / cross-pin axial slot front / print roof_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper / cross-pin axial slot front / print roof / Cut 62.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper / cross-pin axial slot front / print roof_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Keeper / cross-pin axial slot front / print roof_before_sketch_visibility",
           "pointer": ""
         },
@@ -19705,6 +21285,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper / cross-pin slot connecting web_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper / cross-pin slot connecting web / Cut 5.5 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper / cross-pin slot connecting web_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Keeper / cross-pin slot connecting web_before_sketch_visibility",
           "pointer": ""
         },
@@ -19791,6 +21391,26 @@
         "operation": "solid_fillet"
       },
       "id": "Keeper / rounded top rim"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper / rounded top rim"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper / rounded top rim / Fillet R2.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper / rounded top rim_feature_name"
     },
     {
       "call": {
@@ -20058,6 +21678,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bridge_screw_left / M6 x 35 shaft_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bridge screw left / M6 x 35 shaft / Stock 35.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bridge_screw_left / M6 x 35 shaft_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "bridge_screw_left / M6 x 35 shaft_before_sketch_visibility",
           "pointer": ""
         },
@@ -20295,6 +21935,26 @@
         "operation": "solid_extrude"
       },
       "id": "bridge_screw_left / socket head_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bridge_screw_left / socket head_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bridge screw left / socket head / Add 6.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bridge_screw_left / socket head_build_feature_name"
     },
     {
       "call": {
@@ -20681,6 +22341,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bridge_nut_left / M6 envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bridge nut left / M6 envelope / Stock 5.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bridge_nut_left / M6 envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "bridge_nut_left / M6 envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -20922,6 +22602,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bridge_nut_left / thread envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bridge nut left / thread envelope / Cut 5.199999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bridge_nut_left / thread envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "bridge_nut_left / thread envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -21082,6 +22782,26 @@
         "operation": "solid_extrude"
       },
       "id": "bridge_screw_right / M6 x 35 shaft_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bridge_screw_right / M6 x 35 shaft_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bridge screw right / M6 x 35 shaft / Stock 35.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bridge_screw_right / M6 x 35 shaft_build_feature_name"
     },
     {
       "call": {
@@ -21287,6 +23007,26 @@
         "operation": "solid_extrude"
       },
       "id": "bridge_screw_right / socket head_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bridge_screw_right / socket head_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bridge screw right / socket head / Add 6.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bridge_screw_right / socket head_build_feature_name"
     },
     {
       "call": {
@@ -21637,6 +23377,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bridge_nut_right / M6 envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bridge nut right / M6 envelope / Stock 5.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bridge_nut_right / M6 envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "bridge_nut_right / M6 envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -21842,6 +23602,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "bridge_nut_right / thread envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "bridge nut right / thread envelope / Cut 5.199999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "bridge_nut_right / thread envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "bridge_nut_right / thread envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -22038,6 +23818,26 @@
         "operation": "solid_extrude"
       },
       "id": "Keeper pin / M5 x 90 shaft_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper pin / M5 x 90 shaft_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper pin / M5 x 90 shaft / Stock 90.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper pin / M5 x 90 shaft_build_feature_name"
     },
     {
       "call": {
@@ -22279,6 +24079,26 @@
         "operation": "solid_extrude"
       },
       "id": "Keeper pin / recessed socket head_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper pin / recessed socket head_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper pin / recessed socket head / Add 5.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper pin / recessed socket head_build_feature_name"
     },
     {
       "call": {
@@ -22629,6 +24449,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper pin / trapped M5 nut_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper pin / trapped M5 nut / Stock 4.700000000000003 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper pin / trapped M5 nut_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Keeper pin / trapped M5 nut_before_sketch_visibility",
           "pointer": ""
         },
@@ -22870,6 +24710,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Keeper pin nut / thread envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Keeper pin nut / thread envelope / Cut 4.899999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Keeper pin nut / thread envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Keeper pin nut / thread envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -23066,6 +24926,26 @@
         "operation": "solid_extrude"
       },
       "id": "Thrust screw / M5 x 25 shaft_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thrust screw / M5 x 25 shaft_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thrust screw / M5 x 25 shaft / Stock 25.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thrust screw / M5 x 25 shaft_build_feature_name"
     },
     {
       "call": {
@@ -23271,6 +25151,26 @@
         "operation": "solid_extrude"
       },
       "id": "Thrust screw / recessed socket head_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thrust screw / recessed socket head_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thrust screw / recessed socket head / Add 5.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thrust screw / recessed socket head_build_feature_name"
     },
     {
       "call": {
@@ -23657,6 +25557,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thrust screw / captive M5 nut_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thrust screw / captive M5 nut / Stock 4.700000000000003 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thrust screw / captive M5 nut_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Thrust screw / captive M5 nut_before_sketch_visibility",
           "pointer": ""
         },
@@ -23898,6 +25818,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Thrust nut / thread envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Thrust nut / thread envelope / Cut 4.8999999999999915 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Thrust nut / thread envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "Thrust nut / thread envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -24094,6 +26034,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_0_0_bolt / M6 x 45 shaft_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_0_bolt / M6 x 45 shaft_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 0 bolt / M6 x 45 shaft / Stock 45.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_0_bolt / M6 x 45 shaft_build_feature_name"
     },
     {
       "call": {
@@ -24339,6 +26299,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_0_bolt / socket head_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 0 bolt / socket head / Add 6.000000000000002 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_0_bolt / socket head_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_0_0_bolt / socket head_before_sketch_visibility",
           "pointer": ""
         },
@@ -24499,6 +26479,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_0_0_top_washer / broad washer_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_0_top_washer / broad washer_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 0 top washer / broad washer / Stock 1.5999999999999996 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_0_top_washer / broad washer_build_feature_name"
     },
     {
       "call": {
@@ -24744,6 +26744,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_0_top_washer / clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 0 top washer / clearance / Cut 1.799999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_0_top_washer / clearance_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_0_0_top_washer / clearance_before_sketch_visibility",
           "pointer": ""
         },
@@ -24940,6 +26960,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_0_0_bottom_washer / broad washer_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_0_bottom_washer / broad washer_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 0 bottom washer / broad washer / Stock 1.6000000000000014 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_0_bottom_washer / broad washer_build_feature_name"
     },
     {
       "call": {
@@ -25181,6 +27221,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_0_0_bottom_washer / clearance_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_0_bottom_washer / clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 0 bottom washer / clearance / Cut 1.8000000000000007 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_0_bottom_washer / clearance_build_feature_name"
     },
     {
       "call": {
@@ -25567,6 +27627,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_0_nut / M6 envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 0 nut / M6 envelope / Stock 5.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_0_nut / M6 envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_0_0_nut / M6 envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -25808,6 +27888,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_0_nut / thread envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 0 nut / thread envelope / Cut 5.199999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_0_nut / thread envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_0_0_nut / thread envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -25968,6 +28068,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_0_1_bolt / M6 x 45 shaft_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_1_bolt / M6 x 45 shaft_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 1 bolt / M6 x 45 shaft / Stock 45.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_1_bolt / M6 x 45 shaft_build_feature_name"
     },
     {
       "call": {
@@ -26177,6 +28297,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_1_bolt / socket head_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 1 bolt / socket head / Add 6.000000000000002 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_1_bolt / socket head_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_0_1_bolt / socket head_before_sketch_visibility",
           "pointer": ""
         },
@@ -26337,6 +28477,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_0_1_top_washer / broad washer_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_1_top_washer / broad washer_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 1 top washer / broad washer / Stock 1.5999999999999996 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_1_top_washer / broad washer_build_feature_name"
     },
     {
       "call": {
@@ -26546,6 +28706,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_1_top_washer / clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 1 top washer / clearance / Cut 1.799999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_1_top_washer / clearance_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_0_1_top_washer / clearance_before_sketch_visibility",
           "pointer": ""
         },
@@ -26706,6 +28886,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_0_1_bottom_washer / broad washer_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_1_bottom_washer / broad washer_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 1 bottom washer / broad washer / Stock 1.6000000000000014 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_1_bottom_washer / broad washer_build_feature_name"
     },
     {
       "call": {
@@ -26911,6 +29111,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_0_1_bottom_washer / clearance_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_1_bottom_washer / clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 1 bottom washer / clearance / Cut 1.8000000000000007 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_1_bottom_washer / clearance_build_feature_name"
     },
     {
       "call": {
@@ -27261,6 +29481,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_1_nut / M6 envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 1 nut / M6 envelope / Stock 5.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_1_nut / M6 envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_0_1_nut / M6 envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -27466,6 +29706,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_0_1_nut / thread envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 0 1 nut / thread envelope / Cut 5.199999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_0_1_nut / thread envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_0_1_nut / thread envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -27626,6 +29886,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_1_0_bolt / M6 x 45 shaft_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_0_bolt / M6 x 45 shaft_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 0 bolt / M6 x 45 shaft / Stock 45.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_0_bolt / M6 x 45 shaft_build_feature_name"
     },
     {
       "call": {
@@ -27835,6 +30115,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_0_bolt / socket head_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 0 bolt / socket head / Add 6.000000000000002 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_0_bolt / socket head_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_1_0_bolt / socket head_before_sketch_visibility",
           "pointer": ""
         },
@@ -27995,6 +30295,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_1_0_top_washer / broad washer_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_0_top_washer / broad washer_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 0 top washer / broad washer / Stock 1.5999999999999996 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_0_top_washer / broad washer_build_feature_name"
     },
     {
       "call": {
@@ -28204,6 +30524,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_0_top_washer / clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 0 top washer / clearance / Cut 1.799999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_0_top_washer / clearance_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_1_0_top_washer / clearance_before_sketch_visibility",
           "pointer": ""
         },
@@ -28364,6 +30704,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_1_0_bottom_washer / broad washer_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_0_bottom_washer / broad washer_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 0 bottom washer / broad washer / Stock 1.6000000000000014 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_0_bottom_washer / broad washer_build_feature_name"
     },
     {
       "call": {
@@ -28569,6 +30929,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_1_0_bottom_washer / clearance_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_0_bottom_washer / clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 0 bottom washer / clearance / Cut 1.8000000000000007 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_0_bottom_washer / clearance_build_feature_name"
     },
     {
       "call": {
@@ -28919,6 +31299,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_0_nut / M6 envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 0 nut / M6 envelope / Stock 5.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_0_nut / M6 envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_1_0_nut / M6 envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -29124,6 +31524,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_0_nut / thread envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 0 nut / thread envelope / Cut 5.199999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_0_nut / thread envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_1_0_nut / thread envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -29284,6 +31704,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_1_1_bolt / M6 x 45 shaft_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_1_bolt / M6 x 45 shaft_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 1 bolt / M6 x 45 shaft / Stock 45.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_1_bolt / M6 x 45 shaft_build_feature_name"
     },
     {
       "call": {
@@ -29493,6 +31933,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_1_bolt / socket head_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 1 bolt / socket head / Add 6.000000000000002 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_1_bolt / socket head_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_1_1_bolt / socket head_before_sketch_visibility",
           "pointer": ""
         },
@@ -29653,6 +32113,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_1_1_top_washer / broad washer_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_1_top_washer / broad washer_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 1 top washer / broad washer / Stock 1.5999999999999996 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_1_top_washer / broad washer_build_feature_name"
     },
     {
       "call": {
@@ -29862,6 +32342,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_1_top_washer / clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 1 top washer / clearance / Cut 1.799999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_1_top_washer / clearance_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_1_1_top_washer / clearance_before_sketch_visibility",
           "pointer": ""
         },
@@ -30022,6 +32522,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_1_1_bottom_washer / broad washer_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_1_bottom_washer / broad washer_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 1 bottom washer / broad washer / Stock 1.6000000000000014 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_1_bottom_washer / broad washer_build_feature_name"
     },
     {
       "call": {
@@ -30227,6 +32747,26 @@
         "operation": "solid_extrude"
       },
       "id": "mount_1_1_bottom_washer / clearance_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_1_bottom_washer / clearance_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 1 bottom washer / clearance / Cut 1.8000000000000007 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_1_bottom_washer / clearance_build_feature_name"
     },
     {
       "call": {
@@ -30577,6 +33117,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_1_nut / M6 envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 1 nut / M6 envelope / Stock 5.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_1_nut / M6 envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_1_1_nut / M6 envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -30782,6 +33342,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "mount_1_1_nut / thread envelope_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "mount 1 1 nut / thread envelope / Cut 5.199999999999999 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "mount_1_1_nut / thread envelope_build_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "mount_1_1_nut / thread envelope_before_sketch_visibility",
           "pointer": ""
         },
@@ -30857,6 +33437,26 @@
     {
       "call": {
         "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "nut_thread"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "nut thread / Hole Ø20.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "nut_thread_feature_name"
+    },
+    {
+      "call": {
+        "arguments": {
           "$ref": "male_thread_request",
           "pointer": ""
         },
@@ -30864,6 +33464,26 @@
         "operation": "solid_external_thread"
       },
       "id": "male_thread"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "male_thread"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "male thread / External thread"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "male_thread_feature_name"
     },
     {
       "let": {
@@ -31062,6 +33682,26 @@
         "operation": "solid_extrude"
       },
       "id": "Screw / shallow continuous print flat_build"
+    },
+    {
+      "call": {
+        "arguments": {
+          "feature_id": {
+            "$select": {
+              "from": {
+                "$ref": "Screw / shallow continuous print flat_build"
+              },
+              "path": "/document/features",
+              "pointer": "/id",
+              "take": "last"
+            }
+          },
+          "name": "Screw / shallow continuous print flat / Cut 13.0 mm"
+        },
+        "group": "document/history",
+        "operation": "solid_rename_feature"
+      },
+      "id": "Screw / shallow continuous print flat_build_feature_name"
     },
     {
       "call": {
