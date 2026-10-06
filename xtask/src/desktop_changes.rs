@@ -26,6 +26,7 @@ impl Builds {
         let common = [
             "desktop/",
             "crates/",
+            "native/occt-overlay/",
             "assets/",
             "mcp-server/",
             "knowledge/",
@@ -43,6 +44,7 @@ impl Builds {
                 "VERSION",
                 "REPOSITORY",
                 "vcpkg.json",
+                "vcpkg-configuration.json",
                 "rust-toolchain",
                 "rust-toolchain.toml",
                 "LICENSE",
@@ -194,6 +196,8 @@ mod tests {
             ".cargo/config.toml",
             ".cargo/tools.toml",
             "crates/occt/sdk.rs",
+            "native/occt-overlay/opencascade/math_DoubleTab.lxx",
+            "vcpkg-configuration.json",
             "VERSION",
             "REPOSITORY",
         ] {

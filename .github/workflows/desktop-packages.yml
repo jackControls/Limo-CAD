@@ -80,6 +80,11 @@ jobs:
       - name: Check out Limo CAD
         uses: actions/checkout@v4
 
+      - name: Set up repository Rust toolchain
+        uses: ./.github/actions/setup-rust
+        with:
+          target: ${{ matrix.rust_target }}
+
       - name: Set up cached OpenCASCADE SDK
         id: occt
         uses: ./.github/actions/setup-windows-occt
@@ -92,11 +97,6 @@ jobs:
         id: app_version
         shell: bash
         run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
-
-      - name: Set up repository Rust toolchain
-        uses: ./.github/actions/setup-rust
-        with:
-          target: ${{ matrix.rust_target }}
 
       - name: Fetch and verify embedded material catalog
         run: cargo xtask materials --fetch --check
@@ -197,6 +197,9 @@ jobs:
         uses: ./.github/actions/setup-linux-desktop
         with:
           desktop-input: 'true'
+
+      - name: Install checked OCCT SDK
+        uses: ./.github/actions/setup-unix-occt
 
       - name: Restore Rust build cache
         uses: actions/cache@v4
@@ -590,16 +593,8 @@ jobs:
         with:
           target: aarch64-apple-darwin
 
-      - name: Install pinned OpenCASCADE 7.9.3
-        shell: bash
-        run: |
-          brew install opencascade
-          occt_version="$(brew list --versions opencascade | awk '{ print $2 }')"
-          if [[ "$occt_version" != "7.9.3" ]]; then
-            echo "Expected OpenCASCADE 7.9.3, got $occt_version" >&2
-            exit 1
-          fi
-          echo "OCCT_ROOT=$(brew --prefix opencascade)" >> "$GITHUB_ENV"
+      - name: Install checked OpenCASCADE 7.9.3
+        uses: ./.github/actions/setup-unix-occt
 
       - name: Import Developer ID Application certificate
         if: env.MACOS_DISTRIBUTION_BUILD == 'true'

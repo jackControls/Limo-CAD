@@ -13,6 +13,31 @@ use std::{
 const VERSION: &str = "7_9_3";
 const SHA256: &str = "5ecf094ec6b12d5413dfb851d8c3590c354058aee556e32e408bdfbf8c357d57";
 const MAX_SOURCE_BYTES: u64 = 256 * 1024 * 1024;
+type SourceOverride<'a> = (&'a str, &'a str, &'a [u8]);
+const SOURCE_OVERRIDES: &[SourceOverride<'_>] = &[
+    (
+        "src/math/math_DoubleTab.cxx",
+        "bc046ea106812a0f2c37d47a5f54cd58099837dcb6a68c1c86749db4077d5b43",
+        include_bytes!("../../native/occt-overlay/opencascade/math_DoubleTab.cxx"),
+    ),
+    (
+        "src/math/math_DoubleTab.lxx",
+        "2cf1b4d1c9f855e04b00edaae56d5fb700769db50a3d7000341fd3c269116b54",
+        include_bytes!("../../native/occt-overlay/opencascade/math_DoubleTab.lxx"),
+    ),
+];
+
+fn override_digest() -> Result<String> {
+    let mut inputs = Vec::new();
+    for (path, original, replacement) in SOURCE_OVERRIDES {
+        writeln!(
+            inputs,
+            "{path}:{original}:{}",
+            crate::hash::reader(*replacement)?
+        )?;
+    }
+    crate::hash::reader(inputs.as_slice())
+}
 const SETTINGS: &[&str] = &[
     "CMAKE_BUILD_TYPE=Release",
     "BUILD_LIBRARY_TYPE=Shared",
@@ -136,11 +161,12 @@ fn configure(options: &Options, source: &Path, build: &Path) -> Command {
 }
 pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     let mut options = Options::parse(args)?;
+    let overrides = override_digest()?;
     let url =
         format!("https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V{VERSION}.tar.gz");
     if options.dry_run {
         println!(
-            "OCCT {} source {url}\nSHA256 {SHA256}\n{:?}\nJobs: {}\nCache: {}",
+            "OCCT {} source {url}\nSHA256 {SHA256}\nChecked storage overrides {overrides}\n{:?}\nJobs: {}\nCache: {}",
             VERSION.replace('_', "."),
             configure(
                 &options,
@@ -167,7 +193,7 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     .map(|arg| arg.to_string_lossy().into_owned())
     .collect::<Vec<_>>()
     .join("\n");
-    let key = crate::occt_cache::key(SHA256, &compiler, &recipe)?;
+    let key = crate::occt_cache::key(&format!("{SHA256}:{overrides}"), &compiler, &recipe)?;
     if options.github_key {
         let mut output = fs::OpenOptions::new()
             .append(true)
@@ -185,7 +211,9 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         crate::hash::file(&archive)? == SHA256,
         "cached OCCT archive checksum differs; refusing reuse"
     );
-    let source = source_cache.join(format!("OCCT-{VERSION}"));
+    let source_variant = source_cache.join(&overrides);
+    fs::create_dir_all(&source_variant)?;
+    let source = source_variant.join(format!("OCCT-{VERSION}"));
     if !source.exists() {
         let staging = tempfile::tempdir_in(&source_cache)?;
         tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(&archive)?))
@@ -195,14 +223,17 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
             extracted.join("CMakeLists.txt").is_file(),
             "missing OCCT source tree"
         );
+        verify_source(&archive, &extracted, SHA256)?;
+        apply_overrides(&extracted, SOURCE_OVERRIDES)?;
         fs::rename(extracted, &source)?;
     }
-    verify_source(&archive, &source, SHA256)?;
+    verify_source_with_overrides(&archive, &source, SHA256, SOURCE_OVERRIDES)?;
     drop(source_lock);
     let work = options.cache.join("builds").join(&key);
     let _build_lock = crate::occt_cache::lock(&work)?;
     let _prefix_lock = crate::occt_cache::prepare_locked(&options.prefix, &key)?;
     if crate::occt_cache::complete(&options.prefix, &key)? {
+        crate::occt_storage::verify(&options.prefix)?;
         println!(
             "Verified installed OCCT SDK cache hit: {}",
             options.prefix.display()
@@ -228,6 +259,9 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
         &mut copyright,
     )?;
     fs::copy(source.join("LICENSE_LGPL_21.txt"), doc.join("LGPL-2.1.txt"))?;
+    for name in ["LICENSE_LGPL_21.txt", "OCCT_LGPL_EXCEPTION.txt"] {
+        fs::copy(source.join(name), doc.join(name))?;
+    }
     crate::build_tools::sdk::resolve(
         std::slice::from_ref(&options.prefix),
         env::consts::OS,
@@ -236,7 +270,8 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
     )
     .map_err(anyhow::Error::msg)
     .context("validate the installed OCCT SDK before publishing its receipt")?;
-    verify_source(&archive, &source, SHA256)?;
+    verify_source_with_overrides(&archive, &source, SHA256, SOURCE_OVERRIDES)?;
+    crate::occt_storage::verify(&options.prefix)?;
     crate::occt_cache::publish(&options.prefix, &key)?;
     println!(
         "Installed OCCT {} into {}\nBuild cache: {}",
@@ -385,6 +420,27 @@ fn source_files(root: &Path, directory: &Path, files: &mut BTreeMap<String, Stri
 }
 
 fn verify_source(archive: &Path, source: &Path, digest: &str) -> Result<()> {
+    verify_source_with_overrides(archive, source, digest, &[])
+}
+
+fn apply_overrides(source: &Path, overrides: &[SourceOverride<'_>]) -> Result<()> {
+    for (relative, original, replacement) in overrides {
+        let path = source.join(relative);
+        ensure!(
+            crate::hash::file(&path)? == *original,
+            "OCCT override input differs from the pinned source: {relative}"
+        );
+        fs::write(path, replacement)?;
+    }
+    Ok(())
+}
+
+fn verify_source_with_overrides(
+    archive: &Path,
+    source: &Path,
+    digest: &str,
+    overrides: &[SourceOverride<'_>],
+) -> Result<()> {
     ensure!(
         crate::hash::file(archive)? == digest,
         "cached OCCT archive checksum differs; refusing reuse"
@@ -401,7 +457,17 @@ fn verify_source(archive: &Path, source: &Path, digest: &str) -> Result<()> {
             "cached OCCT source must not be a junction"
         );
     }
-    let expected = source_inventory(archive)?;
+    let mut expected = source_inventory(archive)?;
+    for (relative, original, replacement) in overrides {
+        ensure!(
+            expected.get(*relative) == Some(&format!("file:{original}")),
+            "OCCT override is not based on the pinned archive: {relative}"
+        );
+        expected.insert(
+            (*relative).into(),
+            format!("file:{}", crate::hash::reader(*replacement)?),
+        );
+    }
     let root = fs::canonicalize(source)?;
     let mut actual = BTreeMap::new();
     source_files(&root, &root, &mut actual)?;
@@ -444,6 +510,25 @@ fn download(url: &str, archive: &std::path::Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn checked_overrides_are_verified_against_both_pristine_and_resulting_sources() {
+        let (_temporary, archive, source, digest) = source_fixture(false);
+        let original = crate::hash::file(&source.join("src/example.cxx")).unwrap();
+        let overrides = [(
+            "src/example.cxx",
+            original.as_str(),
+            b"checked replacement".as_slice(),
+        )];
+        verify_source(&archive, &source, &digest).unwrap();
+        assert!(verify_source_with_overrides(&archive, &source, &digest, &overrides).is_err());
+        apply_overrides(&source, &overrides).unwrap();
+        verify_source_with_overrides(&archive, &source, &digest, &overrides).unwrap();
+        assert!(verify_source(&archive, &source, &digest).is_err());
+        fs::write(source.join("src/example.cxx"), "unapproved patch").unwrap();
+        assert!(verify_source_with_overrides(&archive, &source, &digest, &overrides).is_err());
+        assert!(apply_overrides(&source, &overrides).is_err());
+    }
+
     fn source_fixture(with_link: bool) -> (tempfile::TempDir, PathBuf, PathBuf, String) {
         let temporary = tempfile::tempdir().unwrap();
         let archive = temporary.path().join("occt.tar.gz");

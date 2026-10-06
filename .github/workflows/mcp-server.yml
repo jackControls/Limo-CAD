@@ -21,6 +21,9 @@ on:
       - '.github/actions/setup-rust/**'
       - 'xtask/**'
       - 'vcpkg.json'
+      - 'vcpkg-configuration.json'
+      - 'native/occt-overlay/**'
+      - '.github/actions/setup-unix-occt/**'
       - '.github/workflows/mcp-server.yml'
       - '.github/actions/setup-windows-occt/**'
       - '.github/actions/setup-linux-desktop/**'
@@ -42,6 +45,9 @@ on:
       - '.github/actions/setup-rust/**'
       - 'xtask/**'
       - 'vcpkg.json'
+      - 'vcpkg-configuration.json'
+      - 'native/occt-overlay/**'
+      - '.github/actions/setup-unix-occt/**'
       - '.github/workflows/mcp-server.yml'
       - '.github/actions/setup-windows-occt/**'
       - '.github/actions/setup-linux-desktop/**'
@@ -238,34 +244,14 @@ jobs:
       - name: Install Rust
         uses: ./.github/actions/setup-rust
 
-      - name: Install OpenCASCADE 7.9 SDK (Ubuntu packages)
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
-            build-essential \
-            ca-certificates \
-            clang \
-            cmake \
-            fonts-noto-core fonts-noto-cjk \
-            libocct-data-exchange-7.9 \
-            libocct-foundation-dev \
-            libocct-modeling-algorithms-dev \
-            libocct-modeling-data-dev \
-            ninja-build
-
-          pushd "$RUNNER_TEMP"
-          apt-get download libocct-data-exchange-dev
-          package="$(find . -maxdepth 1 -name 'libocct-data-exchange-dev_*.deb' -print -quit)"
-          test -n "$package"
-          sudo dpkg-deb --extract "$package" /
-          popd
+      - name: Install checked OpenCASCADE 7.9 SDK
+        uses: ./.github/actions/setup-unix-occt
+      - name: Install recipe evidence fonts
+        run: sudo apt-get install --yes --no-install-recommends clang fonts-noto-core fonts-noto-cjk
 
       - name: Lint native Rust workspaces
         if: matrix.shard == 'core'
         env:
-          OCCT_ROOT: /usr
           CARGO_TARGET_DIR: ${{ github.workspace }}/mcp-server/target
         run: |
           cargo clippy --locked --workspace --all-targets --all-features --no-deps -- -D warnings
@@ -274,14 +260,12 @@ jobs:
       - name: MCP server tests
         id: native-tests
         env:
-          OCCT_ROOT: /usr
           LIMO_CAD_RECIPE_ARTIFACT_DIR: ${{ github.workspace }}/target/mcp-recipe-evidence
         run: cargo xtask ci mcp-shard ${{ matrix.shard }}
 
       - name: Native geometry integration regressions
         if: matrix.shard == 'core'
         env:
-          OCCT_ROOT: /usr
           CARGO_TARGET_DIR: ${{ github.workspace }}/mcp-server/target
         run: cargo test --locked -p limo-cad-occt --features native-occt --tests -- --test-threads=1
 
@@ -299,8 +283,6 @@ jobs:
 
       - name: MCP bench and complete feature workshop
         if: matrix.shard == 'core'
-        env:
-          OCCT_ROOT: /usr
         run: |
           cargo build --locked --manifest-path mcp-server/Cargo.toml
           cargo xtask test-mcp bench --server ./mcp-server/target/debug/limo-cad-mcp --workshop all --out ./target/mcp-workshop

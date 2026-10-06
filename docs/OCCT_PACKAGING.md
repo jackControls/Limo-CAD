@@ -20,8 +20,9 @@ Native OCCT 7.9.x adapter (crates/occt)
 Rust validation + commit + document DTO
 ```
 
-The planned browser host shares the Rust model and Bevy UI. Its exact OCCT
-kernel still needs the WASM port; the engine facade alone is not a browser CAD app.
+The planned browser host shares the Rust model and Bevy UI. It will offload exact
+geometry to a native Rust/OCCT service. An optional fully local browser kernel
+requires a separate OCCT WASM port; the engine facade alone is not a browser CAD app.
 
 `crates/solid` is authoritative for:
 
@@ -46,10 +47,12 @@ default AP214 model.
 The bridge is implemented with `cxx` in `crates/occt`. It is tested with
 OCCT 7.9.3 and accepts any compatible 7.9.x SDK during local development.
 
-Homebrew setup:
+macOS SDK setup:
 
 ```sh
-brew install opencascade
+brew install cmake ninja freetype
+cargo xtask build-occt --prefix "$HOME/Library/Caches/limo-cad/occt-7.9.3"
+export OCCT_ROOT="$HOME/Library/Caches/limo-cad/occt-7.9.3"
 cargo test -p limo-cad-occt --features native-occt
 cargo check --manifest-path desktop/Cargo.toml
 ```
@@ -178,8 +181,8 @@ and runtime requirements.
 
 ## 5. Reproducible Ubuntu 26.04 packages
 
-Ubuntu 26.04 LTS is the official Linux baseline. The package uses Ubuntu's
-OCCT 7.9 runtime and a full native Bevy/Winit window with Vulkan rendering.
+Ubuntu 26.04 LTS is the official Linux baseline. The package bundles the checked
+OCCT 7.9.3 runtime and a full native Bevy/Winit window with Vulkan rendering.
 GTK supplies file dialogs and the desktop portal supplies printing. Package
 verification exercises private X11 and Wayland displays; it no longer checks
 an embedded browser's child surface.
@@ -200,9 +203,9 @@ and npm aliases have no compatibility wrappers.
 ## 6. Browser/WASM development
 
 The retired React app and OpenCascade.js package are no longer build inputs.
-The browser replacement must reuse the desktop Bevy UI. It requires an OCCT
-WASM kernel and browser host services; neither is supplied by the current
-engine bundle command.
+The browser replacement must reuse the desktop Bevy UI and connect to the native
+Rust/OCCT geometry service. An optional fully local kernel requires an OCCT WASM
+port. Neither browser host is supplied by the current engine bundle command.
 
 Build the existing Rust engine facade, which can be checked independently:
 
@@ -217,24 +220,25 @@ optional Chrome engine smoke test.
 
 ## 7. Version and CI policy
 
-- Local development: Homebrew OCCT 7.9.x is supported.
-- macOS CI currently installs the Homebrew OCCT formula, requires it to resolve
-  to exactly 7.9.3, and passes its prefix through `OCCT_ROOT`. Move signed
-  releases to an immutable 7.9.3 SDK artifact before treating the workflow as a
-  reproducible release authority.
+- Local development: a compatible OCCT 7.9.x SDK is accepted for engine checks;
+  distributed packages require the checked 7.9.3 SDK.
+- macOS and Linux CI build verified OCCT 7.9.3 sources through Rust xtask.
+  The compiler, FreeType, source and checked storage replacements determine
+  the cache identity. A bounded probe qualifies the actual `TKMath` runtime
+  before the SDK receipt is published or reused.
 - Windows CI: use the committed vcpkg baseline and OCCT 7.9.3 override,
   installed as the dynamic `x64-windows` or `arm64-windows` triplet. Preserve
   vcpkg binary packages in an ABI-keyed CI cache; a cache miss must rebuild
   from the pinned sources.
-- Linux CI: build the DEB on `ubuntu-26.04` against Ubuntu's OCCT 7.9
-  packages, and verify Vulkan viewport startup under headless X11 and
+- Linux CI: build the DEB on `ubuntu-26.04` with its private checked OCCT 7.9.3
+  runtime, and verify Vulkan viewport startup under headless X11 and
   Weston/XWayland sessions. Build the AppImage in an Ubuntu 22.04 container
   against OCCT 7.9.3 compiled from pinned, checksummed source
   (`cargo xtask build-occt --prefix PATH`, cached by verified compiler/SDK/recipe fingerprints), refuse it if
   it needs glibc newer than 2.35, and verify it under X11 on Ubuntu 22.04 and
   26.04.
-- Browser publication requires the shared Bevy UI, an exact kernel WASM port,
-  host-service integration and native/browser conformance evidence.
+- Browser publication requires the shared Bevy UI, native geometry service,
+  browser host integration and native/browser conformance evidence.
 - Native release guards reject absolute non-system dylib paths, signature
   failures and invalid topology results.
 

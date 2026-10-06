@@ -6,12 +6,6 @@ ENV PATH=/root/.cargo/bin:${PATH}
 ENV OCCT_ROOT=/opt/opencascade
 ENV LD_LIBRARY_PATH=/opt/opencascade/lib
 
-# AppImage build SDK. Graphics/window loaders remain host libraries. The
-# package runs on distributions whose glibc is at least the build
-# system's: building on Ubuntu 22.04 (glibc 2.35) covers Debian 12, Ubuntu
-# 22.04 and later. Ubuntu 22.04 does not ship OCCT 7.9, so it is built from
-# pinned source into /opt/opencascade. The Debian package is built with
-# scripts/docker/ubuntu-26.04.Dockerfile against Ubuntu's OCCT instead.
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         build-essential \
@@ -61,13 +55,14 @@ RUN rustup show
 COPY Cargo.toml Cargo.lock rust-toolchain.toml VERSION /tmp/limo-cad-build-tools/
 COPY .cargo/config.toml .cargo/tools.toml /tmp/limo-cad-build-tools/.cargo/
 WORKDIR /tmp/limo-cad-build-tools
-RUN mkdir -p crates xtask assets/i18n
+RUN mkdir -p crates xtask assets/i18n native
 # Optional --build-arg to cap OCCT compile jobs on a shared machine.
 ARG CMAKE_BUILD_PARALLEL_LEVEL
 # Application edits may invalidate this layer; compatible SDK objects and Rust
 # dependencies survive in BuildKit caches. Source mounts do not enter the image.
 RUN --mount=type=bind,source=crates,target=/tmp/limo-cad-build-tools/crates \
     --mount=type=bind,source=xtask,target=/tmp/limo-cad-build-tools/xtask \
+    --mount=type=bind,source=native,target=/tmp/limo-cad-build-tools/native \
     --mount=type=bind,source=assets/i18n,target=/tmp/limo-cad-build-tools/assets/i18n \
     --mount=type=cache,target=/var/cache/limo-cad-rust-target,sharing=locked \
     --mount=type=cache,target=/root/.cargo/registry,sharing=locked \

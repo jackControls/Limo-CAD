@@ -55,6 +55,7 @@ mod native_thread_test;
 mod native_view_test;
 mod occt_cache;
 mod occt_sdk;
+mod occt_storage;
 mod package;
 mod package_mcp;
 mod playback_test;
@@ -102,6 +103,7 @@ fn run() -> Result<()> {
         "package" => package::run(args),
         "ci" => repository_ci::run(args),
         "build-occt" => occt_sdk::run(args),
+        "verify-occt-storage" => occt_storage::run(args),
         "build-wasm" => wasm_build::run(args),
         "smoke-wasm" => wasm_build::smoke(args),
         "knowledge" => knowledge::run(args),
@@ -155,6 +157,7 @@ Commands:
   build-occt    Build pinned OCCT 7.9.3 with CMake/Ninja on the host:
                 --prefix PATH [--jobs N] [--cache-dir PATH] [--sccache] [--dry-run].
                 Requires CMake/Ninja, a C++ compiler and FreeType; preserves compatible build objects.
+  verify-occt-storage  Qualify checked allocation/copy in the installed SDK: --prefix PATH.
   ci            Rust CI tasks: mcp-shard SHARD, stage-demo-projects, require-platform.
   knowledge     Validate the bundle (check), generate/verify index (index --check),
                 build the static site (site), or stage verified videos (media --verify).

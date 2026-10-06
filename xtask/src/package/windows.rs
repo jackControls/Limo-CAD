@@ -45,6 +45,24 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         .unwrap_or_else(|| package.root.join("vcpkg_installed").join(target.triplet))
         .canonicalize()
         .context("resolve Windows OCCT SDK")?;
+    let target_arch = if target.arch == "x64" {
+        "x86_64"
+    } else {
+        "aarch64"
+    };
+    if target_arch == env::consts::ARCH {
+        crate::occt_storage::verify(&sdk)?;
+    } else {
+        let layout = crate::build_tools::sdk::resolve(
+            std::slice::from_ref(&sdk),
+            "windows",
+            target_arch,
+            None,
+        )
+        .map_err(anyhow::Error::msg)?;
+        crate::occt_storage::verify_header(&layout.include)?;
+        println!("Cross-built packages require checked-runtime qualification on the target before publication.");
+    }
     let bin = [
         "bin",
         "win64/vc17/bin",

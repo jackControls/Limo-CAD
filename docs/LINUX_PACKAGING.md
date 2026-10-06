@@ -21,7 +21,10 @@ library. It runs only where glibc is at least as new as the build system's. It i
 therefore built on Ubuntu 22.04 (glibc 2.35) against OCCT 7.9.3 compiled from pinned source by
 `cargo xtask build-occt --prefix PATH`, because Ubuntu 22.04 does not package OCCT 7.9.
 Release CI refuses an AppImage that needs a newer glibc, and launches it on both
-Ubuntu 22.04 and 26.04. The Debian package stays on Ubuntu 26.04's OCCT.
+Ubuntu 22.04 and 26.04. The Debian package also bundles the checked OCCT 7.9.3
+runtime in `/usr/lib/limo-cad`. Its executable and OCCT libraries use relative
+loader paths, so the package works without the build SDK and cannot silently
+load an older system OCCT instead. Graphics/window loaders remain host libraries.
 
 Like glibc, the Wayland client libraries come from the host rather than the
 AppImage. The host's Mesa Vulkan and EGL drivers load into the application and
@@ -86,10 +89,10 @@ docker run --rm \
 
 `cargo xtask package --bundle deb` builds only the Debian package.
 
-The 26.04 container deliberately extracts only the Ubuntu STEP development headers
-from `libocct-data-exchange-dev`; installing that package normally also pulls
-the unrelated VTK/IVTK development stack. Its matching OCCT runtime and the
-lower-level OCCT development packages are installed normally.
+Both containers build the same checked OCCT 7.9.3 source recipe through Rust xtask.
+BuildKit caches retain compiler-compatible SDK objects and Rust dependencies.
+The resulting packages carry the repaired native runtime without depending on
+distribution OCCT packages.
 
 ## Native Ubuntu build dependencies
 
@@ -100,7 +103,7 @@ checks. It includes:
 
 - Desktop portals and their GTK backend for native file and print dialogs;
 - Vulkan, Wayland, X11/XKB (including `libxkbcommon-x11-dev`) and udev development files;
-- OCCT 7.9 foundation, modeling and data-exchange libraries/headers;
+- FreeType development files and the checked OCCT 7.9.3 source build;
 - Rust (the pinned toolchain); and
 - Native packaging utilities including `patchelf`, `file`, FUSE 2 and
   `squashfs-tools` (the AppImage permission audit reads the image with

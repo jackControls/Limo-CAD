@@ -43,10 +43,12 @@ fn native() {
             .map(std::path::Path::new),
     )
     .unwrap_or_else(|error| panic!("{error}"));
-    println!(
-        "cargo:rerun-if-changed={}",
-        sdk.include.join("Standard_Version.hxx").display()
-    );
+    for header in ["Standard_Version.hxx", "math_DoubleTab.lxx"] {
+        println!(
+            "cargo:rerun-if-changed={}",
+            sdk.include.join(header).display()
+        );
+    }
     let mut bridge = cxx_build::bridge("src/native.rs");
     bridge
         .file("src/shim.cpp")

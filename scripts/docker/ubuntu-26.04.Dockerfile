@@ -1,13 +1,11 @@
+# syntax=docker/dockerfile:1
 FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH=/root/.cargo/bin:${PATH}
+ENV OCCT_ROOT=/opt/opencascade
+ENV LD_LIBRARY_PATH=/opt/opencascade/lib
 
-# Official Ubuntu 26.04 build/runtime SDK for the native Bevy/wgpu desktop, HID input and Ubuntu's OpenCASCADE 7.9 packages.
-# Ubuntu's data-exchange -dev meta-package also depends on the VTK/IVTK
-# development stack. Limo CAD needs its STEP headers, but not those
-# visualization SDKs, so the RUN command extracts only that header package
-# after installing its runtime and lower-level development dependencies.
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         build-essential \
@@ -18,12 +16,10 @@ RUN apt-get update \
         dbus-x11 \
         desktop-file-utils \
         file \
+        git \
         libdbus-1-3 \
         libfuse2t64 \
-        libocct-data-exchange-7.9 \
-        libocct-foundation-dev \
-        libocct-modeling-algorithms-dev \
-        libocct-modeling-data-dev \
+        libfreetype6-dev \
         libudev-dev \
         libvulkan-dev \
         libwayland-dev \
@@ -50,10 +46,6 @@ RUN apt-get update \
     && if apt-cache show xwayland >/dev/null 2>&1; then \
          apt-get install --yes --no-install-recommends xwayland; \
        fi \
-    && cd /tmp \
-    && apt-get download libocct-data-exchange-dev \
-    && dpkg-deb --extract libocct-data-exchange-dev_*.deb / \
-    && rm -f libocct-data-exchange-dev_*.deb \
     && rm -rf /var/lib/apt/lists/*
 
 COPY rust-toolchain.toml /opt/limo-cad-toolchain/rust-toolchain.toml
@@ -61,5 +53,22 @@ WORKDIR /opt/limo-cad-toolchain
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
       | sh -s -- -y --profile minimal --default-toolchain none
 RUN rustup show
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml VERSION /tmp/limo-cad-build-tools/
+COPY .cargo/config.toml .cargo/tools.toml /tmp/limo-cad-build-tools/.cargo/
+WORKDIR /tmp/limo-cad-build-tools
+RUN mkdir -p crates xtask assets/i18n native
+ARG CMAKE_BUILD_PARALLEL_LEVEL
+RUN --mount=type=bind,source=crates,target=/tmp/limo-cad-build-tools/crates \
+    --mount=type=bind,source=xtask,target=/tmp/limo-cad-build-tools/xtask \
+    --mount=type=bind,source=native,target=/tmp/limo-cad-build-tools/native \
+    --mount=type=bind,source=assets/i18n,target=/tmp/limo-cad-build-tools/assets/i18n \
+    --mount=type=cache,target=/var/cache/limo-cad-rust-target,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
+    --mount=type=cache,target=/root/.cargo/git,sharing=locked \
+    --mount=type=cache,target=/var/cache/limo-cad-sdk,sharing=locked \
+    CARGO_TARGET_DIR=/var/cache/limo-cad-rust-target LIMO_CAD_BUILD_CACHE=/var/cache/limo-cad-sdk \
+      cargo run --quiet --locked -p xtask -- build-occt --prefix /opt/opencascade
+RUN rm -rf /tmp/limo-cad-build-tools
 
 WORKDIR /workspace

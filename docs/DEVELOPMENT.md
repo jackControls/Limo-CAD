@@ -67,10 +67,12 @@ to the SDK for the selected target. The `--target` option is Windows-only.
 Install Xcode Command Line Tools and Homebrew, then:
 
 ```sh
-brew install opencascade
+brew install cmake ninja freetype
+cargo xtask build-occt --prefix "$HOME/Library/Caches/limo-cad/occt-7.9.3"
+export OCCT_ROOT="$HOME/Library/Caches/limo-cad/occt-7.9.3"
 ```
 
-Use a compatible OCCT 7.9.x SDK; `OCCT_ROOT` can select an explicit prefix.
+The builder checks the source and qualifies the repaired native storage runtime.
 The `.app` and `.dmg` are written under `desktop/target/release/bundle/`.
 Local builds are ad-hoc signed; production Developer ID signing and notarization
 belong to the release workflow. See [OCCT packaging](OCCT_PACKAGING.md) for SDK
@@ -133,8 +135,10 @@ cargo xtask build-occt --prefix /absolute/path/to/a/fresh/sdk --cache-dir /absol
 
 `LIMO_CAD_BUILD_CACHE` supplies the default cache location; otherwise it is
 `target/limo-cad-build-cache`. The key covers the source checksum, compiler/target,
-FreeType inputs and recipe. Interrupted builds retain objects, while completion
-receipts are published only after SDK/library/notices checks succeed. An unmanaged
+FreeType inputs, recipe and checked storage replacement content. Interrupted
+builds retain objects, while completion receipts are published only after
+SDK/library/notices checks and `cargo xtask verify-occt-storage --prefix PATH`
+succeed against the actual runtime. An unmanaged
 or differently keyed install prefix is preserved; choose a fresh prefix for a
 different compiler/recipe. `--sccache` optionally caches C/C++ compilation too.
 Source files are checked against the checksum-verified archive before reuse and

@@ -40,6 +40,10 @@ child viewport composition, DOM input relay, or React desktop shell.
 
 The root `vcpkg.json` pins the vcpkg registry and overrides Open CASCADE
 Technology to 7.9.3, the same OCCT line used by the macOS build. The manifest
+selects the reviewed storage fix from `native/occt-overlay` at port revision 2.
+Native SDK qualification compiles a bounded allocation/copy probe against the
+actual `TKMath` runtime; an unchanged header or runtime fails before packaging.
+The manifest
 installs a dynamic Windows prefix for the selected target under:
 
 ```text
@@ -67,7 +71,8 @@ git -C .vcpkg checkout $sdkBaseline
 If `.vcpkg` already exists, use that checkout and select the pinned commit instead
 of cloning it again.
 
-From PowerShell, select the matching Rust target and vcpkg triplet:
+Use the matching Visual Studio Developer PowerShell, with its CMake and Ninja
+tools available, then select the Rust target and vcpkg triplet:
 
 ```powershell
 # x64; substitute aarch64-pc-windows-msvc and arm64-windows for ARM64.
@@ -103,6 +108,8 @@ Microsoft Visual C++ runtime.
 Once the native SDK is configured, `cargo xtask package` alone selects the
 running Rust toolchain's architecture. An explicit `--target` is useful for
 building the other Windows architecture; `OCCT_ROOT` must match that target.
+The header is checked when cross-building; qualification of the actual runtime
+requires running the probe on that target before publishing the package.
 
 Native packaging is implemented in `xtask/src/package/`. Deleted legacy scripts
 and npm aliases have no compatibility wrappers.
@@ -122,8 +129,10 @@ requests to `main`, version tags, and manual dispatches. Both jobs:
    native graphics startup failures;
 6. uploads the ZIP and SHA-256 file for seven days.
 
-The binary-cache key includes the pinned dependency manifest and the installed
-MSVC toolset version. The first run for a new combination compiles OCCT and
+The binary-cache key includes the pinned dependency manifest, overlay sources,
+vcpkg configuration and installed MSVC toolset version. A bounded native probe
+must pass before an installed-tree cache is saved or reused for packaging.
+The first run for a new combination compiles OCCT and
 stores vcpkg's binary packages; subsequent runs restore those packages instead
 of rebuilding OCCT from source. GitHub scopes pull-request caches separately,
 so a manual run on `main` seeds the default-branch cache that future branches

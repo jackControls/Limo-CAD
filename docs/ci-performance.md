@@ -17,8 +17,9 @@ unchanged. CI helper/contract tests run in this dependency-free preflight too.
 
 `.github/actions/setup-windows-occt` is used by Windows packaging, Windows MCP
 acceptance and the SDK cache warmer. It retains the existing installed-tree and
-binary-cache paths and key formats. Each key includes the runner/target ABI,
-detected MSVC toolset, exact vcpkg revision and `vcpkg.json` hash. There is no
+binary-cache paths. Each key includes the runner/target ABI,
+detected MSVC toolset, exact vcpkg revision, manifest and configuration hashes,
+and the checked OCCT overlay sources. There is no
 partial-key fallback across compiler or SDK versions.
 
 The **Warm Windows ARM SDK cache** workflow runs only on the default branch:

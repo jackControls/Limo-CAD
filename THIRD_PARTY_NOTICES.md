@@ -22,6 +22,10 @@ OrcaSlicer and Bambu Studio profile contributions retain their AGPL-3.0 attribut
   `OCCT_LGPL_EXCEPTION.txt` from the selected OCCT SDK into the application
   resources. Source and license information:
   <https://github.com/Open-Cascade-SAS/OCCT>.
+  Distributed SDKs retain the 7.9 ABI and apply the checked matrix storage
+  changes in [`native/occt-overlay`](native/occt-overlay). The modified sources,
+  pinned upstream checksums and portable rebuild instructions are supplied there
+  under the same OCCT license and exception.
 Native Limo CAD builds make use of and are based on facilities provided by
 the Open CASCADE Technology software.
 

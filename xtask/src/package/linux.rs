@@ -18,7 +18,7 @@ const HOST_LIBRARIES: &[&str] = &[
 const LINUXDEPLOY_DIGEST: &str = "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d";
 const LINUXDEPLOY_URL: &str = "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage";
 const DESKTOP: &str = "[Desktop Entry]\nType=Application\nName=Limo CAD\nComment=Local-first mechanical CAD\nExec=limo-cad %u\nIcon=limo-cad\nTerminal=false\nCategories=Graphics;Engineering;\nMimeType=x-scheme-handler/limo-cad;x-scheme-handler/nbcad;\nStartupWMClass=limo-cad\n";
-const DEPENDS: &str = "desktop-file-utils, libdbus-1-3, libocct-data-exchange-7.9, libudev1, libvulkan1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon-x11-0, xdg-utils, xdg-desktop-portal, xdg-desktop-portal-gtk, zenity";
+const DEPENDS: &str = "desktop-file-utils, libdbus-1-3, libfreetype6, libudev1, libvulkan1, libx11-6, libx11-xcb1, libxcursor1, libxi6, libxkbcommon-x11-0, xdg-utils, xdg-desktop-portal, xdg-desktop-portal-gtk, zenity";
 
 fn first(paths: Vec<PathBuf>, label: &str) -> Result<PathBuf> {
     paths
@@ -31,14 +31,14 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
     let sdk = options
         .occt_root
         .clone()
-        .or_else(|| env::var_os("OCCT_ROOT").map(PathBuf::from));
+        .or_else(|| env::var_os("OCCT_ROOT").map(PathBuf::from))
+        .context("packaging requires a checked OCCT SDK; set OCCT_ROOT after cargo xtask build-occt --prefix PATH")?;
+    crate::occt_storage::verify(&sdk)?;
     let mut copyrights = Vec::new();
     if let Some(path) = env::var_os("OCCT_COPYRIGHT_FILE") {
         copyrights.push(path.into());
     }
-    if let Some(sdk) = &sdk {
-        copyrights.push(sdk.join("share/doc/opencascade/copyright"));
-    }
+    copyrights.push(sdk.join("share/doc/opencascade/copyright"));
     copyrights.extend([
         PathBuf::from("/usr/share/doc/libocct-foundation-7.9/copyright"),
         PathBuf::from("/usr/share/doc/libocct-data-exchange-7.9/copyright"),
@@ -60,9 +60,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         return Ok(());
     }
     let mut cargo = package.cargo();
-    if let Some(sdk) = &sdk {
-        cargo.env("OCCT_ROOT", sdk);
-    }
+    cargo.env("OCCT_ROOT", &sdk);
     common::run(&mut cargo)?;
     let bundle = package.target.join("release/bundle");
     let staging = common::fresh_child(&bundle, "native-linux")?;
@@ -103,6 +101,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
     }
     let required = required_notices(&runtime);
     if options.bundle.as_deref().is_none_or(|v| v == "deb") {
+        stage_deb_occt(package, &sdk, &deb_root)?;
         fs::create_dir(deb_root.join("DEBIAN"))?;
         fs::write(deb_root.join("DEBIAN/control"), format!("Package: limo-cad\nReplaces: nbcad\nConflicts: nbcad\nVersion: {}\nArchitecture: amd64\nMaintainer: Limo CAD contributors <limo-cad@users.noreply.github.com>\nSection: graphics\nPriority: optional\nDepends: {DEPENDS}\nRecommends: fonts-noto-core, fonts-noto-cjk\nDescription: Local-first mechanical CAD with a native Bevy interface\n", package.version))?;
         let output = bundle.join("deb");
@@ -170,6 +169,88 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         let artifact = output.join(filename);
         audit_appimage(package, &artifact, &runtime, &required)?;
         common::checksum(&artifact)?;
+    }
+    Ok(())
+}
+
+fn stage_deb_occt(package: &Package, sdk: &Path, root: &Path) -> Result<()> {
+    let runtime = root.join("usr/lib/limo-cad");
+    fs::create_dir_all(&runtime)?;
+    let mut sources = BTreeSet::new();
+    for entry in fs::read_dir(sdk.join("lib"))? {
+        let path = entry?.path();
+        let name = path
+            .file_name()
+            .context("OCCT runtime filename")?
+            .to_string_lossy();
+        if name.starts_with("libTK") && name.contains(".so") && path.is_file() {
+            sources.insert(path.canonicalize()?);
+        }
+    }
+    ensure!(
+        !sources.is_empty(),
+        "checked SDK has no OCCT shared runtime"
+    );
+    let mut names = BTreeSet::new();
+    for source in sources {
+        let soname = common::output(
+            package
+                .command("patchelf")
+                .arg("--print-soname")
+                .arg(&source),
+        )?;
+        ensure!(
+            Path::new(&soname)
+                .file_name()
+                .is_some_and(|name| name == soname.as_str()),
+            "invalid OCCT runtime SONAME"
+        );
+        ensure!(
+            names.insert(soname.clone()),
+            "duplicate OCCT runtime SONAME: {soname}"
+        );
+        let destination = runtime.join(&soname);
+        fs::copy(&source, &destination)?;
+        common::executable(&destination)?;
+        common::run(
+            package
+                .command("patchelf")
+                .args(["--set-rpath", "$ORIGIN"])
+                .arg(&destination),
+        )?;
+    }
+    ensure!(
+        names
+            .iter()
+            .any(|name| name.starts_with("libTKMath.so.7.9")),
+        "missing checked TKMath runtime"
+    );
+    common::run(
+        package
+            .command("patchelf")
+            .args(["--set-rpath", "$ORIGIN/../lib/limo-cad"])
+            .arg(root.join("usr/bin/limo-cad")),
+    )?;
+    let dependencies = common::output(
+        package
+            .command("ldd")
+            .env_remove("LD_LIBRARY_PATH")
+            .arg(root.join("usr/bin/limo-cad")),
+    )?;
+    ensure!(
+        !dependencies.contains("not found"),
+        "Debian package has unresolved native runtime dependencies"
+    );
+    for name in names {
+        let line = dependencies
+            .lines()
+            .find(|line| line.trim_start().starts_with(&format!("{name} ")));
+        if let Some(line) = line {
+            ensure!(
+                line.contains(runtime.to_string_lossy().as_ref()),
+                "Debian runtime resolved outside its owned OCCT directory: {name}"
+            );
+        }
     }
     Ok(())
 }

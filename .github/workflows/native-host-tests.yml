@@ -94,6 +94,9 @@ on:
       - '.github/workflows/windows-native-ime.yml'
       - '.github/actions/setup-windows-occt/**'
       - 'vcpkg.json'
+      - 'vcpkg-configuration.json'
+      - 'native/occt-overlay/**'
+      - '.github/actions/setup-unix-occt/**'
       - 'knowledge/**'
       - 'interface/**'
       - '.github/actions/setup-linux-desktop/**'
@@ -115,6 +118,9 @@ on:
       - '.github/workflows/windows-native-ime.yml'
       - '.github/actions/setup-windows-occt/**'
       - 'vcpkg.json'
+      - 'vcpkg-configuration.json'
+      - 'native/occt-overlay/**'
+      - '.github/actions/setup-unix-occt/**'
       - 'knowledge/**'
       - 'interface/**'
       - '.github/actions/setup-linux-desktop/**'
@@ -209,6 +215,8 @@ jobs:
         uses: ./.github/actions/setup-linux-desktop
         with:
           desktop-input: 'true'
+      - name: Install checked OCCT SDK
+        uses: ./.github/actions/setup-unix-occt
       - uses: actions/cache@v4
         with:
           path: |
@@ -285,6 +293,9 @@ jobs:
         uses: ./.github/actions/setup-linux-desktop
         with:
           desktop-input: ${{ inputs.desktop-input }}
+
+      - name: Install checked OCCT SDK
+        uses: ./.github/actions/setup-unix-occt
 
       - name: Cache Rust build
         id: rust-cache
@@ -513,9 +524,7 @@ jobs:
           key: native-host-macos
           cache-on-failure: true
       - name: Install native geometry kernel
-        run: |
-          brew install opencascade
-          echo "OCCT_ROOT=$(brew --prefix opencascade)" >> "$GITHUB_ENV"
+        uses: ./.github/actions/setup-unix-occt
       - name: Test concurrent first-use OCCT projection
         run: cargo test --locked -p limo-cad-occt --features native-occt --test concurrent_drawing_init
 

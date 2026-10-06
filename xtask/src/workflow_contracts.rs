@@ -36,6 +36,11 @@ fn embedded_catalogs_are_verified_before_engine_tests_and_desktop_packages() {
     let engine = read(".github/workflows/linux-engine-tests.yml");
     let tooling = read(".github/workflows/rust-web.yml");
     let desktop = read(".github/workflows/desktop-packages.yml");
+    ordered(
+        &job(&desktop, "build-windows-portable"),
+        "uses: ./.github/actions/setup-rust",
+        "uses: ./.github/actions/setup-windows-occt",
+    );
     for command in [
         "cargo xtask materials --fetch --check",
         "cargo xtask printer-profiles --fetch --check",
@@ -89,6 +94,14 @@ fn rust_setup_and_wasm_tools_use_repository_pins() {
     let matched = read(".github/workflows/native-switching.yml");
     assert!(matched.contains("uses: ./candidate/.github/actions/setup-rust"));
     assert!(matched.contains("RUSTUP_TOOLCHAIN=${{ steps.rust.outputs.toolchain }}"));
+    assert!(matched.contains("uses: ./candidate/.github/actions/setup-unix-occt"));
+    let unix_sdk = read(".github/actions/setup-unix-occt/action.yml");
+    assert_eq!(
+        unix_sdk
+            .matches("working-directory: ${{ inputs.directory }}")
+            .count(),
+        2
+    );
 }
 
 #[test]
@@ -152,6 +165,20 @@ fn package_and_publication_cannot_bypass_version_or_failed_builds() {
 
 #[test]
 fn sdk_cache_keys_keep_all_abi_inputs_and_arm_runner_is_default_branch_only() {
+    for source in [
+        ".github/actions/setup-windows-occt/action.yml",
+        ".github/actions/setup-unix-occt/action.yml",
+        ".github/actions/setup-linux-desktop/action.yml",
+        ".github/workflows/desktop-packages.yml",
+        ".github/workflows/mcp-server.yml",
+        ".github/workflows/native-host-tests.yml",
+        ".github/workflows/native-switching.yml",
+        ".github/workflows/native-visual.yml",
+        ".github/workflows/windows-occt-cache.yml",
+    ] {
+        serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&read(source))
+            .unwrap_or_else(|error| panic!("invalid SDK workflow {source}: {error}"));
+    }
     let warmer = read(".github/workflows/windows-occt-cache.yml");
     assert!(
         warmer.contains("  push:\n    branches: [main]")
@@ -177,11 +204,16 @@ fn sdk_cache_keys_keep_all_abi_inputs_and_arm_runner_is_default_branch_only() {
     assert!(commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()));
     assert!(sdk.contains(&format!("ref: {commit}")));
     assert!(!sdk.contains("vcpkg-commit"));
-    for prefix in ["vcpkg-installed-v1", "vcpkg-binary-v2"] {
-        let key = format!("key: {prefix}-${{{{ inputs.runner-cache-key }}}}-${{{{ steps.msvc.outputs.toolset }}}}-{commit}-${{{{ hashFiles('vcpkg.json') }}}}");
+    for prefix in ["vcpkg-installed-v2", "vcpkg-binary-v3"] {
+        let key = format!("key: {prefix}-${{{{ inputs.runner-cache-key }}}}-${{{{ steps.msvc.outputs.toolset }}}}-{commit}-${{{{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'native/occt-overlay/**') }}}}");
         assert_eq!(sdk.matches(&key).count(), 2);
     }
     assert!(!sdk.contains("restore-keys:"));
+    ordered(
+        &sdk,
+        "- name: Qualify checked header and actual runtime",
+        "- name: Save installed OpenCASCADE tree",
+    );
 }
 
 #[test]
@@ -232,7 +264,8 @@ fn native_shards_keep_geometry_workshop_and_exact_same_run_artifact_provenance()
                     && step.contains("if ($LASTEXITCODE -ne 0)")
             );
         } else {
-            assert!(step.contains("OCCT_ROOT: /usr"));
+            assert!(config.contains("uses: ./.github/actions/setup-unix-occt"));
+            assert!(!step.contains("OCCT_ROOT:"));
         }
     }
     for input in [

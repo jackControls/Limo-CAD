@@ -102,6 +102,7 @@ fn stage(package: &Package, options: &Options) -> Result<Vec<String>> {
         .into_iter()
         .find(|p| p.join("lib/libTKernel.dylib").is_file())
         .context("OCCT 7.9 SDK missing; set OCCT_ROOT")?;
+    crate::occt_storage::verify(&sdk)?;
     let mut queue: VecDeque<_> = ENTRY_LIBRARIES
         .iter()
         .map(|library| sdk.join("lib").join(format!("lib{library}.dylib")))

@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - 'vcpkg.json'
+      - 'vcpkg-configuration.json'
+      - 'native/occt-overlay/**'
+      - 'xtask/src/occt_storage.rs'
       - '.github/actions/setup-windows-occt/**'
       - '.github/workflows/windows-occt-cache.yml'
   schedule:
@@ -25,6 +28,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
       - name: Warm shared ARM64 OpenCASCADE SDK
         uses: ./.github/actions/setup-windows-occt
         with:
