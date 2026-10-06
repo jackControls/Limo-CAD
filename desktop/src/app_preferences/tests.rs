@@ -34,6 +34,7 @@ fn defaults_do_not_create_files_and_explicit_choices_persist() {
             locale: Locale::ZhCn,
             six_dof_speed: 1.5,
             ui_scale: 1.,
+            gpu_stock_removal: true,
         }
     );
     assert!(!fixture.0.path.parent().unwrap().exists());
@@ -63,6 +64,7 @@ fn field_patches_retain_unedited_choices_and_unknown_metadata() {
         .patch(Preferences {
             locale: Some(Locale::ZhCn),
             six_dof_speed: Some(1.75),
+            gpu_stock_removal: Some(false),
             ..Default::default()
         })
         .unwrap();
@@ -76,6 +78,15 @@ fn field_patches_retain_unedited_choices_and_unknown_metadata() {
         .unwrap();
     assert_eq!(changed.theme, first.theme);
     assert_eq!(changed.six_dof_speed, first.six_dof_speed);
+    assert_eq!(changed.gpu_stock_removal, Some(false));
+    assert!(
+        !fixture
+            .0
+            .read()
+            .unwrap()
+            .effective(Locale::En)
+            .gpu_stock_removal
+    );
     assert_eq!(changed.locale, Some(Locale::De));
     let exact_before = fs::read(fixture.0.path()).unwrap();
     fixture.0.patch(Preferences::default()).unwrap();

@@ -123,6 +123,8 @@
     "unavailable": "Nicht verfügbar"
   },
   "appearance": {
+    "gpuStockRemovalDescription": "Entfernt bei der CAM-Simulationswiedergabe das Material direkt hinter dem Werkzeug auf der GPU. Die CPU-Simulation misst und prüft das Restmaterial weiterhin.",
+    "gpuStockRemoval": "Materialabtrag auf der GPU",
     "title": "Einstellungen",
     "theme": "DARSTELLUNG",
     "system": "System",

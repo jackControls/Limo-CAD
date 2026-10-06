@@ -123,6 +123,8 @@
     "unavailable": "不可用"
   },
   "appearance": {
+    "gpuStockRemovalDescription": "CAM 仿真回放时，在 GPU 上紧随刀具去除余料。CPU 仿真仍负责测量和校验剩余余料。",
+    "gpuStockRemoval": "GPU 去除余料",
     "title": "设置",
     "theme": "外观",
     "system": "系统",

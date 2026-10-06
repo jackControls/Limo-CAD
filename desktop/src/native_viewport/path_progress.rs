@@ -197,6 +197,8 @@ mod tests {
             path_id: 2,
             completed_color: DONE,
             segment_times: vec![0.0, 10.0],
+            single_tool: false,
+            removes_stock: false,
         };
         let cursor = ViewportCamPathProgress {
             path_id: 1,

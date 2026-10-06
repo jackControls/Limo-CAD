@@ -8,7 +8,7 @@ pub(super) fn paths(
     id: u64,
     first_command: usize,
 ) -> Result<Vec<ViewportLineLayer>, String> {
-    let layer = |color, pattern| ViewportLineLayer {
+    let layer = |color, pattern, removes_stock| ViewportLineLayer {
         color,
         width: 2.,
         pattern,
@@ -16,11 +16,13 @@ pub(super) fn paths(
             path_id: id,
             completed_color: [0.18, 0.48, 1., 1.],
             segment_times: Vec::new(),
+            single_tool: single_tool_timeline(result),
+            removes_stock,
         }),
         ..default()
     };
-    let mut rapid = layer([0.94, 0.67, 0.29, 0.8], ViewportLinePattern::Dotted);
-    let mut cutting = layer([0.34, 0.84, 0.64, 0.95], ViewportLinePattern::Solid);
+    let mut rapid = layer([0.94, 0.67, 0.29, 0.8], ViewportLinePattern::Dotted, false);
+    let mut cutting = layer([0.34, 0.84, 0.64, 0.95], ViewportLinePattern::Solid, true);
     let mut count = 0;
     for step in result
         .steps
@@ -156,4 +158,20 @@ pub(super) fn pose(
             position: tip,
         }),
     ))
+}
+
+/// A selected operation still needs proof from the complete producer timeline.
+fn single_tool_timeline(result: &CamSimulationResultDto) -> bool {
+    let mut moves = result.steps.iter().filter(|step| {
+        step.from.is_some()
+            && step.to.is_some()
+            && !matches!(
+                step.kind,
+                CamSimulationStepKind::Dwell | CamSimulationStepKind::Position
+            )
+    });
+    let Some(id) = moves.next().and_then(|step| step.tool_id) else {
+        return false;
+    };
+    moves.all(|step| step.tool_id == Some(id))
 }

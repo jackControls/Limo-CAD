@@ -2,7 +2,7 @@ use super::*;
 use preferences::locale::{code, native_name, translate, SUPPORTED};
 
 const ABOUT_MIN_HEIGHT: f32 = 94.;
-const OPTIONS_HEIGHT: f32 = 560.;
+const OPTIONS_HEIGHT: f32 = 634.;
 
 pub(super) fn paint(
     world: &mut World,
@@ -437,6 +437,29 @@ pub(super) fn paint(
         t("appearance.uiScaleDescription"),
         10.,
     );
+    let key = "settings-gpu-stock";
+    button(
+        world,
+        camera,
+        settings,
+        key,
+        t("appearance.gpuStockRemoval"),
+        None,
+        Command::GpuStock(!effective.gpu_stock_removal),
+        rect(16., 600. - ABOUT_MIN_HEIGHT, inner, 32.),
+        Some(effective.gpu_stock_removal),
+        false,
+    )?;
+    settings.widgets.parent(world, key, content);
+    text(
+        world,
+        settings,
+        "settings-gpu-stock-hint",
+        638.,
+        34.,
+        t("appearance.gpuStockRemovalDescription"),
+        10.,
+    );
     let units = match services.engine.document_units() {
         limo_cad_core::UnitSystem::Mm => "mm",
         limo_cad_core::UnitSystem::Cm => "cm",
@@ -446,7 +469,7 @@ pub(super) fn paint(
         world,
         settings,
         "settings-units",
-        600.,
+        680.,
         22.,
         &format!("Document units: {units}"),
         11.,

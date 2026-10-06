@@ -56,5 +56,6 @@ fn retained_cam_stock(result: &CamSimulationResultDto) -> Option<ViewportCamStoc
     Some(ViewportCamStock {
         positions: std::sync::Arc::new(positions),
         normals: std::sync::Arc::new(normals),
+        time_seconds: None,
     })
 }

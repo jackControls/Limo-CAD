@@ -555,6 +555,9 @@ fn restore(world: &mut World, services: &NativeServices, state: &mut State) -> R
             if presentation.cam_tool == applied.after_presentation.cam_tool {
                 presentation.cam_tool = applied.before_presentation.cam_tool;
             }
+            if presentation.cam_tool_hidden == applied.after_presentation.cam_tool_hidden {
+                presentation.cam_tool_hidden = applied.before_presentation.cam_tool_hidden;
+            }
             let (stock_revision, _) = native_viewport::interface_cam_stock_snapshot(world);
             if stock_revision == applied.stock_revision {
                 if presentation.cam_stock_visible == applied.after_presentation.cam_stock_visible {
@@ -587,9 +590,14 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
     if view == View::Model {
         preview.lines.clear();
     }
-    if state.paths && !is_picking {
+    if !is_picking {
         if let Some(prepared) = &state.prepared {
-            preview.lines.extend(prepared.paths.iter().cloned());
+            preview
+                .lines
+                .extend(prepared.paths.iter().cloned().map(|mut line| {
+                    line.hidden = !state.paths;
+                    line
+                }));
         }
     }
     if view != View::Model {
@@ -638,11 +646,12 @@ fn display(world: &mut World, services: &NativeServices, state: &mut State) -> R
                 presentation.hovered_face_id = None;
                 presentation.hovered_edge_id = None;
             }
+            presentation.cam_tool_hidden = !state.paths;
             presentation.cam_tool = (state.paths && !is_picking)
                 .then(|| state.prepared.as_ref().and_then(|p| p.tool))
                 .flatten();
             presentation.cam_path_progress = None;
-            if state.paths && !is_picking {
+            if !is_picking {
                 if let Some(frame) = state.player.as_ref().and_then(|p| p.frame.as_ref()) {
                     if let Some(prepared) = state.prepared.as_ref() {
                         let (tool, progress) = timeline::pose(
@@ -882,16 +891,15 @@ fn display_frame(
             {
                 return Err("CAM presentation changed during playback".into());
             }
-            let (tool, progress) = if state.paths {
+            let (tool, progress) = {
                 timeline::pose(
                     state.document.as_ref().unwrap(),
                     prepared.simulation.as_ref().unwrap(),
                     prepared.path_id,
                     frame.time,
                 )?
-            } else {
-                (None, None)
             };
+            presentation.cam_tool_hidden = !state.paths;
             presentation.cam_tool = tool;
             presentation.cam_path_progress = progress;
             if applied.playback_stock_revision != Some(frame.stock_revision) {

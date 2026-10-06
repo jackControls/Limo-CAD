@@ -303,6 +303,21 @@ fn native_cam_timeline_uses_shared_helical_arcs_and_next_tool_at_boundary() {
         let times = &layers[0].playback.as_ref().unwrap().segment_times;
         assert_eq!(times.first(), Some(&0.));
         assert_eq!(times.last(), Some(&4.));
+        assert!(!layers[0].playback.as_ref().unwrap().single_tool);
+        assert!(timeline::paths(&result, 91, 2)
+            .unwrap()
+            .iter()
+            .all(|layer| !layer.playback.as_ref().unwrap().single_tool));
+        result.steps[1].tool_id = Some(1);
+        assert!(timeline::paths(&result, 91, 0)
+            .unwrap()
+            .iter()
+            .all(|layer| layer.playback.as_ref().unwrap().single_tool));
+        result.steps[0].tool_id = None;
+        assert!(timeline::paths(&result, 91, 2)
+            .unwrap()
+            .iter()
+            .all(|layer| !layer.playback.as_ref().unwrap().single_tool));
     }
 }
 
@@ -497,6 +512,7 @@ fn cam_overlay_restores_its_own_values_and_preserves_a_newer_overlay() {
     let (mut app, services, _, document) = fixture_world(&fixture);
     let owner = fixture.owner();
     let initial_stock = ViewportCamStock {
+        time_seconds: None,
         positions: Arc::new(vec![0., 0., 0., 1., 0., 0., 0., 1., 0.]),
         normals: Arc::new(vec![0., 0., 1., 0., 0., 1., 0., 0., 1.]),
     };
@@ -540,6 +556,7 @@ fn cam_overlay_restores_its_own_values_and_preserves_a_newer_overlay() {
     native_viewport::apply_interface_preview(app.world_mut(), &owner.document_id, marker(52.))
         .unwrap();
     let newer_stock = ViewportCamStock {
+        time_seconds: None,
         positions: Arc::new(vec![2., 0., 0., 3., 0., 0., 2., 1., 0.]),
         normals: initial_stock.normals.clone(),
     };

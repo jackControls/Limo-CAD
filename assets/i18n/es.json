@@ -123,6 +123,8 @@
     "unavailable": "No disponible"
   },
   "appearance": {
+    "gpuStockRemovalDescription": "Durante la reproducción de la simulación CAM, elimina el material en la GPU justo detrás de la herramienta. La simulación en CPU sigue midiendo y verificando el material restante.",
+    "gpuStockRemoval": "Eliminación de material en la GPU",
     "title": "Configuración",
     "theme": "APARIENCIA",
     "system": "Sistema",

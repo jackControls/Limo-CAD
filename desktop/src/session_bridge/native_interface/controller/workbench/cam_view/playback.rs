@@ -81,7 +81,12 @@ impl Player {
                             .sample(request.time, Some(&cancel))
                             .map_err(|e| e.to_string())?;
                         if simulation.stock_mesh.is_some() {
-                            stock = crate::retained_cam_stock(&simulation);
+                            stock = crate::retained_cam_stock(&simulation).map(|stock| {
+                                ViewportCamStock {
+                                    time_seconds: Some(request.time),
+                                    ..stock
+                                }
+                            });
                             stock_revision += 1;
                         }
                         let cadence = Duration::from_millis(33);
