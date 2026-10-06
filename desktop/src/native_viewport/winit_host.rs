@@ -94,7 +94,7 @@ pub(crate) struct Modifiers {
 }
 
 #[derive(Resource, Default)]
-struct HostInputState {
+pub(crate) struct HostInputState {
     cursor: Option<Vec2>,
     pressed: HashSet<KeyCode>,
     model_drag: HashSet<MouseButton>,

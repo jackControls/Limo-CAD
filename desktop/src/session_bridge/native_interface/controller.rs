@@ -546,15 +546,7 @@ fn update_inner(
             }
             Ok(false) => {}
         }
-        match workbench::drawing_navigate(world, handle, &event) {
-            Ok(true) => continue,
-            Err(error) => {
-                state.status = error;
-                continue;
-            }
-            Ok(false) => {}
-        }
-        match view::navigate(world, handle, &event) {
+        match navigate_canvas_input(world, handle, &event) {
             Ok(true) => continue,
             Err(error) => {
                 state.status = error;
@@ -1636,11 +1628,27 @@ fn apply_control(
     }
 }
 
+/// Give camera navigation the same priority for host and MCP canvas input.
+pub(crate) fn navigate_canvas_input(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    event: &NativeHostInput,
+) -> Result<bool, String> {
+    if workbench::drawing_navigate(world, handle, event)? {
+        return Ok(true);
+    }
+    view::navigate(world, handle, event)
+}
+
+pub(crate) fn cancel_canvas_navigation(world: &mut World) {
+    view::cancel_pointer(world);
+    workbench::cancel_navigation(world);
+}
+
 /// Retire every pointer owner together when input coordinates are replaced.
 /// Drafts, focused text buffers, and IME composition remain owned separately.
 fn cancel_pointer_input(world: &mut World) {
-    view::cancel_pointer(world);
-    workbench::cancel_navigation(world);
+    cancel_canvas_navigation(world);
     crate::native_editor::cancel_pointer(world);
     files::cancel_preview_pointer(world);
     history::cancel_drag(world);

@@ -3,7 +3,9 @@
 
 use super::*;
 use crate::native_viewport::winit_host::{cancel_native_pointer, prepare_native_input, Modifiers};
-use crate::session_bridge::native_interface::controller::reduce_control_input;
+use crate::session_bridge::native_interface::controller::{
+    cancel_canvas_navigation, navigate_canvas_input, reduce_control_input,
+};
 use bevy::{
     input::mouse::MouseButtonInput,
     window::{CursorMoved, PrimaryWindow, WindowFocused, WindowScaleFactorChanged},
@@ -192,6 +194,10 @@ pub(crate) fn drive(
                 consumed: false,
                 actions: vec![],
             };
+            if navigate_canvas_input(world, handle, &input)? {
+                result = json!({"handled":true,"navigation":true});
+                continue;
+            }
             prepare_native_input(world, handle, &mut input)?;
             for action in std::mem::take(&mut input.actions) {
                 let value = reduce_control_input(
@@ -231,6 +237,7 @@ pub(crate) fn drive(
         Ok(result)
     })();
     world.resource_mut::<Editor>().press = None;
+    cancel_canvas_navigation(world);
     if result.is_err() {
         mechanism::cancel(world);
     }

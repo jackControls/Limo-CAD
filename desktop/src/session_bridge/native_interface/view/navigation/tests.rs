@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     native_viewport::interface_shell::{self, InterfaceOccluder},
     native_viewport::winit_host::Modifiers,
-    session_bridge::native_interface::tests::Fixture,
+    session_bridge::native_interface::{controller::NativeServices, tests::Fixture},
 };
 use bevy::{
     input::{
@@ -437,4 +437,164 @@ fn toolbar_modes_capture_left_drag_and_window_zoom_without_editing_geometry() {
         )
     )
     .unwrap());
+}
+
+#[test]
+fn mcp_toolbar_drags_match_native_navigation_without_editing_geometry() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let (mut native, native_handle) = setup(&fixture);
+    let (mut mcp, mcp_handle) = setup(&fixture);
+    mcp.world_mut()
+        .init_resource::<crate::native_viewport::winit_host::HostInputState>();
+    mcp.world_mut()
+        .spawn((Window::default(), bevy::window::PrimaryWindow));
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+    let owner = fixture.owner();
+    let before = fixture.engine.engine_call("project_export_model", "");
+    let receipt = fixture
+        .bridge
+        .native_document_receipt(&fixture.engine, &owner)
+        .unwrap();
+    for tool in [
+        NavigationTool::Pan,
+        NavigationTool::Orbit,
+        NavigationTool::Zoom,
+        NavigationTool::ZoomWindow,
+    ] {
+        for app in [&mut native, &mut mcp] {
+            workbench::execute(app.world_mut(), &workbench::Command::Navigation(tool)).unwrap();
+        }
+        let original = camera(mcp.world());
+        for (cursor, event) in [
+            (
+                [300., 300.],
+                button(MouseButton::Left, ButtonState::Pressed),
+            ),
+            ([390., 370.], moved([390., 370.])),
+            (
+                [390., 370.],
+                button(MouseButton::Left, ButtonState::Released),
+            ),
+        ] {
+            assert!(navigate(
+                native.world_mut(),
+                &native_handle,
+                &input(&native_handle, cursor, event),
+            )
+            .unwrap());
+        }
+        let value = crate::native_editor::mcp::drive(
+            mcp.world_mut(),
+            &mcp_handle,
+            &services,
+            &owner,
+            &json!({"gesture":"drag","point":[300.,300.],"to":[390.,370.]}),
+        )
+        .unwrap();
+        assert_eq!(value["navigation"], true, "{tool:?}");
+        assert_ne!(camera(mcp.world()), original, "{tool:?}");
+        assert_eq!(camera(mcp.world()), camera(native.world()), "{tool:?}");
+        assert!(!pointer_active(mcp.world()));
+        assert!(mcp
+            .world()
+            .get_resource::<workbench::NavigationRectangle>()
+            .is_none_or(|rectangle| rectangle.0.is_none()));
+    }
+    assert_eq!(
+        fixture.engine.engine_call("project_export_model", ""),
+        before
+    );
+    assert_eq!(
+        fixture
+            .bridge
+            .native_document_receipt(&fixture.engine, &owner)
+            .unwrap(),
+        receipt,
+    );
+}
+
+#[test]
+fn mcp_navigation_preserves_an_unfinished_sketch_line() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = fixture.owner();
+    fixture
+        .bridge
+        .apply_native_mutation(
+            &fixture.engine,
+            &owner,
+            "sketch_begin",
+            &json!({"name":"Navigation draft","plane":{"type":"origin_plane","plane":"xy"}}),
+            || Ok(()),
+        )
+        .unwrap();
+    let (mut app, handle) = setup(&fixture);
+    app.world_mut()
+        .init_resource::<crate::native_viewport::winit_host::HostInputState>();
+    app.world_mut()
+        .spawn((Window::default(), bevy::window::PrimaryWindow));
+    native_viewport::apply_interface_viewport(
+        app.world_mut(),
+        handle.frame().unwrap().canvases[0].bounds,
+        1.,
+    )
+    .unwrap();
+    let mut top = camera(app.world());
+    top.position = [0., 0., 100.];
+    top.target = [0., 0., 0.];
+    top.up = [0., 1., 0.];
+    native_viewport::apply_interface_view(app.world_mut(), &owner.document_id, Some(top), None)
+        .unwrap();
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+    crate::native_editor::execute(
+        app.world_mut(),
+        &fixture.engine,
+        &fixture.bridge,
+        &owner,
+        crate::native_editor::EditorCommand::Tool(crate::native_editor::CreateTool::Line),
+        || Ok(()),
+    )
+    .unwrap();
+    crate::native_editor::mcp::drive(
+        app.world_mut(),
+        &handle,
+        &services,
+        &owner,
+        &json!({"gesture":"click","point":[300.,300.]}),
+    )
+    .unwrap();
+    let before = crate::native_editor::active(&fixture.engine)
+        .unwrap()
+        .unwrap();
+    let instruction = crate::native_editor::status(app.world());
+    assert!(before.entities.is_empty());
+    workbench::execute(
+        app.world_mut(),
+        &workbench::Command::Navigation(NavigationTool::Zoom),
+    )
+    .unwrap();
+    let original = camera(app.world());
+    let value = crate::native_editor::mcp::drive(
+        app.world_mut(),
+        &handle,
+        &services,
+        &owner,
+        &json!({"gesture":"drag","point":[300.,300.],"to":[390.,370.]}),
+    )
+    .unwrap();
+    assert_eq!(value["navigation"], true);
+    assert_ne!(camera(app.world()), original);
+    assert_eq!(
+        serde_json::to_value(crate::native_editor::active(&fixture.engine).unwrap()).unwrap(),
+        serde_json::to_value(Some(before)).unwrap(),
+    );
+    assert_eq!(crate::native_editor::status(app.world()), instruction);
+    assert!(!pointer_active(app.world()));
 }
