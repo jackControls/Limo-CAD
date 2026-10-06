@@ -148,6 +148,8 @@ type BodyPoseQuery<'w, 's> = Query<
 
 #[path = "script_preview.rs"]
 pub(crate) mod script_preview;
+#[path = "section_view.rs"]
+pub(crate) mod section_view;
 
 pub(super) const VIEWPORT_MSAA: Msaa = Msaa::Sample4;
 /// Base mesh size; a camera-aware transform keeps its screen footprint stable.
@@ -680,6 +682,7 @@ pub(super) fn install_cad_scene(app: &mut bevy::app::App) {
         .init_resource::<DocumentGeometryIndex>()
         .init_resource::<CameraResource>()
         .init_resource::<PreviewResource>()
+        .init_resource::<section_view::State>()
         .init_resource::<CamStockResource>()
         .init_resource::<PaletteResource>()
         .init_resource::<HudResource>()
@@ -696,6 +699,7 @@ pub(super) fn install_cad_scene(app: &mut bevy::app::App) {
             Update,
             (
                 rebuild_occt_meshes,
+                section_view::rebuild,
                 apply_camera,
                 resize_reference_planes,
                 apply_native_presentation_styles,
@@ -711,6 +715,7 @@ pub(super) fn install_cad_scene(app: &mut bevy::app::App) {
                 rebuild_native_hud,
                 update_native_hud_orientation,
                 draw_cad_gizmos,
+                section_view::draw,
             )
                 .chain()
                 .after(interface_shell::InterfaceReduction),
@@ -1308,7 +1313,7 @@ fn resize_reference_planes(
 
 #[allow(clippy::type_complexity)]
 fn apply_native_presentation_styles(
-    model: Res<ModelResource>,
+    (model, section): (Res<ModelResource>, Option<Res<section_view::State>>),
     presentation: Res<PresentationResource>,
     palette: Res<PaletteResource>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -1344,7 +1349,11 @@ fn apply_native_presentation_styles(
         (Without<NativeCadFace>, Without<NativeDatumPlane>),
     >,
 ) {
-    if !model.is_changed() && !presentation.is_changed() && !palette.is_changed() {
+    if !model.is_changed()
+        && !presentation.is_changed()
+        && !palette.is_changed()
+        && section.as_ref().is_none_or(|s| !s.is_changed())
+    {
         return;
     }
     let state = &presentation.0;
@@ -1353,11 +1362,15 @@ fn apply_native_presentation_styles(
             visibility.set_if_neq(Visibility::Hidden);
             continue;
         }
-        visibility.set_if_neq(if state.hidden_body_ids.contains(&body.body_id) {
-            Visibility::Hidden
-        } else {
-            Visibility::Inherited
-        });
+        visibility.set_if_neq(
+            if section.as_ref().is_some_and(|s| s.active(&model))
+                || state.hidden_body_ids.contains(&body.body_id)
+            {
+                Visibility::Hidden
+            } else {
+                Visibility::Inherited
+            },
+        );
         let Some(mut material) = materials.get_mut(&handle.0) else {
             continue;
         };
@@ -1477,7 +1490,11 @@ fn apply_native_presentation_styles(
 
 fn rebuild_native_face_overlays(
     mut commands: Commands,
-    (model, presentation): (Res<ModelResource>, Res<PresentationResource>),
+    (model, presentation, section): (
+        Res<ModelResource>,
+        Res<PresentationResource>,
+        Option<Res<section_view::State>>,
+    ),
     palette: Res<PaletteResource>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -1490,6 +1507,7 @@ fn rebuild_native_face_overlays(
     if last
         .as_ref()
         .is_some_and(|stamp| stamp.matches(&model, &presentation.0, palette.0))
+        && section.as_ref().is_none_or(|s| !s.is_changed())
     {
         return;
     }
@@ -1503,6 +1521,10 @@ fn rebuild_native_face_overlays(
         meshes.remove(&mesh.0);
         materials.remove(&material.0);
         commands.entity(entity).despawn();
+    }
+
+    if section.as_ref().is_some_and(|s| s.active(&model)) {
+        return;
     }
 
     let state = &presentation.0;
@@ -2689,10 +2711,13 @@ fn draw_cad_gizmos(
     (camera, viewport): (Res<CameraResource>, Res<ViewportSizeResource>),
     preview: Res<PreviewResource>,
     palette: Res<PaletteResource>,
-    presentation: Res<PresentationResource>,
+    (presentation, section): (Res<PresentationResource>, Option<Res<section_view::State>>),
     face_boundaries: Query<(&NativeCadFace, &NativeModelGeometry)>,
 ) {
     let (model, edge_caches) = model;
+    if section.as_ref().is_some_and(|s| s.active(&model)) {
+        return;
+    }
     let edge_cache = model
         .cache_entity
         .and_then(|entity| edge_caches.get(entity).ok());
@@ -4639,6 +4664,10 @@ pub(crate) fn interface_pick(
     point: [f32; 2],
     purpose: NativePickPurpose,
 ) -> Result<Option<NativePick>, String> {
+    // Temporary cap topology is inspection evidence, never a modeling target.
+    if section_view::active(world) {
+        return Ok(None);
+    }
     let model = world.resource::<ModelResource>();
     if model.session_id != session_id {
         return Err("Native viewport has not bound the requested document".into());

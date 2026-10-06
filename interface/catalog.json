@@ -493,7 +493,7 @@
               "id": "sectionAnalysis",
               "labelKey": "ribbon.solid.sectionAnalysis",
               "icon": "section",
-              "enabled": false
+              "enabled": true
             },
             {
               "type": "item",
@@ -520,7 +520,8 @@
             "solid_tessellate",
             "solid_body_feature_definitions",
             "solid_recompute",
-            "cad_compare_solids"
+            "cad_compare_solids",
+            "solid_section_review"
           ]
         },
         {

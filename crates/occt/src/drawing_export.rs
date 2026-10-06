@@ -947,8 +947,13 @@ pub fn projection_request(
                 let (pd, _, _) = resolve(parent, views, scene, assembly, path)?;
                 let a = model_anchor(first, scene, assembly)?;
                 let b = model_anchor(second, scene, assembly)?;
-                let edge = norm(std::array::from_fn(|i| b[i] - a[i]))?;
-                let mut direction = norm(cross(edge, norm(pd)?))?;
+                // The cut line is drawn in the parent projection. Anchor
+                // depths may differ; they must not tilt the child page basis.
+                let pd = norm(pd)?;
+                let delta = std::array::from_fn(|i| b[i] - a[i]);
+                let depth = dot(delta, pd);
+                let edge = norm(std::array::from_fn(|i| delta[i] - depth * pd[i]))?;
+                let mut direction = norm(cross(edge, pd))?;
                 if dot(direction, v.direction) < 0. {
                     direction = direction.map(|x| -x);
                 }

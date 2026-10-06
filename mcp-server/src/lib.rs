@@ -427,6 +427,16 @@ impl CadServer {
                     },
                 )?;
                 json!({"format":request.format,"encoding":"utf8","content":content,"sheet_id":request.sheet_id})
+            } else if name == "solid_section_review" {
+                let request: limo_cad_occt::section_review::SectionReviewRequest =
+                    serde_json::from_value(arguments).map_err(|e| e.to_string())?;
+                let review = limo_cad_occt::section_review::inspect(
+                    &self.kernel,
+                    &self.manager.solid_scene(),
+                    &self.manager.assembly_document(),
+                    &request,
+                )?;
+                serde_json::to_value(review).map_err(|e| e.to_string())?
             } else if name == "drawing_projection" {
                 let request: limo_cad_occt::DrawingProjectionRequest =
                     serde_json::from_value(arguments).map_err(|e| e.to_string())?;
@@ -2097,7 +2107,7 @@ fn entity_ids_schema() -> Value {
 fn is_read_safe_while_attached(name: &str) -> bool {
     if matches!(
         name,
-        "drawing_document" | "drawing_projection" | "drawing_export"
+        "drawing_document" | "drawing_projection" | "drawing_export" | "solid_section_review"
     ) {
         return true;
     }
@@ -5302,6 +5312,39 @@ mod tests {
     mod print_intent;
     use super::*;
     mod cam_query_effects;
+
+    #[test]
+    fn section_review_is_a_shared_read_with_registered_modeling_disclosure() {
+        let mut server = CadServer::new().unwrap();
+        extrude_offset_box(&mut server, "Sketch1", 10.0, 30.0);
+        let body = server.manager.solid_scene().bodies[0].id;
+        let before = server.manager.export_project_model().unwrap();
+        let review = server
+            .call_tool(
+                "solid_section_review",
+                json!({"body_id":body,"plane":"xy","offset_mm":5.0,"probe_mm":0.0}),
+            )
+            .unwrap();
+        assert!(review["svg"].as_str().unwrap().starts_with("<svg"));
+        assert!((review["probe_spans"][0]["length_mm"].as_f64().unwrap() - 20.).abs() < 1e-6);
+        assert_eq!(server.manager.export_project_model().unwrap(), before);
+        assert!(is_read_safe_while_attached("solid_section_review"));
+        assert!(limo_cad_mcp_mutate::is_live_engine_query(
+            "solid_section_review"
+        ));
+        assert!(!changes_model("solid_section_review"));
+        assert!(!is_modeling_mutate("solid_section_review"));
+        assert_eq!(
+            interface::group_for("solid_section_review"),
+            Some("solid/check")
+        );
+        assert!(server
+            .call_tool(
+                "solid_section_review",
+                json!({"body_id":body,"plane":"xy","offset_mm":5.,"deflection_mm":1.})
+            )
+            .is_err());
+    }
 
     #[test]
     fn drawing_exports_current_associative_geometry_bom_and_rejects_stale_edits() {

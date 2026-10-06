@@ -7,6 +7,7 @@
 pub mod drawing_export;
 mod drawing_instances;
 pub mod drawing_presentation;
+pub mod section_review;
 pub use drawing_instances::{project_drawing, resolve_drawing_anchor, resolve_drawing_line};
 mod interference;
 pub use interference::{exact_interference_report, exact_pair_result};
@@ -475,6 +476,14 @@ pub struct OcctKernel;
 
 #[cfg(not(feature = "native-occt"))]
 impl OcctKernel {
+    pub fn section_mesh(
+        &self,
+        _request: &section_review::SectionReviewRequest,
+    ) -> Result<limo_cad_solid::KernelBodyDto, OcctError> {
+        Err(OcctError(
+            "native OCCT support was not enabled at compile time".into(),
+        ))
+    }
     pub fn new() -> Result<Self, OcctError> {
         Err(OcctError(
             "native OCCT support was not enabled at compile time".to_string(),

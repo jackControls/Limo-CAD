@@ -38,6 +38,7 @@ pub(crate) mod named_views;
 pub(crate) mod presentation;
 pub(crate) mod print_intent;
 mod retention;
+pub(crate) mod section_review;
 pub(crate) mod six_dof;
 pub(crate) mod workbench;
 pub(crate) mod worker;
@@ -1277,6 +1278,9 @@ fn process_modal_keys(
                 "file-menu" | "file-dialog" | "app-settings" => files::escape(world),
                 "history-menu" | "delete-feature" => history::escape(world),
                 "sketch-menu" => crate::native_editor::panel::escape(world),
+                "section-review" => {
+                    section_review::escape(world);
+                }
                 "workbench-menu"
                 | "cam-export"
                 | "cam-report"
@@ -1322,6 +1326,9 @@ pub(crate) fn reduce_control_input(
                     "file-menu" | "file-dialog" | "app-settings" => files::escape(world),
                     "history-menu" | "delete-feature" => history::escape(world),
                     "sketch-menu" => crate::native_editor::panel::escape(world),
+                    "section-review" => {
+                        section_review::escape(world);
+                    }
                     "workbench-menu"
                     | "cam-export"
                     | "cam-report"
@@ -1341,6 +1348,10 @@ pub(crate) fn reduce_control_input(
                     "close-document" => return Ok(json!({"close_decision":"cancel"})),
                     _ => return Err("This dialog does not handle Escape".into()),
                 }
+                return Ok(json!({"cancelled":true}));
+            }
+            if section_review::in_3d(world) {
+                section_review::escape(world);
                 return Ok(json!({"cancelled":true}));
             }
             if matches!(
@@ -2311,6 +2322,7 @@ fn synchronize(
     )?;
     named_views::synchronize(world, camera, services, &owner, width, height)?;
     print_intent::synchronize(world, camera, services, &owner, width, height)?;
+    section_review::synchronize(world, camera, services, &owner, width, height)?;
     if assembly::active(world) || workbench::workspace(world) != workbench::Workspace::Solid {
         browser::hide(world);
     } else {

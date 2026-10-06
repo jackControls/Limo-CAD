@@ -9,6 +9,7 @@ mod platform;
 pub(crate) use platform::physical_pick;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub(crate) use platform::script_preview;
+pub(crate) use platform::section_view;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub mod interface_shell;
 mod preview_color;

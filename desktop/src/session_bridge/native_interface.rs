@@ -408,6 +408,7 @@ pub(crate) enum NativeCommand {
     BodyAppearance(u64, controller::body_appearance::Command),
     NamedView(u64, controller::named_views::Command),
     PrintIntent(u64, controller::print_intent::Command),
+    SectionReview(u64, controller::section_review::Command),
     AppSettings(controller::app_settings::Command),
     SixDof(controller::six_dof::Command),
     Feature(feature::FeatureCommand),
@@ -646,6 +647,17 @@ pub(crate) fn reduce_action(
             command,
         );
     }
+    if let NativeCommand::SectionReview(generation, command) = &binding.command {
+        return controller::section_review::reduce(
+            world,
+            handle,
+            engine,
+            bridge,
+            action,
+            *generation,
+            command,
+        );
+    }
     if let NativeCommand::NamedView(generation, command) = &binding.command {
         return controller::named_views::reduce(
             world,
@@ -741,7 +753,7 @@ pub(crate) fn reduce_action(
         NativeCommand::History(_)=>unreachable!("History input is reduced before button activation"),
         NativeCommand::Presentation(_)=>unreachable!("Presentation input is reduced before button activation"),
         NativeCommand::Cam(_)=>unreachable!("CAM fields are reduced before button activation"),
-        NativeCommand::Drawing(_) | NativeCommand::BodyAppearance(_, _) | NativeCommand::NamedView(_, _) | NativeCommand::PrintIntent(_, _)=>unreachable!("Document fields are reduced before button activation"),
+        NativeCommand::Drawing(_) | NativeCommand::BodyAppearance(_, _) | NativeCommand::NamedView(_, _) | NativeCommand::PrintIntent(_, _) | NativeCommand::SectionReview(_, _)=>unreachable!("Document fields are reduced before button activation"),
         NativeCommand::Feature(_)=>unreachable!("Extrude fields are reduced before button activation"),
         NativeCommand::CancelClose | NativeCommand::DiscardAndClose => {
             bridge.with_native_document_owner(engine, &action.context, || {

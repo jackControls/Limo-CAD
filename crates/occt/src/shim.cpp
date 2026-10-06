@@ -3089,6 +3089,52 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
                           double linear_deflection,
                           double angular_deflection);
 
+// Shared exact clipping for drawing projections and disposable 3D inspection.
+static TopoDS_Shape retain_half_space(const TopoDS_Shape& source,
+                                     const gp_Pln& boundary,
+                                     const gp_Pnt& retained_point) {
+  const TopoDS_Face face = BRepBuilderAPI_MakeFace(boundary).Face();
+  const TopoDS_Solid half_space =
+      BRepPrimAPI_MakeHalfSpace(face, retained_point).Solid();
+  BRepAlgoAPI_Common common;
+  TopTools_ListOfShape arguments, tools;
+  arguments.Append(source);
+  tools.Append(half_space);
+  common.SetArguments(arguments);
+  common.SetTools(tools);
+  common.SetNonDestructive(true);
+  common.Build();
+  if (!common.IsDone()) {
+    throw std::runtime_error("OCCT could not clip the section solid");
+  }
+  return common.Shape();
+}
+
+FfiMesh Kernel::section_mesh(std::uint64_t body_id, std::uint8_t axis,
+                             double offset, bool keep_positive,
+                             double deflection) const {
+  const auto found = impl_->bodies.find(body_id);
+  if (found == impl_->bodies.end() || axis > 2 || !std::isfinite(offset) ||
+      !std::isfinite(deflection) || deflection < 0.001 || deflection > 0.1) {
+    throw std::runtime_error("Invalid body or section plane");
+  }
+  // Clipping/tessellation must never alter retained source triangulations.
+  BRepBuilderAPI_Copy copy(found->second, true, false);
+  if (!copy.IsDone() || copy.Shape().IsNull()) {
+    throw std::runtime_error("OCCT section shape copy failed");
+  }
+  double coordinates[3] = {0., 0., 0.};
+  coordinates[axis] = offset;
+  const gp_Pnt point(coordinates[0], coordinates[1], coordinates[2]);
+  double normal[3] = {0., 0., 0.};
+  normal[axis] = 1.;
+  const gp_Vec direction(normal[0], normal[1], normal[2]);
+  const TopoDS_Shape clipped = retain_half_space(copy.Shape(),
+      gp_Pln(point, gp_Dir(direction)),
+      point.Translated(direction.Multiplied(keep_positive ? 1. : -1.)));
+  return mesh_shape(body_id, clipped, deflection, 0.25);
+}
+
 FfiMesh Kernel::mesh(std::uint64_t body_id) const {
   const auto found = impl_->bodies.find(body_id);
   if (found == impl_->bodies.end()) {
@@ -3441,20 +3487,6 @@ FfiDrawingProjection Kernel::drawing_projection(
       throw std::runtime_error("drawing section depth must be positive");
     }
   }
-
-  auto retain_half_space = [](const TopoDS_Shape& source,
-                              const gp_Pln& boundary,
-                              const gp_Pnt& retained_point) {
-    const TopoDS_Face face = BRepBuilderAPI_MakeFace(boundary).Face();
-    const TopoDS_Solid half_space =
-        BRepPrimAPI_MakeHalfSpace(face, retained_point).Solid();
-    BRepAlgoAPI_Common common(source, half_space);
-    common.Build();
-    if (!common.IsDone()) {
-      throw std::runtime_error("OCCT could not clip the drawing section");
-    }
-    return common.Shape();
-  };
 
   std::vector<TopoDS_Shape> projection_shapes;
   projection_shapes.reserve(source_shapes.size());

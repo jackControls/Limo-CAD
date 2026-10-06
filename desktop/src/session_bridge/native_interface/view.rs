@@ -181,6 +181,12 @@ fn target_bounds(
     presentation: &ViewportPresentation,
     target: Target,
 ) -> Option<Bounds> {
+    if let Some((min, max)) = native_viewport::section_view::bounds(world) {
+        return Some(Bounds {
+            min: Vec3::from_array(min),
+            max: Vec3::from_array(max),
+        });
+    }
     let mut bounds = None;
     for body in &model.scene.bodies {
         if target == Target::ActiveSketch || matches!(target, Target::Body(id) if body.id.0 != id) {

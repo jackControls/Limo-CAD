@@ -400,6 +400,11 @@ pub(super) fn synchronize(
             } else if i < count {
                 let (command, disabled) = if bid == "constructionVisibility" {
                     references(world, services)?
+                } else if bid == "sectionAnalysis" {
+                    (
+                        NativeCommand::SectionReview(0, section_review::Command::Open),
+                        services.engine.solid_scene_snapshot().bodies.is_empty(),
+                    )
                 } else {
                     (NativeCommand::Workbench(Command::Dismiss), true)
                 };
@@ -625,6 +630,11 @@ fn menu(
             )
         } else if id == "constructionVisibility" {
             references(world, services)?
+        } else if id == "sectionAnalysis" {
+            (
+                NativeCommand::SectionReview(0, section_review::Command::Open),
+                services.engine.solid_scene_snapshot().bodies.is_empty(),
+            )
         } else {
             (NativeCommand::Workbench(Command::Dismiss), true)
         };
