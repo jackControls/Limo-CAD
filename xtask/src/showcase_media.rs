@@ -38,15 +38,34 @@ struct Download {
 trait Network {
     fn open(&self, url: &str) -> Result<Download>;
 }
-struct Http(ureq::Agent);
+struct Http {
+    agent: ureq::Agent,
+    api_token: Option<String>,
+}
+impl Http {
+    fn token_for(&self, url: &str) -> Option<&str> {
+        url.starts_with(&format!("{}/", crate::repository::api()))
+            .then_some(self.api_token.as_deref())
+            .flatten()
+    }
+}
 impl Network for Http {
     fn open(&self, url: &str) -> Result<Download> {
-        let response = self
-            .0
+        let mut request = self
+            .agent
             .get(url)
             .header("Accept", "*/*")
-            .header("User-Agent", "Limo-CAD-Pages-media")
-            .call()?;
+            .header("User-Agent", "Limo-CAD-Pages-media");
+        if let Some(token) = self.token_for(url) {
+            request = request
+                .header("Authorization", format!("Bearer {token}"))
+                .config()
+                .max_redirects(0)
+                .build();
+        }
+        let response = request
+            .call()
+            .with_context(|| format!("download public showcase metadata or media: {url}"))?;
         let length = response
             .headers()
             .get("content-length")
@@ -357,7 +376,13 @@ pub(super) fn run(root: &Path, verify: bool) -> Result<()> {
         .https_only(true)
         .timeout_global(Some(Duration::from_secs(120)))
         .build();
-    let network = Http(config.into());
+    let network = Http {
+        agent: config.into(),
+        api_token: std::env::var("GH_TOKEN")
+            .or_else(|_| std::env::var("GITHUB_TOKEN"))
+            .ok()
+            .filter(|token| !token.trim().is_empty()),
+    };
     let html = fs::read_to_string(root.join("knowledge/showcase.html"))?;
     if verify {
         resolve_release(&network, &inputs(&html)?)?;
@@ -371,6 +396,32 @@ pub(super) fn run(root: &Path, verify: bool) -> Result<()> {
 mod tests {
     use super::*;
     use std::{cell::RefCell, io::Cursor};
+
+    #[test]
+    fn api_authentication_is_confined_and_public_downloads_stay_anonymous() {
+        let network = Http {
+            agent: ureq::Agent::new_with_defaults(),
+            api_token: Some("fixture-token".into()),
+        };
+        assert!(network
+            .token_for(&format!(
+                "{}/releases/tags/preview",
+                crate::repository::api()
+            ))
+            .is_some());
+        for url in [
+            format!(
+                "{}/preview/release-manifest.json",
+                crate::repository::releases()
+            ),
+            format!("{}.attacker.example/releases", crate::repository::api()),
+            "https://api.github.com.attacker.example/repos/x/y".into(),
+            "https://api.github.com/repos/someone/else/releases".into(),
+            "http://api.github.com/repos/jackControls/Limo-CAD/releases".into(),
+        ] {
+            assert!(network.token_for(&url).is_none());
+        }
+    }
     struct Fixture {
         requests: RefCell<Vec<String>>,
         release: Value,

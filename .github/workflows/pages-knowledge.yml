@@ -56,11 +56,15 @@ jobs:
         run: |
           cargo xtask knowledge index --check
       - name: Verify the pinned showcase release is public
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: cargo xtask knowledge media --verify
       - name: Build static knowledge site
         run: cargo xtask knowledge site
       - name: Stage verified public showcase videos
         if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: cargo xtask knowledge media
       - name: Configure GitHub Pages
         if: github.event_name != 'pull_request'
