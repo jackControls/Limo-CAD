@@ -5400,6 +5400,11 @@ mod tests {
                 }),
             )
             .unwrap();
+        assert!(rectangle["sketch"]["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entity| entity["fully_defined"] == false));
         let point = rectangle["sketch"]["entities"]
             .as_array()
             .unwrap()
@@ -5428,6 +5433,11 @@ mod tests {
         assert!((target["x"].as_f64().unwrap() - 6.).abs() < 1e-8);
         assert!((target["y"].as_f64().unwrap() - 2.).abs() < 1e-8);
         assert_eq!(moved["sketch"]["dof"]["value"], 2);
+        assert!(moved["sketch"]["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entity| entity["fully_defined"] == false));
         let undone = server.call_tool("sketch_undo", json!({})).unwrap();
         assert_eq!(position(&undone["sketch"]), json!({"x":5.,"y":0.}));
         let lines: Vec<_> = undone["sketch"]["entities"]
@@ -5476,6 +5486,11 @@ mod tests {
             .unwrap();
         let fixed = server.call_tool("sketch_active", json!({})).unwrap();
         assert_eq!(fixed["dof"]["value"], 0);
+        assert!(fixed["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entity| entity["fully_defined"] == true));
         assert!(server
             .call_tool(
                 "sketch_move_copy",

@@ -9,10 +9,9 @@
 //! (max |residual|), iteration-capped.
 //!
 //! DOF tracking: `unknowns − rank(J)` where the rank is computed by
-//! Gaussian elimination with partial pivoting; non-pivot columns are the
-//! free variables, which also yields the per-entity fully-defined flags
-//! used for constraint-state coloring (an entity is fully defined when none
-//! of its unknowns are free).
+//! Gaussian elimination with partial pivoting. Per-entity constraint state
+//! also accounts for pivot variables that depend on free variables: an entity
+//! is fully defined only when none of its parameters can vary in the nullspace.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -49,7 +48,7 @@ pub struct Analysis {
     pub rank: usize,
     /// `unknowns − rank` (≥ 0 by construction).
     pub dof: i32,
-    /// Free (non-pivot) variable count per entity — 0 ⇔ fully defined.
+    /// Variable parameters per entity, including dependent pivots; 0 ⇔ fully defined.
     pub entity_free: HashMap<EntityId, usize>,
 }
 
@@ -1797,11 +1796,19 @@ fn solve_square(a: &mut [Vec<f64>], b: &mut [f64]) -> bool {
     true
 }
 
-/// Rank + pivot columns of the Jacobian via Gaussian elimination.
-fn rank_of(jac: &[Vec<(usize, f64)>], n: usize) -> (usize, Vec<bool>) {
+struct JacobianEchelon {
+    rows: Vec<Vec<f64>>,
+    pivots: Vec<usize>,
+}
+
+/// Row echelon form with the same partial-pivot tolerance used for DOF counting.
+fn jacobian_echelon(jac: &[Vec<(usize, f64)>], n: usize) -> JacobianEchelon {
     let m = jac.len();
     if m == 0 || n == 0 {
-        return (0, vec![false; n]);
+        return JacobianEchelon {
+            rows: Vec::new(),
+            pivots: Vec::new(),
+        };
     }
     let mut a: Vec<Vec<f64>> = jac
         .iter()
@@ -1818,7 +1825,7 @@ fn rank_of(jac: &[Vec<(usize, f64)>], n: usize) -> (usize, Vec<bool>) {
         .flat_map(|r| r.iter())
         .fold(0.0_f64, |acc, v| acc.max(v.abs()));
     let eps = 1e-9 * max_el.max(1.0);
-    let mut pivot_col = vec![false; n];
+    let mut pivots = Vec::with_capacity(m.min(n));
     let mut rank = 0;
     for col in 0..n {
         if rank >= m {
@@ -1844,11 +1851,42 @@ fn rank_of(jac: &[Vec<(usize, f64)>], n: usize) -> (usize, Vec<bool>) {
             for (value, pivot_value) in current[0][col..n].iter_mut().zip(&before[rank][col..n]) {
                 *value -= factor * pivot_value;
             }
+            current[0][col] = 0.0;
         }
-        pivot_col[col] = true;
+        pivots.push(col);
         rank += 1;
     }
-    (rank, pivot_col)
+    JacobianEchelon { rows: a, pivots }
+}
+
+fn rank_of(jac: &[Vec<(usize, f64)>], n: usize) -> usize {
+    jacobian_echelon(jac, n).pivots.len()
+}
+
+/// A parameter is fixed only when its reduced equation has no free dependence.
+fn defined_variables(jac: &[Vec<(usize, f64)>], n: usize) -> (usize, Vec<bool>) {
+    let JacobianEchelon { mut rows, pivots } = jacobian_echelon(jac, n);
+    for (pivot_row, &col) in pivots.iter().enumerate().rev() {
+        let (upper, pivot) = rows.split_at_mut(pivot_row);
+        let divisor = pivot[0][col];
+        for row in upper {
+            let factor = row[col] / divisor;
+            if factor != 0.0 {
+                for (value, pivot_value) in row[col..n].iter_mut().zip(&pivot[0][col..n]) {
+                    *value -= factor * pivot_value;
+                }
+                row[col] = 0.0;
+            }
+        }
+    }
+    let mut defined = vec![false; n];
+    for (row, &col) in rows.iter().zip(&pivots) {
+        defined[col] = row
+            .iter()
+            .enumerate()
+            .all(|(other, value)| other == col || (value / row[col]).abs() <= 1e-9);
+    }
+    (pivots.len(), defined)
 }
 
 fn trim_reference_segment(sketch: &Sketch, line: EntityId) -> Option<fillet::LineSeg> {
@@ -2472,7 +2510,7 @@ pub(crate) fn rank_excluding_constraints(sketch: &Sketch, excluded: &[Constraint
             (!omitted).then_some(row)
         })
         .collect::<Vec<_>>();
-    rank_of(&retained, map.n).0
+    rank_of(&retained, map.n)
 }
 
 /// Decide admission at the solved pose, without mistaking a singular
@@ -2492,8 +2530,8 @@ pub(crate) fn constraints_are_redundant(sketch: &Sketch, proposed: &[ConstraintI
         .filter(|((owner, _), _)| !is_proposed(owner))
         .map(|(_, row)| row.clone())
         .collect::<Vec<_>>();
-    let reduced_rank = rank_of(&retained, map.n).0;
-    if rank_of(&jac, map.n).0 > reduced_rank {
+    let reduced_rank = rank_of(&retained, map.n);
+    if rank_of(&jac, map.n) > reduced_rank {
         return false;
     }
     if reduced_rank == map.n
@@ -2611,32 +2649,33 @@ fn finish_analysis(
     iterations: usize,
     residual: f64,
 ) -> Analysis {
-    let (rank, pivot_col) = rank_of(jac, map.n);
+    let (rank, defined) = defined_variables(jac, map.n);
     let mut entity_free: HashMap<EntityId, usize> = HashMap::new();
     for (id, entity) in sketch.entities() {
-        let vars: Vec<usize> = match entity {
+        let count_free = |variables: &[usize]| variables.iter().filter(|&&v| !defined[v]).count();
+        let free = match entity {
             Entity::Point { .. } => {
                 let p = map.points[&id];
-                vec![p.0, p.1]
+                count_free(&[p.0, p.1])
             }
             Entity::Circle { .. } => {
                 let (c, r) = map.circles[&id];
-                vec![c.0, c.1, r]
+                count_free(&[c.0, c.1, r])
             }
             Entity::Arc { .. } => {
                 let (c, r, a0, a1) = map.arcs[&id];
-                vec![c.0, c.1, r, a0, a1]
+                count_free(&[c.0, c.1, r, a0, a1])
             }
-            Entity::Line { .. } => vec![],
+            Entity::Line { .. } => 0,
             Entity::Spline { .. } => map
                 .splines
                 .get(&id)
                 .into_iter()
                 .flatten()
                 .flat_map(|point| [point.0, point.1])
-                .collect(),
+                .filter(|&v| !defined[v])
+                .count(),
         };
-        let free = vars.iter().filter(|v| !pivot_col[**v]).count();
         entity_free.insert(id, free);
 
         if let Entity::Line { start, end } = entity {
@@ -2662,6 +2701,30 @@ mod tests {
     use super::*;
     use crate::constraint::Constraint;
     use crate::geometry::Vec2;
+
+    #[test]
+    fn defined_variables_distinguish_fixed_parameters_from_dependent_pivots() {
+        for (jacobian, unknowns, rank, defined) in [
+            (vec![vec![(0, 1.), (1, -1.)]], 2, 1, vec![false, false]),
+            (
+                vec![vec![(0, 1.), (1, -1.)], vec![(1, 1.), (2, -1.)]],
+                3,
+                2,
+                vec![false, false, false],
+            ),
+            (
+                vec![vec![(0, 1.), (1, 1.), (2, 1.)], vec![(1, 1.), (2, 1.)]],
+                3,
+                2,
+                vec![true, false, false],
+            ),
+            (vec![vec![(1, 1.)]], 2, 1, vec![false, true]),
+            (vec![vec![(0, 1.)], vec![(1, 1.)]], 2, 2, vec![true, true]),
+        ] {
+            assert_eq!(rank_of(&jacobian, unknowns), rank);
+            assert_eq!(defined_variables(&jacobian, unknowns), (rank, defined));
+        }
+    }
 
     #[test]
     fn an_owned_center_handle_adds_no_unknowns() {
