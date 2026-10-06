@@ -458,9 +458,19 @@ impl SketchSession {
         &mut self,
         f: impl FnOnce(&mut Self) -> Result<R, SessionError>,
     ) -> Result<ToolResult, SessionError> {
+        self.mutate_with_undo_stays(|session| {
+            f(session)?;
+            Ok(crate::solver::SolveStays::default())
+        })
+    }
+
+    fn mutate_with_undo_stays(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Result<crate::solver::SolveStays, SessionError>,
+    ) -> Result<ToolResult, SessionError> {
         let before = self.sketch.snapshot();
-        let entities = match f(self) {
-            Ok(entities) => entities,
+        let stays = match f(self) {
+            Ok(stays) => stays,
             Err(error) => {
                 self.sketch.restore(before);
                 self.recompute();
@@ -468,7 +478,7 @@ impl SketchSession {
             }
         };
         self.sketch.cleanup_generated_points(&before);
-        let analysis = crate::solver::solve(&mut self.sketch, &[]);
+        let analysis = crate::solver::solve_with_stays(&mut self.sketch, &[], &stays);
         if !analysis.converged {
             self.sketch.restore(before);
             self.recompute();
@@ -478,7 +488,6 @@ impl SketchSession {
         }
         self.analysis = Some(analysis);
         self.push_command(before);
-        let _ = entities;
         Ok(ToolResult {
             entities: Vec::new(),
             sketch: self.dto(),
@@ -1779,11 +1788,28 @@ impl SketchSession {
     ) -> Result<ToolResult, SessionError> {
         let (dx, dy) = (request.dx, request.dy);
         let ids: BTreeSet<EntityId> = request.entity_ids.iter().copied().collect();
+        if ids.is_empty() || !dx.is_finite() || !dy.is_finite() {
+            return Err(SessionError::InvalidConstraint(
+                "Move/Copy requires selected geometry and finite distances".into(),
+            ));
+        }
+        for &id in &ids {
+            if self.sketch.entity(id).is_none() {
+                return Err(SessionError::EntityNotFound(id));
+            }
+        }
         let copy = request.copy;
-        self.mutate_with_undo(move |s| {
+        if !copy && dx == 0. && dy == 0. {
+            return Ok(ToolResult {
+                entities: Vec::new(),
+                sketch: self.dto(),
+            });
+        }
+        self.mutate_with_undo_stays(move |s| {
             if copy {
                 let delta = Vec2::new(dx, dy);
                 s.copy_entities_transformed(&ids, |point| point + delta, false)?;
+                Ok(crate::solver::SolveStays::default())
             } else {
                 let point_ids = s.owned_points(&ids);
                 let mut direct_ids = Vec::new();
@@ -1798,69 +1824,123 @@ impl SketchSession {
                         None => return Err(SessionError::EntityNotFound(*id)),
                     }
                 }
-                for point_id in point_ids {
+                for &point_id in &point_ids {
                     s.translate_entity(point_id, dx, dy)?;
                 }
                 for id in direct_ids {
                     s.translate_entity(id, dx, dy)?;
                 }
+                s.rigid_transform_stays(&ids, &point_ids)
             }
-            Ok(())
         })
     }
 
     fn translate_entity(&mut self, id: EntityId, dx: f64, dy: f64) -> Result<(), SessionError> {
-        match self.sketch.entity(id).cloned() {
-            Some(Entity::Point { .. }) => {
-                if let Some(Entity::Point { position }) = self.sketch.entity_mut(id) {
-                    *position = Vec2::new(position.x + dx, position.y + dy);
-                }
+        let entity = self
+            .sketch
+            .entity_mut(id)
+            .ok_or(SessionError::EntityNotFound(id))?;
+        match entity {
+            Entity::Point { position } => {
+                *position = Vec2::new(position.x + dx, position.y + dy);
             }
-            Some(Entity::Line { start, end }) => {
-                for pid in [start, end] {
+            Entity::Line { start, end } => {
+                let points = [*start, *end];
+                for pid in points {
                     if let Some(Entity::Point { position }) = self.sketch.entity_mut(pid) {
                         *position = Vec2::new(position.x + dx, position.y + dy);
                     }
                 }
             }
-            Some(Entity::Circle { .. }) | Some(Entity::Arc { .. }) => {
-                match self.sketch.entity_mut(id) {
-                    Some(Entity::Circle { center, .. }) | Some(Entity::Arc { center, .. }) => {
-                        *center = Vec2::new(center.x + dx, center.y + dy);
-                    }
-                    _ => {}
+            Entity::Circle { center, .. } | Entity::Arc { center, .. } => {
+                *center = Vec2::new(center.x + dx, center.y + dy);
+            }
+            Entity::Spline { points } => {
+                for p in points {
+                    *p = Vec2::new(p.x + dx, p.y + dy);
                 }
             }
-
-            Some(Entity::Spline { .. }) => {
-                if let Some(Entity::Spline { points }) = self.sketch.entity_mut(id) {
-                    for p in points.iter_mut() {
-                        *p = Vec2::new(p.x + dx, p.y + dy);
-                    }
-                }
-            }
-            None => return Err(SessionError::EntityNotFound(id)),
         }
         Ok(())
     }
 
+    fn rigid_transform_stays(
+        &self,
+        ids: &BTreeSet<EntityId>,
+        points: &BTreeSet<EntityId>,
+    ) -> Result<crate::solver::SolveStays, SessionError> {
+        let mut rigid_entities: Vec<_> = points.iter().copied().collect();
+        for &id in ids {
+            match self.sketch.entity(id) {
+                Some(Entity::Circle { .. } | Entity::Arc { .. } | Entity::Spline { .. }) => {
+                    rigid_entities.push(id);
+                }
+                Some(_) => {}
+                None => return Err(SessionError::EntityNotFound(id)),
+            }
+        }
+        let finite_point = |p: &Vec2| p.x.is_finite() && p.y.is_finite();
+        for &id in &rigid_entities {
+            let finite = match self.sketch.entity(id) {
+                Some(Entity::Point { position }) => finite_point(position),
+                Some(Entity::Circle { center, radius }) => {
+                    finite_point(center) && radius.is_finite()
+                }
+                Some(Entity::Arc {
+                    center,
+                    radius,
+                    start_angle,
+                    end_angle,
+                }) => {
+                    finite_point(center)
+                        && radius.is_finite()
+                        && start_angle.is_finite()
+                        && end_angle.is_finite()
+                }
+                Some(Entity::Spline { points }) => points.iter().all(finite_point),
+                Some(Entity::Line { .. }) => true,
+                None => return Err(SessionError::EntityNotFound(id)),
+            };
+            if !finite {
+                return Err(SessionError::InvalidConstraint(
+                    "Transform would put geometry outside finite coordinates".into(),
+                ));
+            }
+        }
+        Ok(crate::solver::SolveStays {
+            rigid_entities,
+            ..Default::default()
+        })
+    }
+
     pub fn scale_entities(&mut self, request: &ScaleRequest) -> Result<ToolResult, SessionError> {
         let factor = self.eval_text(&request.factor_text)?;
-        if factor.abs() < 1e-12 {
+        if !factor.is_finite() || factor.abs() < 1e-12 {
             return Err(SessionError::InvalidConstraint(
-                "scale factor must be non-zero".to_string(),
+                "scale factor must be finite and non-zero".to_string(),
             ));
         }
         let origin = request.origin;
         let ids: BTreeSet<EntityId> = request.entity_ids.iter().copied().collect();
-        self.mutate_with_undo(move |s| {
-            for id in &ids {
-                if s.sketch.entity(*id).is_none() {
-                    return Err(SessionError::EntityNotFound(*id));
-                }
+        if ids.is_empty() || !origin.x.is_finite() || !origin.y.is_finite() {
+            return Err(SessionError::InvalidConstraint(
+                "Scale requires selected geometry and a finite origin".into(),
+            ));
+        }
+        for &id in &ids {
+            if self.sketch.entity(id).is_none() {
+                return Err(SessionError::EntityNotFound(id));
             }
-            let point_ids: Vec<EntityId> = s.owned_points(&ids).into_iter().collect();
-            for pid in point_ids {
+        }
+        if factor == 1. {
+            return Ok(ToolResult {
+                entities: Vec::new(),
+                sketch: self.dto(),
+            });
+        }
+        self.mutate_with_undo_stays(move |s| {
+            let point_ids = s.owned_points(&ids);
+            for &pid in &point_ids {
                 if let Some(Entity::Point { position }) = s.sketch.entity_mut(pid) {
                     *position = origin + (*position - origin) * factor;
                 }
@@ -1892,7 +1972,7 @@ impl SketchSession {
                     _ => {}
                 }
             }
-            Ok(())
+            s.rigid_transform_stays(&ids, &point_ids)
         })
     }
 

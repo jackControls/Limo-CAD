@@ -14,7 +14,7 @@
 //! used for constraint-state coloring (an entity is fully defined when none
 //! of its unknowns are free).
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::constraint::{ArcEndpoint, Constraint, ConstraintId};
 use crate::entity::{Entity, EntityId, AXIS_SENTINEL};
@@ -66,6 +66,9 @@ impl Analysis {
 /// scale-invariant equation find a numerically cheap but surprising shape.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SolveStays {
+    /// Hold these entities at their current parameter values for this solve,
+    /// without adding authored Fix constraints or removing their reported DOF.
+    pub(crate) rigid_entities: Vec<EntityId>,
     pub(crate) line_lengths: Vec<(EntityId, f64)>,
     pub(crate) line_angles: Vec<(EntityId, f64)>,
     pub(crate) line_midpoints: Vec<(EntityId, Vec2)>,
@@ -79,7 +82,8 @@ pub(crate) struct SolveStays {
 
 impl SolveStays {
     pub(crate) fn is_empty(&self) -> bool {
-        self.line_lengths.is_empty()
+        self.rigid_entities.is_empty()
+            && self.line_lengths.is_empty()
             && self.line_angles.is_empty()
             && self.line_midpoints.is_empty()
             && self.point_pair_distances.is_empty()
@@ -2111,6 +2115,57 @@ pub(crate) fn solve_with_stays(
             ));
         }
     }
+    let mut rigid_values = BTreeMap::new();
+    for &id in &stays.rigid_entities {
+        match sketch.entity(id) {
+            Some(Entity::Point { position }) => {
+                let p = map.points[&id];
+                rigid_values.extend([(p.0, position.x), (p.1, position.y)]);
+            }
+            Some(Entity::Line { start, end }) => {
+                for point in [start, end] {
+                    if let Some(position) = sketch.point_position(*point) {
+                        let p = map.points[point];
+                        rigid_values.extend([(p.0, position.x), (p.1, position.y)]);
+                    }
+                }
+            }
+            Some(Entity::Circle { center, radius }) => {
+                let (c, r) = map.circles[&id];
+                rigid_values.extend([(c.0, center.x), (c.1, center.y), (r, *radius)]);
+            }
+            Some(Entity::Arc {
+                center,
+                radius,
+                start_angle,
+                end_angle,
+            }) => {
+                let (c, r, a0, a1) = map.arcs[&id];
+                rigid_values.extend([
+                    (c.0, center.x),
+                    (c.1, center.y),
+                    (r, *radius),
+                    (a0, *start_angle),
+                    (a1, *end_angle),
+                ]);
+            }
+            Some(Entity::Spline { points }) => {
+                for (position, p) in points.iter().zip(&map.splines[&id]) {
+                    rigid_values.extend([(p.0, position.x), (p.1, position.y)]);
+                }
+            }
+            None => {}
+        }
+    }
+    eqs.extend(rigid_values.into_iter().map(|(variable, target)| {
+        (
+            None,
+            Eq::Lin {
+                terms: vec![(variable, 1.)],
+                c: -target,
+            },
+        )
+    }));
     let n = map.n;
     let m = hard_equation_count;
 

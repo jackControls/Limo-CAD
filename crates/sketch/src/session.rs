@@ -4895,6 +4895,7 @@ impl SketchSession {
         }
 
         solver::SolveStays {
+            rigid_entities: Vec::new(),
             line_lengths: line_lengths
                 .into_iter()
                 .filter_map(|line| {

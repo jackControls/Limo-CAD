@@ -854,6 +854,9 @@ pub(super) fn synchronize(
                     format!("{label} {}", form.kind.label()),
                 );
                 c.selected = Some(offset != 0.);
+                c.disabled = offset != 0.
+                    && form.kind != FormKind::Polygon
+                    && editor.interaction.selection.is_empty();
                 let mut bounds = rect(left + 12. + offset, y + 40., 128., 30.);
                 bounds.border = UiRect::all(px(1.));
                 bounds.justify_content = JustifyContent::Center;

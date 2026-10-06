@@ -5383,6 +5383,250 @@ mod tests {
     }
 
     #[test]
+    fn sketch_transform_keeps_requested_moves_and_rejects_conflicting_scale_atomically() {
+        let mut server = CadServer::new().unwrap();
+        server
+            .call_tool(
+                "sketch_begin",
+                json!({"plane":{"type":"origin_plane","plane":"xy"}}),
+            )
+            .unwrap();
+        let rectangle = server
+            .call_tool(
+                "sketch_add_rectangle_locked",
+                json!({
+                    "mode":"two_point", "anchor":{"x":5.,"y":0.}, "corner_hint":{"x":10.,"y":12.},
+                    "width_mm":5., "height_mm":12., "ctrl_held":true
+                }),
+            )
+            .unwrap();
+        let point = rectangle["sketch"]["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entity| {
+                entity["kind"] == "point" && entity["position"] == json!({"x":5.,"y":0.})
+            })
+            .unwrap()["id"]
+            .clone();
+        let moved = server
+            .call_tool(
+                "sketch_move_copy",
+                json!({"entity_ids":[point],"dx":1.,"dy":2.,"copy":false}),
+            )
+            .unwrap();
+        let position = |sketch: &Value| {
+            sketch["entities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entity| entity["id"] == point)
+                .unwrap()["position"]
+                .clone()
+        };
+        let target = position(&moved["sketch"]);
+        assert!((target["x"].as_f64().unwrap() - 6.).abs() < 1e-8);
+        assert!((target["y"].as_f64().unwrap() - 2.).abs() < 1e-8);
+        assert_eq!(moved["sketch"]["dof"]["value"], 2);
+        let undone = server.call_tool("sketch_undo", json!({})).unwrap();
+        assert_eq!(position(&undone["sketch"]), json!({"x":5.,"y":0.}));
+        let lines: Vec<_> = undone["sketch"]["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|entity| entity["kind"] == "line")
+            .map(|entity| entity["id"].clone())
+            .collect();
+        let before = server.call_tool("sketch_active", json!({})).unwrap();
+        assert_eq!(before["can_redo"], true);
+        server
+            .call_tool(
+                "sketch_move_copy",
+                json!({"entity_ids":[point],"dx":0.,"dy":0.,"copy":false}),
+            )
+            .unwrap();
+        server
+            .call_tool(
+                "sketch_scale",
+                json!({"entity_ids":lines,"origin":{"x":123.4,"y":-456.7},"factor_text":"1"}),
+            )
+            .unwrap();
+        assert_eq!(
+            server.call_tool("sketch_active", json!({})).unwrap(),
+            before
+        );
+        let rejected = server
+            .call_tool(
+                "sketch_scale",
+                json!({"entity_ids":lines,"origin":{"x":0.,"y":0.},"factor_text":"2"}),
+            )
+            .unwrap_err();
+        assert!(rejected.contains("conflicts"), "{rejected}");
+        assert_eq!(
+            server.call_tool("sketch_active", json!({})).unwrap(),
+            before
+        );
+        let redone = server.call_tool("sketch_redo", json!({})).unwrap();
+        assert_eq!(position(&redone["sketch"]), target);
+        server
+            .call_tool(
+                "sketch_add_constraint",
+                json!({"type":"fix","entity":point}),
+            )
+            .unwrap();
+        let fixed = server.call_tool("sketch_active", json!({})).unwrap();
+        assert_eq!(fixed["dof"]["value"], 0);
+        assert!(server
+            .call_tool(
+                "sketch_move_copy",
+                json!({"entity_ids":[point],"dx":1.,"dy":0.,"copy":false})
+            )
+            .unwrap_err()
+            .contains("conflicts"));
+        assert_eq!(server.call_tool("sketch_active", json!({})).unwrap(), fixed);
+        let undone = server.call_tool("sketch_undo", json!({})).unwrap();
+        assert_eq!(undone["sketch"]["dof"]["value"], 2);
+        assert_eq!(position(&undone["sketch"]), target);
+    }
+
+    #[test]
+    fn sketch_transform_preserves_curve_parameters_and_shared_handles() {
+        let mut server = CadServer::new().unwrap();
+        server
+            .call_tool(
+                "sketch_begin",
+                json!({"plane":{"type":"origin_plane","plane":"xy"}}),
+            )
+            .unwrap();
+        server.call_tool("sketch_add_circle", json!({"mode":"center_diameter","p1":{"x":10.,"y":10.},"p2":{"x":15.,"y":10.},"ctrl_held":true})).unwrap();
+        server.call_tool("sketch_add_arc_3pt", json!({"p1":{"x":20.,"y":0.},"p2":{"x":25.,"y":5.},"p3":{"x":30.,"y":0.},"ctrl_held":true})).unwrap();
+        server
+            .call_tool(
+                "sketch_add_spline",
+                json!({"points":[{"x":40.,"y":0.},{"x":45.,"y":5.},{"x":50.,"y":0.}]}),
+            )
+            .unwrap();
+        let before = server.call_tool("sketch_active", json!({})).unwrap();
+        let curves: Vec<_> = before["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|entity| matches!(entity["kind"].as_str(), Some("circle" | "arc" | "spline")))
+            .map(|entity| entity["id"].clone())
+            .collect();
+        assert_eq!(curves.len(), 3);
+        let moved = server
+            .call_tool(
+                "sketch_move_copy",
+                json!({"entity_ids":curves,"dx":3.,"dy":-2.,"copy":false}),
+            )
+            .unwrap();
+        assert_eq!(moved["sketch"]["dof"], before["dof"]);
+        for entity in before["entities"].as_array().unwrap() {
+            let actual = moved["sketch"]["entities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|candidate| candidate["id"] == entity["id"])
+                .unwrap();
+            for field in ["position", "center"] {
+                if entity[field].is_object() {
+                    assert!(
+                        (actual[field]["x"].as_f64().unwrap()
+                            - entity[field]["x"].as_f64().unwrap()
+                            - 3.)
+                            .abs()
+                            < 1e-8
+                    );
+                    assert!(
+                        (actual[field]["y"].as_f64().unwrap()
+                            - entity[field]["y"].as_f64().unwrap()
+                            + 2.)
+                            .abs()
+                            < 1e-8
+                    );
+                }
+            }
+            for field in ["radius", "start_angle", "end_angle"] {
+                if entity[field].is_number() {
+                    assert_eq!(actual[field], entity[field]);
+                }
+            }
+            if entity["kind"] == "spline" {
+                for (actual, original) in actual["points"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .zip(entity["points"].as_array().unwrap())
+                {
+                    assert!(
+                        (actual["x"].as_f64().unwrap() - original["x"].as_f64().unwrap() - 3.)
+                            .abs()
+                            < 1e-8
+                    );
+                    assert!(
+                        (actual["y"].as_f64().unwrap() - original["y"].as_f64().unwrap() + 2.)
+                            .abs()
+                            < 1e-8
+                    );
+                }
+            }
+        }
+        let scaled = server
+            .call_tool(
+                "sketch_scale",
+                json!({"entity_ids":curves,"origin":{"x":0.,"y":0.},"factor_text":"2"}),
+            )
+            .unwrap();
+        assert_eq!(scaled["sketch"]["dof"], before["dof"]);
+        for id in curves {
+            let original = moved["sketch"]["entities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entity| entity["id"] == id)
+                .unwrap();
+            let actual = scaled["sketch"]["entities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entity| entity["id"] == id)
+                .unwrap();
+            if original["center"].is_object() {
+                for axis in ["x", "y"] {
+                    assert!(
+                        (actual["center"][axis].as_f64().unwrap()
+                            - original["center"][axis].as_f64().unwrap() * 2.)
+                            .abs()
+                            < 1e-8
+                    );
+                }
+                assert_eq!(
+                    actual["radius"].as_f64().unwrap(),
+                    original["radius"].as_f64().unwrap() * 2.
+                );
+            }
+            if original["kind"] == "spline" {
+                for (actual, original) in actual["points"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .zip(original["points"].as_array().unwrap())
+                {
+                    for axis in ["x", "y"] {
+                        assert!(
+                            (actual[axis].as_f64().unwrap()
+                                - original[axis].as_f64().unwrap() * 2.)
+                                .abs()
+                                < 1e-8
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn section_review_is_a_shared_read_with_registered_modeling_disclosure() {
         let mut server = CadServer::new().unwrap();
         extrude_offset_box(&mut server, "Sketch1", 10.0, 30.0);
