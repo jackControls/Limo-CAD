@@ -234,3 +234,185 @@ fn flat_without_flats_in_range_is_an_error() {
         error.0
     );
 }
+
+/// A round floor with a through hole: annulus r `hole`..15 at Z0 about (20, 15),
+/// walls down to Z-5. Faces wind outward.
+fn ring_floor(hole: f64) -> CamOperationDto {
+    let (c, n) = (Point2Dto::new(20.0, 15.0), 96usize);
+    let mut mesh = CamStockMeshDto {
+        positions: vec![],
+        indices: vec![],
+    };
+    for (radius, z) in [(15.0, 0.0), (hole, 0.0), (15.0, -5.0), (hole, -5.0)] {
+        for i in 0..n {
+            let a = std::f64::consts::TAU * i as f64 / n as f64;
+            mesh.positions
+                .extend([c.x + radius * a.cos(), c.y + radius * a.sin(), z]);
+        }
+    }
+    let v = |ring: usize, i: usize| (ring * n + i % n) as u32;
+    for i in 0..n {
+        // top (up), bottom (down), outer wall (out), hole wall (into the hole)
+        mesh.indices.extend([
+            v(0, i),
+            v(1, i),
+            v(1, i + 1),
+            v(0, i),
+            v(1, i + 1),
+            v(0, i + 1),
+        ]);
+        mesh.indices.extend([
+            v(2, i),
+            v(3, i + 1),
+            v(3, i),
+            v(2, i),
+            v(2, i + 1),
+            v(3, i + 1),
+        ]);
+        mesh.indices.extend([
+            v(0, i),
+            v(0, i + 1),
+            v(2, i + 1),
+            v(0, i),
+            v(2, i + 1),
+            v(2, i),
+        ]);
+        mesh.indices.extend([
+            v(1, i),
+            v(3, i),
+            v(3, i + 1),
+            v(1, i),
+            v(3, i + 1),
+            v(1, i + 1),
+        ]);
+    }
+    // The lists above wind inward; reverse every triangle.
+    for tri in mesh.indices.chunks_exact_mut(3) {
+        tri.swap(1, 2);
+    }
+    let mut op = flat(0.0, MillingDirection::Climb);
+    if let CamOperationDto::Flat3d { geometry, .. } = &mut op {
+        *geometry = Some(CamAdaptiveGeometryDto {
+            targets: vec![mesh],
+            stock: None,
+        });
+    }
+    op
+}
+
+#[test]
+fn ring_floor_finishes_around_the_hole_first_with_every_pass_climbing() {
+    // The Ø14 hole is wider than 2 D, so it is not machined over.
+    let doc = document(
+        vec![ring_floor(7.0)],
+        vec![tool(2, CamToolKind::FlatEndMill, 6.0)],
+    );
+    let program = plan_setup(&doc, 1).unwrap();
+    let c = Point2Dto::new(20.0, 15.0);
+    // Split the Z0 cuts into closed passes.
+    let mut passes: Vec<Vec<Point2Dto>> = vec![];
+    let mut current: Vec<Point2Dto> = vec![];
+    for (a, b) in cuts_at(&program.commands, 0.0) {
+        if current.is_empty() && !passes.is_empty() && passes.last().unwrap()[0] == a {
+            // A stay-down link from the closed pass to the next one.
+            current = vec![b];
+            continue;
+        }
+        if current
+            .last()
+            .is_none_or(|&last| (last.x - a.x).hypot(last.y - a.y) > 1e-9)
+        {
+            current = vec![a];
+        }
+        current.push(b);
+        if current.len() > 3 && (current[0].x - b.x).hypot(current[0].y - b.y) < 1e-9 {
+            passes.push(std::mem::take(&mut current));
+        }
+    }
+    assert!(passes.len() >= 2, "{} passes", passes.len());
+    let mean = |pass: &[Point2Dto]| {
+        pass.iter()
+            .map(|p| (p.x - c.x).hypot(p.y - c.y))
+            .sum::<f64>()
+            / pass.len() as f64
+    };
+    let clockwise = |pass: &[Point2Dto]| {
+        (0..pass.len() - 1)
+            .map(|i| {
+                (pass[i].x - c.x) * (pass[i + 1].y - c.y)
+                    - (pass[i + 1].x - c.x) * (pass[i].y - c.y)
+            })
+            .sum::<f64>()
+            < 0.0
+    };
+    // Inside first: every pass around the hole (clockwise, uncut toward the
+    // hole on the right) runs before any pass on the outside (counter-
+    // clockwise, uncut outside on the right).
+    let first_outer = passes
+        .iter()
+        .position(|p| !clockwise(p))
+        .expect("outer passes");
+    assert!(first_outer > 0, "starts on the inside");
+    assert!(
+        passes[first_outer..].iter().all(|p| !clockwise(p)),
+        "back inside after leaving"
+    );
+    // Inner chain works toward the hole, outer chain toward the edge.
+    let radii: Vec<f64> = passes.iter().map(|p| mean(p)).collect();
+    assert!(
+        radii[..first_outer].windows(2).all(|w| w[1] < w[0]),
+        "{radii:?}"
+    );
+    assert!(
+        radii[first_outer..].windows(2).all(|w| w[1] > w[0]),
+        "{radii:?}"
+    );
+    // No pass only re-sweeps the hole or the outer overhang ...
+    assert!(radii.iter().all(|&r| r > 7.0 && r < 15.0), "{radii:?}");
+    // ... and the whole floor is still swept by the 3 mm flat land.
+    let segments: Vec<(Point2Dto, Point2Dto)> = passes
+        .iter()
+        .flat_map(|p| p.windows(2).map(|w| (w[0], w[1])).collect::<Vec<_>>())
+        .collect();
+    for i in 0..=80 {
+        for k in 0..72 {
+            let (radius, a) = (
+                7.0 + 0.1 * i as f64,
+                std::f64::consts::TAU * k as f64 / 72.0,
+            );
+            let q = Point2Dto::new(c.x + radius * a.cos(), c.y + radius * a.sin());
+            let reach = segments
+                .iter()
+                .map(|&(a, b)| segment_distance(q, a, b))
+                .fold(f64::INFINITY, f64::min);
+            assert!(
+                reach <= 3.0,
+                "floor at r {radius:.1} uncovered ({reach:.3})"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_hole_up_to_two_diameters_is_machined_over_so_no_stub_stays_on_it() {
+    // Ø8 hole, Ø6 cutter: the floor is finished as if the hole were not
+    // there, so stock left standing over the hole is cut away too.
+    let doc = document(
+        vec![ring_floor(4.0)],
+        vec![tool(2, CamToolKind::FlatEndMill, 6.0)],
+    );
+    let program = plan_setup(&doc, 1).unwrap();
+    let cuts = cuts_at(&program.commands, 0.0);
+    let c = Point2Dto::new(20.0, 15.0);
+    for i in 0..=40 {
+        for k in 0..36 {
+            let (radius, a) = (0.1 * i as f64, std::f64::consts::TAU * k as f64 / 36.0);
+            let q = Point2Dto::new(c.x + radius * a.cos(), c.y + radius * a.sin());
+            let reach = cuts
+                .iter()
+                .map(|&(a, b)| segment_distance(q, a, b))
+                .fold(f64::INFINITY, f64::min);
+            assert!(reach <= 3.0, "over the hole at r {radius:.1}: {reach:.3}");
+        }
+    }
+}
