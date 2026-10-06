@@ -53,8 +53,7 @@ pub fn evaluate_motion_study(
                     kernel,
                     &scene,
                     request.study_id,
-                    &start,
-                    &final_sample,
+                    (&start, &final_sample),
                     contact,
                     end_violation,
                 )? {
@@ -127,8 +126,7 @@ fn first_exact_contact_crossing(
     kernel: &OcctKernel,
     scene: &SolidSceneDto,
     study_id: MotionStudyId,
-    start: &MotionStudySampleDto,
-    end: &MotionStudySampleDto,
+    (start, end): (&MotionStudySampleDto, &MotionStudySampleDto),
     contact: &ContactSetDto,
     end_violation: f64,
 ) -> Result<Option<MotionStudySampleDto>, String> {

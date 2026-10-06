@@ -314,7 +314,7 @@ pub(crate) fn build_3mf_model_xml(
                 mesh.body_id.0
             )));
         }
-        for chunk in mesh.positions.chunks_exact(3) {
+        for chunk in mesh.positions.as_chunks::<3>().0 {
             xml.push_str(&format!(
                 r#"          <vertex x="{}" y="{}" z="{}"/>"#,
                 chunk[0], chunk[1], chunk[2]
@@ -329,7 +329,7 @@ pub(crate) fn build_3mf_model_xml(
             )));
         }
         let vertex_count = mesh.positions.len() / 3;
-        for tri in mesh.indices.chunks_exact(3) {
+        for tri in mesh.indices.as_chunks::<3>().0 {
             let (v1, v2, v3) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
             if v1 >= vertex_count || v2 >= vertex_count || v3 >= vertex_count {
                 return Err(ExportError(format!(

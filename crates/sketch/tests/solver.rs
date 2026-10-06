@@ -1761,14 +1761,10 @@ fn typed_angle_snaps_its_free_distance_to_the_active_grid() {
     s.set_grid_step(5.0).unwrap();
     let preview = s.preview_segment_locked(
         v(5.0, 10.0),
-        None,
-        Some(-45.0),
+        (None, Some(-45.0)),
         v(15.16, -0.16),
         false,
-        None,
-        None,
-        None,
-        None,
+        (None, None, None, None),
     );
     assert_eq!(preview.snap, SnapTarget::Grid);
     assert!(close(preview.snapped_to, v(15.0, 0.0)));
@@ -1844,14 +1840,10 @@ fn vertical_curve_intersection_beats_grid_and_persists_on_the_carrier() {
     };
     let preview = s.preview_segment_locked(
         v(24.5, 0.0),
-        None,
-        None,
+        (None, None),
         v(24.48, 0.54),
         false,
-        None,
-        Some(request),
-        None,
-        None,
+        (None, Some(request), None, None),
     );
     assert_eq!(
         preview.snap,
@@ -1947,14 +1939,10 @@ fn exact_crossing_start_survives_a_half_mm_chain_and_vertical_turn() {
 
     let vertical_preview = s.preview_segment_locked(
         end,
-        None,
-        None,
+        (None, None),
         v(19.53, 4.7),
         false,
-        None,
-        None,
-        None,
-        None,
+        (None, None, None, None),
     );
     assert!(vertical_preview
         .inferences

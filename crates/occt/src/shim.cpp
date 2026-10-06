@@ -3283,55 +3283,47 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
 }
 
 FfiInterferenceResult Kernel::exact_interference(
-    std::uint64_t body_a,
-    double translation_a_x,
-    double translation_a_y,
-    double translation_a_z,
-    double rotation_a_x,
-    double rotation_a_y,
-    double rotation_a_z,
-    double rotation_a_w,
-    std::uint64_t body_b,
-    double translation_b_x,
-    double translation_b_y,
-    double translation_b_z,
-    double rotation_b_x,
-    double rotation_b_y,
-    double rotation_b_z,
-    double rotation_b_w) const {
-  const auto found_a = impl_->bodies.find(body_a);
-  const auto found_b = impl_->bodies.find(body_b);
+    const FfiBodyPlacement& placement_a,
+    const FfiBodyPlacement& placement_b) const {
+  const auto found_a = impl_->bodies.find(placement_a.body_id);
+  const auto found_b = impl_->bodies.find(placement_b.body_id);
   if (found_a == impl_->bodies.end() || found_b == impl_->bodies.end()) {
     throw std::runtime_error("interference query references a missing body");
   }
   const std::array<double, 14> values = {
-      translation_a_x, translation_a_y, translation_a_z,
-      rotation_a_x, rotation_a_y, rotation_a_z, rotation_a_w,
-      translation_b_x, translation_b_y, translation_b_z,
-      rotation_b_x, rotation_b_y, rotation_b_z, rotation_b_w};
+      placement_a.translation[0], placement_a.translation[1],
+      placement_a.translation[2], placement_a.rotation[0],
+      placement_a.rotation[1],    placement_a.rotation[2],
+      placement_a.rotation[3],    placement_b.translation[0],
+      placement_b.translation[1], placement_b.translation[2],
+      placement_b.rotation[0],    placement_b.rotation[1],
+      placement_b.rotation[2],    placement_b.rotation[3]};
   if (std::any_of(values.begin(), values.end(),
                   [](double value) { return !std::isfinite(value); })) {
     throw std::runtime_error("interference query transform is not finite");
   }
-  auto placed = [](const TopoDS_Shape& shape,
-                   double tx, double ty, double tz,
+  auto placed = [](const TopoDS_Shape& shape, double tx, double ty, double tz,
                    double qx, double qy, double qz, double qw) {
     const double magnitude = std::sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
     if (magnitude <= 1.0e-12) {
       throw std::runtime_error("interference query quaternion is degenerate");
     }
     gp_Trsf transform;
-    transform.SetRotation(gp_Quaternion(
-        qx / magnitude, qy / magnitude, qz / magnitude, qw / magnitude));
+    transform.SetRotation(gp_Quaternion(qx / magnitude, qy / magnitude,
+                                        qz / magnitude, qw / magnitude));
     transform.SetTranslationPart(gp_Vec(tx, ty, tz));
     return BRepBuilderAPI_Transform(shape, transform, true).Shape();
   };
-  const TopoDS_Shape a = placed(found_a->second,
-      translation_a_x, translation_a_y, translation_a_z,
-      rotation_a_x, rotation_a_y, rotation_a_z, rotation_a_w);
-  const TopoDS_Shape b = placed(found_b->second,
-      translation_b_x, translation_b_y, translation_b_z,
-      rotation_b_x, rotation_b_y, rotation_b_z, rotation_b_w);
+  const TopoDS_Shape a =
+      placed(found_a->second, placement_a.translation[0],
+             placement_a.translation[1], placement_a.translation[2],
+             placement_a.rotation[0], placement_a.rotation[1],
+             placement_a.rotation[2], placement_a.rotation[3]);
+  const TopoDS_Shape b =
+      placed(found_b->second, placement_b.translation[0],
+             placement_b.translation[1], placement_b.translation[2],
+             placement_b.rotation[0], placement_b.rotation[1],
+             placement_b.rotation[2], placement_b.rotation[3]);
 
   BRepExtrema_DistShapeShape distance(a, b);
   if (!distance.IsDone()) {
@@ -3349,9 +3341,6 @@ FfiInterferenceResult Kernel::exact_interference(
     output.closest_point_b_y = point_b.Y();
     output.closest_point_b_z = point_b.Z();
   }
-
-
-
 
   if (!distance.InnerSolution() && output.minimum_clearance_mm > 1.0e-7) {
     return output;
@@ -3371,64 +3360,53 @@ FfiInterferenceResult Kernel::exact_interference(
 
 FfiDrawingProjection Kernel::drawing_projection(
     const rust::Vec<std::uint64_t>& requested_body_ids,
-    const rust::Vec<FfiDrawingOccurrence>& occurrences,
-    bool assembly_scope,
-    double direction_x,
-    double direction_y,
-    double direction_z,
-    double up_x,
-    double up_y,
-    double up_z,
-    bool include_hidden,
-    bool include_tangent_edges,
-    double deflection,
-    bool has_section_plane,
-    double section_point_x,
-    double section_point_y,
-    double section_point_z,
-    double section_normal_x,
-    double section_normal_y,
-    double section_normal_z,
-    bool has_section_depth,
-    double section_depth) const {
+    const rust::Vec<FfiBodyPlacement>& occurrences,
+    const FfiDrawingOptions& options) const {
   if (impl_->bodies.empty()) {
     throw std::runtime_error("there are no active bodies to project");
   }
-  gp_Vec direction(direction_x, direction_y, direction_z);
-  gp_Vec up(up_x, up_y, up_z);
+  gp_Vec direction(options.direction[0], options.direction[1],
+                   options.direction[2]);
+  gp_Vec up(options.up[0], options.up[1], options.up[2]);
   if (direction.SquareMagnitude() < 1.0e-18 || up.SquareMagnitude() < 1.0e-18) {
     throw std::runtime_error("drawing projection basis is degenerate");
   }
   direction.Normalize();
 
-
   gp_Vec right = up.Crossed(direction);
   if (right.SquareMagnitude() < 1.0e-18) {
-    throw std::runtime_error("drawing projection direction and up are parallel");
+    throw std::runtime_error(
+        "drawing projection direction and up are parallel");
   }
   right.Normalize();
 
   std::vector<TopoDS_Shape> source_shapes;
-  if (assembly_scope) {
+  if (options.assembly_scope) {
     if (occurrences.empty()) {
       throw std::runtime_error("assembly drawing contains no occurrences");
     }
     for (const auto& occurrence : occurrences) {
       const auto found = impl_->bodies.find(occurrence.body_id);
       if (found == impl_->bodies.end()) {
-        throw std::runtime_error("drawing occurrence references a missing body");
+        throw std::runtime_error(
+            "drawing occurrence references a missing body");
       }
       const auto& t = occurrence.translation;
       const auto& q = occurrence.rotation;
-      const double magnitude = std::sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]);
+      const double magnitude =
+          std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
       if (!std::isfinite(magnitude) || magnitude <= 1.0e-12 ||
-          !std::isfinite(t[0]) || !std::isfinite(t[1]) || !std::isfinite(t[2])) {
-        throw std::runtime_error("drawing occurrence placement is not a finite rigid transform");
+          !std::isfinite(t[0]) || !std::isfinite(t[1]) ||
+          !std::isfinite(t[2])) {
+        throw std::runtime_error(
+            "drawing occurrence placement is not a finite rigid transform");
       }
       gp_Trsf transform;
-      transform.SetRotation(gp_Quaternion(q[0]/magnitude,q[1]/magnitude,q[2]/magnitude,q[3]/magnitude));
-      transform.SetTranslationPart(gp_Vec(t[0],t[1],t[2]));
-      source_shapes.push_back(BRepBuilderAPI_Transform(found->second, transform, true).Shape());
+      transform.SetRotation(gp_Quaternion(q[0] / magnitude, q[1] / magnitude,
+                                          q[2] / magnitude, q[3] / magnitude));
+      transform.SetTranslationPart(gp_Vec(t[0], t[1], t[2]));
+      source_shapes.push_back(
+          BRepBuilderAPI_Transform(found->second, transform, true).Shape());
     }
   } else if (requested_body_ids.empty()) {
     for (const auto& [body_id, shape] : impl_->bodies) {
@@ -3449,15 +3427,17 @@ FfiDrawingProjection Kernel::drawing_projection(
     }
   }
 
-  gp_Vec section_normal(section_normal_x, section_normal_y, section_normal_z);
-  const gp_Pnt section_point(section_point_x, section_point_y, section_point_z);
-  if (has_section_plane) {
+  gp_Vec section_normal(options.section_normal[0], options.section_normal[1],
+                        options.section_normal[2]);
+  const gp_Pnt section_point(options.section_point[0], options.section_point[1],
+                             options.section_point[2]);
+  if (options.has_section_plane) {
     if (section_normal.SquareMagnitude() < 1.0e-18) {
       throw std::runtime_error("drawing section plane normal is degenerate");
     }
     section_normal.Normalize();
-    if (has_section_depth &&
-        (!std::isfinite(section_depth) || section_depth <= 0.0)) {
+    if (options.has_section_depth && (!std::isfinite(options.section_depth) ||
+                                      options.section_depth <= 0.0)) {
       throw std::runtime_error("drawing section depth must be positive");
     }
   }
@@ -3479,19 +3459,20 @@ FfiDrawingProjection Kernel::drawing_projection(
   std::vector<TopoDS_Shape> projection_shapes;
   projection_shapes.reserve(source_shapes.size());
   for (const TopoDS_Shape& source : source_shapes) {
-    if (!has_section_plane) {
+    if (!options.has_section_plane) {
       projection_shapes.push_back(source);
       continue;
     }
     const gp_Pln front_plane(section_point, gp_Dir(section_normal));
-    const gp_Pnt behind_front = section_point.Translated(section_normal.Multiplied(-1.0));
+    const gp_Pnt behind_front =
+        section_point.Translated(section_normal.Multiplied(-1.0));
     TopoDS_Shape clipped = retain_half_space(source, front_plane, behind_front);
-    if (has_section_depth && !clipped.IsNull()) {
-      const gp_Pnt back_point =
-          section_point.Translated(section_normal.Multiplied(-section_depth));
+    if (options.has_section_depth && !clipped.IsNull()) {
+      const gp_Pnt back_point = section_point.Translated(
+          section_normal.Multiplied(-options.section_depth));
       const gp_Pln back_plane(back_point, gp_Dir(section_normal));
       const gp_Pnt inside_slab = section_point.Translated(
-          section_normal.Multiplied(-section_depth * 0.5));
+          section_normal.Multiplied(-options.section_depth * 0.5));
       clipped = retain_half_space(clipped, back_plane, inside_slab);
     }
     if (!clipped.IsNull()) {
@@ -3514,32 +3495,34 @@ FfiDrawingProjection Kernel::drawing_projection(
   output.hidden_offsets.push_back(0);
   output.section_offsets.push_back(0);
   std::set<std::vector<std::int64_t>> seen;
-  const double curve_deflection = std::max(1.0e-4, deflection);
+  const double curve_deflection = std::max(1.0e-4, options.deflection);
   append_projection_shape(extractor.VCompound(), curve_deflection,
                           output.visible_offsets, output.visible_points, seen);
   append_projection_shape(extractor.OutLineVCompound(), curve_deflection,
                           output.visible_offsets, output.visible_points, seen);
-  if (include_tangent_edges) {
+  if (options.include_tangent_edges) {
     append_projection_shape(extractor.Rg1LineVCompound(), curve_deflection,
-                            output.visible_offsets, output.visible_points, seen);
+                            output.visible_offsets, output.visible_points,
+                            seen);
     append_projection_shape(extractor.RgNLineVCompound(), curve_deflection,
-                            output.visible_offsets, output.visible_points, seen);
+                            output.visible_offsets, output.visible_points,
+                            seen);
   }
-  if (include_hidden) {
-
-
+  if (options.include_hidden) {
     append_projection_shape(extractor.HCompound(), curve_deflection,
                             output.hidden_offsets, output.hidden_points, seen);
     append_projection_shape(extractor.OutLineHCompound(), curve_deflection,
                             output.hidden_offsets, output.hidden_points, seen);
-    if (include_tangent_edges) {
+    if (options.include_tangent_edges) {
       append_projection_shape(extractor.Rg1LineHCompound(), curve_deflection,
-                              output.hidden_offsets, output.hidden_points, seen);
+                              output.hidden_offsets, output.hidden_points,
+                              seen);
       append_projection_shape(extractor.RgNLineHCompound(), curve_deflection,
-                              output.hidden_offsets, output.hidden_points, seen);
+                              output.hidden_offsets, output.hidden_points,
+                              seen);
     }
   }
-  if (has_section_plane) {
+  if (options.has_section_plane) {
     const gp_Pln cutting_plane(section_point, gp_Dir(section_normal));
     gp_Vec page_up = direction.Crossed(right);
     page_up.Normalize();
@@ -3551,9 +3534,9 @@ FfiDrawingProjection Kernel::drawing_projection(
       if (!section_operation.IsDone() || section_operation.Shape().IsNull()) {
         continue;
       }
-      append_section_shape(
-          section_operation.Shape(), right, page_up, curve_deflection,
-          output.section_offsets, output.section_points, section_seen);
+      append_section_shape(section_operation.Shape(), right, page_up,
+                           curve_deflection, output.section_offsets,
+                           output.section_points, section_seen);
     }
   }
   return output;

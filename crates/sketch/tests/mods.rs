@@ -173,8 +173,7 @@ fn offset_line_sign_rules_and_circle_collapse() {
         .sketch
         .entities
         .iter()
-        .filter(|e| matches!(e, EntityDto::Line { .. }))
-        .last()
+        .rfind(|e| matches!(e, EntityDto::Line { .. }))
         .unwrap()
         .clone();
     match new_line {
@@ -199,10 +198,9 @@ fn offset_line_sign_rules_and_circle_collapse() {
         .sketch
         .entities
         .iter()
-        .filter(|e| {
+        .rfind(|e| {
             matches!(e, EntityDto::Line { .. }) && e.id() != l2.entity_id && e.id() != l.entity_id
         })
-        .last()
         .unwrap()
         .clone();
     match new_line2 {
@@ -455,9 +453,7 @@ fn signed_radial_offsets_preserve_formula_and_edit_direction_for_circles_and_arc
                 let mut s = session();
                 let source = if arc {
                     s.add_arc_center_locked(
-                        v(30., 30.),
-                        v(40., 30.),
-                        v(30., 40.),
+                        (v(30., 30.), v(40., 30.), v(30., 40.)),
                         true,
                         None,
                         None,

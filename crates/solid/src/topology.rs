@@ -116,6 +116,31 @@ pub fn tangent_chain_edges(body: &BodyDto, seeds: &[EdgeId]) -> Vec<EdgeId> {
     }
     selected
 }
+/// Shared straight-edge test for reference picking and typed native forms.
+/// Work in f64 so small edges at large document coordinates remain selectable.
+pub fn edge_is_straight(edge: &crate::EdgeDto) -> bool {
+    if edge.circle.is_some() || edge.points.len() < 2 {
+        return false;
+    }
+    let a = edge.points.first().unwrap();
+    let b = edge.points.last().unwrap();
+    let d = [b.x - a.x, b.y - a.y, b.z - a.z];
+    let length = d[0].hypot(d[1]).hypot(d[2]);
+    if !length.is_finite() || length <= 1e-6 {
+        return false;
+    }
+    let u = d.map(|v| v / length);
+    edge.points.iter().all(|p| {
+        let v = [p.x - a.x, p.y - a.y, p.z - a.z];
+        let cross = [
+            v[1] * u[2] - v[2] * u[1],
+            v[2] * u[0] - v[0] * u[2],
+            v[0] * u[1] - v[1] * u[0],
+        ];
+        let distance = cross[0].hypot(cross[1]).hypot(cross[2]);
+        distance.is_finite() && distance <= (length * 1e-5).max(1e-5)
+    })
+}
 
 #[cfg(test)]
 mod tests {
@@ -173,29 +198,4 @@ mod tests {
         model.edges[0].points.clear();
         assert!(!edge_is_straight(&model.edges[0]));
     }
-}
-/// Shared straight-edge test for reference picking and typed native forms.
-/// Work in f64 so small edges at large document coordinates remain selectable.
-pub fn edge_is_straight(edge: &crate::EdgeDto) -> bool {
-    if edge.circle.is_some() || edge.points.len() < 2 {
-        return false;
-    }
-    let a = edge.points.first().unwrap();
-    let b = edge.points.last().unwrap();
-    let d = [b.x - a.x, b.y - a.y, b.z - a.z];
-    let length = d[0].hypot(d[1]).hypot(d[2]);
-    if !length.is_finite() || length <= 1e-6 {
-        return false;
-    }
-    let u = d.map(|v| v / length);
-    edge.points.iter().all(|p| {
-        let v = [p.x - a.x, p.y - a.y, p.z - a.z];
-        let cross = [
-            v[1] * u[2] - v[2] * u[1],
-            v[2] * u[0] - v[0] * u[2],
-            v[0] * u[1] - v[1] * u[0],
-        ];
-        let distance = cross[0].hypot(cross[1]).hypot(cross[2]);
-        distance.is_finite() && distance <= (length * 1e-5).max(1e-5)
-    })
 }

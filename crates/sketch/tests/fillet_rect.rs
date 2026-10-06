@@ -955,7 +955,7 @@ fn corner_op_matrix_on_dimensioned_rect() {
             for ops in ["ff", "cf", "fc", "cc"] {
                 let mut s = session();
                 let lines = typed_square(&mut s);
-                let l1a = edge(&lines, if c1y == c1x * 0.0 + 0.0 { 'y' } else { 'y' }, c1y);
+                let l1a = edge(&lines, 'y', c1y);
                 let l1b = edge(&lines, 'x', c1x);
                 let do_c1 = |s: &mut SketchSession, la, lb| {
                     if ops.starts_with('f') {

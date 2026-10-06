@@ -25,6 +25,20 @@ use serde::de::DeserializeOwned;
 pub const BOOTSTRAP_SESSION_ID: &str = "__bootstrap__";
 const MAX_PROJECT_SESSIONS: usize = 128;
 
+/// Model state captured under one document lock for native viewport rendering.
+pub type NativeViewportSnapshot = (
+    String,
+    u64,
+    SolidSceneDto,
+    Option<SketchDto>,
+    Vec<SketchDto>,
+    Vec<DatumPlaneDefinitionDto>,
+    Vec<ProfileCatalogItemDto>,
+    Vec<BodyAppearance>,
+    Vec<BodyPoseDto>,
+    Vec<InstanceBodyPoseDto>,
+);
+
 #[path = "local_slicer.rs"]
 mod local_slicer;
 #[path = "manufacturing.rs"]
@@ -340,20 +354,7 @@ impl NativeEngineHost {
     /// One lock acquisition gives the native viewport a coherent model
     /// snapshot. The OCCT triangle buffers stay in Rust and never make a
     /// JSON round-trip through the shared engine dispatch.
-    pub fn viewport_snapshot(
-        &self,
-    ) -> (
-        String,
-        u64,
-        SolidSceneDto,
-        Option<SketchDto>,
-        Vec<SketchDto>,
-        Vec<DatumPlaneDefinitionDto>,
-        Vec<ProfileCatalogItemDto>,
-        Vec<BodyAppearance>,
-        Vec<BodyPoseDto>,
-        Vec<InstanceBodyPoseDto>,
-    ) {
+    pub fn viewport_snapshot(&self) -> NativeViewportSnapshot {
         let workspace = self.inner.lock().expect("engine lock poisoned");
         let inner = workspace.active();
         let assembly_solution = inner
@@ -1199,6 +1200,12 @@ impl NativeEngineHost {
             }
             Err(error) => err_json(error.to_string()),
         }
+    }
+}
+
+impl Default for NativeEngineHost {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

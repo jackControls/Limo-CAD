@@ -150,7 +150,7 @@ pub(super) fn surface(stock: &VoxelStock, budget: usize) -> Option<CamSimulation
             let blend_slope = |other: Option<Slab>, at: f64, top: bool| {
                 other
                     .filter(|s| r(if top { s.lo } else { s.hi }) == at)
-                    .map(|s| slope(s))
+                    .map(slope)
                     .filter(|s| (s - current).abs() < 0.5)
                     .map_or(current, |s| (s + current) * 0.5)
             };
@@ -294,8 +294,10 @@ mod tests {
         let mut flats = 0;
         for (p, n) in mesh
             .positions
-            .chunks_exact(9)
-            .zip(mesh.normals.chunks_exact(9))
+            .as_chunks::<9>()
+            .0
+            .iter()
+            .zip(mesh.normals.as_chunks::<9>().0.iter())
         {
             let vertex: [[u32; 3]; 3] = std::array::from_fn(|i| {
                 std::array::from_fn(|k| {

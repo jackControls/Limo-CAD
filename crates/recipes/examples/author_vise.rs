@@ -365,8 +365,7 @@ impl Author {
     fn cylinder_z(
         &mut self,
         id: &str,
-        start: f64,
-        end: f64,
+        (start, end): (f64, f64),
         center: [f64; 2],
         radius: f64,
         operation: &str,
@@ -568,8 +567,7 @@ impl Author {
     fn bore_x(
         &mut self,
         id: &str,
-        start: f64,
-        end: f64,
+        (start, end): (f64, f64),
         center: [f64; 2],
         radius: f64,
         operation: &str,
@@ -582,8 +580,7 @@ impl Author {
     fn bore_y(
         &mut self,
         id: &str,
-        start: f64,
-        end: f64,
+        (start, end): (f64, f64),
         center: [f64; 2],
         radius: f64,
         operation: &str,
@@ -597,12 +594,10 @@ impl Author {
         &mut self,
         id: &str,
         axis: &str,
-        start: f64,
-        end: f64,
+        (start, end): (f64, f64),
         center: [f64; 2],
         af: f64,
-        operation: &str,
-        part: &str,
+        (operation, part): (&str, &str),
     ) {
         let r = af / 3_f64.sqrt();
         let points: Vec<_> = (0..6)
@@ -626,7 +621,7 @@ impl Author {
     }
 
     fn teardrop_z(&mut self, id: &str, start: f64, end: f64, c: [f64; 2], r: f64, part: &str) {
-        self.cylinder_z(id, start, end, c, r, "cut", part);
+        self.cylinder_z(id, (start, end), c, r, "cut", part);
         let t = r * std::f64::consts::FRAC_1_SQRT_2;
         let roof = format!("{id} / print roof");
         self.begin(&roof, "xy", start);
@@ -641,7 +636,7 @@ impl Author {
         self.extrude(&roof, end - start, "cut", part);
     }
     fn teardrop_y(&mut self, id: &str, start: f64, end: f64, c: [f64; 2], r: f64, part: &str) {
-        self.bore_y(id, start, end, c, r, "cut", part);
+        self.bore_y(id, (start, end), c, r, "cut", part);
         let t = r * std::f64::consts::FRAC_1_SQRT_2;
         self.prism_y(
             &format!("{id} / print roof"),
@@ -815,8 +810,7 @@ fn main() {
         );
         a.cylinder_z(
             &format!("Bridge bolt {side} / frame clearance"),
-            -0.1,
-            D.deck + 0.1,
+            (-0.1, D.deck + 0.1),
             [(D.bridge_start + D.bridge_end) / 2., sign * D.bridge_bolt_y],
             3.3,
             "cut",
@@ -825,12 +819,10 @@ fn main() {
         a.hex(
             &format!("Bridge nut {side} / underside captive pocket"),
             "xy",
-            0.,
-            10.,
+            (0., 10.),
             [(D.bridge_start + D.bridge_end) / 2., sign * D.bridge_bolt_y],
             10.6,
-            "cut",
-            "frame",
+            ("cut", "frame"),
         );
     }
     for (i, x) in [70., 155.].into_iter().enumerate() {
@@ -969,12 +961,10 @@ fn main() {
     a.hex(
         "Jaw / keeper nut pocket",
         "xz",
-        40.3,
-        jaw_access_outer,
+        (40.3, jaw_access_outer),
         [D.pin_x(), 70.],
         8.5,
-        "cut",
-        "jaw",
+        ("cut", "jaw"),
     );
     a.show("jaw");
 
@@ -1133,8 +1123,7 @@ fn main() {
     a.note("Rounded contact surfaces, deliberate running fits", "The grip has R4 upper blends, R2.5 lower-wing blends and 0.6 mm end-rim chamfers. Its central print flat stays intact. Frame, jaw and bridge top rims are softened, while the dovetail running faces and assembly datums retain their designed dimensions. Inspect the toolpaths and printed touch edges before use.");
     a.bore_x(
         "Screw / axial M5 clearance",
-        D.stub_start() - 7.,
-        D.stub_end() + 1.,
+        (D.stub_start() - 7., D.stub_end() + 1.),
         [0., D.axis],
         2.75,
         "cut",
@@ -1143,12 +1132,10 @@ fn main() {
     a.hex(
         "Screw / captive fitting nut",
         "yz",
-        D.stub_start() + 1.,
-        D.stub_start() + 6.3,
+        (D.stub_start() + 1., D.stub_start() + 6.3),
         [0., D.axis],
         8.5,
-        "cut",
-        "screw",
+        ("cut", "screw"),
     );
     a.box_shape(
         "Screw / nut loading throat from print flat",
@@ -1230,8 +1217,7 @@ fn main() {
     );
     a.bore_x(
         "Thrust fitting / axial retaining screw",
-        D.stub_end(),
-        D.head_front() + 1.,
+        (D.stub_end(), D.head_front() + 1.),
         [0., D.axis],
         2.75,
         "cut",
@@ -1239,8 +1225,7 @@ fn main() {
     );
     a.bore_x(
         "Thrust fitting / recessed M5 socket head",
-        D.head_front() - 5.,
-        D.head_front() + 1.,
+        (D.head_front() - 5., D.head_front() + 1.),
         [0., D.axis],
         4.6,
         "cut",
@@ -1328,8 +1313,7 @@ fn main() {
         let bolt = format!("bridge_screw_{side}");
         a.cylinder_z(
             &format!("{bolt} / M6 x 35 shaft"),
-            D.bridge_top() - 35.,
-            D.bridge_top(),
+            (D.bridge_top() - 35., D.bridge_top()),
             center,
             3.,
             "new_body",
@@ -1337,8 +1321,7 @@ fn main() {
         );
         a.cylinder_z(
             &format!("{bolt} / socket head"),
-            D.bridge_top(),
-            D.bridge_top() + 6.,
+            (D.bridge_top(), D.bridge_top() + 6.),
             center,
             5.,
             "join",
@@ -1353,17 +1336,14 @@ fn main() {
         a.hex(
             &format!("{nut} / M6 envelope"),
             "xy",
-            5.,
-            10.,
+            (5., 10.),
             center,
             10.,
-            "new_body",
-            &nut,
+            ("new_body", &nut),
         );
         a.cylinder_z(
             &format!("{nut} / thread envelope"),
-            4.9,
-            10.1,
+            (4.9, 10.1),
             center,
             3.,
             "cut",
@@ -1373,8 +1353,7 @@ fn main() {
     }
     a.bore_y(
         "Keeper pin / M5 x 90 shaft",
-        -45.,
-        45.,
+        (-45., 45.),
         [D.pin_x(), 70.],
         2.5,
         "new_body",
@@ -1382,8 +1361,7 @@ fn main() {
     );
     a.bore_y(
         "Keeper pin / recessed socket head",
-        -50.,
-        -45.,
+        (-50., -45.),
         [D.pin_x(), 70.],
         4.25,
         "join",
@@ -1397,17 +1375,14 @@ fn main() {
     a.hex(
         "Keeper pin / trapped M5 nut",
         "xz",
-        40.3,
-        45.,
+        (40.3, 45.),
         [D.pin_x(), 70.],
         8.,
-        "new_body",
-        "retainer_nut",
+        ("new_body", "retainer_nut"),
     );
     a.bore_y(
         "Keeper pin nut / thread envelope",
-        40.2,
-        45.1,
+        (40.2, 45.1),
         [D.pin_x(), 70.],
         2.5,
         "cut",
@@ -1420,8 +1395,7 @@ fn main() {
     ));
     a.bore_x(
         "Thrust screw / M5 x 25 shaft",
-        D.head_front() - 30.,
-        D.head_front() - 5.,
+        (D.head_front() - 30., D.head_front() - 5.),
         [0., D.axis],
         2.5,
         "new_body",
@@ -1429,8 +1403,7 @@ fn main() {
     );
     a.bore_x(
         "Thrust screw / recessed socket head",
-        D.head_front() - 5.,
-        D.head_front(),
+        (D.head_front() - 5., D.head_front()),
         [0., D.axis],
         4.25,
         "join",
@@ -1444,17 +1417,14 @@ fn main() {
     a.hex(
         "Thrust screw / captive M5 nut",
         "yz",
-        D.stub_start() + 1.3,
-        D.stub_start() + 6.,
+        (D.stub_start() + 1.3, D.stub_start() + 6.),
         [0., D.axis],
         8.,
-        "new_body",
-        "thrust_nut",
+        ("new_body", "thrust_nut"),
     );
     a.bore_x(
         "Thrust nut / thread envelope",
-        D.stub_start() + 1.2,
-        D.stub_start() + 6.1,
+        (D.stub_start() + 1.2, D.stub_start() + 6.1),
         [0., D.axis],
         2.5,
         "cut",
@@ -1477,8 +1447,7 @@ fn main() {
             let bolt = format!("{stem}_bolt");
             a.cylinder_z(
                 &format!("{bolt} / M6 x 45 shaft"),
-                D.deck + 1.6 - 45.,
-                D.deck + 1.6,
+                (D.deck + 1.6 - 45., D.deck + 1.6),
                 c,
                 3.,
                 "new_body",
@@ -1486,8 +1455,7 @@ fn main() {
             );
             a.cylinder_z(
                 &format!("{bolt} / socket head"),
-                D.deck + 1.6,
-                D.deck + 7.6,
+                (D.deck + 1.6, D.deck + 7.6),
                 c,
                 5.,
                 "join",
@@ -1502,8 +1470,7 @@ fn main() {
                 let part = format!("{stem}_{label}");
                 a.cylinder_z(
                     &format!("{part} / broad washer"),
-                    z,
-                    z + 1.6,
+                    (z, z + 1.6),
                     c,
                     9.,
                     "new_body",
@@ -1511,8 +1478,7 @@ fn main() {
                 );
                 a.cylinder_z(
                     &format!("{part} / clearance"),
-                    z - 0.1,
-                    z + 1.7,
+                    (z - 0.1, z + 1.7),
                     c,
                     3.3,
                     "cut",
@@ -1535,17 +1501,14 @@ fn main() {
             a.hex(
                 &format!("{nut} / M6 envelope"),
                 "xy",
-                -24.6,
-                -19.6,
+                (-24.6, -19.6),
                 c,
                 10.,
-                "new_body",
-                &nut,
+                ("new_body", &nut),
             );
             a.cylinder_z(
                 &format!("{nut} / thread envelope"),
-                -24.7,
-                -19.5,
+                (-24.7, -19.5),
                 c,
                 3.,
                 "cut",

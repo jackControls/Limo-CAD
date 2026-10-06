@@ -23,7 +23,11 @@ impl<'a> Pattern<'a> {
         {
             return Err("Drawing graphics have invalid line style".into());
         }
-        let repeat = if style.dash_mm.len() % 2 == 0 { 1 } else { 2 };
+        let repeat = if style.dash_mm.len().is_multiple_of(2) {
+            1
+        } else {
+            2
+        };
         let count = style
             .dash_mm
             .len()

@@ -83,8 +83,7 @@ fn arc_picks_acquire_support_edge_midpoints_and_the_projected_boundary() {
     let (center, radius, start_angle, _) = arc_of(&session, result.entities[0]);
     assert!(
         close(center, v(10.0, 10.0)),
-        "center {} must acquire the midpoint",
-        format!("{center:?}")
+        "center {center:?} must acquire the midpoint"
     );
     let expected_radius = v(8.0, 20.0).distance(v(10.0, 10.0));
     assert!(
@@ -104,9 +103,7 @@ fn a_typed_radius_locks_the_arc_and_adds_a_driving_dimension() {
     let mut session = face_session();
     let result = session
         .add_arc_center_locked(
-            v(0.0, 0.0),
-            v(7.0, 0.0),
-            v(0.0, 9.0),
+            (v(0.0, 0.0), v(7.0, 0.0), v(0.0, 9.0)),
             false,
             None,
             Some("12"),
@@ -145,7 +142,6 @@ fn a_typed_radius_locks_the_arc_and_adds_a_driving_dimension() {
         expected
     );
 
-    let mut session = session;
     session
         .edit_dimension(EditDimensionRequest {
             constraint_id: dimensions[0].constraint_id,
@@ -161,9 +157,7 @@ fn a_typed_radius_expression_is_evaluated() {
     let mut session = face_session();
     let result = session
         .add_arc_center_locked(
-            v(0.0, 0.0),
-            v(7.0, 0.0),
-            v(0.0, 9.0),
+            (v(0.0, 0.0), v(7.0, 0.0), v(0.0, 9.0)),
             false,
             None,
             Some("=6*2"),
@@ -184,9 +178,7 @@ fn one_undo_removes_a_locked_arc_and_its_dimension() {
     let mut session = face_session();
     session
         .add_arc_center_locked(
-            v(0.0, 0.0),
-            v(7.0, 0.0),
-            v(0.0, 9.0),
+            (v(0.0, 0.0), v(7.0, 0.0), v(0.0, 9.0)),
             false,
             None,
             Some("12"),
@@ -205,9 +197,7 @@ fn one_undo_removes_a_locked_arc_and_its_dimension() {
 fn the_drag_direction_decides_which_half_the_arc_covers() {
     let mut cw = face_session();
     cw.add_arc_center_locked(
-        v(0.0, 0.0),
-        v(5.0, 0.0),
-        v(-5.0, 0.0),
+        (v(0.0, 0.0), v(5.0, 0.0), v(-5.0, 0.0)),
         false,
         None,
         None,
@@ -232,9 +222,7 @@ fn the_drag_direction_decides_which_half_the_arc_covers() {
 
     let mut ccw = face_session();
     ccw.add_arc_center_locked(
-        v(0.0, 0.0),
-        v(5.0, 0.0),
-        v(-5.0, 0.0),
+        (v(0.0, 0.0), v(5.0, 0.0), v(-5.0, 0.0)),
         false,
         None,
         None,
@@ -252,9 +240,7 @@ fn the_drag_direction_decides_which_half_the_arc_covers() {
     let mut quarter = face_session();
     quarter
         .add_arc_center_locked(
-            v(0.0, 0.0),
-            v(5.0, 0.0),
-            v(0.0, -5.0),
+            (v(0.0, 0.0), v(5.0, 0.0), v(0.0, -5.0)),
             false,
             None,
             None,
@@ -279,9 +265,7 @@ fn deleting_an_arc_takes_its_own_endpoints_with_it() {
     let mut session = face_session();
     let result = session
         .add_arc_center_locked(
-            v(0.0, 0.0),
-            v(5.0, 0.0),
-            v(0.0, 5.0),
+            (v(0.0, 0.0), v(5.0, 0.0), v(0.0, 5.0)),
             false,
             None,
             None,
@@ -318,9 +302,7 @@ fn deleting_an_arc_takes_its_own_endpoints_with_it() {
     let mut shared = face_session();
     let arc = shared
         .add_arc_center_locked(
-            v(0.0, 0.0),
-            v(5.0, 0.0),
-            v(0.0, 5.0),
+            (v(0.0, 0.0), v(5.0, 0.0), v(0.0, 5.0)),
             false,
             None,
             None,
@@ -364,9 +346,7 @@ fn a_typed_sweep_angle_becomes_a_driving_dimension() {
     let mut session = face_session();
     let result = session
         .add_arc_center_locked(
-            v(0.0, 0.0),
-            v(9.0, 0.0),
-            v(0.0, 9.0),
+            (v(0.0, 0.0), v(9.0, 0.0), v(0.0, 9.0)),
             false,
             None,
             None,
@@ -396,9 +376,7 @@ fn a_typed_sweep_angle_becomes_a_driving_dimension() {
     let mut cw = face_session();
     let cw_result = cw
         .add_arc_center_locked(
-            v(0.0, 0.0),
-            v(9.0, 0.0),
-            v(0.0, 9.0),
+            (v(0.0, 0.0), v(9.0, 0.0), v(0.0, 9.0)),
             false,
             None,
             None,
@@ -442,9 +420,7 @@ fn a_typed_sweep_angle_becomes_a_driving_dimension() {
 fn a_click_that_never_moved_is_not_a_full_circle() {
     let mut session = face_session();
     let refused = session.add_arc_center_locked(
-        v(0.0, 0.0),
-        v(5.0, 0.0),
-        v(5.0, 0.0),
+        (v(0.0, 0.0), v(5.0, 0.0), v(5.0, 0.0)),
         false,
         None,
         None,
@@ -462,9 +438,7 @@ fn a_click_that_never_moved_is_not_a_full_circle() {
 
     let mut full = face_session();
     full.add_arc_center_locked(
-        v(0.0, 0.0),
-        v(5.0, 0.0),
-        v(5.0, 0.0),
+        (v(0.0, 0.0), v(5.0, 0.0), v(5.0, 0.0)),
         false,
         None,
         None,

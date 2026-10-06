@@ -101,8 +101,8 @@ fn cutter_refined_chamfers_and_floor_fillets_follow_actual_sweeps() {
     let mut perimeter = 0;
     for (p, n) in mesh
         .positions
-        .chunks_exact(3)
-        .zip(mesh.normals.chunks_exact(3))
+        .as_chunks::<3>().0.iter()
+        .zip(mesh.normals.as_chunks::<3>().0.iter())
     {
         let [x, y, z] = [p[0] as f64, p[1] as f64, p[2] as f64];
         let r = (x - 12.).hypot(y - 12.);
@@ -132,7 +132,7 @@ fn cutter_refined_chamfers_and_floor_fillets_follow_actual_sweeps() {
     assert!(chamfer > 100, "missing small hole bevel ({chamfer})");
 
 
-    for triangle in mesh.positions.chunks_exact(9) {
+    for triangle in mesh.positions.as_chunks::<9>().0 {
         let p: [[f64; 3]; 3] =
             std::array::from_fn(|i| std::array::from_fn(|k| triangle[i * 3 + k] as f64));
         for i in 0..3 {
@@ -164,8 +164,8 @@ fn cutter_refined_chamfers_and_floor_fillets_follow_actual_sweeps() {
     assert!(perimeter > 0, "missing perimeter bevel ({perimeter})");
     for (p, n) in mesh
         .positions
-        .chunks_exact(9)
-        .zip(mesh.normals.chunks_exact(9))
+        .as_chunks::<9>().0.iter()
+        .zip(mesh.normals.as_chunks::<9>().0.iter())
     {
         if [p[2], p[5], p[8]].iter().all(|z| z.abs() < 1e-6) {
 
@@ -214,7 +214,7 @@ fn shallow_corner_display_retains_stock_instead_of_using_the_full_diameter() {
         let mut tested = 0;
 
 
-        for triangle in mesh.positions.chunks_exact(9) {
+        for triangle in mesh.positions.as_chunks::<9>().0 {
             let points: [[f64; 3]; 3] =
                 std::array::from_fn(|i| std::array::from_fn(|k| triangle[i * 3 + k] as f64));
             for i in 0..3 {
@@ -354,14 +354,14 @@ fn multi_operation_faced_stock_keeps_detailed_chamfers_at_the_default_work_budge
         .surface_mesh_with_refinement(MAX_SURFACE_TRIANGLES, true)
         .expect("detailed mesh must finish inside the unmodified work and triangle budgets");
     let mut chamfer_vertices = 0;
-    for p in mesh.positions.chunks_exact(3) {
+    for p in mesh.positions.as_chunks::<3>().0 {
         let r = (p[0] as f64 - 8.).hypot(p[1] as f64);
         if (2.85..3.1).contains(&r) && (11.6..11.9).contains(&(p[2] as f64)) {
             chamfer_vertices += 1;
         }
     }
     assert!(chamfer_vertices > 60);
-    for triangle in mesh.positions.chunks_exact(9) {
+    for triangle in mesh.positions.as_chunks::<9>().0 {
         let center: [f64; 3] =
             std::array::from_fn(|i| (triangle[i] + triangle[i + 3] + triangle[i + 6]) as f64 / 3.);
         if center[0].abs() < 13.

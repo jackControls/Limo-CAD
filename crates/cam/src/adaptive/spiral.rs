@@ -45,15 +45,10 @@ fn shift(c: Point2Dto, u: Point2Dto, d: f64) -> Point2Dto {
 pub(super) fn clear(
     builder: &mut ProgramBuilder,
     footprint: &[Point2Dto],
-    center: Point2Dto,
-    protected: f64,
-    cap: bool,
-    r: f64,
-    floor_r: f64,
-    depth: f64,
+    (center, protected, cap): (Point2Dto, f64, bool),
+    (r, floor_r, depth): (f64, f64, f64),
     p: &CamAdaptiveParametersDto,
-    feed: f64,
-    plunge: f64,
+    (feed, plunge): (f64, f64),
     work: &mut Work,
 ) -> Result<usize, CamPlanError> {
     let stock = footprint

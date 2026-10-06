@@ -1,3 +1,4 @@
+use super::straight_fixture as rectangle;
 use super::*;
 use crate as occt;
 use limo_cad_core::UnitSystem;

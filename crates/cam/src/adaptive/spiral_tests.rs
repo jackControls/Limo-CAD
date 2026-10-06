@@ -28,7 +28,7 @@ fn circular_roughing_is_continuous_with_full_retract_and_keep_down_off() {
             unreachable!()
         };
         for mesh in &mut geometry.targets {
-            for v in mesh.positions.chunks_exact_mut(3) {
+            for v in mesh.positions.as_chunks_mut::<3>().0 {
                 let [x, y, z] = [v[0], v[1], v[2]];
                 v.copy_from_slice(&[
                     origin.x + x,
@@ -229,20 +229,13 @@ fn spiral_sweeps_preserve_target_cover_stock_and_bound_section_engagement() {
         let footprint: Vec<_> = (0..128)
             .map(|i| polar(Point2Dto::new(0.0, 0.0), 7.0, TAU * i as f64 / 128.0))
             .collect();
-        spiral::clear(
-            &mut b,
-            &footprint,
-            Point2Dto::new(0.0, 0.0),
-            protected,
-            cap,
-            2.0,
-            floor,
-            -1.0,
-            &p,
-            600.0,
-            100.0,
-            &mut Work::default(),
-        )
+        spiral::clear(&mut b,
+        &footprint,
+        (Point2Dto::new(0.0, 0.0), protected, cap),
+        (2.0, floor, -1.0),
+        &p,
+        (600.0, 100.0),
+        &mut Work::default())
         .unwrap();
         let mut arcs = vec![];
         let mut position = None;
@@ -358,10 +351,13 @@ fn radial_lead_enters_perpendicular_from_air_within_the_engagement_limit() {
         let footprint: Vec<_> = (0..128)
             .map(|i| polar(Point2Dto::new(0.0, 0.0), billet, TAU * i as f64 / 128.0))
             .collect();
-        spiral::clear(
-            &mut b, &footprint, Point2Dto::new(0.0, 0.0), protected, false, r, floor, -1.0, &p, 600.0, 100.0,
-            &mut Work::default(),
-        )
+        spiral::clear(&mut b,
+        &footprint,
+        (Point2Dto::new(0.0, 0.0), protected, false),
+        (r, floor, -1.0),
+        &p,
+        (600.0, 100.0),
+        &mut Work::default())
         .unwrap();
         let u = Point2Dto::new(angle.cos(), angle.sin());
         let t = Point2Dto::new(u.y, -u.x);

@@ -498,12 +498,16 @@ mod tests {
             assert!(mesh
                 .cutter
                 .positions
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .all(|p| f64::from(p[2]) <= radius + 1e-6));
             assert!(mesh
                 .shank
                 .positions
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .all(|p| f64::from(p[2]) >= radius - 1e-6));
             assert_eq!(g.flute_length, 1., "tool data is not rewritten");
             g.kind = CamToolKind::BullNoseEndMill;
@@ -723,14 +727,16 @@ mod tests {
             assert!((mesh.cutter.positions.len() + mesh.shank.positions.len()) / 9 < 4000);
             for part in [&mesh.cutter, &mesh.shank] {
                 assert_eq!(part.positions.len(), part.normals.len());
-                for n in part.normals.chunks_exact(3) {
+                for n in part.normals.as_chunks::<3>().0 {
                     assert!((n.iter().map(|n| n * n).sum::<f32>() - 1.).abs() < 1e-5);
                 }
 
                 for (p, n) in part
                     .positions
-                    .chunks_exact(9)
-                    .zip(part.normals.chunks_exact(9))
+                    .as_chunks::<9>()
+                    .0
+                    .iter()
+                    .zip(part.normals.as_chunks::<9>().0.iter())
                 {
                     let u = [p[3] - p[0], p[4] - p[1], p[5] - p[2]];
                     let v = [p[6] - p[0], p[7] - p[1], p[8] - p[2]];
@@ -747,7 +753,7 @@ mod tests {
                     );
                 }
             }
-            for p in mesh.cutter.positions.chunks_exact(3) {
+            for p in mesh.cutter.positions.as_chunks::<3>().0 {
                 let r = (p[0] as f64).hypot(p[1] as f64);
                 let z = p[2] as f64;
 
@@ -756,7 +762,9 @@ mod tests {
             near(
                 mesh.cutter
                     .positions
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .map(|p| p[2] as f64)
                     .fold(f64::INFINITY, f64::min),
                 0.,

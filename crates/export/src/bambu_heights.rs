@@ -228,7 +228,7 @@ fn read_profiles(
         }
         let mut points = Vec::new();
         let mut previous = -1.;
-        for pair in values.chunks_exact(2) {
+        for pair in values.as_chunks::<2>().0 {
             if pair[0] <= previous
                 || pair[0] < 0.
                 || pair[1] <= 0.

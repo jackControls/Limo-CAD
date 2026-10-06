@@ -35,6 +35,12 @@ pub(crate) use rest::{planning_stock, PlanningStock, RestHeightMap};
 mod surface;
 pub use frame::CamPlayback;
 
+type CellRange = ([isize; 3], [isize; 3]);
+type SurfaceExtraction = (
+    Result<(CamSimulationMeshDto, Option<&'static str>), String>,
+    Option<SurfaceTiles>,
+);
+
 const DEFAULT_MAX_VOXELS: usize = 8_000_000;
 const HARD_MAX_VOXELS: usize = 8_000_000;
 /// Auto detail is model-relative: aim for this many cells along the stock's
@@ -1727,7 +1733,7 @@ fn voxelize_mesh_volume(
     let column_count = spec.dimensions[0] * spec.dimensions[1];
     let mut column_hits: Vec<Vec<f64>> = (0..column_count).map(|_| Vec::new()).collect();
     let mut tests = 0usize;
-    for (triangle_index, triangle) in mesh.indices.chunks_exact(3).enumerate() {
+    for (triangle_index, triangle) in mesh.indices.as_chunks::<3>().0.iter().enumerate() {
         if triangle_index.is_multiple_of(64) {
             if let Some(cancellation) = cancellation {
                 cancellation.check()?;
@@ -1824,7 +1830,7 @@ fn voxelize_mesh_volume(
             if hits.len() < 2 {
                 continue;
             }
-            for pair in hits.chunks_exact(2) {
+            for pair in hits.as_chunks::<2>().0 {
                 let (z_low, z_high) = (pair[0].min(pair[1]), pair[0].max(pair[1]));
                 let lo = ((z_low - spec.min.z) / spec.cell_size[2]).floor() as isize;
                 let hi = ((z_high - spec.min.z) / spec.cell_size[2]).ceil() as isize;
@@ -2014,7 +2020,7 @@ fn mesh_extends_outside_grid(setup: &CamSetupDto, spec: &GridSpec, mesh: &CamSto
         spec.min.y + spec.dimensions[1] as f64 * spec.cell_size[1],
         spec.min.z + spec.dimensions[2] as f64 * spec.cell_size[2],
     );
-    mesh.positions.chunks_exact(3).any(|position| {
+    mesh.positions.as_chunks::<3>().0.iter().any(|position| {
         let point =
             model_point_to_setup(setup, Point3Dto::new(position[0], position[1], position[2]));
         point.x < spec.min.x - EPSILON
@@ -2413,11 +2419,7 @@ impl VoxelStock {
     }
 
     /// Cells of `coarser` covering this grid's cell box, plus one cell.
-    fn coarser_cells(
-        &self,
-        coarser: &Self,
-        (lo, hi): ([isize; 3], [isize; 3]),
-    ) -> ([isize; 3], [isize; 3]) {
+    fn coarser_cells(&self, coarser: &Self, (lo, hi): CellRange) -> CellRange {
         let map = |v: isize, i: usize| {
             v.clamp(0, self.dimensions[i] as isize - 1) * coarser.dimensions[i] as isize
                 / self.dimensions[i] as isize
@@ -2431,10 +2433,7 @@ impl VoxelStock {
     /// Half-resolution display grid. `previous` is this grid for an earlier
     /// state plus the changed cell box of `self` (`None`: nothing changed);
     /// only coarse cells covering that box are recomputed.
-    fn coarser_display_stock_reusing(
-        &self,
-        previous: Option<(Self, Option<([isize; 3], [isize; 3])>)>,
-    ) -> Self {
+    fn coarser_display_stock_reusing(&self, previous: Option<(Self, Option<CellRange>)>) -> Self {
         let dimensions = self.dimensions.map(|n| n.div_ceil(2));
         let cell_size = std::array::from_fn(|i| {
             self.cell_size[i] * self.dimensions[i] as f64 / dimensions[i] as f64
@@ -2602,8 +2601,7 @@ impl VoxelStock {
             let t = index as f64 / samples as f64;
             let position = lerp(from, to, t);
             self.apply_tool_at(
-                tool,
-                &profile,
+                (tool, &profile),
                 position,
                 mode,
                 verification,
@@ -2643,8 +2641,7 @@ impl VoxelStock {
             }
             let t = index as f64 / samples as f64;
             self.apply_tool_at(
-                tool,
-                &profile,
+                (tool, &profile),
                 arc.point(t),
                 mode,
                 verification,
@@ -2678,8 +2675,7 @@ impl VoxelStock {
 
     fn apply_tool_at(
         &mut self,
-        tool: &CamToolDto,
-        profile: &crate::CutterProfile,
+        (tool, profile): (&CamToolDto, &crate::CutterProfile),
         tip: Point3Dto,
         mode: SweepMode,
         verification: Option<&VerificationGrid>,
@@ -2802,11 +2798,8 @@ impl VoxelStock {
     fn surface_mesh_with_status_reusing(
         &self,
         max_triangles: usize,
-        reuse: Option<(&mut SurfaceTiles, Option<([isize; 3], [isize; 3])>)>,
-    ) -> (
-        Result<(CamSimulationMeshDto, Option<&'static str>), String>,
-        Option<SurfaceTiles>,
-    ) {
+        reuse: Option<(&mut SurfaceTiles, Option<CellRange>)>,
+    ) -> SurfaceExtraction {
         if self.display_cuts.limited {
             let message = if self.display_cuts.reoriented {
                 "Remaining-stock display uses the transferred volume in this setup's orientation; small chamfers and radii may look stepped at the grid resolution."
@@ -2833,7 +2826,7 @@ impl VoxelStock {
 
     /// Cell box whose occupancy differs from `old`: `None` when the grids
     /// are incompatible, `Some(None)` when no cell changed.
-    fn changed_cells(&self, old: &VoxelStock) -> Option<Option<([isize; 3], [isize; 3])>> {
+    fn changed_cells(&self, old: &VoxelStock) -> Option<Option<CellRange>> {
         if old.dimensions != self.dimensions
             || old.min != self.min
             || old.cell_size != self.cell_size
@@ -2841,7 +2834,7 @@ impl VoxelStock {
             return None;
         }
         let [nx, ny, _] = self.dimensions;
-        let mut changed: Option<([isize; 3], [isize; 3])> = None;
+        let mut changed: Option<CellRange> = None;
         for (word, (a, b)) in old.occupied.iter().zip(&self.occupied).enumerate() {
             let mut bits = a ^ b;
             while bits != 0 {
@@ -2864,9 +2857,9 @@ impl VoxelStock {
     /// half a cell from its vertex, so allow three diagonals and a cell.
     fn changed_box(
         &self,
-        cells: Option<([isize; 3], [isize; 3])>,
+        cells: Option<CellRange>,
         cuts: Option<([f64; 3], [f64; 3])>,
-    ) -> Option<([isize; 3], [isize; 3])> {
+    ) -> Option<CellRange> {
         let reach = 3. * self.cell_size.iter().map(|v| v * v).sum::<f64>().sqrt();
         let cell =
             |p: f64, i: usize| ((p - self.min_component(i)) / self.cell_size[i]).floor() as isize;
@@ -2900,7 +2893,7 @@ impl VoxelStock {
         &self,
         max_triangles: usize,
         refine: bool,
-        mut reuse: Option<(&mut SurfaceTiles, Option<([isize; 3], [isize; 3])>)>,
+        mut reuse: Option<(&mut SurfaceTiles, Option<CellRange>)>,
     ) -> (Result<CamSimulationMeshDto, String>, Option<SurfaceTiles>) {
         #[cfg(test)]
         let mesh_start = std::time::Instant::now();
@@ -3026,7 +3019,7 @@ impl VoxelStock {
         &self,
         axis: usize,
         refiner: &surface::Refiner<'_>,
-        mut cached: Option<(Vec<SurfaceTile>, Option<([isize; 3], [isize; 3])>)>,
+        mut cached: Option<(Vec<SurfaceTile>, Option<CellRange>)>,
     ) -> Option<Vec<SurfaceTile>> {
         let u = (axis + 1) % 3;
         let v = (axis + 2) % 3;
@@ -3513,10 +3506,7 @@ pub(super) struct SurfaceCache {
     levels: Vec<CachedLevel>,
 }
 
-fn union_cells(
-    a: Option<([isize; 3], [isize; 3])>,
-    (lo, hi): ([isize; 3], [isize; 3]),
-) -> ([isize; 3], [isize; 3]) {
+fn union_cells(a: Option<CellRange>, (lo, hi): CellRange) -> CellRange {
     match a {
         None => (lo, hi),
         Some((a, b)) => (
@@ -3893,7 +3883,7 @@ mod tests {
             .expect("smoothed presentation mesh");
 
         assert_eq!(mesh.normals.len(), mesh.positions.len());
-        assert!(mesh.normals.chunks_exact(3).any(|normal| {
+        assert!(mesh.normals.as_chunks::<3>().0.iter().any(|normal| {
             normal[0].abs() > 0.2 && normal[1].abs() > 0.2 && normal[2].abs() < 0.01
         }));
         assert!(mesh.positions.iter().any(|value| {
@@ -5214,18 +5204,24 @@ mod tests {
         let mut conical = 0;
         for (triangle, normals) in mesh
             .positions
-            .chunks_exact(9)
-            .zip(mesh.normals.chunks_exact(9))
+            .as_chunks::<9>()
+            .0
+            .iter()
+            .zip(mesh.normals.as_chunks::<9>().0.iter())
         {
             let p: Vec<_> = triangle
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|q| [q[0] as f64, q[1] as f64, q[2] as f64])
                 .collect();
             let variable_normal = normals
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .any(|n| n.iter().filter(|c| c.abs() > 0.1).count() > 1);
             if variable_normal {
-                let sloped = normals.chunks_exact(3).any(|n| n[2].abs() > 0.1);
+                let sloped = normals.as_chunks::<3>().0.iter().any(|n| n[2].abs() > 0.1);
                 for i in 0..3 {
                     let distance = (0..if sloped { 3 } else { 2 })
                         .map(|a| (p[i][a] - p[(i + 1) % 3][a]).powi(2))
@@ -5237,7 +5233,7 @@ mod tests {
                     );
                 }
             }
-            for (point, normal) in p.iter().zip(normals.chunks_exact(3)) {
+            for (point, normal) in p.iter().zip(normals.as_chunks::<3>().0.iter()) {
                 let radial = (point[0] - 22.0).hypot(point[1] - 25.0);
                 if radial > 0.2 && radial < 3.0 && point[2] < -7.2 {
                     let z = -9.1 + radial / 59.0_f64.to_radians().tan();
@@ -5272,12 +5268,16 @@ mod tests {
         for axis in 0..3 {
             let min = mesh
                 .positions
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|p| p[axis])
                 .fold(f32::INFINITY, f32::min);
             let max = mesh
                 .positions
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|p| p[axis])
                 .fold(f32::NEG_INFINITY, f32::max);
             assert!(min >= origin[axis] as f32 - 1e-4);

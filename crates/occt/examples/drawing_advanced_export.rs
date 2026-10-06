@@ -2,6 +2,8 @@
 #[path = "../tests/support/advanced_export.rs"]
 mod fixture;
 use limo_cad_occt as occt;
+#[path = "../tests/support/straight_export.rs"]
+pub mod rectangle;
 use occt::drawing_export::{export_sheet_with_units, DrawingExportFormat, DrawingExportRequest};
 use serde_json::json;
 use std::{fs, path::PathBuf};

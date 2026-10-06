@@ -35,7 +35,7 @@ pub fn load_outline_fonts(fallback: Option<&[u8]>) -> usvg::fontdb::Database {
                     ttf_parser::Face::parse(bytes, index).is_ok_and(|font| {
                         [b"COLR", b"CBDT", b"sbix", b"SVG "].iter().any(|tag| {
                             font.raw_face()
-                                .table(ttf_parser::Tag::from_bytes(*tag))
+                                .table(ttf_parser::Tag::from_bytes(tag))
                                 .is_some()
                         })
                     })

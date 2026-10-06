@@ -22,11 +22,25 @@ use crate::{
 
 #[cxx::bridge(namespace = "limo_cad_occt")]
 mod ffi {
-    struct FfiDrawingOccurrence {
+    struct FfiBodyPlacement {
         body_id: u64,
         translation: [f64; 3],
         rotation: [f64; 4],
     }
+    struct FfiDrawingOptions {
+        assembly_scope: bool,
+        direction: [f64; 3],
+        up: [f64; 3],
+        include_hidden: bool,
+        include_tangent_edges: bool,
+        deflection: f64,
+        has_section_plane: bool,
+        section_point: [f64; 3],
+        section_normal: [f64; 3],
+        has_section_depth: bool,
+        section_depth: f64,
+    }
+
     struct FfiJob {
         feature_id: u64,
         kind: u8,
@@ -175,45 +189,13 @@ mod ffi {
         fn drawing_projection(
             self: &Kernel,
             body_ids: &Vec<u64>,
-            occurrences: &Vec<FfiDrawingOccurrence>,
-            assembly_scope: bool,
-            direction_x: f64,
-            direction_y: f64,
-            direction_z: f64,
-            up_x: f64,
-            up_y: f64,
-            up_z: f64,
-            include_hidden: bool,
-            include_tangent_edges: bool,
-            deflection: f64,
-            has_section_plane: bool,
-            section_point_x: f64,
-            section_point_y: f64,
-            section_point_z: f64,
-            section_normal_x: f64,
-            section_normal_y: f64,
-            section_normal_z: f64,
-            has_section_depth: bool,
-            section_depth: f64,
+            occurrences: &Vec<FfiBodyPlacement>,
+            options: &FfiDrawingOptions,
         ) -> Result<FfiDrawingProjection>;
         fn exact_interference(
             self: &Kernel,
-            body_a: u64,
-            translation_a_x: f64,
-            translation_a_y: f64,
-            translation_a_z: f64,
-            rotation_a_x: f64,
-            rotation_a_y: f64,
-            rotation_a_z: f64,
-            rotation_a_w: f64,
-            body_b: u64,
-            translation_b_x: f64,
-            translation_b_y: f64,
-            translation_b_z: f64,
-            rotation_b_x: f64,
-            rotation_b_y: f64,
-            rotation_b_z: f64,
-            rotation_b_w: f64,
+            placement_a: &FfiBodyPlacement,
+            placement_b: &FfiBodyPlacement,
         ) -> Result<FfiInterferenceResult>;
     }
 }
@@ -442,7 +424,7 @@ impl OcctKernel {
             .resolved_occurrences
             .iter()
             .flatten()
-            .map(|pose| ffi::FfiDrawingOccurrence {
+            .map(|pose| ffi::FfiBodyPlacement {
                 body_id: pose.body_id.0,
                 translation: pose.translation,
                 rotation: pose.rotation,
@@ -468,51 +450,33 @@ impl OcctKernel {
             .drawing_projection(
                 &body_ids,
                 &occurrences,
-                assembly_scope,
-                request.direction[0],
-                request.direction[1],
-                request.direction[2],
-                request.up[0],
-                request.up[1],
-                request.up[2],
-                request.include_hidden,
-                request.include_tangent_edges,
-                request.deflection.clamp(1.0e-4, 10.0),
-                request.section_plane.is_some(),
-                request
-                    .section_plane
-                    .as_ref()
-                    .map_or(0.0, |plane| plane.point[0]),
-                request
-                    .section_plane
-                    .as_ref()
-                    .map_or(0.0, |plane| plane.point[1]),
-                request
-                    .section_plane
-                    .as_ref()
-                    .map_or(0.0, |plane| plane.point[2]),
-                request
-                    .section_plane
-                    .as_ref()
-                    .map_or(0.0, |plane| plane.normal[0]),
-                request
-                    .section_plane
-                    .as_ref()
-                    .map_or(0.0, |plane| plane.normal[1]),
-                request
-                    .section_plane
-                    .as_ref()
-                    .map_or(1.0, |plane| plane.normal[2]),
-                request
-                    .section_plane
-                    .as_ref()
-                    .and_then(|plane| plane.depth)
-                    .is_some(),
-                request
-                    .section_plane
-                    .as_ref()
-                    .and_then(|plane| plane.depth)
-                    .unwrap_or(0.0),
+                &ffi::FfiDrawingOptions {
+                    assembly_scope,
+                    direction: request.direction,
+                    up: request.up,
+                    include_hidden: request.include_hidden,
+                    include_tangent_edges: request.include_tangent_edges,
+                    deflection: request.deflection.clamp(1.0e-4, 10.0),
+                    has_section_plane: request.section_plane.is_some(),
+                    section_point: request
+                        .section_plane
+                        .as_ref()
+                        .map_or([0.0; 3], |plane| plane.point),
+                    section_normal: request
+                        .section_plane
+                        .as_ref()
+                        .map_or([0.0, 0.0, 1.0], |plane| plane.normal),
+                    has_section_depth: request
+                        .section_plane
+                        .as_ref()
+                        .and_then(|plane| plane.depth)
+                        .is_some(),
+                    section_depth: request
+                        .section_plane
+                        .as_ref()
+                        .and_then(|plane| plane.depth)
+                        .unwrap_or(0.0),
+                },
             )
             .map_err(|error| OcctError(error.to_string()))?;
         let projection = projection_from_ffi(raw)?;
@@ -553,22 +517,16 @@ impl OcctKernel {
             .as_ref()
             .ok_or_else(|| OcctError("OCCT kernel was released".to_string()))?
             .exact_interference(
-                a.body_id.0,
-                a.translation[0],
-                a.translation[1],
-                a.translation[2],
-                a.rotation[0],
-                a.rotation[1],
-                a.rotation[2],
-                a.rotation[3],
-                b.body_id.0,
-                b.translation[0],
-                b.translation[1],
-                b.translation[2],
-                b.rotation[0],
-                b.rotation[1],
-                b.rotation[2],
-                b.rotation[3],
+                &ffi::FfiBodyPlacement {
+                    body_id: a.body_id.0,
+                    translation: a.translation,
+                    rotation: a.rotation,
+                },
+                &ffi::FfiBodyPlacement {
+                    body_id: b.body_id.0,
+                    translation: b.translation,
+                    rotation: b.rotation,
+                },
             )
             .map_err(|error| OcctError(error.to_string()))?;
         Ok(ExactInterferenceResultDto {
@@ -1320,13 +1278,13 @@ fn decode_base64(value: &str) -> Result<Vec<u8>, OcctError> {
     }
 
     let bytes = value.as_bytes();
-    if bytes.is_empty() || bytes.len() % 4 != 0 {
+    if bytes.is_empty() || !bytes.len().is_multiple_of(4) {
         return Err(OcctError(
             "STEP import contains invalid base64 data".to_string(),
         ));
     }
     let mut output = Vec::with_capacity(bytes.len() / 4 * 3);
-    for (chunk_index, chunk) in bytes.chunks_exact(4).enumerate() {
+    for (chunk_index, chunk) in bytes.as_chunks::<4>().0.iter().enumerate() {
         let last = chunk_index + 1 == bytes.len() / 4;
         let padding = usize::from(chunk[3] == b'=') + usize::from(chunk[2] == b'=');
         if padding > 0 && !last || chunk[2] == b'=' && chunk[3] != b'=' {
@@ -1675,7 +1633,7 @@ mod tests {
         let wall_samples = scene
             .bodies
             .iter()
-            .flat_map(|body| body.positions.chunks_exact(3))
+            .flat_map(|body| body.positions.as_chunks::<3>().0.iter())
             .filter_map(|point| {
                 let radius = (f64::from(point[0]).powi(2) + f64::from(point[1]).powi(2)).sqrt();
                 (point[2] > 0.1 && point[2] < 9.9 && radius > 1.0 && radius < 4.0).then_some((
@@ -1746,7 +1704,9 @@ mod tests {
             .iter()
             .map(|body| {
                 body.indices
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .filter(|triangle| {
                         let point = |index: u32| {
                             let offset = index as usize * 3;
@@ -1960,7 +1920,9 @@ mod tests {
             .unwrap();
         let minimum_x = placed_scene.bodies[0]
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|point| point[0])
             .fold(f32::INFINITY, f32::min);
         assert!((minimum_x - 125.0).abs() < 1.0e-3);
@@ -2835,7 +2797,7 @@ mod tests {
         {
             let begin = face.first_index as usize;
             let end = begin + face.index_count as usize;
-            for triangle in body.indices[begin..end].chunks_exact(3) {
+            for triangle in body.indices[begin..end].as_chunks::<3>().0 {
                 let centroid = triangle.iter().fold([0.0f64; 3], |mut sum, index| {
                     let offset = *index as usize * 3;
                     sum[0] += body.positions[offset] as f64 / 3.0;
@@ -3089,7 +3051,7 @@ mod tests {
         {
             let begin = face.first_index as usize;
             let end = begin + face.index_count as usize;
-            for triangle in body.indices[begin..end].chunks_exact(3) {
+            for triangle in body.indices[begin..end].as_chunks::<3>().0 {
                 let centroid = triangle.iter().fold([0.0f64; 2], |mut sum, index| {
                     let offset = *index as usize * 3;
                     sum[0] += body.positions[offset] as f64 / 3.0;
@@ -3321,7 +3283,7 @@ mod tests {
             })
             .expect("extruded shaft must expose an analytic cylinder");
         let face_key = shaft_face.key.clone();
-        let cylinder: CylindricalSurfaceDto = shaft_face.cylinder.clone().unwrap();
+        let cylinder: CylindricalSurfaceDto = shaft_face.cylinder.unwrap();
         let scene = kernel
             .recompute(&RecomputePlanDto {
                 transaction_id: 2,
@@ -3332,7 +3294,7 @@ mod tests {
                         feature_id: FeatureId(3),
                         target_body_id: BodyId(1),
                         face_key: face_key.clone(),
-                        cylinder: cylinder.clone(),
+                        cylinder,
                         thread: HoleThreadDto {
                             standard: HoleThreadStandard::IsoMetric,
                             series: HoleThreadSeries::MetricCoarse,
@@ -3364,7 +3326,9 @@ mod tests {
         );
         let wall_radii = body
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter_map(|point| {
                 let radius = f64::from(point[0]).hypot(f64::from(point[1]));
                 (point[2] > 0.1 && point[2] < 9.9).then_some(radius)
@@ -3464,7 +3428,9 @@ mod tests {
         );
         let left_wall_radii = left_body
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter_map(|point| {
                 let radius = f64::from(point[0]).hypot(f64::from(point[1]));
                 (point[2] > 0.1 && point[2] < 9.9).then_some(radius)
@@ -3562,7 +3528,7 @@ mod tests {
                     .is_some_and(|cylinder| (cylinder.radius - 5.0).abs() < 1e-6)
             })
             .expect("extruded M10 shaft must expose an analytic cylinder");
-        let cylinder = shaft_face.cylinder.clone().unwrap();
+        let cylinder = shaft_face.cylinder.unwrap();
         assert!(
             cylinder.axis.z < -0.99,
             "regression requires the OCCT cylinder's reversed -Z axis, got {:?}",
@@ -3611,7 +3577,9 @@ mod tests {
         );
         let wall_radii = body
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .filter_map(|point| {
                 let radius = f64::from(point[0]).hypot(f64::from(point[1]));
                 (point[2] > 0.1 && point[2] < 19.9).then_some(radius)
@@ -3909,7 +3877,9 @@ mod tests {
             ]
         };
         body.indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|triangle| {
                 let (a, b, c) = (point(triangle[0]), point(triangle[1]), point(triangle[2]));
                 (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])

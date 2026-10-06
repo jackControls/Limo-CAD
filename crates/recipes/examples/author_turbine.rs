@@ -307,8 +307,7 @@ impl Author {
         name: &str,
         center: [f64; 2],
         diameter: f64,
-        z: f64,
-        height: f64,
+        (z, height): (f64, f64),
         op: &str,
         target: Option<&str>,
     ) -> String {
@@ -326,10 +325,8 @@ impl Author {
     fn block(
         &mut self,
         name: &str,
-        min: [f64; 2],
-        max: [f64; 2],
-        z: f64,
-        height: f64,
+        (min, max): ([f64; 2], [f64; 2]),
+        (z, height): (f64, f64),
         op: &str,
         target: Option<&str>,
     ) -> String {
@@ -358,8 +355,7 @@ impl Author {
         &mut self,
         name: &str,
         target: &str,
-        y: f64,
-        z: f64,
+        (y, z): (f64, f64),
         diameter: f64,
         half_grip: f64,
         seat_diameter: f64,
@@ -399,49 +395,40 @@ impl Author {
         self.extrude(name, 3., "cut", Some(target));
     }
     fn motor_cradle(&mut self) {
-        self.cylinder("motor_mount", [0., 0.], 37., 0., 24., "new_body", None);
+        self.cylinder("motor_mount", [0., 0.], 37., (0., 24.), "new_body", None);
         self.cylinder(
             "motor_mount_cavity",
             [0., 0.],
             32.6,
-            D.motor_rear_clearance,
-            24. - D.motor_rear_clearance,
+            (D.motor_rear_clearance, 24. - D.motor_rear_clearance),
             "cut",
             Some("motor_mount"),
         );
         self.block(
             "motor_clamp_split",
-            [-0.6, -20.],
-            [0.6, -13.],
-            D.motor_rear_clearance,
-            24. - D.motor_rear_clearance,
+            ([-0.6, -20.], [0.6, -13.]),
+            (D.motor_rear_clearance, 24. - D.motor_rear_clearance),
             "cut",
             Some("motor_mount"),
         );
         self.block(
             "motor_clamp_left",
-            [-11., -23.],
-            [-0.6, -16.5],
-            0.,
-            20.,
+            ([-11., -23.], [-0.6, -16.5]),
+            (0., 20.),
             "join",
             Some("motor_mount"),
         );
         self.block(
             "motor_clamp_right",
-            [0.6, -23.],
-            [8., -16.5],
-            0.,
-            20.,
+            ([0.6, -23.], [8., -16.5]),
+            (0., 20.),
             "join",
             Some("motor_mount"),
         );
         self.block(
             "motor_adjustment_backtab",
-            [-13.5, 16.],
-            [13.5, 23.],
-            0.,
-            20.,
+            ([-13.5, 16.], [13.5, 23.]),
+            (0., 20.),
             "join",
             Some("motor_mount"),
         );
@@ -449,25 +436,21 @@ impl Author {
             "motor_rear_terminal_opening",
             [0., 0.],
             28.,
-            0.,
-            D.motor_rear_clearance,
+            (0., D.motor_rear_clearance),
             "cut",
             Some("motor_mount"),
         );
         self.block(
             "motor_independent_wire_channel",
-            [12., -4.],
-            [22., 4.],
-            0.,
-            D.motor_rear_clearance,
+            ([12., -4.], [22., 4.]),
+            (0., D.motor_rear_clearance),
             "cut",
             Some("motor_mount"),
         );
         self.clamp(
             "motor_cradle_clamp",
             "motor_mount",
-            -19.75,
-            16.,
+            (-19.75, 16.),
             3.2,
             8.,
             6.4,
@@ -544,7 +527,7 @@ impl Author {
         let root = pitch - 1.25 * m;
         let base = pitch * (20_f64.to_radians()).cos();
         let tip = pitch + m;
-        self.cylinder(name, [0., 0.], 2. * root, 0., 3., "new_body", None);
+        self.cylinder(name, [0., 0.], 2. * root, (0., 3.), "new_body", None);
         let inv = |radius: f64| {
             let t = ((radius / base).powi(2) - 1.).max(0.).sqrt();
             t - t.atan()
@@ -617,8 +600,7 @@ impl Author {
             &format!("{name}_hub"),
             [0., 0.],
             hub,
-            0.,
-            if teeth > 30 { 12. } else { 6. },
+            (0., if teeth > 30 { 12. } else { 6. }),
             "join",
             Some(name),
         );
@@ -626,25 +608,24 @@ impl Author {
             &format!("{name}_bore"),
             [0., 0.],
             bore,
-            0.,
-            15.,
+            (0., 15.),
             "cut",
             Some(name),
         );
         self.block(
             &format!("{name}_clamp_split"),
-            [-0.6, -hub],
-            [0.6, 0.],
-            3.,
-            12.,
+            ([-0.6, -hub], [0.6, 0.]),
+            (3., 12.),
             "cut",
             Some(name),
         );
         self.clamp(
             &format!("{name}_clamp_bolt"),
             name,
-            if teeth > 30 { -7.68 } else { -3.2 },
-            if teeth > 30 { 8. } else { 4.5 },
+            (
+                if teeth > 30 { -7.68 } else { -3.2 },
+                if teeth > 30 { 8. } else { 4.5 },
+            ),
             if teeth > 30 { 3.2 } else { 2.2 },
             if teeth > 30 { 4.8 } else { 2. },
             if teeth > 30 { 6.4 } else { 4.8 },
@@ -657,7 +638,7 @@ fn main() {
     a.present_construction = true;
     a.note("The experiment","Two 198 mm rotor discs, 200 mm combined bucket height, an 8 x 300 mm shaft and a 4:1 generator drive. The printed design and representative hardware still need physical fit and output testing.");
     a.note("Repeated rotor stage","Concentric driving diameters define a bottom disc, shaft hub and two semicircular bucket walls. The clamp hub ends at 18 mm so only the 8 mm shaft divides the overlap above it. One stage definition appears twice, staggered by 90 degrees. Print each stage upright and the final cap separately.");
-    let stage_plate = a.cylinder("stage", [0., 0.], 198., 0., 3., "new_body", None);
+    let stage_plate = a.cylinder("stage", [0., 0.], 198., (0., 3.), "new_body", None);
     a.bind(
         "stage_plate_feature",
         select(
@@ -668,23 +649,20 @@ fn main() {
             "/id",
         ),
     );
-    a.cylinder("stage_hub", [0., 0.], 24., 0., 18., "join", Some("stage"));
-    a.cylinder("bucket", [40.5, 0.], 99., 0., 100., "new_body", None);
+    a.cylinder("stage_hub", [0., 0.], 24., (0., 18.), "join", Some("stage"));
+    a.cylinder("bucket", [40.5, 0.], 99., (0., 100.), "new_body", None);
     a.cylinder(
         "bucket_inner",
         [40.5, 0.],
         95.,
-        0.,
-        100.,
+        (0., 100.),
         "cut",
         Some("bucket"),
     );
     a.block(
         "bucket_half",
-        [-15., -55.],
-        [95., 0.],
-        0.,
-        100.,
+        ([-15., -55.], [95., 0.]),
+        (0., 100.),
         "cut",
         Some("bucket"),
     );
@@ -694,21 +672,18 @@ fn main() {
         "stage_shaft_fit",
         [0., 0.],
         8.3,
-        0.,
-        100.,
+        (0., 100.),
         "cut",
         Some("stage"),
     );
     a.block(
         "stage_clamp_split",
-        [-0.6, -14.],
-        [0.6, 0.],
-        0.,
-        18.,
+        ([-0.6, -14.], [0.6, 0.]),
+        (0., 18.),
         "cut",
         Some("stage"),
     );
-    a.clamp("stage_clamp_bolt", "stage", -8., 10., 3.2, 4., 6.4);
+    a.clamp("stage_clamp_bolt", "stage", (-8., 10.), 3.2, 4., 6.4);
 
     a.round_vertical_corners(
         "stage",
@@ -737,8 +712,8 @@ fn main() {
         [0., 0., D.upper_stage()],
         turbine_hardware::rz(90.),
     );
-    a.cylinder("cap", [0., 0.], 198., 0., 3., "new_body", None);
-    a.cylinder("cap_bore", [0., 0.], 8.4, 0., 3., "cut", Some("cap"));
+    a.cylinder("cap", [0., 0.], 198., (0., 3.), "new_body", None);
+    a.cylinder("cap_bore", [0., 0.], 8.4, (0., 3.), "cut", Some("cap"));
     a.round_rim("cap", 99., 3., 0.6);
     a.round_rim("cap", 4.2, 3., 0.3);
     a.component("cap", "Rounded rotor top endplate", true, [0., 0., D.cap()]);
@@ -946,13 +921,12 @@ fn main() {
 fn author_fit_coupons() {
     let mut a = Author::new();
     a.note("Qualify the fits first", "Print these four separate PETG specimens in their native Z-up orientation. Use the actual measured shaft, bearing and generator. Record filament, printer profile, measured bore and clamp slip before building both rotor stages. These are fit specimens, not strength or safety certification.");
-    a.cylinder("shaft_coupon", [0., 0.], 36., 0., 3., "new_body", None);
+    a.cylinder("shaft_coupon", [0., 0.], 36., (0., 3.), "new_body", None);
     a.cylinder(
         "shaft_coupon_hub",
         [0., 0.],
         24.,
-        0.,
-        18.,
+        (0., 18.),
         "join",
         Some("shaft_coupon"),
     );
@@ -960,21 +934,25 @@ fn author_fit_coupons() {
         "shaft_coupon_fit",
         [0., 0.],
         8.3,
-        0.,
-        18.,
+        (0., 18.),
         "cut",
         Some("shaft_coupon"),
     );
     a.block(
         "shaft_coupon_split",
-        [-0.6, -14.],
-        [0.6, 0.],
-        0.,
-        18.,
+        ([-0.6, -14.], [0.6, 0.]),
+        (0., 18.),
         "cut",
         Some("shaft_coupon"),
     );
-    a.clamp("shaft_coupon_clamp", "shaft_coupon", -8., 10., 3.2, 4., 6.4);
+    a.clamp(
+        "shaft_coupon_clamp",
+        "shaft_coupon",
+        (-8., 10.),
+        3.2,
+        4.,
+        6.4,
+    );
     a.component(
         "shaft_coupon",
         "8 mm shaft / 8.3 bore / +0.3 diametral",
@@ -982,13 +960,12 @@ fn author_fit_coupons() {
         [78., 70., 0.],
     );
     a.note("Bearing insertion and clamping", "The lower 608 seat opens at the bed side. Remove first-layer flare before measurement. Insert the bearing from below, then tighten the transverse M3 clamp lightly and check that the bearing still rotates freely.");
-    a.cylinder("bearing_coupon", [0., 0.], 52., 0., 6., "new_body", None);
+    a.cylinder("bearing_coupon", [0., 0.], 52., (0., 6.), "new_body", None);
     a.cylinder(
         "bearing_coupon_column",
         [0., 0.],
         36.,
-        0.,
-        18.,
+        (0., 18.),
         "join",
         Some("bearing_coupon"),
     );
@@ -996,8 +973,7 @@ fn author_fit_coupons() {
         "bearing_coupon_relief",
         [0., 0.],
         17.8,
-        0.,
-        18.,
+        (0., 18.),
         "cut",
         Some("bearing_coupon"),
     );
@@ -1005,25 +981,21 @@ fn author_fit_coupons() {
         "bearing_coupon_fit",
         [0., 0.],
         22.3,
-        0.,
-        7.,
+        (0., 7.),
         "cut",
         Some("bearing_coupon"),
     );
     a.block(
         "bearing_coupon_split",
-        [-0.6, -27.],
-        [0.6, 0.],
-        0.,
-        18.,
+        ([-0.6, -27.], [0.6, 0.]),
+        (0., 18.),
         "cut",
         Some("bearing_coupon"),
     );
     a.clamp(
         "bearing_coupon_clamp",
         "bearing_coupon",
-        -14.,
-        4.5,
+        (-14., 4.5),
         3.2,
         5.,
         6.4,

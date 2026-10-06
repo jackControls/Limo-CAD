@@ -255,62 +255,6 @@ pub(crate) fn decode_project(json: &str) -> Result<ProjectModelV9, String> {
     Ok(model)
 }
 
-#[cfg(test)]
-mod identity_migration_tests {
-    use super::*;
-
-    #[test]
-    fn old_model_names_migrate_without_changing_document_data() {
-        let current = crate::SketchManager::new().export_project_model().unwrap();
-        let expected: serde_json::Value = serde_json::from_str(&current).unwrap();
-        for format in [
-            PREVIOUS_PROJECT_FORMAT,
-            LEGACY_PROJECT_FORMAT,
-            PROJECT_FORMAT,
-        ] {
-            let mut saved = expected.clone();
-            saved["format"] = format.into();
-            let migrated = decode_project(&saved.to_string()).unwrap();
-            validate_project(&migrated).unwrap();
-            assert_eq!(serde_json::to_value(migrated).unwrap(), expected);
-        }
-        let mut unsupported = expected;
-        unsupported["format"] = "unknown-project".into();
-        assert!(decode_project(&unsupported.to_string()).is_err());
-    }
-
-    #[test]
-    fn schema_thirteen_migrates_empty_height_intent_and_rejects_disguised_future_fields() {
-        let current = crate::SketchManager::new().export_project_model().unwrap();
-        let mut old: serde_json::Value = serde_json::from_str(&current).unwrap();
-        old["schema_version"] = 13.into();
-        old["print_intent"]["version"] = 3.into();
-        old["print_intent"]
-            .as_object_mut()
-            .unwrap()
-            .remove("height_ranges");
-        old["print_intent"]
-            .as_object_mut()
-            .unwrap()
-            .remove("layer_height_profiles");
-        let migrated = decode_project(&old.to_string()).unwrap();
-        assert_eq!(migrated.print_intent.version, 4);
-        assert!(migrated.print_intent.height_ranges.is_empty());
-        assert!(migrated.print_intent.layer_height_profiles.is_empty());
-        assert_eq!(migrated.print_intent.source_document_id, None);
-        for field in ["height_ranges", "layer_height_profiles"] {
-            let mut disguised = old.clone();
-            disguised["print_intent"][field] = serde_json::json!([]);
-            assert!(decode_project(&disguised.to_string())
-                .unwrap_err()
-                .contains("Older project schema cannot contain print height"));
-        }
-        let mut future = old;
-        future["schema_version"] = 15.into();
-        assert!(decode_project(&future.to_string()).is_err());
-    }
-}
-
 fn migrate_v1_to_v2(model: &mut serde_json::Value) -> Result<(), String> {
     let root = model
         .as_object_mut()
@@ -772,4 +716,60 @@ fn validate_feature_entry(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod identity_migration_tests {
+    use super::*;
+
+    #[test]
+    fn old_model_names_migrate_without_changing_document_data() {
+        let current = crate::SketchManager::new().export_project_model().unwrap();
+        let expected: serde_json::Value = serde_json::from_str(&current).unwrap();
+        for format in [
+            PREVIOUS_PROJECT_FORMAT,
+            LEGACY_PROJECT_FORMAT,
+            PROJECT_FORMAT,
+        ] {
+            let mut saved = expected.clone();
+            saved["format"] = format.into();
+            let migrated = decode_project(&saved.to_string()).unwrap();
+            validate_project(&migrated).unwrap();
+            assert_eq!(serde_json::to_value(migrated).unwrap(), expected);
+        }
+        let mut unsupported = expected;
+        unsupported["format"] = "unknown-project".into();
+        assert!(decode_project(&unsupported.to_string()).is_err());
+    }
+
+    #[test]
+    fn schema_thirteen_migrates_empty_height_intent_and_rejects_disguised_future_fields() {
+        let current = crate::SketchManager::new().export_project_model().unwrap();
+        let mut old: serde_json::Value = serde_json::from_str(&current).unwrap();
+        old["schema_version"] = 13.into();
+        old["print_intent"]["version"] = 3.into();
+        old["print_intent"]
+            .as_object_mut()
+            .unwrap()
+            .remove("height_ranges");
+        old["print_intent"]
+            .as_object_mut()
+            .unwrap()
+            .remove("layer_height_profiles");
+        let migrated = decode_project(&old.to_string()).unwrap();
+        assert_eq!(migrated.print_intent.version, 4);
+        assert!(migrated.print_intent.height_ranges.is_empty());
+        assert!(migrated.print_intent.layer_height_profiles.is_empty());
+        assert_eq!(migrated.print_intent.source_document_id, None);
+        for field in ["height_ranges", "layer_height_profiles"] {
+            let mut disguised = old.clone();
+            disguised["print_intent"][field] = serde_json::json!([]);
+            assert!(decode_project(&disguised.to_string())
+                .unwrap_err()
+                .contains("Older project schema cannot contain print height"));
+        }
+        let mut future = old;
+        future["schema_version"] = 15.into();
+        assert!(decode_project(&future.to_string()).is_err());
+    }
 }

@@ -65,12 +65,16 @@ fn joining_many_adjacent_tools_preserves_exact_solid_and_keep_tools() {
         assert_eq!(body.edges.len(), 12);
         let min_x = body
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| p[0])
             .fold(f32::INFINITY, f32::min);
         let max_x = body
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| p[0])
             .fold(f32::NEG_INFINITY, f32::max);
         assert_eq!((min_x, max_x), (0., 25.));

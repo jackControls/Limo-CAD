@@ -1447,7 +1447,7 @@ impl CamOperationDto {
             clearance_z: *clearance_z,
             retract_z: *retract_z,
             feed_height_z: *feed_height_z,
-            cutting: cutting.clone(),
+            cutting: *cutting,
         }
     }
 

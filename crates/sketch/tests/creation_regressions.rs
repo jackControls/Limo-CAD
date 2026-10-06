@@ -30,9 +30,7 @@ fn clockwise_acquisitions_follow_stored_endpoints() {
                 }
                 let arc = s
                     .add_arc_center_locked(
-                        v(0.0, 0.0),
-                        v(5.0, 0.0),
-                        v(0.0, -5.0),
+                        (v(0.0, 0.0), v(5.0, 0.0), v(0.0, -5.0)),
                         false,
                         locked_radius,
                         None,
@@ -72,9 +70,7 @@ fn typed_sweep_does_not_acquire_an_off_angle_or_off_radius_cursor_point() {
         let point = s.add_point(hint).unwrap().entities[0];
         s.toggle_fix(point).unwrap();
         s.add_arc_center_locked(
-            Vec2::ZERO,
-            v(5.0, 0.0),
-            hint,
+            (Vec2::ZERO, v(5.0, 0.0), hint),
             false,
             Some(5.0),
             None,
@@ -97,9 +93,7 @@ fn driving_arc_angle_retains_formula_and_reference_mode_keeps_formatting() {
     ] {
         let mut s = session();
         s.add_arc_center_locked(
-            v(20.0, 20.0),
-            v(25.0, 20.0),
-            v(20.0, 25.0),
+            (v(20.0, 20.0), v(25.0, 20.0), v(20.0, 25.0)),
             true,
             None,
             None,
@@ -193,9 +187,7 @@ fn deleting_arc_preserves_authored_shared_and_constrained_points() {
 fn negative_literal_angle_keeps_its_signed_editor_value() {
     let mut s = session();
     s.add_arc_center_locked(
-        v(20.0, 20.0),
-        v(25.0, 20.0),
-        v(20.0, 15.0),
+        (v(20.0, 20.0), v(25.0, 20.0), v(20.0, 15.0)),
         true,
         None,
         None,

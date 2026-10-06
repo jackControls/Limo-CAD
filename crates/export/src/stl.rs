@@ -27,7 +27,7 @@ pub fn write_stl(meshes: &[TriangleMesh]) -> Result<Vec<u8>, ExportError> {
                 mesh.body_id.0
             )));
         }
-        for tri in mesh.indices.chunks_exact(3) {
+        for tri in mesh.indices.as_chunks::<3>().0 {
             let (a, b, c) = (
                 vertex(&mesh.positions, tri[0])?,
                 vertex(&mesh.positions, tri[1])?,

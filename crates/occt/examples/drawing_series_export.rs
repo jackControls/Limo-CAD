@@ -3,6 +3,8 @@
 mod fixture;
 use limo_cad_core::UnitSystem;
 use limo_cad_occt as occt;
+#[path = "../tests/support/straight_export.rs"]
+pub mod rectangle;
 use limo_cad_sketch::AssemblyDocumentDto;
 use occt::drawing_export::{export_sheet_with_units, DrawingExportFormat, DrawingExportRequest};
 use serde_json::json;

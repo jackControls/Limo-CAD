@@ -61,7 +61,7 @@ impl StockBoundary {
     fn component(&self, id: u8, p: [f64; 3]) -> (f64, [f64; 3]) {
         if id < 6 {
             let axis = id as usize / 2;
-            let sign = if id % 2 == 0 { -1. } else { 1. };
+            let sign = if id.is_multiple_of(2) { -1. } else { 1. };
             let mut normal = [0.; 3];
             normal[axis] = sign;
             return (
@@ -338,13 +338,17 @@ type FeatureKey = [u32; 18];
 /// changed region stay exact.
 type DisplayKey = ([u64; 3], [u32; 3]);
 type EdgeKey = ([u64; 6], [Option<Feature>; 2]);
+type DisplayVertex = ([f64; 3], [f32; 3]);
+type VertexMemo = Memo<[u64; 6], Option<DisplayVertex>>;
+type DisplayCache = HashMap<DisplayKey, DisplayVertex>;
+type EdgeCache = HashMap<EdgeKey, Option<([f64; 3], f64)>>;
 
 #[derive(Default)]
 pub(super) struct RefinerMemo {
-    vertices: Option<Memo<[u64; 6], Option<([f64; 3], [f32; 3])>>>,
+    vertices: Option<VertexMemo>,
     features: HashMap<FeatureKey, Option<Feature>>,
-    display: HashMap<DisplayKey, ([f64; 3], [f32; 3])>,
-    edges: HashMap<EdgeKey, Option<([f64; 3], f64)>>,
+    display: DisplayCache,
+    edges: EdgeCache,
 }
 
 impl RefinerMemo {
@@ -375,11 +379,11 @@ pub(super) struct Refiner<'a> {
     root: usize,
     band: f64,
     evaluations: Cell<usize>,
-    vertices: Memo<[u64; 6], Option<([f64; 3], [f32; 3])>>,
+    vertices: VertexMemo,
     samples: Memo<[u64; 3], Option<Sample>>,
     features: std::cell::RefCell<HashMap<FeatureKey, Option<Feature>>>,
-    display: std::cell::RefCell<HashMap<DisplayKey, ([f64; 3], [f32; 3])>>,
-    edges: std::cell::RefCell<HashMap<EdgeKey, Option<([f64; 3], f64)>>>,
+    display: std::cell::RefCell<DisplayCache>,
+    edges: std::cell::RefCell<EdgeCache>,
 }
 
 impl<'a> Refiner<'a> {
@@ -1173,16 +1177,17 @@ fn solve_planes(planes: &[([f64; 3], f64)]) -> [f64; 3] {
             .unwrap();
         m.swap(i, pivot);
         let scale = m[i][i];
-        for j in i..4 {
-            m[i][j] /= scale;
+        for value in &mut m[i][i..] {
+            *value /= scale;
         }
-        for k in 0..3 {
+        let pivot_row = m[i];
+        for (k, row) in m.iter_mut().enumerate() {
             if k == i {
                 continue;
             }
-            let factor = m[k][i];
-            for j in i..4 {
-                m[k][j] -= factor * m[i][j];
+            let factor = row[i];
+            for (value, pivot_value) in row[i..].iter_mut().zip(&pivot_row[i..]) {
+                *value -= factor * pivot_value;
             }
         }
     }

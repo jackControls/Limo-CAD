@@ -292,7 +292,7 @@ impl SketchManager {
             let bounds = group_bounds
                 .entry(*root)
                 .or_insert([f64::INFINITY, f64::NEG_INFINITY]);
-            for point in mesh.positions.chunks_exact(3) {
+            for point in mesh.positions.as_chunks::<3>().0 {
                 let z =
                     transform.transform_point([point[0] as f64, point[1] as f64, point[2] as f64])
                         [2];

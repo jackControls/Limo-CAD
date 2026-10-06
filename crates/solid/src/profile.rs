@@ -881,7 +881,7 @@ pub fn extract_bounded_faces(
 
     let half_endpoints = |half_edge: usize| {
         let [a, b] = endpoints[half_edge / 2];
-        if half_edge % 2 == 0 {
+        if half_edge.is_multiple_of(2) {
             (a, b)
         } else {
             (b, a)

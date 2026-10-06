@@ -317,10 +317,7 @@ impl SurfaceRegistry {
                 Field::Choice { options, .. }
                     if options
                         .iter()
-                        .any(|option| option.value == *value && !option.disabled) =>
-                {
-                    ()
-                }
+                        .any(|option| option.value == *value && !option.disabled) => {}
                 Field::Choice { .. } => return Err(ControlError::OptionUnavailable),
                 _ => return Err(ControlError::NotEditable),
             }

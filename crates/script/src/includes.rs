@@ -49,16 +49,15 @@ pub fn flatten_includes(
 /// climb above the root directory.
 pub fn resolve_include_path(from_file: &str, include_path: &str) -> Result<String, String> {
     validate_include_path(include_path)?;
-    if from_file.contains('\\')
+    if (from_file.contains('\\')
         || from_file
             .split('/')
-            .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+            .any(|segment| segment.is_empty() || segment == "." || segment == ".."))
+        && !from_file.is_empty()
     {
-        if !from_file.is_empty() {
-            return Err(format!(
-                "Include base must be a relative forward-slash path: {from_file}"
-            ));
-        }
+        return Err(format!(
+            "Include base must be a relative forward-slash path: {from_file}"
+        ));
     }
     let parent = match from_file.rsplit_once('/') {
         Some((dir, _)) if !from_file.is_empty() => dir,

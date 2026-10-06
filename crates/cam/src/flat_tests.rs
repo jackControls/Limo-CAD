@@ -196,8 +196,7 @@ fn flat_rejects_flutes_that_cannot_reach_the_detected_floor() {
     short.flute_length = 1.0;
     let doc = document(vec![flat(0.0, MillingDirection::Climb)], vec![short]);
     let error = plan_setup(&doc, 1)
-        .err()
-        .expect("a one-millimeter flute cannot finish the five-millimeter step");
+        .expect_err("a one-millimeter flute cannot finish the five-millimeter step");
     assert!(error.0.contains("flute length"), "{}", error.0);
 }
 
@@ -278,7 +277,7 @@ fn ring_floor() -> CamOperationDto {
             v(1, i + 1),
         ]);
     }
-    for tri in mesh.indices.chunks_exact_mut(3) {
+    for tri in mesh.indices.as_chunks_mut::<3>().0 {
         tri.swap(1, 2);
     }
     let mut op = flat(0.0, MillingDirection::Climb);

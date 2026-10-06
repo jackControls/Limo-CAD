@@ -1,3 +1,4 @@
+use super::straight_fixture as rectangle;
 use super::*;
 use crate as occt;
 #[path = "../../tests/support/advanced_export.rs"]

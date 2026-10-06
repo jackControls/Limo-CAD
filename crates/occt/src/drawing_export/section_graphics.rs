@@ -150,10 +150,10 @@ fn generate(
                 .ok_or("Section sort work overflow")?,
         )?;
         xs.sort_unstable_by(f64::total_cmp);
-        if xs.len() % 2 != 0 {
+        if !xs.len().is_multiple_of(2) {
             return Err("Section boundary is open; cannot hatch a manufacturing drawing".into());
         }
-        for pair in xs.chunks_exact(2) {
+        for pair in xs.as_chunks::<2>().0 {
             if let Some(tiles) = &tiles {
                 tiles.emit(&mut graphics, [pair[0], pair[1]], y, u, n)?;
                 continue;

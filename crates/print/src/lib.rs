@@ -377,11 +377,12 @@ fn dark_counts(
 ) -> (Vec<usize>, Vec<usize>) {
     let mut rows = vec![0usize; g.h];
     let mut cols = vec![0usize; g.w];
-    for y in y0..y1 {
+    for (offset, row_count) in rows[y0..y1].iter_mut().enumerate() {
+        let y = y0 + offset;
         let row = &g.px[y * g.w..(y + 1) * g.w];
         for x in x0..x1 {
             if row[x] < thr {
-                rows[y] += 1;
+                *row_count += 1;
                 cols[x] += 1;
             }
         }
@@ -500,6 +501,8 @@ fn stroke_width(g: &Gray, fixed: usize, lo: usize, hi: usize, horizontal: bool, 
     widths[widths.len() / 2] as f64
 }
 
+type CalibrationCandidate = (f64, f64, usize, usize, usize, usize, f64, f64);
+
 /// Find the plate outline on the sheet.
 /// Candidate lines are the strongest vertical and horizontal ink lines away from the page
 /// border (the drawing frame). A candidate rectangle pairs two of each with the span ratio
@@ -520,7 +523,7 @@ pub fn calibrate(source: &Source, length: f64, width: f64) -> Result<Cal, String
     let expect: Option<Vec<usize>> = None;
     let hint: Option<(f64, f64, f64, f64)> = HINT.with(|h| *h.borrow());
 
-    let mut cands: Vec<(f64, f64, usize, usize, usize, usize, f64, f64)> = Vec::new();
+    let mut cands: Vec<CalibrationCandidate> = Vec::new();
     for i in 0..xc.len() {
         for j in i + 1..xc.len() {
             let (x0, x1) = (xc[i], xc[j]);
@@ -531,8 +534,7 @@ pub fn calibrate(source: &Source, length: f64, width: f64) -> Result<Cal, String
             let want = span_x * target;
             for k in 0..yc.len() {
                 let y0 = yc[k];
-                for l in k + 1..yc.len() {
-                    let y1 = yc[l];
+                for &y1 in &yc[k + 1..] {
                     let span_y = (y1 - y0) as f64;
                     if span_y < want * 0.97 {
                         continue;
@@ -540,7 +542,7 @@ pub fn calibrate(source: &Source, length: f64, width: f64) -> Result<Cal, String
                     if span_y > want * 1.03 {
                         break;
                     }
-                    let dbg = expect.as_ref().map_or(false, |v| {
+                    let dbg = expect.as_ref().is_some_and(|v| {
                         (v[0] as i64 - x0 as i64).abs() <= 6
                             && (v[1] as i64 - x1 as i64).abs() <= 6
                             && (v[2] as i64 - y0 as i64).abs() <= 6
@@ -628,19 +630,16 @@ pub fn calibrate(source: &Source, length: f64, width: f64) -> Result<Cal, String
         .iter()
         .cloned()
         .filter(|c| c.7 >= 0.9 * max_width && c.6 >= 0.75 * max_width)
-        .fold(
-            None,
-            |acc: Option<(f64, f64, usize, usize, usize, usize, f64, f64)>, c| match acc {
-                None => Some(c),
-                Some(b) => {
-                    if c.0 > b.0 {
-                        Some(c)
-                    } else {
-                        Some(b)
-                    }
+        .fold(None, |acc: Option<CalibrationCandidate>, c| match acc {
+            None => Some(c),
+            Some(b) => {
+                if c.0 > b.0 {
+                    Some(c)
+                } else {
+                    Some(b)
                 }
-            },
-        );
+            }
+        });
     let Some((_, span_x, x0, x1, yt, yb, _, _)) = best else {
         return Err("plate outline not found on the page: check length_mm and width_mm, or pass a hint window around the plan view".into());
     };
@@ -925,7 +924,7 @@ fn probe_centre(g: &Gray, cx: f64, cy: f64, ppm: f64, r_max_mm: f64) -> Probe {
             if li >= 0.5
                 && interior_light(g, cx, cy, r * 1.9) >= 0.5
                 && thick_fraction(g, cx, cy, r, ppm, (1.0f64).max(0.4 * r / ppm)) <= 0.25
-                && best_dashed.as_ref().map_or(true, |p| s > p.ring)
+                && best_dashed.as_ref().is_none_or(|p| s > p.ring)
             {
                 best_dashed = Some(Probe {
                     kind: "dashed",
@@ -1140,7 +1139,11 @@ pub fn ring_score(
             px,
             py,
             ppm,
-            (h.d * 0.9).max(3.0).min(32.0),
+            if h.d.is_nan() {
+                3.0
+            } else {
+                (h.d * 0.9).clamp(3.0, 32.0)
+            },
             search_mm,
         );
         let on = p.kind != "none";
@@ -1454,7 +1457,7 @@ pub fn symbols(
                 continue;
             }
             let dist = ((h.x - s.x).powi(2) + (h.y - s.y).powi(2)).sqrt();
-            if dist <= 2.5 && best.map_or(true, |b| dist < b.0) {
+            if dist <= 2.5 && best.is_none_or(|b| dist < b.0) {
                 best = Some((dist, si));
             }
         }

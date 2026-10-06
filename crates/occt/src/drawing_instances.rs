@@ -237,40 +237,6 @@ pub fn resolve_drawing_anchor(
     placed_point(point, pose.as_ref())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn exact_short_arc_center_does_not_depend_on_display_samples() {
-        let mut scene: SolidSceneDto = serde_json::from_value(json!({
-            "bodies":[{"id":1,"name":"Thread rim","feature_id":1,
-                "mesh":{"positions":[],"normals":[],"indices":[]},"faces":[],
-                "edges":[{"id":2,"key":"edge:11","refinable":false,
-                    "points":[{"x":12.,"y":0.,"z":36.897},{"x":12.,"y":0.01,"z":36.89699438}],
-                    "circle":{"center":{"x":12.,"y":0.,"z":28.},"normal":{"x":1.,"y":0.,"z":0.},
-                        "reference":{"x":0.,"y":0.,"z":1.},"radius":8.897,"closed":false}}]}],
-            "errors":[]
-        }))
-        .unwrap();
-        let anchor: DrawingTopologyAnchorRefDto = serde_json::from_value(json!({
-            "body_id":1,"edge_id":2,"edge_key":"edge:11","endpoint":"start",
-            "circle_center":true,"fallback_point":[999.,999.,999.]
-        }))
-        .unwrap();
-        assert_eq!(
-            resolve_drawing_anchor(&scene, &AssemblyDocumentDto::default(), &anchor).unwrap(),
-            [12., 0., 28.]
-        );
-        scene.bodies[0].edges[0].circle = None;
-        assert!(
-            resolve_drawing_anchor(&scene, &AssemblyDocumentDto::default(), &anchor).is_err(),
-            "insufficient samples and stale fallback must not invent a circle center"
-        );
-    }
-}
-
 pub fn resolve_drawing_line(
     scene: &SolidSceneDto,
     assembly: &AssemblyDocumentDto,
@@ -319,4 +285,38 @@ fn reference_edge<'a>(
         .find(|value| value.id == edge && value.key == key)
         .or_else(|| body.edges.iter().find(|value| value.key == key))
         .ok_or_else(|| OcctError("Drawing reference topology is stale".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn exact_short_arc_center_does_not_depend_on_display_samples() {
+        let mut scene: SolidSceneDto = serde_json::from_value(json!({
+            "bodies":[{"id":1,"name":"Thread rim","feature_id":1,
+                "mesh":{"positions":[],"normals":[],"indices":[]},"faces":[],
+                "edges":[{"id":2,"key":"edge:11","refinable":false,
+                    "points":[{"x":12.,"y":0.,"z":36.897},{"x":12.,"y":0.01,"z":36.89699438}],
+                    "circle":{"center":{"x":12.,"y":0.,"z":28.},"normal":{"x":1.,"y":0.,"z":0.},
+                        "reference":{"x":0.,"y":0.,"z":1.},"radius":8.897,"closed":false}}]}],
+            "errors":[]
+        }))
+        .unwrap();
+        let anchor: DrawingTopologyAnchorRefDto = serde_json::from_value(json!({
+            "body_id":1,"edge_id":2,"edge_key":"edge:11","endpoint":"start",
+            "circle_center":true,"fallback_point":[999.,999.,999.]
+        }))
+        .unwrap();
+        assert_eq!(
+            resolve_drawing_anchor(&scene, &AssemblyDocumentDto::default(), &anchor).unwrap(),
+            [12., 0., 28.]
+        );
+        scene.bodies[0].edges[0].circle = None;
+        assert!(
+            resolve_drawing_anchor(&scene, &AssemblyDocumentDto::default(), &anchor).is_err(),
+            "insufficient samples and stale fallback must not invent a circle center"
+        );
+    }
 }

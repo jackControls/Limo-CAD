@@ -2659,7 +2659,7 @@ pub(crate) mod tests {
     fn profile() -> Value {
         json!({"version":"02.08.02.61","from":"project","printer_technology":"FFF","printer_settings_id":"Bambu Lab X2D 0.4 nozzle","printer_model":"Bambu Lab X2D","printer_variant":"0.4","print_settings_id":"0.20mm High Quality @BBL X2D","nozzle_diameter":["0.4","0.4"],"filament_settings_id":["Bambu PETG Basic @BBL X2D 0.4 nozzle"],"filament_type":["PETG"],"filament_colour":["#034638"],"filament_diameter":["1.75"],"nozzle_temperature":["255"],"nozzle_temperature_initial_layer":["255"],"filament_map":["1"],"filament_nozzle_map":["0"],"support_filament":"0","support_interface_filament":"1","machine_start_gcode":"G28","machine_end_gcode":"M400","gcode_flavor":"marlin","printable_height":"256","printable_area":["0x0","256x0","256x256","0x256"],"layer_height":"0.2","initial_layer_print_height":"0.2","wall_loops":"2","sparse_infill_density":"15%","sparse_infill_pattern":"gyroid","top_shell_layers":"5","bottom_shell_layers":"3"})
     }
-    pub(crate) fn fixture() -> (
+    type TemplateFixture = (
         Vec<u8>,
         Vec<TriangleMesh>,
         Vec<BodyAppearance>,
@@ -2667,7 +2667,9 @@ pub(crate) mod tests {
         limo_cad_assembly::ComponentStructureDto,
         PrintIntentDocumentDto,
         BambuProjectRequest,
-    ) {
+    );
+
+    pub(crate) fn fixture() -> TemplateFixture {
         let mut entries = BTreeMap::new();
         entries.insert(ROOT.into(),format!(r#"<model xmlns="{CORE_NS}" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" unit="millimeter"><metadata name="Application">BambuStudio-02.08.02.61</metadata><resources><object id="20" type="model"><components><component objectid="7" p:path="/3D/Objects/a.model" transform="1 0 0 0 1 0 0 0 1 0 0 0"/><component objectid="9" p:path="/3D/Objects/b.model" transform="1 0 0 0 1 0 0 0 1 20 0 0"/></components></object></resources><build><item objectid="20" transform="1 0 0 0 1 0 0 0 1 20 20 0"/><item objectid="20" transform="1 0 0 0 1 0 0 0 1 80 20 0"/></build></model>"#).into_bytes());
         for (path, id) in [("3D/Objects/a.model", 7), ("3D/Objects/b.model", 9)] {

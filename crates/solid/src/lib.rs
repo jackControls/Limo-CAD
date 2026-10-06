@@ -14,7 +14,7 @@ mod topology;
 pub use dto::*;
 pub use history::{
     hole_reference_center, ordered_path, pattern_copy_count, plane_bases_coplanar,
-    validate_external_thread, validate_hole, SolidDocument, SolidError,
+    validate_external_thread, validate_hole, SolidDocument, SolidError, SolidFeatureDefinitions,
 };
 pub use profile::{
     canonicalize_profile_curves, extract_bounded_faces, extract_closed_loops,

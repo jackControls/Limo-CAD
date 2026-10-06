@@ -103,7 +103,7 @@ fn rounded_partial_long_shaft_and_flat_export_closed_meshes() {
             feature_id: FeatureId(2),
             target_body_id: BodyId(1),
             face_key: face.key.clone(),
-            cylinder: face.cylinder.clone().unwrap(),
+            cylinder: face.cylinder.unwrap(),
             thread,
             flip: false,
         }));
@@ -196,7 +196,7 @@ fn assert_rounded_mates(hand: HoleThreadHand) {
         feature_id: FeatureId(2),
         target_body_id: BodyId(1),
         face_key: face.key.clone(),
-        cylinder: face.cylinder.clone().unwrap(),
+        cylinder: face.cylinder.unwrap(),
         thread: spec(),
         flip: false,
     });
@@ -267,7 +267,7 @@ fn assert_rounded_mates(hand: HoleThreadHand) {
         .find(|b| b.body_id == BodyId(1))
         .unwrap();
     let mut curved_samples = 0;
-    for point in body.positions.chunks_exact(3) {
+    for point in body.positions.as_chunks::<3>().0 {
         let x = f64::from(point[0]);
         let y = f64::from(point[1]);
         let z = f64::from(point[2]);
@@ -402,7 +402,7 @@ fn legacy_thread_partial_depth_does_not_cut_the_unthreaded_shank_or_bore() {
                     feature_id: FeatureId(2),
                     target_body_id: BodyId(1),
                     face_key: face.key.clone(),
-                    cylinder: face.cylinder.clone().unwrap(),
+                    cylinder: face.cylinder.unwrap(),
                     thread: spec("6g"),
                     flip: face.cylinder.as_ref().unwrap().axis.z < 0.0,
                 }),
@@ -529,7 +529,9 @@ fn assert_blind_thread_depth(mut thread: HoleThreadDto, predrill: f64) {
         assert_eq!(scene.bodies.len(), 1);
         let cavity: Vec<_> = scene.bodies[0]
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| (f64::from(p[0]).hypot(f64::from(p[1])), f64::from(p[2])))
             .filter(|(radius, z)| *radius < stock_radius - 0.01 && *z < stock_depth - 0.01)
             .collect();
@@ -609,7 +611,7 @@ fn assert_threaded_shoulder(mut thread: HoleThreadDto) {
                         .is_some_and(|c| (c.radius - shaft_radius).abs() < 1e-6)
                 })
                 .unwrap();
-            let cylinder = face.cylinder.clone().unwrap();
+            let cylinder = face.cylinder.unwrap();
             plan.jobs
                 .push(KernelJobDto::ExternalThread(KernelExternalThreadJobDto {
                     feature_id: FeatureId(3),
@@ -628,7 +630,9 @@ fn assert_threaded_shoulder(mut thread: HoleThreadDto) {
             let body = &scene.bodies[0];
             let points: Vec<_> = body
                 .positions
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|p| (f64::from(p[0]).hypot(f64::from(p[1])), f64::from(p[2])))
                 .collect();
             let shoulder_cuts: Vec<_> = points
@@ -651,7 +655,9 @@ fn assert_threaded_shoulder(mut thread: HoleThreadDto) {
             if end < 4.0 {
                 let plain: Vec<_> = body
                     .indices
-                    .chunks_exact(3)
+                    .as_chunks::<3>()
+                    .0
+                    .iter()
                     .map(|triangle| {
                         triangle
                             .iter()

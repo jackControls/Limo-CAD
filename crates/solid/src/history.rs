@@ -11,6 +11,32 @@ const MAX_EXTENT_MM: f64 = 1_000_000.0;
 const MAX_STEP_BASE64_LENGTH: usize = 128 * 1024 * 1024;
 const EPS: f64 = 1e-7;
 
+/// Persistent solid feature definitions. Evaluated geometry is rebuilt separately.
+#[derive(Default)]
+pub struct SolidFeatureDefinitions {
+    pub extrudes: Vec<ExtrudeDefinitionDto>,
+    pub revolves: Vec<RevolveDefinitionDto>,
+    pub sweeps: Vec<SweepDefinitionDto>,
+    pub lofts: Vec<LoftDefinitionDto>,
+    pub ribs: Vec<RibDefinitionDto>,
+    pub fillets: Vec<SolidFilletDefinitionDto>,
+    pub chamfers: Vec<SolidChamferDefinitionDto>,
+    pub holes: Vec<HoleDefinitionDto>,
+    pub body_features: Vec<BodyFeatureDefinitionDto>,
+}
+
+struct SolidFeatureSlices<'a> {
+    extrudes: &'a [ExtrudeDefinitionDto],
+    revolves: &'a [RevolveDefinitionDto],
+    sweeps: &'a [SweepDefinitionDto],
+    lofts: &'a [LoftDefinitionDto],
+    ribs: &'a [RibDefinitionDto],
+    fillets: &'a [SolidFilletDefinitionDto],
+    chamfers: &'a [SolidChamferDefinitionDto],
+    holes: &'a [HoleDefinitionDto],
+    body_features: &'a [BodyFeatureDefinitionDto],
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum SolidError {
     PendingTransaction,
@@ -195,15 +221,17 @@ impl SolidDocument {
     /// explicit deletion; moving the build cursor must preserve references.
     pub fn owned_body_ids_for_feature(&self, feature_id: FeatureId) -> Vec<BodyId> {
         body_owners(
-            &self.extrudes,
-            &self.revolves,
-            &self.sweeps,
-            &self.lofts,
-            &self.ribs,
-            &self.fillets,
-            &self.chamfers,
-            &self.holes,
-            &self.body_features,
+            SolidFeatureSlices {
+                extrudes: &self.extrudes,
+                revolves: &self.revolves,
+                sweeps: &self.sweeps,
+                lofts: &self.lofts,
+                ribs: &self.ribs,
+                fillets: &self.fillets,
+                chamfers: &self.chamfers,
+                holes: &self.holes,
+                body_features: &self.body_features,
+            },
             &self.feature_order,
         )
         .into_iter()
@@ -305,29 +333,31 @@ impl SolidDocument {
     /// Restore persistent feature definitions without restoring tessellation
     /// or B-reps. The caller immediately requests a full kernel recompute.
     pub fn restore_definitions(definitions: Vec<ExtrudeDefinitionDto>) -> Result<Self, SolidError> {
-        Self::restore_feature_definitions(
-            definitions,
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-        )
+        Self::restore_feature_definitions(crate::SolidFeatureDefinitions {
+            extrudes: definitions,
+            revolves: Vec::new(),
+            sweeps: Vec::new(),
+            lofts: Vec::new(),
+            ribs: Vec::new(),
+            fillets: Vec::new(),
+            chamfers: Vec::new(),
+            holes: Vec::new(),
+            body_features: Vec::new(),
+        })
     }
 
     pub fn restore_feature_definitions(
-        extrudes: Vec<ExtrudeDefinitionDto>,
-        revolves: Vec<RevolveDefinitionDto>,
-        sweeps: Vec<SweepDefinitionDto>,
-        lofts: Vec<LoftDefinitionDto>,
-        ribs: Vec<RibDefinitionDto>,
-        fillets: Vec<SolidFilletDefinitionDto>,
-        chamfers: Vec<SolidChamferDefinitionDto>,
-        holes: Vec<HoleDefinitionDto>,
-        body_features: Vec<BodyFeatureDefinitionDto>,
+        SolidFeatureDefinitions {
+            extrudes,
+            revolves,
+            sweeps,
+            lofts,
+            ribs,
+            fillets,
+            chamfers,
+            holes,
+            body_features,
+        }: SolidFeatureDefinitions,
     ) -> Result<Self, SolidError> {
         let mut feature_ids = BTreeSet::new();
         let mut body_ids = BTreeSet::new();
@@ -513,14 +543,14 @@ impl SolidDocument {
             }
             let mut points = [[0.0; 3]; 3];
             let mut valid = true;
-            for corner in 0..3 {
+            for (corner, point) in points.iter_mut().enumerate() {
                 let vertex = body.mesh.indices[offset + corner] as usize;
                 let base = vertex.saturating_mul(3);
                 if base + 2 >= body.mesh.positions.len() {
                     valid = false;
                     break;
                 }
-                points[corner] = [
+                *point = [
                     body.mesh.positions[base] as f64,
                     body.mesh.positions[base + 1] as f64,
                     body.mesh.positions[base + 2] as f64,
@@ -677,14 +707,17 @@ impl SolidDocument {
             new_body_ids,
         });
         self.prepare(
-            definitions,
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            self.ribs.clone(),
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: definitions,
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -770,14 +803,17 @@ impl SolidDocument {
         definition.target_body_ids = request.target_body_ids;
         definition.to_face_basis = to_face_basis;
         self.prepare(
-            definitions,
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            self.ribs.clone(),
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: definitions,
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -816,14 +852,17 @@ impl SolidDocument {
             new_body_ids,
         });
         self.prepare(
-            self.extrudes.clone(),
-            revolves,
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            self.ribs.clone(),
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves,
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -856,14 +895,17 @@ impl SolidDocument {
         definition.operation = request.operation;
         definition.target_body_ids = request.target_body_ids;
         self.prepare(
-            self.extrudes.clone(),
-            revolves,
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            self.ribs.clone(),
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves,
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -894,14 +936,17 @@ impl SolidDocument {
             force_c1: request.force_c1,
         });
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            sweeps,
-            self.lofts.clone(),
-            self.ribs.clone(),
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps,
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -930,14 +975,17 @@ impl SolidDocument {
         definition.transition = request.transition;
         definition.force_c1 = request.force_c1;
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            sweeps,
-            self.lofts.clone(),
-            self.ribs.clone(),
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps,
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -966,14 +1014,17 @@ impl SolidDocument {
             guide_rail: request.guide_rail,
         });
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            lofts,
-            self.ribs.clone(),
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts,
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -1000,14 +1051,17 @@ impl SolidDocument {
         definition.centerline = request.centerline;
         definition.guide_rail = request.guide_rail;
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            lofts,
-            self.ribs.clone(),
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts,
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -1046,14 +1100,17 @@ impl SolidDocument {
             to_face_basis: rib_extent_face_basis(request.extent, &self.scene),
         });
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            ribs,
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs,
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -1088,14 +1145,17 @@ impl SolidDocument {
         definition.extent = request.extent;
         definition.to_face_basis = rib_extent_face_basis(request.extent, &self.scene);
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            ribs,
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs,
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -1133,14 +1193,17 @@ impl SolidDocument {
             tangent_chain: request.tangent_chain,
         });
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            self.ribs.clone(),
-            fillets,
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets,
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -1177,14 +1240,17 @@ impl SolidDocument {
         definition.radius = request.radius;
         definition.tangent_chain = request.tangent_chain;
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            self.ribs.clone(),
-            fillets,
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets,
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -1222,14 +1288,17 @@ impl SolidDocument {
             tangent_chain: request.tangent_chain,
         });
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            self.ribs.clone(),
-            self.fillets.clone(),
-            chamfers,
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers,
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -1266,14 +1335,17 @@ impl SolidDocument {
         definition.distance = request.distance;
         definition.tangent_chain = request.tangent_chain;
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            self.ribs.clone(),
-            self.fillets.clone(),
-            chamfers,
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers,
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -1293,14 +1365,17 @@ impl SolidDocument {
         let mut holes = self.holes.clone();
         holes.push(hole_definition(feature_id, name.into(), request, basis));
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            self.ribs.clone(),
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            holes,
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes,
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -1324,14 +1399,17 @@ impl SolidDocument {
         let name = holes[index].name.clone();
         holes[index] = hole_definition(feature_id, name, request, basis);
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            self.ribs.clone(),
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            holes,
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes,
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -1599,11 +1677,7 @@ impl SolidDocument {
                 if request.tool_body_ids.is_empty() {
                     return Err(SolidError::EmptySelection);
                 }
-                if request
-                    .tool_body_ids
-                    .iter()
-                    .any(|body_id| *body_id == request.target_body_id)
-                {
+                if request.tool_body_ids.contains(&request.target_body_id) {
                     return Err(SolidError::InvalidHistory(
                         "Combine target cannot also be a tool body".to_string(),
                     ));
@@ -1671,14 +1745,17 @@ impl SolidDocument {
     ) -> Result<RecomputePlanDto, SolidError> {
         self.ensure_idle()?;
         self.prepare(
-            self.extrudes.clone(),
-            self.revolves.clone(),
-            self.sweeps.clone(),
-            self.lofts.clone(),
-            self.ribs.clone(),
-            self.fillets.clone(),
-            self.chamfers.clone(),
-            self.holes.clone(),
+            crate::SolidFeatureDefinitions {
+                extrudes: self.extrudes.clone(),
+                revolves: self.revolves.clone(),
+                sweeps: self.sweeps.clone(),
+                lofts: self.lofts.clone(),
+                ribs: self.ribs.clone(),
+                fillets: self.fillets.clone(),
+                chamfers: self.chamfers.clone(),
+                holes: self.holes.clone(),
+                ..Default::default()
+            },
             catalog,
             active_features,
         )
@@ -1777,15 +1854,17 @@ impl SolidDocument {
         }
 
         let owners = body_owners(
-            &pending.extrudes,
-            &pending.revolves,
-            &pending.sweeps,
-            &pending.lofts,
-            &pending.ribs,
-            &pending.fillets,
-            &pending.chamfers,
-            &pending.holes,
-            &pending.body_features,
+            SolidFeatureSlices {
+                extrudes: &pending.extrudes,
+                revolves: &pending.revolves,
+                sweeps: &pending.sweeps,
+                lofts: &pending.lofts,
+                ribs: &pending.ribs,
+                fillets: &pending.fillets,
+                chamfers: &pending.chamfers,
+                holes: &pending.holes,
+                body_features: &pending.body_features,
+            },
             &pending.feature_order,
         );
         let mut seen = BTreeSet::new();
@@ -1903,14 +1982,17 @@ impl SolidDocument {
 
     fn prepare(
         &mut self,
-        extrudes: Vec<ExtrudeDefinitionDto>,
-        revolves: Vec<RevolveDefinitionDto>,
-        sweeps: Vec<SweepDefinitionDto>,
-        lofts: Vec<LoftDefinitionDto>,
-        ribs: Vec<RibDefinitionDto>,
-        fillets: Vec<SolidFilletDefinitionDto>,
-        chamfers: Vec<SolidChamferDefinitionDto>,
-        holes: Vec<HoleDefinitionDto>,
+        SolidFeatureDefinitions {
+            extrudes,
+            revolves,
+            sweeps,
+            lofts,
+            ribs,
+            fillets,
+            chamfers,
+            holes,
+            ..
+        }: SolidFeatureDefinitions,
         catalog: &[ProfileCatalogItemDto],
         active_features: &BTreeSet<FeatureId>,
     ) -> Result<RecomputePlanDto, SolidError> {
@@ -1985,15 +2067,17 @@ impl SolidDocument {
             }
             viable_active.insert(feature_id);
             match make_jobs(
-                &extrudes,
-                &revolves,
-                &sweeps,
-                &lofts,
-                &ribs,
-                &fillets,
-                &chamfers,
-                &holes,
-                &body_features,
+                SolidFeatureSlices {
+                    extrudes: &extrudes,
+                    revolves: &revolves,
+                    sweeps: &sweeps,
+                    lofts: &lofts,
+                    ribs: &ribs,
+                    fillets: &fillets,
+                    chamfers: &chamfers,
+                    holes: &holes,
+                    body_features: &body_features,
+                },
                 catalog,
                 &viable_active,
                 &self.scene,
@@ -2052,15 +2136,17 @@ impl SolidDocument {
         refresh_refinement_references(&mut fillets, &mut chamfers, &self.scene);
         refresh_body_feature_references(&mut body_features, &self.scene);
         let jobs = make_jobs(
-            &extrudes,
-            &revolves,
-            &sweeps,
-            &lofts,
-            &ribs,
-            &fillets,
-            &chamfers,
-            &holes,
-            &body_features,
+            SolidFeatureSlices {
+                extrudes: &extrudes,
+                revolves: &revolves,
+                sweeps: &sweeps,
+                lofts: &lofts,
+                ribs: &ribs,
+                fillets: &fillets,
+                chamfers: &chamfers,
+                holes: &holes,
+                body_features: &body_features,
+            },
             catalog,
             active_features,
             &self.scene,
@@ -2088,15 +2174,17 @@ impl SolidDocument {
 }
 
 fn body_owners(
-    extrudes: &[ExtrudeDefinitionDto],
-    revolves: &[RevolveDefinitionDto],
-    sweeps: &[SweepDefinitionDto],
-    lofts: &[LoftDefinitionDto],
-    ribs: &[RibDefinitionDto],
-    fillets: &[SolidFilletDefinitionDto],
-    chamfers: &[SolidChamferDefinitionDto],
-    holes: &[HoleDefinitionDto],
-    body_features: &[BodyFeatureDefinitionDto],
+    SolidFeatureSlices {
+        extrudes,
+        revolves,
+        sweeps,
+        lofts,
+        ribs,
+        fillets,
+        chamfers,
+        holes,
+        body_features,
+    }: SolidFeatureSlices,
     feature_order: &BTreeMap<FeatureId, usize>,
 ) -> BTreeMap<BodyId, FeatureId> {
     let mut owners = BTreeMap::new();
@@ -2319,15 +2407,17 @@ fn feature_order_key(
 }
 
 fn make_jobs(
-    extrudes: &[ExtrudeDefinitionDto],
-    revolves: &[RevolveDefinitionDto],
-    sweeps: &[SweepDefinitionDto],
-    lofts: &[LoftDefinitionDto],
-    ribs: &[RibDefinitionDto],
-    fillets: &[SolidFilletDefinitionDto],
-    chamfers: &[SolidChamferDefinitionDto],
-    holes: &[HoleDefinitionDto],
-    body_features: &[BodyFeatureDefinitionDto],
+    SolidFeatureSlices {
+        extrudes,
+        revolves,
+        sweeps,
+        lofts,
+        ribs,
+        fillets,
+        chamfers,
+        holes,
+        body_features,
+    }: SolidFeatureSlices,
     catalog: &[ProfileCatalogItemDto],
     active_features: &BTreeSet<FeatureId>,
     previous_scene: &SolidSceneDto,
@@ -4182,12 +4272,9 @@ pub fn validate_hole(request: &HoleRequest) -> Result<(), SolidError> {
         request.extent,
         request.style,
         request.diameter,
-        request.counterbore_diameter,
-        request.counterbore_depth,
-        request.countersink_diameter,
-        request.countersink_angle_deg,
-        request.bottom_style,
-        request.drill_point_angle_deg,
+        (request.counterbore_diameter, request.counterbore_depth),
+        (request.countersink_diameter, request.countersink_angle_deg),
+        (request.bottom_style, request.drill_point_angle_deg),
         request.thread.as_ref(),
     )
 }
@@ -4200,12 +4287,15 @@ fn validate_hole_definition(definition: &HoleDefinitionDto) -> Result<(), SolidE
         definition.extent,
         definition.style,
         definition.diameter,
-        definition.counterbore_diameter,
-        definition.counterbore_depth,
-        definition.countersink_diameter,
-        definition.countersink_angle_deg,
-        definition.bottom_style,
-        definition.drill_point_angle_deg,
+        (
+            definition.counterbore_diameter,
+            definition.counterbore_depth,
+        ),
+        (
+            definition.countersink_diameter,
+            definition.countersink_angle_deg,
+        ),
+        (definition.bottom_style, definition.drill_point_angle_deg),
         definition.thread.as_ref(),
     )
 }
@@ -4229,12 +4319,9 @@ fn validate_hole_values(
     extent: HoleExtent,
     style: HoleStyle,
     diameter: f64,
-    counterbore_diameter: f64,
-    counterbore_depth: f64,
-    countersink_diameter: f64,
-    countersink_angle_deg: f64,
-    bottom_style: HoleBottomStyle,
-    drill_point_angle_deg: f64,
+    (counterbore_diameter, counterbore_depth): (f64, f64),
+    (countersink_diameter, countersink_angle_deg): (f64, f64),
+    (bottom_style, drill_point_angle_deg): (HoleBottomStyle, f64),
     thread: Option<&HoleThreadDto>,
 ) -> Result<(), SolidError> {
     if let HoleExtent::Distance { depth } = extent {
@@ -6037,18 +6124,19 @@ mod tests {
         let saved_move = serde_json::to_string(move_document.body_feature_definitions()).unwrap();
         let restored_move_features: Vec<BodyFeatureDefinitionDto> =
             serde_json::from_str(&saved_move).unwrap();
-        let mut restored_move = SolidDocument::restore_feature_definitions(
-            move_document.definitions().to_vec(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            restored_move_features,
-        )
-        .unwrap();
+        let mut restored_move =
+            SolidDocument::restore_feature_definitions(crate::SolidFeatureDefinitions {
+                extrudes: move_document.definitions().to_vec(),
+                revolves: Vec::new(),
+                sweeps: Vec::new(),
+                lofts: Vec::new(),
+                ribs: Vec::new(),
+                fillets: Vec::new(),
+                chamfers: Vec::new(),
+                holes: Vec::new(),
+                body_features: restored_move_features,
+            })
+            .unwrap();
         let replayed_move = restored_move
             .prepare_recompute(&catalog(), &active_features)
             .unwrap();

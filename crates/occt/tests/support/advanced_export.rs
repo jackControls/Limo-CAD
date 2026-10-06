@@ -1,13 +1,11 @@
 //! Bounded mixed sheet for the twelve advanced shared export routes.
 //! Geometry is synthetic and exact-keyed; it is not OCCT or live-input evidence.
 use super::occt;
+use super::rectangle;
 use limo_cad_sketch::{AssemblyDocumentDto, DrawingDocumentDto};
 use limo_cad_solid::SolidSceneDto;
 use occt::{drawing_export::projection_request, DrawingProjectionDto};
 use serde_json::json;
-#[path = "straight_export.rs"]
-#[allow(dead_code)]
-mod rectangle;
 
 pub const KINDS: [&str; 12] = [
     "chamfer_note",

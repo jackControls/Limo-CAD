@@ -190,7 +190,7 @@ pub(super) fn approach_policy(
     depth: f64,
     plunge: f64,
 ) -> bool {
-    let Some(bounds) = builder.link_obstacles.clone() else {
+    let Some(bounds) = builder.link_obstacles else {
         return false;
     };
     let Some(link) = builder
@@ -209,7 +209,7 @@ pub(super) fn approach_policy(
         return false;
     }
     let mut checker = ProgramBuilder::new();
-    checker.incoming_bounds = Some(bounds.clone());
+    checker.incoming_bounds = Some(bounds);
     let straight_clear = from.z.min(to.z) > bounds.max.z + link.safe_distance
         || outside_stock(
             &checker,

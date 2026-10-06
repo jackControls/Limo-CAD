@@ -1,9 +1,7 @@
+use super::straight_fixture as fixture;
 use super::*;
-use crate as occt;
 use limo_cad_core::UnitSystem;
 use serde_json::{json, Value};
-#[path = "../../tests/support/straight_export.rs"]
-mod fixture;
 
 fn export(
     document: &DrawingDocumentDto,
@@ -31,7 +29,9 @@ fn dxf_entities(dxf: &str, kind: &str) -> Vec<BTreeMap<String, String>> {
         .map(|entity| {
             let lines: Vec<_> = entity.split("\n0\n").next().unwrap().lines().collect();
             lines
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|pair| (pair[0].to_owned(), pair[1].to_owned()))
                 .collect()
         })

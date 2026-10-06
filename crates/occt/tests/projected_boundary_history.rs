@@ -110,7 +110,9 @@ fn mesh_volume(body: &limo_cad_solid::BodyDto) -> f64 {
     };
     body.mesh
         .indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|triangle| {
             let [a, b, c] = [point(triangle[0]), point(triangle[1]), point(triangle[2])];
             a[0] * (b[1] * c[2] - b[2] * c[1])

@@ -421,7 +421,7 @@ impl Sketch {
         for (eid, e) in self.entities() {
             if let Entity::Point { position } = e {
                 let d = position.distance(p);
-                if d <= tolerance && best.map_or(true, |(_, bd)| d < bd) {
+                if d <= tolerance && best.is_none_or(|(_, bd)| d < bd) {
                     best = Some((eid, d));
                 }
             }
@@ -441,7 +441,7 @@ impl Sketch {
                 };
                 let mid = (a + b) * 0.5;
                 let d = mid.distance(p);
-                if d <= tolerance && best.as_ref().map_or(true, |(_, _, bd)| d < *bd) {
+                if d <= tolerance && best.as_ref().is_none_or(|(_, _, bd)| d < *bd) {
                     best = Some((eid, mid, d));
                 }
             }

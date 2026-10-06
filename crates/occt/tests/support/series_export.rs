@@ -1,12 +1,11 @@
 //! Synthetic exact-anchor series fixtures; no OCCT or live-input claim.
 use super::occt;
+use super::rectangle;
 use limo_cad_sketch::DrawingDocumentDto;
 use limo_cad_solid::SolidSceneDto;
 use occt::DrawingProjectionDto;
-use serde_json::json;
-#[path = "straight_export.rs"]
-mod rectangle;
 pub use rectangle::full_presentation;
+use serde_json::json;
 
 pub fn fixture(layout: &str) -> (DrawingDocumentDto, SolidSceneDto, DrawingProjectionDto) {
     let (mut document, scene, projection) = rectangle::fixture("length", 40.);

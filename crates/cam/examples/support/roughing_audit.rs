@@ -77,6 +77,8 @@ fn clip_above(tri: &[Point3Dto; 3], z: f64) -> Vec<P> {
     out
 }
 
+type ArcCapsule = (P, P, f64);
+
 /// Cover the complete finite arc by chord capsules enlarged by the exact
 /// maximum sagitta. This is a continuous bound, not a point-sample verdict.
 /// It remains independent of both the planner's hull and its arc-distance
@@ -86,7 +88,7 @@ fn arc_capsules(
     to: Point3Dto,
     center: Point3Dto,
     clockwise: bool,
-) -> Result<Vec<(P, P, f64)>, Box<dyn std::error::Error>> {
+) -> Result<Vec<ArcCapsule>, Box<dyn std::error::Error>> {
     use std::f64::consts::TAU;
     let q = (from.x - center.x).hypot(from.y - center.y);
     if q <= EPS {
@@ -161,7 +163,9 @@ pub fn audit(
         for mesh in &geometry.targets {
             let points = mesh
                 .positions
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|p| {
                     let d = [
                         p[0] - setup.wcs.origin.x,
@@ -176,7 +180,7 @@ pub fn audit(
                     )
                 })
                 .collect::<Vec<_>>();
-            for tri in mesh.indices.chunks_exact(3) {
+            for tri in mesh.indices.as_chunks::<3>().0 {
                 triangles.push([
                     points[tri[0] as usize],
                     points[tri[1] as usize],

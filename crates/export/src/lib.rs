@@ -279,7 +279,7 @@ mod tests {
         assert_eq!(mesh.positions.len(), 8 * 3);
         assert_eq!(mesh.indices.len(), 12 * 3);
         let (mut min_z, mut max_z) = (f32::MAX, f32::MIN);
-        for chunk in mesh.positions.chunks_exact(3) {
+        for chunk in mesh.positions.as_chunks::<3>().0 {
             min_z = min_z.min(chunk[2]);
             max_z = max_z.max(chunk[2]);
         }

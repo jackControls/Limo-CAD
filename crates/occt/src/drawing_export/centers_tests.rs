@@ -1,8 +1,6 @@
+use super::center_fixture as fixture;
 use super::*;
-use crate as occt;
 use serde_json::json;
-#[path = "../../tests/support/center_export.rs"]
-mod fixture;
 
 #[test]
 fn dxf_custom_strokes_use_supported_pen_weights() {
@@ -218,7 +216,7 @@ fn center_export_tracks_current_radius_and_rejects_lost_or_open_circles() {
 
 #[test]
 fn centerline_keeps_occurrence_identity_and_rejects_coincident_centers() {
-    let (mut doc, scene, mut projection) = fixture::fixture("line", 1., false);
+    let (mut doc, _scene, mut projection) = fixture::fixture("line", 1., false);
     let mut value = serde_json::to_value(&doc.sheets[0].annotations[0]).unwrap();
     value["first"]["occurrence_id"] = json!(7);
     value["second"]["occurrence_id"] = json!(9);

@@ -8,6 +8,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+#[cfg(test)]
+use crate as occt;
+#[cfg(test)]
+#[path = "../tests/support/center_export.rs"]
+mod center_fixture;
+#[cfg(test)]
+#[path = "../tests/support/straight_export.rs"]
+mod straight_fixture;
+
 mod advanced;
 #[cfg(test)]
 mod advanced_tests;
@@ -192,7 +201,7 @@ impl Marks {
     fn weld_labels(&mut self, start: usize, items: &[Primitive]) {
         let group = self.next;
         let mut boxes = Vec::new();
-        for index in start..items.len() {
+        for (index, item) in items.iter().enumerate().skip(start) {
             if let Primitive::Text {
                 point,
                 value,
@@ -200,7 +209,7 @@ impl Marks {
                 centered,
                 fitted_width,
                 ..
-            } = &items[index]
+            } = item
             {
                 boxes.push(text_bounds(
                     *point,
@@ -220,8 +229,8 @@ impl Marks {
             return;
         }
         self.next += 1;
-        for index in start..items.len() {
-            let Primitive::Triangle { points, layer } = &items[index] else {
+        for (index, item) in items.iter().enumerate().skip(start) {
+            let Primitive::Triangle { points, layer } = item else {
                 continue;
             };
             if *layer != TEXT_MASK {
@@ -905,13 +914,14 @@ pub fn projection_request(
     scene: &SolidSceneDto,
     assembly: &AssemblyDocumentDto,
 ) -> Result<DrawingProjectionRequest, String> {
+    type ProjectionBasis = ([f64; 3], [f64; 3], Option<DrawingSectionPlaneDto>);
     fn resolve(
         v: &DrawingViewDto,
         views: &[DrawingViewDto],
         scene: &SolidSceneDto,
         assembly: &AssemblyDocumentDto,
         path: &mut Vec<u64>,
-    ) -> Result<([f64; 3], [f64; 3], Option<DrawingSectionPlaneDto>), String> {
+    ) -> Result<ProjectionBasis, String> {
         if path.contains(&v.id) {
             return Err("Drawing view dependency cycle".into());
         }
@@ -1776,7 +1786,9 @@ mod tests {
             content
                 .lines()
                 .collect::<Vec<_>>()
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|pair| (pair[0].into(), pair[1].into()))
                 .collect()
         };
@@ -2024,7 +2036,9 @@ mod tests {
                 .map(|entity| {
                     let lines: Vec<_> = entity.split("\n0\n").next().unwrap().lines().collect();
                     lines
-                        .chunks_exact(2)
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
                         .map(|pair| (pair[0], pair[1]))
                         .collect()
                 })

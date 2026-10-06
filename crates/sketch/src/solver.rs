@@ -854,7 +854,7 @@ fn build_equations(
 
                         Some(Entity::Line { start, end }) => {
                             for pid in [start, end] {
-                                let p = map.points[&pid];
+                                let p = map.points[pid];
                                 vars.extend([p.0, p.1]);
                             }
                         }
@@ -1776,8 +1776,9 @@ fn solve_square(a: &mut [Vec<f64>], b: &mut [f64]) -> bool {
             if factor == 0.0 {
                 continue;
             }
-            for c in col..n {
-                a[r][c] -= factor * a[col][c];
+            let (before, current) = a.split_at_mut(r);
+            for (value, pivot_value) in current[0][col..n].iter_mut().zip(&before[col][col..n]) {
+                *value -= factor * pivot_value;
             }
             b[r] -= factor * b[col];
         }
@@ -1835,8 +1836,9 @@ fn rank_of(jac: &[Vec<(usize, f64)>], n: usize) -> (usize, Vec<bool>) {
             if factor == 0.0 {
                 continue;
             }
-            for c in col..n {
-                a[r][c] -= factor * a[rank][c];
+            let (before, current) = a.split_at_mut(r);
+            for (value, pivot_value) in current[0][col..n].iter_mut().zip(&before[rank][col..n]) {
+                *value -= factor * pivot_value;
             }
         }
         pivot_col[col] = true;
@@ -2136,8 +2138,8 @@ pub(crate) fn solve_with_stays(
         .entities()
         .filter_map(|(id, e)| match e {
             Entity::Line { start, end } => {
-                let a = map.points[&start];
-                let b = map.points[&end];
+                let a = map.points[start];
+                let b = map.points[end];
                 Some((
                     a.0,
                     a.1,
@@ -2335,8 +2337,6 @@ pub(crate) fn solve_with_stays(
         sketch,
         &map,
         &eqs[..hard_equation_count],
-        &x,
-        &f[..hard_equation_count],
         &jac[..hard_equation_count],
         converged,
         iterations,
@@ -2381,17 +2381,7 @@ pub fn analyze(sketch: &Sketch) -> Analysis {
     let x = read_values(sketch, &map);
     let (f, jac) = eval_all(&eqs, &x, map.n);
     let residual = max_abs(&f);
-    finish_analysis(
-        sketch,
-        &map,
-        &eqs,
-        &x,
-        &f,
-        &jac,
-        residual <= TOL,
-        0,
-        residual,
-    )
+    finish_analysis(sketch, &map, &eqs, &jac, residual <= TOL, 0, residual)
 }
 
 /// Residual of one constraint's own equations at the sketch's current
@@ -2561,14 +2551,11 @@ fn finish_analysis(
     sketch: &Sketch,
     map: &VarMap,
     eqs: &[(Option<ConstraintId>, Eq)],
-    x: &[f64],
-    _f: &[f64],
     jac: &[Vec<(usize, f64)>],
     converged: bool,
     iterations: usize,
     residual: f64,
 ) -> Analysis {
-    let _ = x;
     let (rank, pivot_col) = rank_of(jac, map.n);
     let mut entity_free: HashMap<EntityId, usize> = HashMap::new();
     for (id, entity) in sketch.entities() {
@@ -2657,6 +2644,6 @@ mod tests {
             curve: line,
         });
         assert_eq!(build_var_map(&sketch).n, 6);
-        assert_eq!(solve(&mut sketch, &[]).converged, true);
+        assert!(solve(&mut sketch, &[]).converged);
     }
 }

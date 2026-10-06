@@ -83,15 +83,10 @@ pub(super) fn plan(
         passes += front.clear_exterior(
             builder,
             setup,
-            r,
-            floor_r,
-            depth,
+            (r, floor_r, depth),
             p,
-            cutting.feed_xy,
-            cutting.feed_z,
-            &mut work,
-            &envelope,
-            &[],
+            (cutting.feed_xy, cutting.feed_z),
+            (&mut work, &envelope, &[]),
         )?;
         builder.retract_to_clearance();
         front.mark_completed_cap(floor_r, p);

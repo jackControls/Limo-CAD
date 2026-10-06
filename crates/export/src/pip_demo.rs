@@ -398,7 +398,9 @@ mod tests {
         let drawer = &meshes[1];
         let min_z = drawer
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| p[2])
             .fold(f32::MAX, f32::min);
         assert!(min_z >= 2.5 + CLEAR_MM - 1e-3);
@@ -415,7 +417,9 @@ mod tests {
         }
         assert!(meshes.iter().all(|m| {
             m.positions
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|p| p[2])
                 .fold(f32::MAX, f32::min)
                 >= -1e-3

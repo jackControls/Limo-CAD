@@ -172,9 +172,11 @@ fn mirror_flips_arc_winding_and_preserves_major_and_full_sweeps() {
         let center = v(30., 30.);
         let arc = s
             .add_arc_center_locked(
-                center,
-                center + v(10., 0.),
-                center + v(10. * sweep.cos(), 10. * sweep.sin()),
+                (
+                    center,
+                    center + v(10., 0.),
+                    center + v(10. * sweep.cos(), 10. * sweep.sin()),
+                ),
                 true,
                 None,
                 None,

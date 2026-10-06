@@ -735,15 +735,14 @@ pub(crate) fn strip_jsonc(source: &str) -> Result<String, String> {
             }
         } else if bytes[i] == b'"' {
             string = true;
-        } else if bytes[i] == b',' {
-            if bytes[i + 1..]
+        } else if bytes[i] == b','
+            && bytes[i + 1..]
                 .iter()
                 .copied()
                 .find(|c| !c.is_ascii_whitespace())
                 .is_some_and(|c| c == b']' || c == b'}')
-            {
-                bytes[i] = b' ';
-            }
+        {
+            bytes[i] = b' ';
         }
     }
     String::from_utf8(bytes).map_err(|e| e.to_string())

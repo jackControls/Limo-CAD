@@ -1464,9 +1464,11 @@ pub enum MotionCoordinateDto {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum MotionInterpolationDto {
     Step,
     Linear,
+    #[default]
     Smooth,
 }
 
@@ -1476,12 +1478,6 @@ pub struct MotionKeyframeDto {
     pub value: f64,
     #[serde(default)]
     pub interpolation: MotionInterpolationDto,
-}
-
-impl Default for MotionInterpolationDto {
-    fn default() -> Self {
-        Self::Smooth
-    }
 }
 
 /// A driver either follows authored keyframes or integrates a motor's initial
@@ -3228,7 +3224,7 @@ fn placed_body_bounds(
     }
     let mut minimum = [f64::INFINITY; 3];
     let mut maximum = [f64::NEG_INFINITY; 3];
-    for point in body.mesh.positions.chunks_exact(3) {
+    for point in body.mesh.positions.as_chunks::<3>().0 {
         let transformed = add(
             rotate(
                 pose.rotation,
@@ -4141,8 +4137,8 @@ fn solve_mechanism_coordinates(
                     }
                 }
             }
-            for index in 0..variables.len() {
-                normal[index][index] += damping;
+            for (index, row) in normal.iter_mut().enumerate() {
+                row[index] += damping;
             }
             let delta = solve_linear_system(normal, rhs);
 
@@ -4617,8 +4613,8 @@ fn solve_linear_system(mut matrix: Vec<Vec<f64>>, mut rhs: Vec<f64>) -> Option<V
         matrix.swap(pivot, best);
         rhs.swap(pivot, best);
         let divisor = matrix[pivot][pivot];
-        for column in pivot..size {
-            matrix[pivot][column] /= divisor;
+        for value in &mut matrix[pivot][pivot..] {
+            *value /= divisor;
         }
         rhs[pivot] /= divisor;
         for row in 0..size {
@@ -4629,8 +4625,15 @@ fn solve_linear_system(mut matrix: Vec<Vec<f64>>, mut rhs: Vec<f64>) -> Option<V
             if factor.abs() <= 1.0e-16 {
                 continue;
             }
-            for column in pivot..size {
-                matrix[row][column] -= factor * matrix[pivot][column];
+            let (row_values, pivot_values) = if row < pivot {
+                let (before, after) = matrix.split_at_mut(pivot);
+                (&mut before[row], &after[0])
+            } else {
+                let (before, after) = matrix.split_at_mut(row);
+                (&mut after[0], &before[pivot])
+            };
+            for (value, pivot_value) in row_values[pivot..].iter_mut().zip(&pivot_values[pivot..]) {
+                *value -= factor * pivot_value;
             }
             rhs[row] -= factor * rhs[pivot];
         }

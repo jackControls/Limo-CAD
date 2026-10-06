@@ -32,8 +32,10 @@ impl Refiner<'_> {
         let mut triangles = Vec::with_capacity(mesh.triangle_count);
         for (p, n) in mesh
             .positions
-            .chunks_exact(9)
-            .zip(mesh.normals.chunks_exact(9))
+            .as_chunks::<9>()
+            .0
+            .iter()
+            .zip(mesh.normals.as_chunks::<9>().0)
         {
             let indices = std::array::from_fn(|i| {
                 let point = [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]];
@@ -294,7 +296,7 @@ impl Refiner<'_> {
                 });
                 crossing[i] = Some(id);
             }
-            for side in 0..2 {
+            for (side, feature) in features.iter().enumerate() {
                 let mut polygon = Vec::with_capacity(4);
                 for i in 0..3 {
                     if if side == 0 {
@@ -311,7 +313,7 @@ impl Refiner<'_> {
                 for i in 1..polygon.len().saturating_sub(1) {
                     output.push(Triangle {
                         indices: [polygon[0], polygon[i], polygon[i + 1]],
-                        feature: Some(features[side]),
+                        feature: Some(*feature),
                         normal: triangle.normal,
                     });
                 }
@@ -447,9 +449,9 @@ mod tests {
                 }
             }
             assert_eq!(area, 4.);
-            for i in 0..3 {
+            for (i, mid) in mids.into_iter().enumerate() {
                 let end = (i + 1) % 3;
-                if let Some(mid) = mids[i] {
+                if let Some(mid) = mid {
                     assert_eq!(edges.remove(&edge_key(i, mid)), Some(1));
                     assert_eq!(edges.remove(&edge_key(mid, end)), Some(1));
                 } else {

@@ -1,8 +1,6 @@
+use super::center_fixture as fixture;
 use super::*;
-use crate as occt;
 use serde_json::{json, Value};
-#[path = "../../tests/support/center_export.rs"]
-mod fixture;
 
 fn document() -> (DrawingDocumentDto, SolidSceneDto, DrawingProjectionDto) {
     let (mut document, scene, projection) = fixture::fixture("mark", 2., true);

@@ -830,14 +830,15 @@ impl SketchSession {
     pub fn preview_segment_locked(
         &self,
         from: Vec2,
-        length_mm: Option<f64>,
-        angle_deg: Option<f64>,
+        (length_mm, angle_deg): (Option<f64>, Option<f64>),
         to_hint: Vec2,
         ctrl_held: bool,
-        tracking: Option<LineTrackingRequest>,
-        intersection: Option<LineIntersectionRequest>,
-        from_crossing: Option<CurveCrossingRequest>,
-        to_crossing: Option<CurveCrossingRequest>,
+        (tracking, intersection, from_crossing, to_crossing): (
+            Option<LineTrackingRequest>,
+            Option<LineIntersectionRequest>,
+            Option<CurveCrossingRequest>,
+            Option<CurveCrossingRequest>,
+        ),
     ) -> PreviewDto {
         let from = from_crossing
             .and_then(|request| self.curve_crossing_point(request, from))
@@ -1500,7 +1501,7 @@ impl SketchSession {
             if dc > self.snap_tolerance * 4.0 {
                 continue;
             }
-            if best.map_or(true, |(_, bd)| dc < bd) {
+            if best.is_none_or(|(_, bd)| dc < bd) {
                 best = Some((id, dc));
             }
         }
@@ -1532,7 +1533,7 @@ impl SketchSession {
             if dc > self.snap_tolerance * 4.0 {
                 continue;
             }
-            if best.map_or(true, |(_, bd)| dc < bd) {
+            if best.is_none_or(|(_, bd)| dc < bd) {
                 best = Some((id, dc));
             }
         }
@@ -2048,14 +2049,15 @@ impl SketchSession {
         let preview = match &locks {
             Some(locks) => self.preview_segment_locked(
                 from_coords,
-                locks.length_mm,
-                locks.angle_deg,
+                (locks.length_mm, locks.angle_deg),
                 to_raw,
                 ctrl_held,
-                locks.tracking,
-                locks.intersection,
-                locks.from_crossing,
-                locks.to_crossing,
+                (
+                    locks.tracking,
+                    locks.intersection,
+                    locks.from_crossing,
+                    locks.to_crossing,
+                ),
             ),
             None => self.snap_and_infer(from_coords, to_raw, ctrl_held),
         };
@@ -2850,7 +2852,7 @@ impl SketchSession {
             let (q, _) = self.snap(p);
             if points
                 .last()
-                .map_or(true, |last: &Vec2| last.distance(q) > MIN_LINE_LENGTH_MM)
+                .is_none_or(|last: &Vec2| last.distance(q) > MIN_LINE_LENGTH_MM)
             {
                 points.push(q);
             }
@@ -2979,7 +2981,7 @@ impl SketchSession {
         sweep: Vec2,
         ctrl_held: bool,
     ) -> Result<ToolResult, SessionError> {
-        self.build_center_arc(center, start, sweep, ctrl_held, None, None, None, None)
+        self.build_center_arc((center, start, sweep), ctrl_held, None, None, None, None)
     }
 
     /// Center Arc honoring a locked radius field (typed value auto-creates a
@@ -2989,9 +2991,7 @@ impl SketchSession {
     /// see [`Self::build_center_arc`] for how a clockwise sweep is stored.
     pub fn add_arc_center_locked(
         &mut self,
-        center: Vec2,
-        start: Vec2,
-        sweep: Vec2,
+        (center, start, sweep): (Vec2, Vec2, Vec2),
         ctrl_held: bool,
         radius_mm: Option<f64>,
         radius_text: Option<&str>,
@@ -3003,9 +3003,7 @@ impl SketchSession {
             None => radius_mm,
         };
         self.build_center_arc(
-            center,
-            start,
-            sweep,
+            (center, start, sweep),
             ctrl_held,
             radius,
             radius_text,
@@ -3041,9 +3039,7 @@ impl SketchSession {
 
     fn build_center_arc(
         &mut self,
-        center: Vec2,
-        start: Vec2,
-        sweep: Vec2,
+        (center, start, sweep): (Vec2, Vec2, Vec2),
         ctrl_held: bool,
         locked_radius: Option<f64>,
         radius_text: Option<&str>,
@@ -5157,12 +5153,10 @@ impl SketchSession {
         if !non_anchor_conflicts.is_empty() {
             return non_anchor_conflicts;
         }
-        if conflicts.is_empty() {
-            if base_fully_defined {
-                for (cid, candidate) in &constraints {
-                    if candidates.contains(cid) && matches!(candidate, Constraint::Fix { .. }) {
-                        conflicts.push((*candidate, self.describe_constraint(*cid)));
-                    }
+        if conflicts.is_empty() && base_fully_defined {
+            for (cid, candidate) in &constraints {
+                if candidates.contains(cid) && matches!(candidate, Constraint::Fix { .. }) {
+                    conflicts.push((*candidate, self.describe_constraint(*cid)));
                 }
             }
         }

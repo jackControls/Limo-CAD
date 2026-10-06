@@ -394,7 +394,7 @@ fn plan_setup_uncached(
             .rest_stock
             .as_ref()
             .map_or(setup.stock.max.z, |s| s.top().max(setup.stock.min.z));
-        builder.incoming_bounds = Some(setup.stock.clone());
+        builder.incoming_bounds = Some(setup.stock);
         builder.commands.push(CamCommandDto::WorkOffset { offset });
         let copy_start = builder.commands.len() - 1;
         let mut remaining_stock_warned = false;
@@ -1395,10 +1395,10 @@ fn plan_contour(
                     linking.as_ref().unwrap(),
                 )?;
             }
-            emit_profile_lap(builder, &center_path, *pass_closed, depth, feed);
+            emit_profile_lap(builder, center_path, *pass_closed, depth, feed);
 
             if *spring_pass && *profile_pass {
-                emit_profile_lap(builder, &center_path, *pass_closed, depth, feed);
+                emit_profile_lap(builder, center_path, *pass_closed, depth, feed);
             }
             if let Some(arc) = &leads.end_arc {
                 builder.circular(
@@ -2588,7 +2588,7 @@ fn scanline_spans(polygon: &[Point2Dto], y: f64) -> Vec<(f64, f64)> {
     }
     crossings.sort_by(|left, right| left.total_cmp(right));
     let mut spans = Vec::with_capacity(crossings.len() / 2);
-    for pair in crossings.chunks_exact(2) {
+    for pair in crossings.as_chunks::<2>().0 {
         let (x0, x1) = (pair[0], pair[1]);
         if x1 - x0 > EPSILON {
             spans.push((x0, x1));

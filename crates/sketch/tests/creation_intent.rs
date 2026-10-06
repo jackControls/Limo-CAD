@@ -280,14 +280,10 @@ fn locked_line_only_acquires_points_that_satisfy_the_locks() {
             };
             let preview = s.preview_segment_locked(
                 request.from,
-                request.length_mm,
-                request.angle_deg,
+                (request.length_mm, request.angle_deg),
                 request.to_hint,
                 ctrl,
-                None,
-                None,
-                None,
-                None,
+                (None, None, None, None),
             );
             assert!(!matches!(preview.snap, SnapTarget::Point { .. }));
             let result = s.add_line_locked(&request).unwrap();
@@ -331,9 +327,7 @@ fn arcs_and_chamfers_share_formula_validation_and_resolved_geometry() {
             .unwrap();
         let result = s
             .add_arc_center_locked(
-                request.center,
-                request.start,
-                request.sweep,
+                (request.center, request.start, request.sweep),
                 true,
                 None,
                 request.radius_text.as_deref(),
@@ -349,9 +343,7 @@ fn arcs_and_chamfers_share_formula_validation_and_resolved_geometry() {
         let before = snapshot(&s);
         assert!(s
             .add_arc_center_locked(
-                v(30., 30.),
-                v(40., 30.),
-                v(30., 40.),
+                (v(30., 30.), v(40., 30.), v(30., 40.)),
                 true,
                 None,
                 None,

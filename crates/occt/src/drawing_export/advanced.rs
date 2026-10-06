@@ -418,7 +418,7 @@ fn render(
                 art.rect(x, position[1] - 5., width, 6., &style.leader);
                 art.label(
                     [x + width * 0.5, position[1] - 0.8],
-                    cell.into(),
+                    cell,
                     style.text_height_mm,
                     0.,
                     false,

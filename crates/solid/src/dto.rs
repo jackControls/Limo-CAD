@@ -189,17 +189,13 @@ pub struct SketchPointRefDto {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ExtrudeOperation {
+    #[default]
     NewBody,
     Join,
     Cut,
     Intersect,
-}
-
-impl Default for ExtrudeOperation {
-    fn default() -> Self {
-        Self::NewBody
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -455,29 +451,21 @@ impl Default for HoleExtent {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum HoleStyle {
+    #[default]
     Simple,
     Counterbore,
     Countersink,
 }
 
-impl Default for HoleStyle {
-    fn default() -> Self {
-        Self::Simple
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum HoleBottomStyle {
+    #[default]
     Flat,
     DrillPoint,
-}
-
-impl Default for HoleBottomStyle {
-    fn default() -> Self {
-        Self::Flat
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

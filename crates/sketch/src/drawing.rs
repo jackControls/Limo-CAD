@@ -2344,9 +2344,11 @@ mod tests {
 
     #[test]
     fn company_template_roundtrips_as_a_self_contained_style_snapshot() {
-        let mut style = DrawingSheetStyleDto::default();
-        style.name = "Acme ISO".to_string();
-        style.font_family = "Arial".to_string();
+        let mut style = DrawingSheetStyleDto {
+            name: "Acme ISO".to_string(),
+            font_family: "Arial".to_string(),
+            ..Default::default()
+        };
         style.visible.width_mm = 0.7;
         style.hidden.dash_mm = vec![6.0, 2.0];
         style.hatch_angle_deg = 30.0;

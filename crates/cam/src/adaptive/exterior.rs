@@ -235,7 +235,7 @@ impl ConvexStock {
         let level = depth - axial;
         for mesh in meshes {
             work.spend(mesh.indices.len() * 4, 0)?;
-            for tri in mesh.indices.chunks_exact(3) {
+            for tri in mesh.indices.as_chunks::<3>().0 {
                 let v = [tri[0], tri[1], tri[2]].map(|i| {
                     let p = &mesh.positions[i as usize * 3..];
                     let d = [
@@ -524,15 +524,10 @@ impl ConvexStock {
         &self,
         builder: &mut ProgramBuilder,
         setup: &CamSetupDto,
-        r: f64,
-        floor_r: f64,
-        depth: f64,
+        (r, floor_r, depth): (f64, f64, f64),
         p: &CamAdaptiveParametersDto,
-        feed: f64,
-        plunge: f64,
-        work: &mut Work,
-        envelope: &Envelope,
-        prior_bounds: &[&Self],
+        (feed, plunge): (f64, f64),
+        (work, envelope, prior_bounds): (&mut Work, &Envelope, &[&Self]),
     ) -> Result<usize, CamPlanError> {
         if depth >= setup.stock.max.z - EPS {
             return Ok(0);
@@ -577,19 +572,18 @@ impl ConvexStock {
             return super::spiral::clear(
                 builder,
                 &footprint,
-                center,
-                if cap {
-                    floor_r - r
-                } else {
-                    radius + self.offset
-                },
-                cap,
-                r,
-                floor_r,
-                depth,
+                (
+                    center,
+                    if cap {
+                        floor_r - r
+                    } else {
+                        radius + self.offset
+                    },
+                    cap,
+                ),
+                (r, floor_r, depth),
                 p,
-                feed,
-                plunge,
+                (feed, plunge),
                 work,
             );
         }

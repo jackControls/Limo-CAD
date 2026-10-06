@@ -384,7 +384,9 @@ fn setup_triangles(
         }
         let vertices = mesh
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|v| {
                 let d = [
                     v[0] - setup.wcs.origin.x,
@@ -399,7 +401,7 @@ fn setup_triangles(
                 )
             })
             .collect::<Vec<_>>();
-        for tri in mesh.indices.chunks_exact(3) {
+        for tri in mesh.indices.as_chunks::<3>().0 {
             triangles.push([
                 vertices[tri[0] as usize],
                 vertices[tri[1] as usize],

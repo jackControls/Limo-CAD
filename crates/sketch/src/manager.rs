@@ -369,18 +369,19 @@ impl SketchManager {
             });
         }
 
-        let mut solids = SolidDocument::restore_feature_definitions(
-            model.extrudes,
-            model.revolves,
-            model.sweeps,
-            model.lofts,
-            model.ribs,
-            model.fillets,
-            model.chamfers,
-            model.holes,
-            model.body_features,
-        )
-        .map_err(|error| SessionError::Solid(error.to_string()))?;
+        let mut solids =
+            SolidDocument::restore_feature_definitions(limo_cad_solid::SolidFeatureDefinitions {
+                extrudes: model.extrudes,
+                revolves: model.revolves,
+                sweeps: model.sweeps,
+                lofts: model.lofts,
+                ribs: model.ribs,
+                fillets: model.fillets,
+                chamfers: model.chamfers,
+                holes: model.holes,
+                body_features: model.body_features,
+            })
+            .map_err(|error| SessionError::Solid(error.to_string()))?;
         if let Some(body_id) = print_intent::print_intent_body_floor(&model.print_intent) {
             solids
                 .reserve_body_ids_through(body_id)
@@ -2286,7 +2287,7 @@ impl SketchManager {
             .iter()
             .filter(|body| wanted_bodies.contains(&body.id))
         {
-            for point in body.mesh.positions.chunks_exact(3) {
+            for point in body.mesh.positions.as_chunks::<3>().0 {
                 let projected = cam_model_point_to_setup(
                     [
                         f64::from(point[0]),
@@ -2344,7 +2345,7 @@ impl SketchManager {
                 Some(cam_selection_reference_z(
                     operation,
                     &setup_snapshot,
-                    &scene,
+                    scene,
                     &sketches,
                     &label,
                 )?)
@@ -2365,7 +2366,7 @@ impl SketchManager {
                     CamHeightReferenceDto::Origin => 0.0,
                     CamHeightReferenceDto::Geometry => crate::cam_height_geometry::resolve(
                         expression.geometry.as_ref().ok_or_else(|| SessionError::Solid("Height geometry is missing".into()))?,
-                        &setup_snapshot, &scene, &sketches,
+                        &setup_snapshot, scene, &sketches,
                     ).map_err(SessionError::Solid)?,
                     CamHeightReferenceDto::HoleTop => hole_top.ok_or_else(|| {
                         SessionError::Solid(format!(
@@ -4930,14 +4931,15 @@ impl SketchManager {
         };
         Ok(session.preview_segment_locked(
             request.from,
-            length_mm,
-            angle_deg,
+            (length_mm, angle_deg),
             request.to_hint,
             request.ctrl_held,
-            request.tracking,
-            request.intersection,
-            request.from_crossing,
-            request.to_crossing,
+            (
+                request.tracking,
+                request.intersection,
+                request.from_crossing,
+                request.to_crossing,
+            ),
         ))
     }
 
@@ -5038,9 +5040,7 @@ impl SketchManager {
         request: ArcCenterRequest,
     ) -> Result<ToolResult, SessionError> {
         self.active_mut()?.add_arc_center_locked(
-            request.center,
-            request.start,
-            request.sweep,
+            (request.center, request.start, request.sweep),
             request.ctrl_held,
             request.radius_mm,
             request.radius_text.as_deref(),
@@ -5335,7 +5335,7 @@ fn projected_face_boundary_edges(
         .iter()
         .filter(|edge| {
             edge.points.len() >= 2
-                && (boundary_keys.is_empty() || boundary_keys.iter().any(|key| *key == edge.key))
+                && (boundary_keys.is_empty() || boundary_keys.contains(&edge.key))
                 && edge.points.iter().all(|point| {
                     dot3(sub3(point3_array(*point), basis.origin), basis.normal).abs() <= 1e-4
                 })
@@ -7392,7 +7392,6 @@ mod project_tests {
                 source_id: "saved.source".into(),
                 compatible_printers: vec!["Test printer".into()],
             }],
-            ..Default::default()
         };
         manager
             .begin_sketch(PlaneRef::OriginPlane {
@@ -8044,7 +8043,7 @@ mod project_tests {
     }
 
     pub(super) fn cam_roundtrip_fixture() -> CamDocumentDto {
-        let cam = CamDocumentDto {
+        CamDocumentDto {
             linking: Vec::new(),
             load_warnings: Vec::new(),
             toolpath_generations: Vec::new(),
@@ -8147,8 +8146,7 @@ mod project_tests {
             next_setup_id: 4,
             next_operation_id: 8,
             next_tool_id: 6,
-        };
-        cam
+        }
     }
 
     #[test]
@@ -8550,86 +8548,88 @@ mod project_tests {
             })
             .unwrap();
 
-        let mut cam = CamDocumentDto::default();
-        cam.tools = vec![CamToolDto {
-            id: 1,
-            number: Some(1),
-            name: "EM4".into(),
-            kind: CamToolKind::FlatEndMill,
-            diameter: 4.0,
-            flute_length: 12.0,
-            overall_length: 35.0,
-            center_cutting: true,
-            flute_count: 3,
-            point_angle_degrees: None,
-            corner_radius: None,
-            corner_chamfer: None,
-            cutting: CuttingParametersDto::default(),
-            cutting_presets: vec![],
-            maximum_axial_depth: None,
-            default_step_down: None,
-            default_step_over: None,
-        }];
-        cam.setups = vec![CamSetupDto {
-            id: 1,
-            name: "Associative setup".into(),
-            wcs: WorkCoordinateSystemDto::default(),
-            wcs_origin: WcsOriginSpecDto::Explicit,
-            work_offset: WorkOffset::G54,
-            work_offset_count: 1,
-            stock_spec: limo_cad_cam::CamStockSpecDto::LegacyBox,
-            resolved_stock: CamResolvedStockDto::Box,
-            stock: StockBoxDto {
-                min: CamPoint3Dto::new(-5.0, -5.0, -5.0),
-                max: CamPoint3Dto::new(30.0, 15.0, 0.0),
-            },
-            stock_model_box: None,
-            body_ids: vec![body_id],
-            machine: None,
-            legacy_clearance_z: None,
-            legacy_retract_z: None,
-            operations: vec![CamOperationDto::Contour2d {
+        let cam = CamDocumentDto {
+            tools: vec![CamToolDto {
                 id: 1,
-                name: "Associative edge".into(),
-                enabled: true,
-                tool_id: 1,
-                path: vec![CamPoint2Dto::new(5.0, 5.0), CamPoint2Dto::new(6.0, 5.0)],
-                closed: false,
-                top_z: 0.0,
-                bottom_z: -1.0,
-                step_down: 1.0,
-                compensation: ContourCompensation::On,
-                compensation_mode: CompensationMode::InSoftware,
-                lead_in: 2.0,
-                lead_out: 2.0,
-                lead_arc_radius: None,
-                direction: MillingDirection::Climb,
-                roughing_passes: 1,
-                roughing_step_over: None,
-                finishing_pass: false,
-                finish_allowance: 0.0,
-                finish_feed: None,
-                spring_pass: false,
-                chain_ref: Some(CamChainRefDto {
-                    source: CamChainSource::Model,
-                    keys: vec![format!("edge:{}:edge:0", body_id.0)],
-                    reversed: false,
-                }),
-                clearance_z: 8.0,
-                retract_z: 3.0,
-                feed_height_z: 1.0,
-                cutting: CuttingParametersDto {
-                    spindle_rpm: 8_000,
-                    feed_xy: 500.0,
-                    feed_z: 150.0,
-                    coolant: CoolantMode::Flood,
-                },
+                number: Some(1),
+                name: "EM4".into(),
+                kind: CamToolKind::FlatEndMill,
+                diameter: 4.0,
+                flute_length: 12.0,
+                overall_length: 35.0,
+                center_cutting: true,
+                flute_count: 3,
+                point_angle_degrees: None,
+                corner_radius: None,
+                corner_chamfer: None,
+                cutting: CuttingParametersDto::default(),
+                cutting_presets: vec![],
+                maximum_axial_depth: None,
+                default_step_down: None,
+                default_step_over: None,
             }],
-        }];
-        cam.active_setup_id = Some(1);
-        cam.next_setup_id = 2;
-        cam.next_operation_id = 2;
-        cam.next_tool_id = 2;
+            setups: vec![CamSetupDto {
+                id: 1,
+                name: "Associative setup".into(),
+                wcs: WorkCoordinateSystemDto::default(),
+                wcs_origin: WcsOriginSpecDto::Explicit,
+                work_offset: WorkOffset::G54,
+                work_offset_count: 1,
+                stock_spec: limo_cad_cam::CamStockSpecDto::LegacyBox,
+                resolved_stock: CamResolvedStockDto::Box,
+                stock: StockBoxDto {
+                    min: CamPoint3Dto::new(-5.0, -5.0, -5.0),
+                    max: CamPoint3Dto::new(30.0, 15.0, 0.0),
+                },
+                stock_model_box: None,
+                body_ids: vec![body_id],
+                machine: None,
+                legacy_clearance_z: None,
+                legacy_retract_z: None,
+                operations: vec![CamOperationDto::Contour2d {
+                    id: 1,
+                    name: "Associative edge".into(),
+                    enabled: true,
+                    tool_id: 1,
+                    path: vec![CamPoint2Dto::new(5.0, 5.0), CamPoint2Dto::new(6.0, 5.0)],
+                    closed: false,
+                    top_z: 0.0,
+                    bottom_z: -1.0,
+                    step_down: 1.0,
+                    compensation: ContourCompensation::On,
+                    compensation_mode: CompensationMode::InSoftware,
+                    lead_in: 2.0,
+                    lead_out: 2.0,
+                    lead_arc_radius: None,
+                    direction: MillingDirection::Climb,
+                    roughing_passes: 1,
+                    roughing_step_over: None,
+                    finishing_pass: false,
+                    finish_allowance: 0.0,
+                    finish_feed: None,
+                    spring_pass: false,
+                    chain_ref: Some(CamChainRefDto {
+                        source: CamChainSource::Model,
+                        keys: vec![format!("edge:{}:edge:0", body_id.0)],
+                        reversed: false,
+                    }),
+                    clearance_z: 8.0,
+                    retract_z: 3.0,
+                    feed_height_z: 1.0,
+                    cutting: CuttingParametersDto {
+                        spindle_rpm: 8_000,
+                        feed_xy: 500.0,
+                        feed_z: 150.0,
+                        coolant: CoolantMode::Flood,
+                    },
+                }],
+            }],
+            active_setup_id: Some(1),
+            next_setup_id: 2,
+            next_operation_id: 2,
+            next_tool_id: 2,
+            ..Default::default()
+        };
         manager.set_cam_document(cam).unwrap();
 
         manager.cam_regenerate_operation(1).unwrap();
@@ -8694,7 +8694,7 @@ mod project_tests {
         let body_id = result_body_ids(&plan.jobs[0])[0];
         let mut body = raw_body(body_id, basis);
         body.positions = vec![4.0, 3.0, 0.0, 6.0, 3.0, 0.0, 4.0, 3.0, -8.0, 6.0, 3.0, -8.0];
-        body.normals = vec![0.0_f32, -1.0, 0.0].repeat(4);
+        body.normals = [0.0_f32, -1.0, 0.0].repeat(4);
         body.indices = vec![0, 1, 2, 1, 3, 2];
         body.faces[0].first_index = 0;
         body.faces[0].index_count = 6;
@@ -8718,83 +8718,85 @@ mod project_tests {
         let face_id = manager.solids.scene().bodies[0].faces[0].id.0;
         let face_key = format!("{}:{face_id}", body_id.0);
 
-        let mut cam = CamDocumentDto::default();
-        cam.tools = vec![CamToolDto {
-            id: 1,
-            number: Some(1),
-            name: "D1".into(),
-            kind: CamToolKind::Drill,
-            diameter: 1.0,
-            flute_length: 20.0,
-            overall_length: 40.0,
-            center_cutting: true,
-            flute_count: 2,
-            point_angle_degrees: Some(118.0),
-            corner_radius: None,
-            corner_chamfer: None,
-            cutting: CuttingParametersDto::default(),
-            cutting_presets: vec![],
-            maximum_axial_depth: None,
-            default_step_down: None,
-            default_step_over: None,
-        }];
-        cam.setups = vec![CamSetupDto {
-            id: 1,
-            name: "Hole setup".into(),
-            wcs: WorkCoordinateSystemDto::default(),
-            wcs_origin: WcsOriginSpecDto::Explicit,
-            work_offset: WorkOffset::G54,
-            work_offset_count: 1,
-            stock_spec: limo_cad_cam::CamStockSpecDto::LegacyBox,
-            resolved_stock: CamResolvedStockDto::Box,
-            stock: StockBoxDto {
-                min: CamPoint3Dto::new(0.0, 0.0, -10.0),
-                max: CamPoint3Dto::new(15.0, 10.0, 0.0),
-            },
-            stock_model_box: None,
-            body_ids: vec![body_id],
-            machine: None,
-            legacy_clearance_z: None,
-            legacy_retract_z: None,
-            operations: vec![CamOperationDto::Drill {
+        let cam = CamDocumentDto {
+            tools: vec![CamToolDto {
                 id: 1,
-                name: "Associative hole".into(),
-                enabled: true,
-                tool_id: 1,
-                points: vec![],
-                holes: vec![CamHoleDto {
-                    point: CamPoint2Dto::new(9.0, 9.0),
-                    top_z: -1.0,
-                    bottom_z: -2.0,
-                    axis: [0.0, 0.0, 1.0],
-                    face_key: Some(face_key),
-                }],
-                top_z: 0.0,
-                bottom_z: -8.0,
-                retract_z: 2.0,
-                drill_tip_through: false,
-                breakthrough_depth: 0.0,
-                peck_depth: None,
-                dwell_seconds: 0.0,
-                clearance_z: 5.0,
-                feed_height_z: 1.0,
-                cycle: DrillCycle::Drill,
-                peck_retract: None,
-                thread_pitch: None,
-                floating_tap_holder: false,
-                feed_out: None,
-                cutting: CuttingParametersDto {
-                    spindle_rpm: 4_000,
-                    feed_xy: 200.0,
-                    feed_z: 100.0,
-                    coolant: CoolantMode::Flood,
-                },
+                number: Some(1),
+                name: "D1".into(),
+                kind: CamToolKind::Drill,
+                diameter: 1.0,
+                flute_length: 20.0,
+                overall_length: 40.0,
+                center_cutting: true,
+                flute_count: 2,
+                point_angle_degrees: Some(118.0),
+                corner_radius: None,
+                corner_chamfer: None,
+                cutting: CuttingParametersDto::default(),
+                cutting_presets: vec![],
+                maximum_axial_depth: None,
+                default_step_down: None,
+                default_step_over: None,
             }],
-        }];
-        cam.active_setup_id = Some(1);
-        cam.next_setup_id = 2;
-        cam.next_operation_id = 2;
-        cam.next_tool_id = 2;
+            setups: vec![CamSetupDto {
+                id: 1,
+                name: "Hole setup".into(),
+                wcs: WorkCoordinateSystemDto::default(),
+                wcs_origin: WcsOriginSpecDto::Explicit,
+                work_offset: WorkOffset::G54,
+                work_offset_count: 1,
+                stock_spec: limo_cad_cam::CamStockSpecDto::LegacyBox,
+                resolved_stock: CamResolvedStockDto::Box,
+                stock: StockBoxDto {
+                    min: CamPoint3Dto::new(0.0, 0.0, -10.0),
+                    max: CamPoint3Dto::new(15.0, 10.0, 0.0),
+                },
+                stock_model_box: None,
+                body_ids: vec![body_id],
+                machine: None,
+                legacy_clearance_z: None,
+                legacy_retract_z: None,
+                operations: vec![CamOperationDto::Drill {
+                    id: 1,
+                    name: "Associative hole".into(),
+                    enabled: true,
+                    tool_id: 1,
+                    points: vec![],
+                    holes: vec![CamHoleDto {
+                        point: CamPoint2Dto::new(9.0, 9.0),
+                        top_z: -1.0,
+                        bottom_z: -2.0,
+                        axis: [0.0, 0.0, 1.0],
+                        face_key: Some(face_key),
+                    }],
+                    top_z: 0.0,
+                    bottom_z: -8.0,
+                    retract_z: 2.0,
+                    drill_tip_through: false,
+                    breakthrough_depth: 0.0,
+                    peck_depth: None,
+                    dwell_seconds: 0.0,
+                    clearance_z: 5.0,
+                    feed_height_z: 1.0,
+                    cycle: DrillCycle::Drill,
+                    peck_retract: None,
+                    thread_pitch: None,
+                    floating_tap_holder: false,
+                    feed_out: None,
+                    cutting: CuttingParametersDto {
+                        spindle_rpm: 4_000,
+                        feed_xy: 200.0,
+                        feed_z: 100.0,
+                        coolant: CoolantMode::Flood,
+                    },
+                }],
+            }],
+            active_setup_id: Some(1),
+            next_setup_id: 2,
+            next_operation_id: 2,
+            next_tool_id: 2,
+            ..Default::default()
+        };
         manager.set_cam_document(cam).unwrap();
         manager.cam_regenerate_operation(1).unwrap();
         let resolved_hole = |manager: &SketchManager| match &manager.cam.setups[0].operations[0] {
@@ -8833,7 +8835,7 @@ mod project_tests {
         assert!((resolved_hole(&manager).bottom_z - -8.0).abs() < 1.0e-9);
         manager.cam.height_expressions.clear();
 
-        for point in body.positions.chunks_exact_mut(3) {
+        for point in body.positions.as_chunks_mut::<3>().0 {
             point[0] += 2.0;
         }
         body.faces[0].cylinder.as_mut().unwrap().origin.x += 2.0;
@@ -8900,104 +8902,106 @@ mod project_tests {
                 },
             })
             .unwrap();
-        let mut cam = CamDocumentDto::default();
-        cam.tools = vec![CamToolDto {
-            id: 1,
-            number: Some(1),
-            name: "EM4".into(),
-            kind: CamToolKind::FlatEndMill,
-            diameter: 4.0,
-            flute_length: 12.0,
-            overall_length: 35.0,
-            center_cutting: true,
-            flute_count: 3,
-            point_angle_degrees: None,
-            corner_radius: None,
-            corner_chamfer: None,
-            cutting: CuttingParametersDto::default(),
-            cutting_presets: vec![],
-            maximum_axial_depth: None,
-            default_step_down: None,
-            default_step_over: None,
-        }];
-        cam.setups = vec![CamSetupDto {
-            id: 1,
-            name: "Adaptive setup".into(),
-            wcs: WorkCoordinateSystemDto::default(),
-            wcs_origin: WcsOriginSpecDto::Explicit,
-            work_offset: WorkOffset::G54,
-            work_offset_count: 1,
-            stock_spec: limo_cad_cam::CamStockSpecDto::LegacyBox,
-            resolved_stock: CamResolvedStockDto::Box,
-            stock: StockBoxDto {
-                min: CamPoint3Dto::new(0.0, 0.0, -2.0),
-                max: CamPoint3Dto::new(10.0, 8.0, 0.0),
-            },
-            stock_model_box: None,
-            body_ids: vec![body_id],
-            machine: None,
-            legacy_clearance_z: None,
-            legacy_retract_z: None,
-            operations: vec![CamOperationDto::Adaptive3d {
+        let cam = CamDocumentDto {
+            tools: vec![CamToolDto {
                 id: 1,
-                name: "Adaptive".into(),
-                enabled: true,
-                tool_id: 1,
-                top_z: 0.0,
-                bottom_z: -1.0,
-                clearance_z: 5.0,
-                retract_z: 3.0,
-                feed_height_z: 1.0,
+                number: Some(1),
+                name: "EM4".into(),
+                kind: CamToolKind::FlatEndMill,
+                diameter: 4.0,
+                flute_length: 12.0,
+                overall_length: 35.0,
+                center_cutting: true,
+                flute_count: 3,
+                point_angle_degrees: None,
+                corner_radius: None,
+                corner_chamfer: None,
                 cutting: CuttingParametersDto::default(),
-                geometry: None,
-                parameters: limo_cad_cam::CamAdaptiveParametersDto {
-                    optimal_load: 1.0,
-                    maximum_stepdown: 1.0,
-                    minimum_cutting_radius: 0.8,
-                    radial_stock_to_leave: 0.1,
-                    axial_stock_to_leave: 0.1,
-                    tolerance: 0.3,
-                    ramp_angle_degrees: 3.0,
-                    maximum_ramp_stepdown: 0.5,
-                    ramp_feed: 100.0,
-                    linking_feed: 600.0,
-                    stay_down_distance: 8.0,
-                    machine_cavities: true,
+                cutting_presets: vec![],
+                maximum_axial_depth: None,
+                default_step_down: None,
+                default_step_over: None,
+            }],
+            setups: vec![CamSetupDto {
+                id: 1,
+                name: "Adaptive setup".into(),
+                wcs: WorkCoordinateSystemDto::default(),
+                wcs_origin: WcsOriginSpecDto::Explicit,
+                work_offset: WorkOffset::G54,
+                work_offset_count: 1,
+                stock_spec: limo_cad_cam::CamStockSpecDto::LegacyBox,
+                resolved_stock: CamResolvedStockDto::Box,
+                stock: StockBoxDto {
+                    min: CamPoint3Dto::new(0.0, 0.0, -2.0),
+                    max: CamPoint3Dto::new(10.0, 8.0, 0.0),
+                },
+                stock_model_box: None,
+                body_ids: vec![body_id],
+                machine: None,
+                legacy_clearance_z: None,
+                legacy_retract_z: None,
+                operations: vec![CamOperationDto::Adaptive3d {
+                    id: 1,
+                    name: "Adaptive".into(),
+                    enabled: true,
+                    tool_id: 1,
+                    top_z: 0.0,
+                    bottom_z: -1.0,
+                    clearance_z: 5.0,
+                    retract_z: 3.0,
+                    feed_height_z: 1.0,
+                    cutting: CuttingParametersDto::default(),
+                    geometry: None,
+                    parameters: limo_cad_cam::CamAdaptiveParametersDto {
+                        optimal_load: 1.0,
+                        maximum_stepdown: 1.0,
+                        minimum_cutting_radius: 0.8,
+                        radial_stock_to_leave: 0.1,
+                        axial_stock_to_leave: 0.1,
+                        tolerance: 0.3,
+                        ramp_angle_degrees: 3.0,
+                        maximum_ramp_stepdown: 0.5,
+                        ramp_feed: 100.0,
+                        linking_feed: 600.0,
+                        stay_down_distance: 8.0,
+                        machine_cavities: true,
+                    },
+                }],
+            }],
+            active_setup_id: Some(1),
+            next_setup_id: 2,
+            next_tool_id: 2,
+            next_operation_id: 2,
+            height_expressions: vec![CamOperationHeightExpressionsDto {
+                operation_id: 1,
+                top: CamHeightExpressionDto {
+                    geometry: None,
+                    reference: CamHeightReferenceDto::ModelTop,
+                    offset: -0.25,
+                },
+                bottom: Some(CamHeightExpressionDto {
+                    geometry: None,
+                    reference: CamHeightReferenceDto::Origin,
+                    offset: -1.0,
+                }),
+                feed: CamHeightExpressionDto {
+                    geometry: None,
+                    reference: CamHeightReferenceDto::StockTop,
+                    offset: 1.0,
+                },
+                retract: CamHeightExpressionDto {
+                    geometry: None,
+                    reference: CamHeightReferenceDto::StockTop,
+                    offset: 3.0,
+                },
+                clearance: CamHeightExpressionDto {
+                    geometry: None,
+                    reference: CamHeightReferenceDto::StockTop,
+                    offset: 5.0,
                 },
             }],
-        }];
-        cam.active_setup_id = Some(1);
-        cam.next_setup_id = 2;
-        cam.next_tool_id = 2;
-        cam.next_operation_id = 2;
-        cam.height_expressions = vec![CamOperationHeightExpressionsDto {
-            operation_id: 1,
-            top: CamHeightExpressionDto {
-                geometry: None,
-                reference: CamHeightReferenceDto::ModelTop,
-                offset: -0.25,
-            },
-            bottom: Some(CamHeightExpressionDto {
-                geometry: None,
-                reference: CamHeightReferenceDto::Origin,
-                offset: -1.0,
-            }),
-            feed: CamHeightExpressionDto {
-                geometry: None,
-                reference: CamHeightReferenceDto::StockTop,
-                offset: 1.0,
-            },
-            retract: CamHeightExpressionDto {
-                geometry: None,
-                reference: CamHeightReferenceDto::StockTop,
-                offset: 3.0,
-            },
-            clearance: CamHeightExpressionDto {
-                geometry: None,
-                reference: CamHeightReferenceDto::StockTop,
-                offset: 5.0,
-            },
-        }];
+            ..Default::default()
+        };
         manager.set_cam_document(cam).unwrap();
         manager.cam_regenerate_operation(1).unwrap();
         assert_eq!(
@@ -9041,7 +9045,7 @@ mod project_tests {
             CamToolpathStateDto::Current
         );
 
-        for point in body.positions.chunks_exact_mut(3) {
+        for point in body.positions.as_chunks_mut::<3>().0 {
             point[0] += 1.0;
             point[2] += 0.5;
         }

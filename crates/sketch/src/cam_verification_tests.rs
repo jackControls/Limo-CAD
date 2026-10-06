@@ -130,7 +130,7 @@ fn moving_bore_after_thread_keeps_motion_current_but_blocks_unverified_nc_entry(
 fn individual_regeneration_retains_enabled_incoming_face_evidence() {
     let mut doc = thread_job(true, -6.0);
     doc.setups[0].operations.truncate(1);
-    let stock = doc.setups[0].stock.clone();
+    let stock = doc.setups[0].stock;
     let mut face_tool = doc.tools[0].clone();
     face_tool.id = 3;
     face_tool.number = Some(3);

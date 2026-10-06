@@ -5,7 +5,9 @@ fn catalog() -> ProfileCatalogItemDto {
 fn entities(text: &str) -> Vec<Vec<(String, String)>> {
     let lines: Vec<_> = text.lines().collect();
     let pairs: Vec<_> = lines
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|p| (p[0].to_string(), p[1].to_string()))
         .collect();
     let start = pairs
@@ -158,7 +160,7 @@ fn dxf_tables_handles_and_entity_owners_are_consistent() {
     let text = write_profile_dxf(&catalog(), 0).unwrap();
     let lines: Vec<_> = text.lines().collect();
     assert_eq!(lines.len() % 2, 0);
-    let pairs: Vec<_> = lines.chunks_exact(2).collect();
+    let pairs = lines.as_chunks::<2>().0;
     let mut handles = std::collections::BTreeSet::new();
     let mut seed = 0;
     for (i, pair) in pairs.iter().enumerate().filter(|(_, p)| p[0] == "5") {

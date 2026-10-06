@@ -146,7 +146,7 @@ pub fn validate_3mf_model_mesh(mesh: &TriangleMesh) -> Result<(), ExportError> {
             mesh.body_id.0
         )));
     }
-    if mesh.indices.chunks_exact(3).any(|triangle| {
+    if mesh.indices.as_chunks::<3>().0.iter().any(|triangle| {
         triangle[0] == triangle[1] || triangle[1] == triangle[2] || triangle[2] == triangle[0]
     }) {
         return Err(ExportError(format!(
@@ -195,7 +195,7 @@ struct EdgeUse {
 
 fn edge_uses(mesh: &TriangleMesh) -> HashMap<(u32, u32), EdgeUse> {
     let mut uses = HashMap::new();
-    for triangle in mesh.indices.chunks_exact(3) {
+    for triangle in mesh.indices.as_chunks::<3>().0 {
         for (from, to) in [
             (triangle[0], triangle[1]),
             (triangle[1], triangle[2]),
@@ -237,7 +237,9 @@ fn signed_volume_six(mesh: &TriangleMesh) -> f64 {
         f64::from(mesh.positions[2]),
     ];
     mesh.indices
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|triangle| {
             let point = |index: u32| {
                 let base = index as usize * 3;

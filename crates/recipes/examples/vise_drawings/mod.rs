@@ -141,8 +141,7 @@ fn radial(
     view: &View,
     key: &str,
     part: &str,
-    radius: f64,
-    angle: f64,
+    (radius, angle): (f64, f64),
     mode: &str,
 ) {
     let offset = if key == "frame_cartridge_cross_hole" {
@@ -458,8 +457,7 @@ pub fn add(a: &mut Author, parts: &[Value]) -> Vec<String> {
                     &end,
                     "thrust_head_diameter",
                     part,
-                    16.,
-                    120.,
+                    (16., 120.),
                     "diameter",
                 );
                 notes(a,&sheet,part,222.,&["PRINT: front head face down; full round bearing and D-keyed blind socket are vertical.","Install AFTER the bare shaft passes the bridge. The neck and head detach as one complete fitting.","Closing thrust goes through the stub end into the blind floor and jaw shoulder; the M5 retains opening motion.","Fit the axial M5 while jaw is parked +85 mm, then return the jaw and fit the keeper. Inspect creep and wear."]);

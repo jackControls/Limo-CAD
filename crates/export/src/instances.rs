@@ -48,7 +48,7 @@ pub fn prepare_export_meshes(
             let [x, y, z, w] = p.rotation.map(|x| x / norm);
             let mut mesh = indexed.clone();
             mesh.name = format!("{} (instance {})", source.name, p.occurrence_id);
-            for v in mesh.positions.chunks_exact_mut(3) {
+            for v in mesh.positions.as_chunks_mut::<3>().0 {
                 let a = f64::from(v[0]);
                 let b = f64::from(v[1]);
                 let c = f64::from(v[2]);

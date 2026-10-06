@@ -117,7 +117,9 @@ impl Envelope {
         }
         let vertices = mesh
             .positions
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|v| {
                 let r = [
                     v[0] - setup.wcs.origin.x,
@@ -132,7 +134,7 @@ impl Envelope {
                 )
             })
             .collect::<Vec<_>>();
-        for tri in mesh.indices.chunks_exact(3) {
+        for tri in mesh.indices.as_chunks::<3>().0 {
             let t = [
                 vertices[tri[0] as usize],
                 vertices[tri[1] as usize],
@@ -289,7 +291,7 @@ fn roughing_terraces(
                 + (v[1] - setup.wcs.origin.y) * setup.wcs.z_axis[1]
                 + (v[2] - setup.wcs.origin.z) * setup.wcs.z_axis[2]
         };
-        for tri in mesh.indices.chunks_exact(3) {
+        for tri in mesh.indices.as_chunks::<3>().0 {
             let zs = [z(tri[0]), z(tri[1]), z(tri[2])];
             let high = zs.into_iter().fold(f64::NEG_INFINITY, f64::max);
             let low = zs.into_iter().fold(f64::INFINITY, f64::min);
@@ -656,8 +658,7 @@ fn disk_already_clear(setup: &CamSetupDto, cleared: &Cleared, c: Point2Dto, r: f
     fn visit(
         setup: &CamSetupDto,
         cleared: &Cleared,
-        c: Point2Dto,
-        r: f64,
+        (c, r): (Point2Dto, f64),
         mid: Point2Dto,
         half: f64,
         depth: usize,
@@ -692,8 +693,7 @@ fn disk_already_clear(setup: &CamSetupDto, cleared: &Cleared, c: Point2Dto, r: f
                 visit(
                     setup,
                     cleared,
-                    c,
-                    r,
+                    (c, r),
                     Point2Dto::new(mid.x + x, mid.y + y),
                     h,
                     depth + 1,
@@ -701,7 +701,7 @@ fn disk_already_clear(setup: &CamSetupDto, cleared: &Cleared, c: Point2Dto, r: f
                 )
             })
     }
-    visit(setup, cleared, c, r, c, r, 0, &mut nodes)
+    visit(setup, cleared, (c, r), c, r, 0, &mut nodes)
 }
 
 fn box_clear(setup: &CamSetupDto, p: Point2Dto, r: f64) -> bool {
@@ -743,9 +743,7 @@ fn link_clear(setup: &CamSetupDto, cleared: &Cleared, a: Point2Dto, b: Point2Dto
 /// Two angular bins per sector are added for boundary uncertainty. The finite sampling resolution
 /// is disclosed; this is not a claim about tooth forces or spindle dynamics.
 fn engagement(
-    envelope: &Envelope,
-    setup: &CamSetupDto,
-    cleared: &Cleared,
+    (envelope, setup, cleared): (&Envelope, &CamSetupDto, &Cleared),
     center: Point2Dto,
     r: f64,
     z: f64,
@@ -781,11 +779,8 @@ fn engagement_angle(occupied: &[bool]) -> f64 {
 }
 
 fn lap_engagement(
-    envelope: &Envelope,
-    setup: &CamSetupDto,
-    cleared: &Cleared,
-    c: Point2Dto,
-    q: f64,
+    (envelope, setup, cleared): (&Envelope, &CamSetupDto, &Cleared),
+    (c, q): (Point2Dto, f64),
     r: f64,
     depth: f64,
     limit: f64,
@@ -795,9 +790,7 @@ fn lap_engagement(
     let mut maximum: f64 = 0.0;
     for i in 0..LAP_SAMPLES {
         maximum = maximum.max(engagement(
-            envelope,
-            setup,
-            cleared,
+            (envelope, setup, cleared),
             polar(c, q, TAU * i as f64 / LAP_SAMPLES as f64),
             r,
             depth,
@@ -827,10 +820,8 @@ fn tangent_link(
     builder: &mut ProgramBuilder,
     setup: &CamSetupDto,
     cleared: &Cleared,
-    previous: Point2Dto,
-    next: Point2Dto,
-    q: f64,
-    r: f64,
+    (previous, next): (Point2Dto, Point2Dto),
+    (q, r): (f64, f64),
     z: f64,
     params: &CamAdaptiveParametersDto,
 ) -> Option<f64> {
@@ -1046,10 +1037,10 @@ fn capture_envelope(
         envelope.rasterize(mesh, setup, &mut target, work)?;
     }
     envelope.target = target;
-    if builder.linking.is_some() {
-        let mut bounds = setup.stock.clone();
+    if let Some(linking) = &builder.linking {
+        let mut bounds = setup.stock;
         for mesh in &geometry.targets {
-            for v in mesh.positions.chunks_exact(3) {
+            for v in mesh.positions.as_chunks::<3>().0 {
                 let p = [
                     v[0] - setup.wcs.origin.x,
                     v[1] - setup.wcs.origin.y,
@@ -1068,7 +1059,7 @@ fn capture_envelope(
                 bounds.max.z = bounds.max.z.max(z);
             }
         }
-        if bounds.max.z + builder.linking.as_ref().unwrap().safe_distance > builder.clearance_z {
+        if bounds.max.z + linking.safe_distance > builder.clearance_z {
             return Err(CamPlanError("Roughing Clearance Height must clear all target/stock surfaces plus Safe Distance.".into()));
         }
         builder.link_obstacles = Some(bounds);
@@ -1226,7 +1217,7 @@ pub(super) fn plan(
     };
     let neighbors = |i: usize| {
         [
-            (i % nx > 0).then(|| i - 1),
+            (!i.is_multiple_of(nx)).then(|| i - 1),
             (i % nx + 1 < nx).then(|| i + 1),
             (i / nx > 0).then(|| i - nx),
             (i / nx + 1 < ny).then(|| i + nx),
@@ -1340,15 +1331,10 @@ pub(super) fn plan(
                 exterior_passes += front.clear_exterior(
                     builder,
                     setup,
-                    r,
-                    floor_r,
-                    depth,
+                    (r, floor_r, depth),
                     p,
-                    cutting.feed_xy,
-                    cutting.feed_z,
-                    &mut work,
-                    &envelope,
-                    &prior_bounds,
+                    (cutting.feed_xy, cutting.feed_z),
+                    (&mut work, &envelope, &prior_bounds),
                 )?;
                 front.mark_completed_cap(floor_r, p);
                 full_radius_exterior = Some(front.clone());
@@ -1500,7 +1486,13 @@ pub(super) fn plan(
                         continue;
                     }
                     let Some(load) = lap_engagement(
-                        &envelope, setup, &cleared, c, q, r, depth, phi, &ring, &mut work,
+                        (&envelope, setup, &cleared),
+                        (c, q),
+                        r,
+                        depth,
+                        phi,
+                        &ring,
+                        &mut work,
                     )?
                     else {
                         continue;
@@ -1515,7 +1507,7 @@ pub(super) fn plan(
                     };
                     ensure_program_budget(builder.commands.len(), 16, name)?;
                     let tangent_angle = previous_lap.and_then(|previous| {
-                        tangent_link(builder, setup, &cleared, previous, c, q, r, depth, p)
+                        tangent_link(builder, setup, &cleared, (previous, c), (q, r), depth, p)
                     });
                     let angle = tangent_angle.unwrap_or(angle);
                     if tangent_angle.is_none() {
@@ -1525,10 +1517,8 @@ pub(super) fn plan(
                             builder,
                             setup,
                             &cleared,
-                            start,
-                            Point2Dto::new(-angle.sin(), angle.cos()),
-                            depth,
-                            r,
+                            (start, Point2Dto::new(-angle.sin(), angle.cos())),
+                            (depth, r),
                             true,
                             cutting.feed_z,
                         )? {
@@ -1850,7 +1840,7 @@ mod tests {
             clearance_z: 5.0,
             retract_z: 3.0,
             feed_height_z: 1.0,
-            cutting: cutting.clone(),
+            cutting,
             parameters: CamAdaptiveParametersDto {
                 optimal_load: 1.0,
                 maximum_stepdown: 1.0,
@@ -2401,7 +2391,7 @@ mod tests {
     fn continuous_exterior_covers_rotated_convex_stock_bands() {
         for angle in [0.0_f64, 0.23, 0.71] {
             let mut mesh = cuboid([4.0, 4.0, -3.0], [12.0, 10.0, 0.0]);
-            for vertex in mesh.positions.chunks_exact_mut(3) {
+            for vertex in mesh.positions.as_chunks_mut::<3>().0 {
                 let (x, y) = (vertex[0] - 8.0, vertex[1] - 7.0);
                 vertex[0] = 8.0 + x * angle.cos() - y * angle.sin();
                 vertex[1] = 7.0 + x * angle.sin() + y * angle.cos();
@@ -2411,7 +2401,9 @@ mod tests {
             let program = plan_setup(&doc, 1).unwrap();
             let polygon = mesh
                 .positions
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .take(4)
                 .map(|v| Point2Dto::new(v[0], v[1]))
                 .collect::<Vec<_>>();
@@ -2699,7 +2691,7 @@ mod tests {
     fn adaptive_nc_roundtrip_preserves_continuous_exterior_arcs_mm_and_inches() {
         let mut mesh = cuboid([4.0, 4.0, -3.0], [12.0, 10.0, 0.0]);
         let angle = 0.23_f64;
-        for vertex in mesh.positions.chunks_exact_mut(3) {
+        for vertex in mesh.positions.as_chunks_mut::<3>().0 {
             let (x, y) = (vertex[0] - 8.0, vertex[1] - 7.0);
             vertex[0] = 8.0 + x * angle.cos() - y * angle.sin();
             vertex[1] = 7.0 + x * angle.sin() + y * angle.cos();
@@ -3006,7 +2998,7 @@ mod tests {
                 clearance_z: 5.0,
                 retract_z: 3.0,
                 feed_height_z: 1.0,
-                cutting: doc.tools[0].cutting.clone(),
+                cutting: doc.tools[0].cutting,
             },
         );
         doc.next_operation_id = 3;
