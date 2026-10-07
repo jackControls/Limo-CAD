@@ -32,7 +32,7 @@ the application opens a Bevy window and its stdio MCP controls that window.
 On Windows, build and promote the current checkout into the canonical runtime:
 
 ```text
-cargo xtask deploy-native --restart --launch
+cargo xtask deploy-native --computer-control --restart --launch
 cargo xtask install-mcp --clients cursor,codex
 ```
 
@@ -43,6 +43,8 @@ terminates GUI/MCP workers without saving; otherwise a changed runtime that is
 still running blocks promotion. Build or provenance failures preserve the old
 installation and stop before launching or testing it. The command currently
 supports Windows runtime promotion; use explicit portable executables on Unix.
+The opt-in `--computer-control` enables the Rust OS-input tool for UI audits;
+normal builds leave it disabled. Automatic rebuilds preserve the installed mode.
 
 A dry run discovers clients and prints planned configuration without building,
 copying or writing:

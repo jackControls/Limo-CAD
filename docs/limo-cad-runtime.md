@@ -11,7 +11,7 @@ This is the sole installed executable. GUI launches and MCP workers with
 For local Windows iteration, run:
 
 ```text
-cargo xtask deploy-native --restart --launch
+cargo xtask deploy-native --computer-control --restart --launch
 ```
 
 The task builds the current checkout, selects the executable reported by Cargo,
@@ -51,6 +51,12 @@ Script parsing remains content based, so existing command files remain readable.
 Project-file launch arguments use the same guarded File workflow as UI and MCP
 opens. Windows registers `.limo` and `.nbcad` projects with the current executable.
 
+Native computer control is an opt-in `native-computer-control` Cargo feature;
+normal builds leave it disabled. `deploy-native --computer-control` enables it
+for the local UI audit, and `--no-computer-control` disables it. Automatic managed
+rebuilds retain the installed mode. Tool discovery reports the compiled feature
+and platform availability.
+
 On Windows, `cad_computer_control` provides real OS mouse and keyboard input for
 the owned CAD window. It is also available through `cad_interface execute`, group
 `document/session`, operation `cad_computer_control`. Observe returns a one-shot
@@ -58,7 +64,12 @@ token and physical client-pixel coordinates. Focus, observe again, capture the
 rendered window, then send one input and inspect its visible result. Owner,
 build, layout, foreground and occlusion checks reject stale targets. An
 `input_sent` receipt confirms Windows accepted input; it does not confirm the
-product action. Native modal dialogs are currently rejected. No external
+product action. Enigo supplies keyboard, Unicode text, mouse buttons and wheel
+input. Window ownership, focus and verified cursor placement use the existing
+Windows bindings; direct cursor placement retains multi-monitor support that
+Enigo's Windows absolute-move implementation does not currently provide.
+Wheel deltas are multiples of 120, matching Enigo's whole-notch Windows API.
+Native modal dialogs are currently rejected. No external
 computer-control helper or named pipe is required for this CAD surface.
 
 Recipe and knowledge links use `limo-cad://`; old `nbcad://` links remain accepted
