@@ -66,7 +66,7 @@ references until Apply was available, and canceled with the project model unchan
 
 ## Validation
 
-- Desktop Rust suite: 945 passed, zero failed, 10 optional GPU/display tests ignored;
+- Desktop Rust suite: 943 passed, zero failed, 10 optional GPU/display tests ignored;
   strict Clippy passed for all targets and features.
 - Native app: light and dark GPU captures, accepted reference selections, and
   Escape cancellation with the model unchanged for all 19 panels.
