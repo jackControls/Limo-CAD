@@ -126,6 +126,7 @@ fn key(key: Key, text: Option<&str>) -> WindowEvent {
 fn external_field_updates_reveal_leading_digits_without_changing_precision() {
     for focused in [false, true] {
         let (mut app, handle, entity) = editor_fixture();
+        app.init_resource::<bevy::input_focus::InputFocus>();
         if !focused {
             handle.blur();
             after_window_input(app.world_mut(), &handle).unwrap();
