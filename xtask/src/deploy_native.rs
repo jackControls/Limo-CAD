@@ -321,6 +321,10 @@ pub(crate) fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     if launch {
         let mut command = Command::new(&executable);
         command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        command
             .current_dir(executable.parent().context("installed runtime parent")?)
             .env("LIMO_CAD_LOCAL_RUNTIME", &executable)
             .env("LIMO_CAD_DESKTOP_BIN", &executable);

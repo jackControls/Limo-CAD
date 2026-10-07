@@ -350,7 +350,10 @@ fn options(args: impl Iterator<Item = String>) -> Result<Options> {
             if values.contains_key(&arg) {
                 bail!("Duplicate option {arg}");
             }
-            if matches!(arg.as_str(), "--present" | "--new" | "--help") {
+            if matches!(
+                arg.as_str(),
+                "--present" | "--new" | "--help" | "--interactive"
+            ) {
                 values.insert(arg, "true".into());
             } else {
                 values.insert(
@@ -401,16 +404,29 @@ pub fn call(args: impl Iterator<Item = String>) -> Result<()> {
             "--args",
             "--args-file",
             "--out",
+            "--interactive",
         ],
     )?;
     if options.file.is_some() || args.contains_key("--args") && args.contains_key("--args-file") {
         bail!("Supply exactly one --args or --args-file");
+    }
+    let interactive = args.contains_key("--interactive");
+    if interactive {
+        ensure!(
+            !["--args", "--args-file", "--tool", "--session"]
+                .iter()
+                .any(|option| args.contains_key(*option)),
+            "Interactive calls specify their tool and arguments on stdin; do not attach implicitly"
+        );
     }
     let mut client = Client::start_with_arguments(
         required(args, "--server")?,
         &options.server_arguments,
         initialization_timeout,
     )?;
+    if interactive {
+        return interactive_calls(client, args.get("--out").map(Path::new));
+    }
     if let Some(session) = args.get("--session") {
         client.call("cad_attach", json!({"session_id":session}))?;
     }
@@ -431,6 +447,70 @@ pub fn call(args: impl Iterator<Item = String>) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&result)?);
     }
     Ok(())
+}
+
+/// Keep observations in one MCP connection while the operator chooses each next call.
+fn interactive_calls(mut client: Client, output: Option<&Path>) -> Result<()> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Call {
+        tool: String,
+        arguments: Value,
+    }
+
+    if let Some(output) = output {
+        fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(output)
+            .with_context(|| format!("Prepare interactive MCP output {}", output.display()))?;
+    }
+    let mut stdout = std::io::stdout().lock();
+    writeln!(
+        stdout,
+        "{}",
+        json!({"status":"ready","server":client.initialization(),"pid":client.process_id()})
+    )?;
+    stdout.flush()?;
+    for line in std::io::stdin().lock().lines() {
+        let line = line.context("Read interactive MCP request")?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let result = match serde_json::from_str::<Call>(&line) {
+            Ok(call) if !call.tool.trim().is_empty() && call.arguments.is_object() => {
+                let response = client.rpc(
+                    "tools/call",
+                    json!({"name":call.tool,"arguments":call.arguments}),
+                )?;
+                json!({
+                    "status":if response["isError"] == true {"tool_error"} else {"received"},
+                    "result":response
+                })
+            }
+            Ok(_) => {
+                json!({"status":"request_error","error":"tool must be nonempty and arguments must be an object"})
+            }
+            Err(error) => json!({"status":"request_error","error":error.to_string()}),
+        };
+        if let Some(output) = output {
+            if let Err(error) = fs::write(output, serde_json::to_vec_pretty(&result)?) {
+                writeln!(stdout, "{}", json!({"status":"output_error","error":error.to_string(),"response":result}))?;
+                stdout.flush()?;
+                return Err(error).context("MCP response was printed to stdout; the call was not retried");
+            }
+            writeln!(
+                stdout,
+                "{}",
+                json!({"status":result["status"],"output":output})
+            )?;
+        } else {
+            writeln!(stdout, "{result}")?;
+        }
+        stdout.flush()?;
+    }
+    client.finish(Duration::from_secs(10))
 }
 fn launched_session(launch: &Value) -> Result<String> {
     if launch["status"] != "ready" {
@@ -794,7 +874,8 @@ pub fn run(args: impl Iterator<Item = String>) -> Result<()> {
 
 fn print_usage(script: bool) {
     if script {
-        println!("Usage: cargo xtask run-script [FILE.limo.jsonc | --recipe ID] --server PATH [OPTIONS]\n\
+        println!(
+            "Usage: cargo xtask run-script [FILE.limo.jsonc | --recipe ID] --server PATH [OPTIONS]\n\
   --session UUID --new --present  Replay visibly in a new design of an existing window.\n\
   --desktop PATH                 Launch a desktop instead of attaching to --session.\n\
   --speed N                      Presentation speed, 0.1–16 (default: 1).\n\
@@ -802,20 +883,28 @@ fn print_usage(script: bool) {
   --compare REPORT.json          Compare the final model with a previous replay.\n\
   --out DIRECTORY                Retain replay reports and model snapshots.\n\
   --save FILE.limo               Save after replay (headless or live).\n\
-                                 Headless exports are reopened in a fresh native engine before writing.");
+                                 Headless exports are reopened in a fresh native engine before writing."
+        );
     } else {
-        println!("Usage: cargo xtask cad-call --server PATH [--tool NAME] [--args JSON | --args-file FILE] [OPTIONS]\n\
+        println!(
+            "Usage: cargo xtask cad-call --server PATH [--tool NAME] [--args JSON | --args-file FILE] [OPTIONS]\n\
   --tool NAME                    MCP tool name (default: cad_interface).\n\
   --session UUID                 Attach to an explicitly selected live design.\n\
-  --out FILE.json                Write the tool result instead of stdout.");
+  --out FILE.json                Write the tool result instead of stdout.\n\
+  --interactive                  Keep one MCP connection; accept one {{\"tool\":NAME,\"arguments\":OBJECT}} per stdin line.\n\
+                                 With --out, replace that file with each response and print its receipt.\n\
+                                 Transport failure stops the connection; calls are never retried."
+        );
     }
-    println!("\nServer options:\n\
+    println!(
+        "\nServer options:\n\
   --server-arg ARG                Pass one literal argument to the server; repeat to preserve order.\n\
   --init-timeout-seconds N        Bound MCP initialization only (1–600, default: 30).\n\
                                  Modeling and presentation waits remain unbounded.\n\
 \nPackaged CAD worker (no extra window): --server PATH --server-arg --headless\n\
 AppImage without FUSE: --server PATH --server-arg --appimage-extract-and-run --server-arg --headless\n\
-Standalone limo-cad-mcp: --server PATH (no server argument required)");
+Standalone limo-cad-mcp: --server PATH (no server argument required)"
+    );
 }
 
 fn save_headless(
