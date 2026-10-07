@@ -2,8 +2,8 @@
 //! OS keys are the only source of preedit/commit; MCP observes and captures.
 use super::*;
 use std::{
-    io::{BufRead, BufReader},
-    process::{Child, ChildStdin},
+    io::{BufRead, BufReader, Write},
+    process::{Child, ChildStdin, Stdio},
     sync::mpsc::{self, Receiver},
     time::{SystemTime, UNIX_EPOCH},
 };
