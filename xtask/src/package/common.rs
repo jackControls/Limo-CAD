@@ -7,6 +7,42 @@ use std::{
     process::{Command, Stdio},
 };
 
+/// Reject redirected runtime paths, including redirects in their parent directories.
+pub(crate) fn ordinary_directory(path: &Path) -> Result<()> {
+    for ancestor in path.ancestors() {
+        let metadata = fs::symlink_metadata(ancestor)?;
+        ensure!(
+            metadata.is_dir() && !redirected(&metadata),
+            "Runtime directory is redirected or not a directory: {}",
+            ancestor.display()
+        );
+    }
+    Ok(())
+}
+
+pub(crate) fn ordinary_file(path: &Path) -> Result<()> {
+    ordinary_directory(path.parent().context("runtime file parent")?)?;
+    let metadata = fs::symlink_metadata(path)?;
+    ensure!(
+        metadata.is_file() && !redirected(&metadata),
+        "Runtime file is redirected or not a file: {}",
+        path.display()
+    );
+    Ok(())
+}
+
+fn redirected(metadata: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        metadata.file_attributes() & 0x400 != 0
+    }
+    #[cfg(not(windows))]
+    {
+        metadata.file_type().is_symlink()
+    }
+}
+
 pub(super) struct Package {
     pub root: PathBuf,
     pub desktop: PathBuf,

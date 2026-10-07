@@ -63,17 +63,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         crate::occt_storage::verify_header(&layout.include)?;
         println!("Cross-built packages require checked-runtime qualification on the target before publication.");
     }
-    let bin = [
-        "bin",
-        "win64/vc17/bin",
-        "win64/vc16/bin",
-        "win64/vc15/bin",
-        "win64/vc14/bin",
-    ]
-    .iter()
-    .map(|name| sdk.join(name))
-    .find(|path| path.join("TKernel.dll").is_file())
-    .context("TKernel.dll missing from OCCT SDK")?;
+    let bin = runtime_bin(&sdk)?;
     common::run(
         package
             .cargo()
@@ -97,6 +87,20 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         &source,
     )
 }
+
+pub(crate) fn runtime_bin(sdk: &Path) -> Result<PathBuf> {
+    [
+        "bin",
+        "win64/vc17/bin",
+        "win64/vc16/bin",
+        "win64/vc15/bin",
+        "win64/vc14/bin",
+    ]
+    .iter()
+    .map(|name| sdk.join(name))
+    .find(|path| path.join("TKernel.dll").is_file())
+    .context("TKernel.dll missing from OCCT SDK")
+}
 fn stage(
     package: &Package,
     target: &Target,
@@ -109,6 +113,29 @@ fn stage(
     ensure!(executable.is_file(), "Cargo did not produce limo-cad.exe");
     let name = format!("Limo-CAD-{}-windows-{}", package.version, target.arch);
     let directory = common::fresh_child(output, &name)?;
+    let count = stage_runtime(&package.root, executable, sdk, bin, &directory)?;
+    let commit = source.stamp();
+    fs::write(directory.join("README.txt"), format!("Limo CAD {} - Windows {} portable build\n\nRun Limo-CAD.exe directly; no installation is required.\n\nLocal stdio MCP is always available. A normal launch opens the CAD window.\nUse args [\"--headless\"] for an agent worker without an extra window.\nKeep the DLLs beside the executable; no separate server or OCCT SDK is required.\n\nSystem requirements:\n- Windows 10 version 1803 or newer, or Windows 11\n- Microsoft Visual C++ v14 {} Redistributable\n  https://aka.ms/vc14/vc_redist.{}.exe\n- A graphics adapter and driver accepted by wgpu's DX12 or Vulkan backend\n\nThe Visual C++ runtime is intentionally not bundled. Install the centrally\nserviced Microsoft Redistributable for security and servicing updates.\n\nSource: https://github.com/jackControls/Limo-CAD\nSource commit: {commit}\n", package.version, target.arch, target.arch, target.arch))?;
+    let zip = output.join(format!("{name}.zip"));
+    common::zip_directory(&directory, &zip)?;
+    common::checksum(&zip)?;
+    println!("Packaged {count} runtime DLLs");
+    Ok(())
+}
+
+/// Stage the same executable, OCCT runtime and notices for packages and local installs.
+pub(crate) fn stage_runtime(
+    root: &Path,
+    executable: &Path,
+    sdk: &Path,
+    bin: &Path,
+    directory: &Path,
+) -> Result<usize> {
+    common::ordinary_file(executable)?;
+    common::ordinary_directory(sdk)?;
+    common::ordinary_directory(bin)?;
+    fs::create_dir_all(directory)?;
+    common::ordinary_directory(directory)?;
     fs::copy(executable, directory.join("Limo-CAD.exe"))?;
     let mut count = 0;
     for entry in fs::read_dir(bin)? {
@@ -119,6 +146,7 @@ fn stage(
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("dll"))
         {
+            common::ordinary_file(&entry.path())?;
             fs::copy(entry.path(), directory.join(entry.file_name()))?;
             count += 1;
         }
@@ -131,14 +159,24 @@ fn stage(
         );
     }
     let licenses = directory.join("licenses");
-    package.notices(&licenses)?;
+    fs::create_dir_all(&licenses)?;
+    common::ordinary_directory(&licenses)?;
+    common::ordinary_file(&root.join("LICENSE"))?;
+    common::ordinary_file(&root.join("THIRD_PARTY_NOTICES.md"))?;
+    fs::copy(root.join("LICENSE"), licenses.join("Limo-CAD-LICENSE.txt"))?;
+    fs::copy(
+        root.join("THIRD_PARTY_NOTICES.md"),
+        licenses.join("THIRD_PARTY_NOTICES.md"),
+    )?;
     fn copyrights(source: &Path, licenses: &Path) -> Result<()> {
+        common::ordinary_directory(source)?;
         for entry in fs::read_dir(source)? {
             let entry = entry?;
             if entry.file_type()?.is_dir() {
                 copyrights(&entry.path(), licenses)?;
             } else if entry.file_name() == "copyright" {
                 let path = entry.path();
+                common::ordinary_file(&path)?;
                 let port = path
                     .parent()
                     .and_then(Path::file_name)
@@ -154,13 +192,7 @@ fn stage(
         licenses.join("vcpkg-opencascade.txt").is_file(),
         "vcpkg OpenCASCADE license notice missing"
     );
-    let commit = source.stamp();
-    fs::write(directory.join("README.txt"), format!("Limo CAD {} - Windows {} portable build\n\nRun Limo-CAD.exe directly; no installation is required.\n\nLocal stdio MCP is always available. A normal launch opens the CAD window.\nUse args [\"--headless\"] for an agent worker without an extra window.\nKeep the DLLs beside the executable; no separate server or OCCT SDK is required.\n\nSystem requirements:\n- Windows 10 version 1803 or newer, or Windows 11\n- Microsoft Visual C++ v14 {} Redistributable\n  https://aka.ms/vc14/vc_redist.{}.exe\n- A graphics adapter and driver accepted by wgpu's DX12 or Vulkan backend\n\nThe Visual C++ runtime is intentionally not bundled. Install the centrally\nserviced Microsoft Redistributable for security and servicing updates.\n\nSource: https://github.com/jackControls/Limo-CAD\nSource commit: {commit}\n", package.version, target.arch, target.arch, target.arch))?;
-    let zip = output.join(format!("{name}.zip"));
-    common::zip_directory(&directory, &zip)?;
-    common::checksum(&zip)?;
-    println!("Packaged {count} runtime DLLs");
-    Ok(())
+    Ok(count)
 }
 #[cfg(test)]
 mod tests {

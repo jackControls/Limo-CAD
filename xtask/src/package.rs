@@ -6,6 +6,9 @@ mod recipe_handler;
 mod windows;
 mod xkb;
 
+pub(crate) use common::{ordinary_directory, ordinary_file};
+pub(crate) use windows::{runtime_bin, stage_runtime};
+
 use anyhow::{bail, ensure, Context, Result};
 use std::{env, path::PathBuf};
 
