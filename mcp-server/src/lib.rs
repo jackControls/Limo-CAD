@@ -758,7 +758,10 @@ impl CadServer {
                 let result = self
                     .computer_control
                     .call(&arguments, self.attached_document_id.as_deref())?;
-                if result["status"] == "input_sent" {
+                if matches!(
+                    result["status"].as_str(),
+                    Some("input_sent" | "input_incomplete")
+                ) {
                     self.live_snapshot_dirty = true;
                 }
                 result
