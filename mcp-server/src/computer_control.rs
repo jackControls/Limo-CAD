@@ -2,6 +2,10 @@
 use serde_json::{json, Value};
 
 #[cfg(all(windows, feature = "native-computer-control"))]
+mod capture;
+#[cfg(all(windows, feature = "native-computer-control"))]
+pub(crate) use capture::run_worker_if_requested;
+#[cfg(all(windows, feature = "native-computer-control"))]
 mod windows;
 #[cfg(all(windows, feature = "native-computer-control"))]
 pub(crate) use windows::ComputerControl;
@@ -35,7 +39,7 @@ pub(super) fn description() -> &'static str {
     if !cfg!(windows) {
         return "Native computer control is unavailable on this platform. The native-computer-control Cargo feature currently supports Windows only; no actions are available here.";
     }
-    "Windows computer control implemented in Rust with real OS mouse and keyboard input. action=observe returns the presented interface, exact active desktop owner, physical client bounds and a short-lived one-shot observation token. A minimized or unpresented window returns focus_only=true without qualified controls/coordinates. All other actions require that token; focus restores/activates only that window, then observe again before input. click/double_click/drag/wheel take physical client-pixel points from capture; key accepts Ctrl/Shift chords and named keys; text types Unicode into the currently focused editable text control. Input rejects changed documents, geometry, layouts, replaced processes, held keys, foreign foreground windows and occluded pointer targets. GUI and MCP must run the same clean build and executable path. An input_sent receipt confirms OS insertion only: observe/capture afterward to verify the visible result. No external helper, scripts, arbitrary applications or direct model commands."
+    "Windows computer control implemented in Rust with real OS mouse and keyboard input. action=observe returns the presented interface, exact active desktop owner, physical client bounds and a short-lived one-shot observation token. A CAD-owned native modal dialog becomes the observed target and includes a real PNG capture, native control geometry and focused editable child. Its client_to_image_offset maps physical client points to the attached window image. A minimized or unpresented main window returns focus_only=true without qualified controls/coordinates. All other actions require that token; focus restores/activates only that window, then observe again before input. click/double_click/drag/wheel take physical client-pixel points from capture; key accepts Ctrl/Shift chords and named keys; text types Unicode into the currently focused editable text control. Input rejects changed documents, geometry, layouts, replaced processes, held keys, foreign foreground windows and occluded pointer targets. GUI and MCP must run the same clean build and executable path. An input_sent receipt confirms OS insertion only: observe/capture afterward to verify the visible result. No external helper, scripts, arbitrary applications or direct model commands."
 }
 
 pub(super) fn schema() -> Value {

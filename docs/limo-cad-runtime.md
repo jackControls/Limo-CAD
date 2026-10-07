@@ -69,8 +69,16 @@ input. Window ownership, focus and verified cursor placement use the existing
 Windows bindings; direct cursor placement retains multi-monitor support that
 Enigo's Windows absolute-move implementation does not currently provide.
 Wheel deltas are multiples of 120, matching Enigo's whole-notch Windows API.
-Native modal dialogs are currently rejected. No external
-computer-control helper or named pipe is required for this CAD surface.
+CAD-owned Windows modal dialogs are observed through `windows-capture` 2.0.1,
+with PNG images encoded by the existing Rust PNG codec. The image includes the
+window frame; `client_to_image_offset` maps physical client points to image pixels.
+Native editable controls provide the focus check for Unicode text input.
+Capture uses a scoped `--headless` child of the same installed CAD executable,
+without creating a document or a second installed binary. The parent imposes a
+three-second capture deadline and terminates only that child if Windows capture
+startup or shutdown stalls. Capture rejects changed owners, process lifetimes or
+window geometry, and dimensions that cannot be mapped to verified screen bounds.
+No external computer-control helper or named pipe is required for this CAD surface.
 
 Recipe and knowledge links use `limo-cad://`; old `nbcad://` links remain accepted
 at the same restricted parsing boundaries. MCP build metadata is `limo-cad/build`.
