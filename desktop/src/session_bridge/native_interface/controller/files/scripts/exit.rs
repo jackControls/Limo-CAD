@@ -24,7 +24,7 @@ pub(crate) fn guard_exit(world: &mut World) -> Result<(), String> {
     {
         Some("Unsaved script source: Save script as or Discard edits, then close the application again.")
     } else if state.library.pending().is_some() {
-        Some("Finish or cancel opening the queued recipe before closing the application.")
+        Some("Finish or cancel opening the queued example before closing the application.")
     } else {
         None
     };

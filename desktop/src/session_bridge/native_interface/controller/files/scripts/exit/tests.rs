@@ -198,7 +198,7 @@ fn native_script_exit_picker_and_recipe_delivery_are_fenced_until_resolved() {
     catalog::open_recipe(app.world_mut(), "garden-bench").unwrap();
     assert!(guard_exit(app.world_mut())
         .unwrap_err()
-        .contains("queued recipe"));
+        .contains("queued example"));
     let token = app
         .world()
         .resource::<Files>()
