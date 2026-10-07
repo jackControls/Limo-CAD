@@ -1267,7 +1267,7 @@ fn maintain_busy_window(
                 .iter_mut()
                 .find(|surface| surface.name == "document/session")
             {
-                surface.text = Some(message.into());
+                surface.text = Some(state.status.clone());
             }
             handle.present(frame)?;
         }
