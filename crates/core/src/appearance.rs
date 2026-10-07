@@ -74,9 +74,11 @@ pub struct BodyAppearance {
     #[serde(default = "default_material_name")]
     pub material_name: String,
     /// Filament chemistry family: PLA, PETG, ABS, ASA, TPU, PA, PC, …
+    /// An explicit empty value denotes no filament family; omitted legacy fields use PLA.
     #[serde(default = "default_filament_type")]
     pub filament_type: String,
     /// Vendor / ecosystem: Generic, Bambu Lab, Prusa, Polymaker, …
+    /// An explicit empty value denotes an unspecified vendor.
     #[serde(default = "default_brand")]
     pub brand: String,
     /// Official or marketing color name (e.g. "Jade White").

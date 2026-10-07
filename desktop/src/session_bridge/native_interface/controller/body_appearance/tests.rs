@@ -233,6 +233,10 @@ impl Panel {
                 Command::Reset => "appearance-Reset appearance".into(),
                 Command::SlicerTarget => "appearance-field-None".into(),
                 Command::Details => "material-properties".into(),
+                Command::Scroll(delta) => format!(
+                    "appearance-{} appearance fields",
+                    if delta < 0 { "Previous" } else { "More" }
+                ),
                 _ => panic!("This helper expects an appearance field or footer"),
             })
             .unwrap()
@@ -530,6 +534,69 @@ fn one_mouse_apply_commits_the_visible_buffer_and_undo_redo_preserve_the_exact_p
 }
 
 #[test]
+fn non_filament_appearance_applies_without_plastic_defaults_and_survives_history() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let mut panel = Panel::new(&fixture);
+    let before = model(&fixture);
+    let mut expected = appearances(&fixture);
+    panel.set(Field::FilamentType, "");
+    panel.set(Field::Brand, "");
+    panel.set(Field::Color, "#41544D");
+    let more = panel.action(Command::Scroll(6), ControlInput::Click);
+    panel.reduce(&more).unwrap();
+    panel.paint(&fixture);
+    panel.set(Field::ColorName, "Deep green");
+    panel.set(Field::MaterialName, "Painted timber (visual designation)");
+    let apply = panel.action(Command::Apply, ControlInput::Click);
+    panel.reduce(&apply).unwrap();
+    panel.drain();
+    panel.paint(&fixture);
+    let appearance = expected
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|a| a["body_id"] == panel.bodies[0])
+        .unwrap();
+    appearance["filament_type"] = json!("");
+    appearance["brand"] = json!("");
+    appearance["color"] = json!({"r":65,"g":84,"b":77,"a":153});
+    appearance["color_name"] = json!("Deep green");
+    appearance["material_name"] = json!("Painted timber (visual designation)");
+    appearance["filament_id"] = Value::Null;
+    appearance["preset_id"] = Value::Null;
+    appearance["density_g_cm3"] = Value::Null;
+    assert_eq!(appearances(&fixture), expected);
+    let mut expected_model: Value = serde_json::from_str(before.as_str().unwrap()).unwrap();
+    expected_model["body_appearances"] = expected;
+    let after = model(&fixture);
+    assert_eq!(
+        serde_json::from_str::<Value>(after.as_str().unwrap()).unwrap(),
+        expected_model,
+        "Applying timber changes only this body's appearance"
+    );
+    let draft = panel
+        .app
+        .world()
+        .resource::<State>()
+        .draft
+        .as_ref()
+        .unwrap();
+    assert!(draft.value.filament_type.is_empty());
+    assert!(draft.value.brand.is_empty());
+    fixture
+        .bridge
+        .apply_native_history(&fixture.engine, &fixture.owner(), false, || Ok(()))
+        .unwrap();
+    assert_eq!(model(&fixture), before);
+    fixture
+        .bridge
+        .apply_native_history(&fixture.engine, &fixture.owner(), true, || Ok(()))
+        .unwrap();
+    assert_eq!(model(&fixture), after);
+}
+
+#[test]
 fn invalid_blur_stays_visible_and_custom_cannot_hide_errors_but_a_catalog_choice_replaces_them() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
@@ -547,12 +614,12 @@ fn invalid_blur_stays_visible_and_custom_cannot_hide_errors_but_a_catalog_choice
     assert!(!worker::busy(panel.app.world()));
     panel.paint(&fixture);
     assert_eq!(panel.buffer(Field::Color), "#GG0000");
-    assert_eq!(panel.set(Field::FilamentType, "  ")["valid"], false);
-    assert_eq!(panel.app.world().resource::<State>().errors.len(), 2);
+    assert_eq!(panel.set(Field::FilamentType, "  ")["handled"], true);
+    assert_eq!(panel.app.world().resource::<State>().errors.len(), 1);
     panel.set(Field::Preset, "");
     assert_eq!(
         panel.app.world().resource::<State>().errors.len(),
-        2,
+        1,
         "Custom only changes the preset field"
     );
     let apply = panel.action(Command::Apply, ControlInput::Click);
@@ -734,7 +801,7 @@ fn pending_appearance_and_errors_survive_unrelated_revisions_and_history_owners(
     let fixture = Fixture::new();
     let mut panel = Panel::new(&fixture);
     panel.set(Field::Color, "#A12345");
-    assert_eq!(panel.set(Field::FilamentType, "  ")["valid"], false);
+    assert_eq!(panel.set(Field::Color, "#invalid")["valid"], false);
     let pending = {
         let state = panel.app.world().resource::<State>();
         let draft = state.draft.as_ref().unwrap();
@@ -799,8 +866,8 @@ fn pending_appearance_and_errors_survive_unrelated_revisions_and_history_owners(
             "Draft lost after {change}"
         );
         assert!(state.generation > generation);
-        assert_eq!(panel.buffer(Field::Color), "#A12345");
-        assert_eq!(panel.buffer(Field::FilamentType), "  ");
+        assert_eq!(panel.buffer(Field::Color), "#invalid");
+        assert_eq!(panel.buffer(Field::FilamentType), "PETG");
         assert!(
             panel.reduce(&stale).is_err(),
             "Preserving the draft must not revive old controls"
@@ -808,7 +875,7 @@ fn pending_appearance_and_errors_survive_unrelated_revisions_and_history_owners(
     }
 
     let before = model(&fixture);
-    panel.set(Field::FilamentType, "PETG");
+    panel.set(Field::Color, "#A12345");
     let apply = panel.action(Command::Apply, ControlInput::Click);
     panel.reduce(&apply).unwrap();
     panel.drain();
@@ -850,7 +917,7 @@ fn exact_canonical_changes_history_and_selection_replace_a_pending_appearance() 
 
     for change in ["canonical", "undo canonical", "selection"] {
         panel.set(Field::Color, "#FF0000");
-        panel.set(Field::FilamentType, "  ");
+        panel.set(Field::Color, "#invalid");
         let stale = panel.action(Command::Apply, ControlInput::Click);
         let expected = match change {
             "canonical" => {

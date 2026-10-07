@@ -3149,22 +3149,8 @@ impl SketchManager {
             body_id: appearance.body_id,
             color: appearance.color,
             material_name,
-            filament_type: {
-                let value = appearance.filament_type.trim();
-                if value.is_empty() {
-                    limo_cad_core::DEFAULT_FILAMENT_TYPE.to_string()
-                } else {
-                    value.to_string()
-                }
-            },
-            brand: {
-                let value = appearance.brand.trim();
-                if value.is_empty() {
-                    limo_cad_core::DEFAULT_BRAND.to_string()
-                } else {
-                    value.to_string()
-                }
-            },
+            filament_type: appearance.filament_type.trim().to_string(),
+            brand: appearance.brand.trim().to_string(),
             color_name: appearance.color_name.trim().to_string(),
             filament_id: appearance
                 .filament_id
