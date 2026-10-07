@@ -15,6 +15,7 @@ mod build_pair;
 mod cam_tools;
 #[cfg(test)]
 mod component_edit_tests;
+mod computer_control;
 mod desktop;
 mod disclosure;
 #[cfg(test)]
@@ -241,6 +242,7 @@ impl ToolSpec {
 }
 
 struct CadServer {
+    computer_control: computer_control::ComputerControl,
     verification_owner_id: String,
     manager: SketchManager,
     kernel: OcctKernel,
@@ -302,6 +304,7 @@ enum SnapshotRefresh {
 impl CadServer {
     fn new() -> Result<Self, String> {
         Ok(Self {
+            computer_control: computer_control::ComputerControl::default(),
             verification_owner_id: limo_cad_export::slicer_verification::new_verification_owner(),
             manager: SketchManager::new(),
             kernel: OcctKernel::new().map_err(|error| error.to_string())?,
@@ -751,6 +754,15 @@ impl CadServer {
                 }
             }
             "cad_list_sessions" => session::sessions_list_json(),
+            "cad_computer_control" => {
+                let result = self
+                    .computer_control
+                    .call(&arguments, self.attached_document_id.as_deref())?;
+                if result["status"] == "input_sent" {
+                    self.live_snapshot_dirty = true;
+                }
+                result
+            }
             "cad_route" => broker::call(arguments)?,
             "cad_interface" => {
                 if arguments["action"].is_null() || arguments["action"] == "catalog" {
@@ -2274,6 +2286,7 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "cad_help"
             | "cad_cancel_recompute"
             | "cad_list_sessions"
+            | "cad_computer_control"
             | "cad_route"
             | "cad_interface"
             | "cad_attach"
@@ -4888,6 +4901,11 @@ fn build_tool_specs() -> Vec<ToolSpec> {
             empty_schema(),
         ),
         ToolSpec::control(
+            "cad_computer_control", "Operate the native CAD window",
+            "Windows computer control implemented in Rust with real OS mouse and keyboard input. action=observe returns the current rendered interface, exact active desktop owner, physical client bounds and a short-lived one-shot observation token. All other actions require that token; focus activates only that window, then observe again before input. click/double_click/drag/wheel take physical client-pixel points from capture; key accepts Ctrl/Shift chords and named keys; text types Unicode into the currently focused editable text control. Input rejects changed documents, geometry, layouts, replaced processes, held modifiers, foreign foreground windows and occluded pointer targets. GUI and MCP must run the same clean build and executable path. An input_sent receipt confirms OS insertion only: observe/capture afterward to verify the visible result. No external helper, scripts, arbitrary applications or direct model commands.",
+            computer_control::schema(),
+        ),
+        ToolSpec::control(
             "cad_interface", "Explore and drive the product interface",
             "Catalog returns shared product groups and typed operations. Execute runs an operation by group and name with identical arguments/results headlessly or live. Recipes lists committed native examples without running them. Open_recipe queues a built-in recipe in the live Scripts source editor, preserving edited source with Save/Discard/Cancel; it never runs commands or replaces the model. Script runs one versioned JSONC command file selected by recipe ID, source or an absolute .limo.jsonc path in the current blank document; Rust sequences every operation, stops on failure, and runs final checks by default. Its result carries a feature summary (bodies with bounding boxes, holes tallied by class; detail full lists every hole with position, diameter, depth, face and thread) and warnings for mistakes that raise no error: a hole position left out of positions, overlapping holes, holes off the body, blind depths deeper than the body, unused bindings; a failing step names the step, the reason and, for selectors, the candidates or the values present. Summary returns that feature summary of the current document (detail compact or full). Check compares expected {bbox: [x, y, z], holes: [{x, y, z?, diameter?, counterbore_diameter?, through?, depth?}]} with the built model within tolerance_mm (default 0.6) and reports matched, missing and extra holes with offsets. Export_script emits a version-1 .limo.jsonc from the last successful script source (from last_script, fidelity lossless_authored) or from the session tool_trace (from session_trace, fidelity lossy_session_trace); it is distinct from cad_script's forward call dump. Mode fast has no presentation delays; present requires an attached desktop. Presentation provides configure/note/pause/resume/step/stop/status/finish/dismiss/show and speed controls shared with native playback. View supports timed orientation and focus on an active sketch, body, or component. Launch connects a new desktop. History with command undo or redo uses the desktop document history controller; inspect state.history reports availability. Inspect returns rendered controls with fresh opaque target IDs for click/set_value/key. Window close requests guarded application exit; the reply acknowledges the request, not process termination. No selectors or executable script evaluation.",
             interface::with_file_options(object_schema(json!({
@@ -5067,7 +5085,7 @@ fn build_tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
-    if name == "cad_route" {
+    if matches!(name, "cad_route" | "cad_computer_control") {
         return false;
     }
     if matches!(

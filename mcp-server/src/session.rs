@@ -787,6 +787,42 @@ fn desktop_not_ready() -> String {
         "hint":"This desktop has not published one unambiguous active document. Retry after startup, or select a document explicitly with cad_attach."}).to_string()
 }
 
+/// OS input is restricted to the process lease's current active document.
+#[cfg(windows)]
+pub(super) fn computer_control_owner(session_id: &str) -> Result<Value, String> {
+    require_valid_session_id(session_id)?;
+    require_open_session(session_id)?;
+    let heartbeat = heartbeat_meta(session_id);
+    let identity = session_identity(session_id);
+    let process =
+        heartbeat_process_instance_id(session_id).ok_or("Session has no desktop owner")?;
+    let registry = process_registry();
+    let lease = registry
+        .leases
+        .get(&process)
+        .ok_or("Desktop process lease has expired")?;
+    let window = identity
+        .window_id
+        .as_deref()
+        .ok_or("Session has no window identity")?;
+    let active = lease
+        .windows
+        .get(window)
+        .ok_or("Desktop window is no longer live")?;
+    if heartbeat["stale"] != false
+        || heartbeat["interface_version"] != 1
+        || active.active_session_id != session_id
+        || identity.document_id.as_deref() != Some(active.active_document_id.as_str())
+    {
+        return Err("Computer control requires the current active desktop document; observe again after switching tabs".into());
+    }
+    Ok(
+        json!({"session_id":session_id,"window_id":window,"document_id":active.active_document_id,
+        "process_instance_id":process,"pid":lease.pid.ok_or("Desktop lease has no PID")?,
+        "generation":read_heartbeat_generation(session_id)?}),
+    )
+}
+
 fn desktop_default_from_registry(
     process_id: u32,
     registry: &ProcessRegistry,

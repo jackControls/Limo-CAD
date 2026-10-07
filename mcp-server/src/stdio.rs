@@ -172,6 +172,7 @@ pub(super) fn instructions(desktop: bool) -> String {
 
 pub(super) fn independent_of_default_document(name: &str, arguments: &Value) -> bool {
     match name {
+        "cad_computer_control" => arguments["session_id"].is_string(),
         "cad_attach"
         | "cad_route"
         | "cad_detach"
@@ -198,9 +199,14 @@ pub(super) fn independent_of_default_document(name: &str, arguments: &Value) -> 
                     .as_str()
                     .and_then(crate::interface::group_for)
                     .is_some_and(|group| arguments["group"] == group);
+            let explicit_computer_control = action == Some("execute")
+                && arguments["operation"] == "cad_computer_control"
+                && arguments["group"] == "document/session"
+                && arguments["arguments"]["session_id"].is_string();
             arguments["action"].is_null()
                 || matches!(action, Some("catalog" | "recipes" | "launch"))
                 || grouped_global_read
+                || explicit_computer_control
                 || (action != Some("execute") && arguments.get("session_id").is_some())
         }
         _ => false,

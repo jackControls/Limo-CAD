@@ -170,6 +170,10 @@ pub use limo_cad_interface::catalog::{group_for, groups};
 
 pub fn validate_script(script: &limo_cad_script::Script) -> Result<(), String> {
     script.validate_calls(|group, operation| match group_for(operation) {
+        _ if operation == "cad_computer_control" => Err(
+            "Computer control requires one observed interactive action at a time, outside scripts"
+                .into(),
+        ),
         Some(expected) if group == expected => Ok(()),
         Some(expected) => Err(format!("{operation} belongs to {expected}, not {group}")),
         None => Err(format!("Unknown interface operation {operation}")),
