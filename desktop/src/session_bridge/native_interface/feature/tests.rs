@@ -7,6 +7,7 @@ mod holes;
 mod move_copy;
 mod patterns;
 mod planes;
+mod profiles;
 mod threads;
 
 fn sketch(fixture: &Fixture) -> DocumentContext {

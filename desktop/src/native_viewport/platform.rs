@@ -5387,40 +5387,40 @@ fn pick_occt_scene(
         );
     }
     let (origin, direction, world_per_pixel_factor) = camera_pick_ray(camera, viewport, x, y)?;
+    let ray = (origin.as_dvec3(), direction.as_dvec3().normalize());
     let mut best: Option<NativePick> = None;
     for body in &scene.bodies {
         if hidden_body_ids.contains(&body.id.0) {
             continue;
         }
-        let instances = if instance_body_poses.is_empty() {
-            vec![(None, body_pose_transform(body_poses, body.id.0))]
-        } else {
-            instance_body_poses
-                .iter()
-                .filter(|instance| instance.body_id == body.id && instance.visible)
-                .map(|instance| {
-                    (
-                        Some(instance.occurrence_id.0),
-                        instance_body_pose_transform(
-                            instance_body_poses,
-                            body_poses,
-                            body.id.0,
-                            Some(instance.occurrence_id.0),
-                        ),
-                    )
-                })
-                .collect::<Vec<_>>()
-        };
-        for (occurrence_id, transform) in instances {
+        let mut pick = |occurrence_id, transform| {
             pick_body(
                 body,
                 occurrence_id,
                 transform,
-                (origin, direction),
+                ray,
                 world_per_pixel_factor,
                 &mut best,
                 purpose,
             );
+        };
+        if instance_body_poses.is_empty() {
+            pick(None, body_pose_transform(body_poses, body.id.0));
+        } else {
+            for instance in instance_body_poses
+                .iter()
+                .filter(|instance| instance.body_id == body.id && instance.visible)
+            {
+                pick(
+                    Some(instance.occurrence_id.0),
+                    instance_body_pose_transform(
+                        instance_body_poses,
+                        body_poses,
+                        body.id.0,
+                        Some(instance.occurrence_id.0),
+                    ),
+                );
+            }
         }
     }
     best
@@ -5430,7 +5430,7 @@ fn pick_body(
     body: &BodyDto,
     occurrence_id: Option<u64>,
     transform: Transform,
-    (origin, direction): (Vec3, Vec3),
+    (ray_origin, ray_direction): (bevy::math::DVec3, bevy::math::DVec3),
     world_per_pixel_factor: f32,
     best: &mut Option<NativePick>,
     purpose: NativePickPurpose,
@@ -5457,10 +5457,16 @@ fn pick_body(
             else {
                 continue;
             };
-            let Some(distance) = ray_triangle(origin, direction, a, b, c) else {
+            let Some(distance) = ray_triangle(
+                ray_origin,
+                ray_direction,
+                a.as_dvec3(),
+                b.as_dvec3(),
+                c.as_dvec3(),
+            ) else {
                 continue;
             };
-            let world_point = origin + direction * distance;
+            let world_point = (ray_origin + ray_direction * distance).as_vec3();
             let local_point = inverse_rotation * (world_point - transform.translation);
             let connector = connector_for_face(face, local_point);
             if !pick_should_replace(
@@ -5533,11 +5539,11 @@ fn pick_body(
             let world_center = transform.transform_point(local_center);
             let world_normal = (transform.rotation * local_primary).normalize_or_zero();
             let Some(distance) = ray_plane_disk(
-                origin,
-                direction,
-                world_center,
-                world_normal,
-                cylinder.radius as f32,
+                ray_origin,
+                ray_direction,
+                world_center.as_dvec3(),
+                world_normal.as_dvec3(),
+                cylinder.radius,
             ) else {
                 continue;
             };
@@ -5550,7 +5556,7 @@ fn pick_body(
                 occurrence_id,
                 face_id: face.id.0,
                 edge_id: None,
-                point: (origin + direction * distance).to_array(),
+                point: (ray_origin + ray_direction * distance).as_vec3().to_array(),
                 distance,
                 connector_kind: Some("virtual_circular_face".to_string()),
                 connector_origin: Some(local_center.to_array()),
@@ -5593,12 +5599,12 @@ fn pick_body(
         let world_center = transform.transform_point(local_center);
         let world_normal = (transform.rotation * local_normal).normalize_or_zero();
         let Some(distance) = ray_plane_ring(
-            origin,
-            direction,
-            world_center,
-            world_normal,
-            circle.radius as f32,
-            world_per_pixel_factor,
+            ray_origin,
+            ray_direction,
+            world_center.as_dvec3(),
+            world_normal.as_dvec3(),
+            circle.radius,
+            f64::from(world_per_pixel_factor),
         ) else {
             continue;
         };
@@ -5610,7 +5616,7 @@ fn pick_body(
             occurrence_id,
             face_id: 0,
             edge_id: Some(edge.id.0),
-            point: (origin + direction * distance).to_array(),
+            point: (ray_origin + ray_direction * distance).as_vec3().to_array(),
             distance,
             connector_kind: Some("circular_edge".to_string()),
             connector_origin: Some(local_center.to_array()),
@@ -5717,13 +5723,13 @@ fn orthogonal_reference(axis: Vec3, candidate: Vec3) -> Vec3 {
 
 fn pick_should_replace(
     current: Option<&NativePick>,
-    distance: f32,
+    distance: f64,
     candidate_kind: Option<&str>,
 ) -> bool {
     let Some(current) = current else {
         return true;
     };
-    const TIE_EPSILON: f32 = 1.0e-4;
+    const TIE_EPSILON: f64 = 1.0e-4;
     if distance < current.distance - TIE_EPSILON {
         return true;
     }
@@ -5739,12 +5745,12 @@ fn pick_should_replace(
 }
 
 fn ray_plane_disk(
-    origin: Vec3,
-    direction: Vec3,
-    center: Vec3,
-    normal: Vec3,
-    radius: f32,
-) -> Option<f32> {
+    origin: bevy::math::DVec3,
+    direction: bevy::math::DVec3,
+    center: bevy::math::DVec3,
+    normal: bevy::math::DVec3,
+    radius: f64,
+) -> Option<f64> {
     let denominator = direction.dot(normal);
     if denominator.abs() <= 1.0e-7 {
         return None;
@@ -5758,13 +5764,13 @@ fn ray_plane_disk(
 }
 
 fn ray_plane_ring(
-    origin: Vec3,
-    direction: Vec3,
-    center: Vec3,
-    normal: Vec3,
-    radius: f32,
-    world_per_pixel_factor: f32,
-) -> Option<f32> {
+    origin: bevy::math::DVec3,
+    direction: bevy::math::DVec3,
+    center: bevy::math::DVec3,
+    normal: bevy::math::DVec3,
+    radius: f64,
+    world_per_pixel_factor: f64,
+) -> Option<f64> {
     let denominator = direction.dot(normal);
     if denominator.abs() <= 1.0e-7 {
         return None;
@@ -5787,7 +5793,13 @@ fn mesh_position(body: &BodyDto, index: u32) -> Option<Vec3> {
     Some(Vec3::new(coordinates[0], coordinates[1], coordinates[2]))
 }
 
-fn ray_triangle(origin: Vec3, direction: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<f32> {
+fn ray_triangle(
+    origin: bevy::math::DVec3,
+    direction: bevy::math::DVec3,
+    a: bevy::math::DVec3,
+    b: bevy::math::DVec3,
+    c: bevy::math::DVec3,
+) -> Option<f64> {
     let edge_1 = b - a;
     let edge_2 = c - a;
     let p = direction.cross(edge_2);
@@ -6855,11 +6867,11 @@ mod tests {
     #[test]
     fn ray_triangle_returns_forward_hit() {
         let distance = ray_triangle(
-            Vec3::new(0.0, 0.0, 5.0),
-            Vec3::NEG_Z,
-            Vec3::new(-1.0, -1.0, 0.0),
-            Vec3::new(1.0, -1.0, 0.0),
-            Vec3::new(0.0, 1.0, 0.0),
+            bevy::math::DVec3::new(0.0, 0.0, 5.0),
+            bevy::math::DVec3::NEG_Z,
+            bevy::math::DVec3::new(-1.0, -1.0, 0.0),
+            bevy::math::DVec3::new(1.0, -1.0, 0.0),
+            bevy::math::DVec3::new(0.0, 1.0, 0.0),
         )
         .expect("ray should hit");
         assert!((distance - 5.0).abs() < 1.0e-5);

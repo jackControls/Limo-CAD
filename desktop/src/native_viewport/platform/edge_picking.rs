@@ -163,7 +163,7 @@ pub(super) fn pick_edges(
         let tolerance = (depth * 1e-5).max(1e-4);
         if face
             .as_ref()
-            .is_some_and(|face| face.distance < depth - tolerance)
+            .is_some_and(|face| face.distance < f64::from(depth - tolerance))
         {
             continue;
         }
@@ -176,7 +176,7 @@ pub(super) fn pick_edges(
                 .unwrap_or(0),
             edge_id: Some(edge),
             point: world.to_array(),
-            distance: depth,
+            distance: f64::from(depth),
             connector_kind: None,
             connector_origin: None,
             connector_primary_axis: None,

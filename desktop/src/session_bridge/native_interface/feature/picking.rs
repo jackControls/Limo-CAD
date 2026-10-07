@@ -308,7 +308,7 @@ pub(crate) fn handle_canvas_pick(
                 let camera = bevy::math::DVec3::from_array(camera.position.map(f64::from));
                 let mut nearest = hit
                     .as_ref()
-                    .map(|hit| f64::from(hit.distance))
+                    .map(|hit| hit.distance)
                     .unwrap_or(f64::INFINITY);
                 if matches!(target, SolidField::Path | SolidField::Guide) {
                     let mut candidate = None;

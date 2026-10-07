@@ -173,6 +173,7 @@ impl Prepared {
             ray.point[1],
         )
         .ok_or("The viewport camera is unavailable")?;
+        let precise_ray = (origin.as_dvec3(), direction.as_dvec3().normalize());
         let mut best = None;
         for instance in &self.snapshot.instances {
             cancelled(cancel)?;
@@ -186,7 +187,7 @@ impl Prepared {
                 body,
                 instance.occurrence_id,
                 instance.transform,
-                (origin, direction),
+                precise_ray,
                 factor,
                 &mut best,
                 NativePickPurpose::Geometry,

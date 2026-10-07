@@ -651,7 +651,8 @@ pub struct NativePick {
     pub face_id: u64,
     pub edge_id: Option<u64>,
     pub point: [f32; 3],
-    pub distance: f32,
+    /// Euclidean camera depth, retained at sketch precision for occlusion tests.
+    pub distance: f64,
     pub connector_kind: Option<String>,
     pub connector_origin: Option<[f32; 3]>,
     pub connector_primary_axis: Option<[f32; 3]>,
