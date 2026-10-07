@@ -217,7 +217,7 @@ pub(super) fn choose(
         .and_then(|loaded| loaded.path.as_ref())
         .and_then(|path| path.parent())
         .map(std::path::Path::to_path_buf);
-    let (dialog, parent) = parented_dialog(
+    let (dialog, parent) = dialog::parented(
         world,
         rfd::FileDialog::new()
             .set_title("Open Limo CAD script")
