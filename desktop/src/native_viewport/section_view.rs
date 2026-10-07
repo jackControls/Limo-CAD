@@ -59,6 +59,7 @@ mod tests {
         world.init_resource::<State>();
         world.init_resource::<Assets<Mesh>>();
         world.init_resource::<Assets<StandardMaterial>>();
+        world.init_resource::<Assets<ReferencePlaneMaterial>>();
         world.init_resource::<PresentationResource>();
         world.init_resource::<PaletteResource>();
         let material = world

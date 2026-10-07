@@ -185,7 +185,9 @@ impl Plugin for GpuStockPlugin {
                 .init_resource::<StampProgress>()
                 .add_systems(
                     Render,
-                    init_stamp_pipeline.in_set(RenderSystems::PrepareResources),
+                    init_stamp_pipeline
+                        .in_set(RenderSystems::PrepareResources)
+                        .before(RenderSystems::Render),
                 )
                 .add_systems(RenderGraph, stamp_field.before(camera_driver));
         }

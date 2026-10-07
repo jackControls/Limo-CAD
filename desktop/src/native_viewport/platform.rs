@@ -5968,7 +5968,7 @@ mod tests {
         let mut app = App::new();
         app.insert_resource(gizmo_config)
             .init_resource::<Assets<Mesh>>()
-            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<ReferencePlaneMaterial>>()
             .add_systems(Startup, setup_scene);
         app.update();
 
