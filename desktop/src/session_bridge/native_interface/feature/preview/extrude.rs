@@ -22,7 +22,7 @@ fn area_center(fill: &[[f64; 3]]) -> Result<[f64; 3], String> {
     let mut moment = [0.; 3];
     let mut weight = 0.;
     // Triangles describe the filled area, so holes do not add spurious weight.
-    for triangle in fill.chunks_exact(3) {
+    for triangle in fill.as_chunks::<3>().0.iter() {
         let a = sub(triangle[1], triangle[0]);
         let b = sub(triangle[2], triangle[0]);
         let cross = [
@@ -174,7 +174,7 @@ pub(crate) fn build(
     let source_fill = source_triangles(request, model)?;
     let center = area_center(&source_fill)?;
     let mut fill = Vec::new();
-    for triangle in source_fill.chunks_exact(3) {
+    for triangle in source_fill.as_chunks::<3>().0.iter() {
         fill.extend(triangle.iter().map(|p| offset(*p, start)));
         fill.extend(triangle.iter().rev().map(|p| offset(*p, end)));
     }

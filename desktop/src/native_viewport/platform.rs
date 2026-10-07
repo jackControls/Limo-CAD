@@ -1308,7 +1308,7 @@ fn resize_reference_planes(
     }
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn apply_native_presentation_styles(
     (model, section): (Res<ModelResource>, Option<Res<section_view::State>>),
     presentation: Res<PresentationResource>,

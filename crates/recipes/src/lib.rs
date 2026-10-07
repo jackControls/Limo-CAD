@@ -177,17 +177,29 @@ mod tests {
                 let Some(operation) = step["call"]["operation"].as_str() else {
                     continue;
                 };
-                let Some(naming) = authoring::feature_name_step(
+                let Some(mut naming) = authoring::feature_name_step(
                     step["id"].as_str().unwrap(),
                     operation,
                     &step["call"]["arguments"],
                 ) else {
                     continue;
                 };
-                assert_eq!(
-                    steps.get(index + 1),
-                    Some(&naming),
-                    "{id}: unnamed {operation} at step {index}"
+                // Authors may replace the generated name with a more descriptive one;
+                // the rename step itself must still follow and target this feature.
+                let mut actual = steps.get(index + 1).cloned().unwrap_or(Value::Null);
+                let name = actual["call"]["arguments"]
+                    .as_object_mut()
+                    .and_then(|arguments| arguments.remove("name"));
+                naming["call"]["arguments"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("name");
+                assert_eq!(actual, naming, "{id}: unnamed {operation} at step {index}");
+                assert!(
+                    name.as_ref()
+                        .and_then(Value::as_str)
+                        .is_some_and(|name| !name.trim().is_empty()),
+                    "{id}: empty history name for {operation} at step {index}"
                 );
                 names += 1;
             }
