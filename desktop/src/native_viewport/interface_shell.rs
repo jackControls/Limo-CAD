@@ -65,6 +65,7 @@ type RenderedControlQuery<'w, 's> = Query<
         Option<&'static bevy::text::EditableText>,
         Option<Ref<'static, InterfaceTextRevision>>,
         Option<Ref<'static, InterfacePointerPassthrough>>,
+        Option<Ref<'static, InterfaceCanvasAnnotation>>,
     ),
 >;
 
@@ -182,6 +183,11 @@ pub(crate) struct InterfaceTextRevision(pub u64);
 #[derive(Component)]
 pub(crate) struct InterfacePointerPassthrough;
 
+/// Canvas labels and glyphs retain their clicks while wheel and pinch gestures
+/// navigate the camera beneath them. Panels and text editors remain blockers.
+#[derive(Component)]
+pub(crate) struct InterfaceCanvasAnnotation;
+
 /// A painted panel blocks model picking without inventing an actionable
 /// control for its background. Its children retain normal control semantics.
 #[derive(Component, Clone, Default)]
@@ -195,6 +201,7 @@ pub(crate) struct InterfaceCanvasOccluder(pub &'static str);
 #[derive(Clone, Copy)]
 enum HitTarget {
     Control(ControlKey),
+    Annotation(ControlKey),
     Canvas(&'static str),
     Occluder,
 }
@@ -631,6 +638,16 @@ impl NativeInterfaceHandle {
                 .hit_order
                 .iter()
                 .any(|(_, area)| area.contains(point))
+        })
+    }
+
+    /// Wheel and pinch may cross annotations, but never other rendered controls
+    /// or painted panels. Click hit testing continues to include annotations.
+    pub(crate) fn blocks_camera_gesture(&self, point: [f64; 2]) -> bool {
+        self.shared.lock().is_ok_and(|shared| {
+            shared.hit_order.iter().any(|(target, area)| {
+                !matches!(target, HitTarget::Annotation(_)) && area.contains(point)
+            })
         })
     }
 
@@ -1190,7 +1207,7 @@ fn hit(shared: &Shared, point: [f64; 2]) -> Option<ControlKey> {
         .rev()
         .find(|(_, area)| area.contains(point))
         .and_then(|(target, _)| match target {
-            HitTarget::Control(key) => Some(*key),
+            HitTarget::Control(key) | HitTarget::Annotation(key) => Some(*key),
             HitTarget::Canvas(_) | HitTarget::Occluder => None,
         })
 }
@@ -1905,6 +1922,7 @@ fn publish_layout(
     mut removed_occluders: RemovedComponents<InterfaceOccluder>,
     mut removed_canvas_owners: RemovedComponents<InterfaceCanvasOccluder>,
     mut removed_passthrough: RemovedComponents<InterfacePointerPassthrough>,
+    mut removed_annotations: RemovedComponents<InterfaceCanvasAnnotation>,
     mut removed: RemovedComponents<InterfaceControl>,
     mut removed_clips: RemovedComponents<CalculatedClip>,
     mut last_revision: Local<Option<u64>>,
@@ -1916,7 +1934,8 @@ fn publish_layout(
         || removed_clips.read().count() > 0
         || removed_occluders.read().count() > 0
         || removed_canvas_owners.read().count() > 0
-        || removed_passthrough.read().count() > 0;
+        || removed_passthrough.read().count() > 0
+        || removed_annotations.read().count() > 0;
     if *last_revision == Some(shared.revision)
         && !removed
         && scale
@@ -1933,7 +1952,19 @@ fn publish_layout(
                     || canvas.as_ref().is_some_and(|canvas| canvas.is_changed())
             })
         && !controls.iter().any(
-            |(_, control, node, transform, stack, clip, visibility, _, text, passthrough)| {
+            |(
+                _,
+                control,
+                node,
+                transform,
+                stack,
+                clip,
+                visibility,
+                _,
+                text,
+                passthrough,
+                annotation,
+            )| {
                 control.is_changed()
                     || node.is_changed()
                     || transform.is_changed()
@@ -1944,6 +1975,9 @@ fn publish_layout(
                         .is_some_and(|visibility| visibility.is_changed())
                     || text.as_ref().is_some_and(|revision| revision.is_changed())
                     || passthrough
+                        .as_ref()
+                        .is_some_and(|marker| marker.is_changed())
+                    || annotation
                         .as_ref()
                         .is_some_and(|marker| marker.is_changed())
             },
@@ -1972,6 +2006,7 @@ fn publish_layout(
                 editor,
                 _,
                 passthrough,
+                annotation,
             )| {
                 let area = HitArea::new(&computed, &transform, clip.as_deref(), frame.surface);
                 let bounds = area.bounds;
@@ -2021,15 +2056,23 @@ fn publish_layout(
                     },
                     area,
                     passthrough.is_some(),
+                    annotation.is_some(),
                 )
             },
         )
         .collect();
-    stacked.sort_by_key(|(stack, _, _, _)| *stack);
+    stacked.sort_by_key(|(stack, _, _, _, _)| *stack);
     let mut hits: Vec<_> = stacked
         .iter()
-        .filter(|(_, control, _, passthrough)| control.visible && !*passthrough)
-        .map(|(stack, control, area, _)| (*stack, HitTarget::Control(control.key), area.clone()))
+        .filter(|(_, control, _, passthrough, _)| control.visible && !*passthrough)
+        .map(|(stack, control, area, _, annotation)| {
+            let target = if *annotation {
+                HitTarget::Annotation(control.key)
+            } else {
+                HitTarget::Control(control.key)
+            };
+            (*stack, target, area.clone())
+        })
         .collect();
     for (node, transform, stack, clip, visibility, canvas) in &occluders {
         if !visibility.get() {
@@ -2050,7 +2093,7 @@ fn publish_layout(
         .collect();
     let mut published: Vec<_> = stacked
         .into_iter()
-        .map(|(_, control, _, _)| control)
+        .map(|(_, control, _, _, _)| control)
         .collect();
     published.sort_by(|a, b| {
         a.bounds

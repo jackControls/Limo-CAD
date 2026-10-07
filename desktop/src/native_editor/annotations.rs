@@ -38,6 +38,14 @@ pub(super) fn geometry_tool_active(editor: &Editor) -> bool {
 }
 
 fn annotation_input(world: &mut World, entity: Entity, geometry_tool: bool) {
+    if world
+        .get::<interface_shell::InterfaceCanvasAnnotation>(entity)
+        .is_none()
+    {
+        world
+            .entity_mut(entity)
+            .insert(interface_shell::InterfaceCanvasAnnotation);
+    }
     if geometry_tool {
         if world
             .get::<interface_shell::InterfacePointerPassthrough>(entity)

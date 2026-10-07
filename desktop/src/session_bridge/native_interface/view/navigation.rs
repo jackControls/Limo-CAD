@@ -204,7 +204,16 @@ fn navigate_inner(
         world.insert_resource(workbench::NavigationRectangle(None));
         return Ok(false);
     };
-    let on_canvas = inside(bounds, cursor) && !handle.owns_pointer(cursor.as_dvec2().to_array());
+    let point = cursor.as_dvec2().to_array();
+    let blocked = if matches!(
+        input.event,
+        WindowEvent::MouseWheel(_) | WindowEvent::PinchGesture(_)
+    ) {
+        handle.blocks_camera_gesture(point)
+    } else {
+        handle.owns_pointer(point)
+    };
+    let on_canvas = inside(bounds, cursor) && !blocked;
     let on_dial = handle
         .hit_key(cursor.as_dvec2().to_array())
         .is_some_and(|key| Some(key) == workbench::dial_key(world))
