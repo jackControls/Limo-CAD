@@ -5,6 +5,7 @@ mod body_planes;
 mod combine;
 mod holes;
 mod move_copy;
+mod parity;
 mod patterns;
 mod planes;
 mod profiles;
@@ -883,8 +884,8 @@ fn actual_preview_and_invalid_fields_never_mutate_the_model_and_cancel_restores_
     assert!(panel(app.world()).unwrap().can_apply);
     let visible = native_viewport::interface_preview_snapshot(app.world());
     assert!(
-        visible.lines[0].segments.len() >= 72,
-        "The actual renderer receives the source and extrusion outlines"
+        visible.lines[0].segments.len() >= 24 && visible.triangles[0].positions.len() >= 108,
+        "The renderer receives the selected source outline and shaded extrusion volume"
     );
     assert_eq!(exported(&fixture), before);
     field(
@@ -906,9 +907,19 @@ fn actual_preview_and_invalid_fields_never_mutate_the_model_and_cancel_restores_
     assert!(
         matches!(&distance.value, limo_cad_interface::Field::Text {value,..} if value == "2 + (")
     );
-    assert!(native_viewport::interface_preview_snapshot(app.world())
-        .lines
-        .is_empty());
+    let invalid = native_viewport::interface_preview_snapshot(app.world());
+    assert!(
+        invalid.arrows.is_empty(),
+        "An invalid distance must not show a tool volume"
+    );
+    assert!(
+        invalid
+            .triangles
+            .iter()
+            .flat_map(|t| t.positions.chunks_exact(3))
+            .all(|p| p[2] == 0.),
+        "Only the accepted source region remains highlighted while a number is invalid"
+    );
     assert!(action(
         &fixture,
         app.world_mut(),

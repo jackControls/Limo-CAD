@@ -272,6 +272,7 @@ struct Shared {
     modal_focus: Vec<(String, Option<ControlKey>)>,
     hovered: Option<ControlKey>,
     focused: Option<ControlKey>,
+    tab_excluded: std::collections::HashSet<ControlKey>,
     capture: Option<Capture>,
     actions: VecDeque<NativeInterfaceAction>,
     modal_keys: VecDeque<NativeModalKey>,
@@ -294,6 +295,7 @@ impl Default for Shared {
             modal_focus: Vec::new(),
             hovered: None,
             focused: None,
+            tab_excluded: Default::default(),
             capture: None,
             actions: VecDeque::new(),
             modal_keys: VecDeque::new(),
@@ -922,6 +924,15 @@ impl NativeInterfaceHandle {
         Ok(true)
     }
 
+    pub(crate) fn exclude_from_tab(&self, key: ControlKey) -> Result<(), String> {
+        self.shared
+            .lock()
+            .map_err(|_| "Native interface lock poisoned")?
+            .tab_excluded
+            .insert(key);
+        Ok(())
+    }
+
     pub fn focus_next(&self, backwards: bool) -> Result<bool, String> {
         let mut shared = self
             .shared
@@ -937,10 +948,11 @@ impl NativeInterfaceHandle {
             .controls
             .iter()
             .filter(|control| {
-                shared
-                    .registry
-                    .resolve_key(control.key, ControlInput::Click, &context)
-                    .is_ok()
+                !shared.tab_excluded.contains(&control.key)
+                    && shared
+                        .registry
+                        .resolve_key(control.key, ControlInput::Click, &context)
+                        .is_ok()
             })
             .map(|control| control.key)
             .collect();
@@ -1235,7 +1247,8 @@ pub(crate) fn refresh_theme(world: &mut World, theme: ViewportUiTheme) {
             style.0.accent = Color::WHITE;
             style.0.edge = theme.accent;
         } else if reference.is_some() {
-            style.0.accent_soft = ribbon::css_mix(theme.accent, theme.panel, 0.12);
+            style.0.panel = theme.header;
+            style.0.accent_soft = ribbon::css_mix(theme.accent, theme.panel, 0.15);
         }
         if let Some(dimension) = dimension {
             style.0.ink = dimension.0;
@@ -1393,23 +1406,27 @@ pub(crate) fn control_colors(world: &mut World, entity: Entity, ink: Color, fill
 
 /// Reference cards reserve room for the separate clear control and explanatory
 /// line. Keep the actual accessible name intact for keyboard/MCP selection.
-pub(crate) fn reference_caption(world: &mut World, entity: Entity) {
+pub(crate) fn reference_button(world: &mut World, entity: Entity) {
     if world.get::<InterfaceReference>(entity).is_none() {
         let mut style = world.get::<InterfaceButtonStyle>(entity).unwrap().0;
-        style.accent_soft = ribbon::css_mix(style.accent, style.panel, 0.12);
+        style.accent_soft = ribbon::css_mix(style.accent, style.panel, 0.15);
+        style.panel = style.header;
         world
             .entity_mut(entity)
             .insert((InterfaceReference, InterfaceButtonStyle(style)));
     }
+}
+pub(crate) fn reference_caption(world: &mut World, entity: Entity, selecting: bool) {
+    reference_button(world, entity);
     let label = world.get::<InterfaceLabel>(entity).unwrap().0;
     let assets = world.resource::<ViewportUiAssets>().clone();
     let theme = world.get::<InterfaceButtonStyle>(entity).unwrap().0;
     let bounds = Node {
         position_type: PositionType::Absolute,
-        left: px(8.),
-        right: px(62.),
-        top: px(5.),
-        height: px(26.),
+        left: px(31.),
+        right: px(if selecting { 90. } else { 8. }),
+        top: px(7.),
+        height: px(20.),
         overflow: Overflow::clip(),
         ..default()
     };
@@ -1417,6 +1434,12 @@ pub(crate) fn reference_caption(world: &mut World, entity: Entity) {
         world
             .entity_mut(label)
             .insert((bounds, theme.text(&assets, 12., FontWeight::NORMAL)));
+    }
+    let layout = TextLayout::new(Justify::Left, bevy::text::LineBreak::NoWrap);
+    if world.get::<TextLayout>(label).is_none_or(|current| {
+        current.justify != layout.justify || current.linebreak != layout.linebreak
+    }) {
+        world.entity_mut(label).insert(layout);
     }
 }
 
@@ -2015,6 +2038,9 @@ fn publish_layout(
                     .is_none_or(|modal| control.modal_scope.as_ref() == Some(modal))
         })
     };
+    shared
+        .tab_excluded
+        .retain(|key| published.iter().any(|control| control.key == *key));
     shared.focused = shared.focused.filter(|key| eligible(*key));
     shared.hovered = shared.hovered.filter(|key| eligible(*key));
     if shared

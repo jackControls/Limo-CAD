@@ -19,6 +19,8 @@ use bevy::{
 use limo_cad_interface::{DocumentContext, Field, KeyChord, Rect as Area};
 use std::collections::{HashMap, HashSet};
 
+mod overlays;
+mod selection;
 mod translated;
 
 #[derive(Resource, Default)]
@@ -35,6 +37,8 @@ struct PanelWidgets {
     area: Area,
     scroll: f32,
     max_scroll: f32,
+    focus_signature: Option<String>,
+    decorations: HashMap<String, Entity>,
 }
 
 fn node(x: f32, y: f32, width: f32, height: f32) -> Node {
@@ -138,14 +142,12 @@ fn synchronize_owned(
         .cloned()
         .unwrap_or_default();
     let theme = crate::native_viewport::ui::theme(world);
-    let component = panel.fields.iter().any(|r| {
-        r.field == super::SolidField::MoveObjectType
-            && matches!(&r.value,Field::Choice{value,..} if value=="component")
-    });
     let width = area.width as f32;
-    let height = (area.height as f32).min(content_height(&panel) + 92.);
-    let body_height = height - 92.;
-    state.max_scroll = (content_height(&panel) - body_height).max(0.);
+    let scrolling = content_height(&panel, width - 24.) > area.height as f32 - 84.;
+    let inner = width - 24. - if scrolling { 24. } else { 0. };
+    let height = (area.height as f32).min(content_height(&panel, inner) + 84.);
+    let body_height = height - 84.;
+    state.max_scroll = (content_height(&panel, inner) - body_height).max(0.);
     state.scroll = state.scroll.min(state.max_scroll);
     let root = *state.root.get_or_insert_with(|| {
         world
@@ -267,8 +269,7 @@ fn synchronize_owned(
         &assets,
         true,
     );
-    let mut y = 0.;
-    let inner = width - 24. - if state.max_scroll > 0. { 24. } else { 0. };
+    let mut y = 12.;
     let mut close =
         InterfaceControl::button(panel.kind.group(), format!("Close {}", panel.kind.label()));
     if crate::native_viewport::localization::locale(world) != crate::app_preferences::Locale::En {
@@ -297,7 +298,7 @@ fn synchronize_owned(
     )?;
     for row in panel.fields.iter().filter(|row| row.visible) {
         let key = format!("{:?}", row.field);
-        if let Some((title, index, columns)) = row.field.compact_row(panel.kind) {
+        if let Some((title, index, columns)) = compact_row(row.field, &panel) {
             if index != 0 {
                 continue;
             }
@@ -364,6 +365,21 @@ fn synchronize_owned(
                     theme,
                     &assets,
                 )?;
+                numeric_steps(
+                    world,
+                    state,
+                    &mut live_controls,
+                    body,
+                    camera,
+                    &panel,
+                    column,
+                    &key,
+                    x,
+                    y + 20. - state.scroll,
+                    column_width,
+                    theme,
+                    &assets,
+                )?;
                 error = error.or(column.error.as_deref());
             }
             y += 56.;
@@ -407,7 +423,9 @@ fn synchronize_owned(
         if matches!(
             row.field,
             super::SolidField::Axis | super::SolidField::MoveObjectType
-        ) {
+        ) || (row.field == super::SolidField::Operation
+            && panel.kind == super::SolidFormKind::Extrude)
+        {
             if let Field::Choice { value, options } = &row.value {
                 label(
                     world,
@@ -440,7 +458,7 @@ fn synchronize_owned(
                             (index % 2) as f32 * (inner + 6.) * 0.5,
                             y + (index / 2) as f32 * 36. - state.scroll,
                             (inner - 6.) * 0.5,
-                            30.,
+                            32.,
                         ),
                         FeatureCommand::Control {
                             form_id: panel.form_id,
@@ -454,8 +472,77 @@ fn synchronize_owned(
                     )?;
                 }
                 y += options.len().div_ceil(2) as f32 * 36. + 4.;
+                if row.field == super::SolidField::Operation {
+                    for (key, hint) in [
+                        ("operation-hint", panel.presentation.operation_hint),
+                        ("automatic-hint", panel.presentation.automatic_hint),
+                    ] {
+                        if let Some(hint) = hint {
+                            let text = crate::native_viewport::localization::translate(world, hint);
+                            let h = selection::text_height(text, inner);
+                            label(
+                                world,
+                                state,
+                                &mut live_labels,
+                                key,
+                                body,
+                                camera,
+                                text,
+                                node(0., y - state.scroll, inner, h),
+                                theme,
+                                &assets,
+                                false,
+                            );
+                            world.entity_mut(state.labels[key]).insert((
+                                theme.text(&assets, 10., FontWeight::NORMAL),
+                                bevy::text::LineHeight::Px(16.),
+                            ));
+                            if key == "automatic-hint" {
+                                world
+                                    .entity_mut(state.labels[key])
+                                    .insert(TextColor(theme.accent));
+                            }
+                            y += h + 4.;
+                        }
+                    }
+                }
+
                 continue;
             }
+        }
+        if matches!(row.value, Field::None) {
+            selection::render(
+                world,
+                state,
+                &mut live_controls,
+                &mut live_labels,
+                body,
+                camera,
+                &panel,
+                row,
+                inner,
+                &mut y,
+                theme,
+                &assets,
+            )?;
+            continue;
+        }
+        if row.field == super::SolidField::Copy && panel.kind == super::SolidFormKind::MoveCopy {
+            overlays::copy_card(
+                world,
+                state,
+                &mut live_controls,
+                &mut live_labels,
+                body,
+                camera,
+                &panel,
+                row,
+                inner,
+                &mut y,
+                theme,
+                &assets,
+            )?;
+            continue;
         }
         let mut control = InterfaceControl::button(panel.kind.group(), &row.label);
         control.disabled = !row.enabled;
@@ -485,80 +572,8 @@ fn synchronize_owned(
                 control.role = "checkbox".into();
                 control.selected = Some(*value);
             }
-            Field::None => {
-                let label_text = match row.field {
-                    super::SolidField::Source if panel.kind == super::SolidFormKind::Loft => {
-                        "SECTIONS"
-                    }
-                    super::SolidField::Source => "PROFILES",
-                    super::SolidField::Edges => "EDGES",
-                    super::SolidField::Faces => "FACES TO REMOVE",
-                    super::SolidField::Cylinder => "CYLINDRICAL SURFACE",
-                    super::SolidField::FromPoint => "FROM POINT",
-                    super::SolidField::ToPoint => "TO POINT",
-                    super::SolidField::PivotPoint => "ROTATION PIVOT",
-                    super::SolidField::HoleSupport => "SUPPORT FACE",
-                    super::SolidField::HolePositions => "POSITIONS",
-                    super::SolidField::TargetBody => "TARGET BODY",
-                    super::SolidField::Bodies if panel.kind == super::SolidFormKind::SplitBody => {
-                        "BODY TO SPLIT"
-                    }
-                    super::SolidField::Bodies if component => "COMPONENT",
-                    super::SolidField::Bodies => "BODIES",
-                    super::SolidField::ToolBodies => "TOOL BODIES",
-                    super::SolidField::FirstPlane
-                        if panel.kind == super::SolidFormKind::Midplane =>
-                    {
-                        "FIRST REFERENCE"
-                    }
-                    super::SolidField::FirstPlane => "REFERENCE PLANE",
-                    super::SolidField::SecondPlane => "SECOND REFERENCE",
-                    super::SolidField::AxisEdge => "AXIS REFERENCE",
-                    super::SolidField::DirectionEdge => "FIRST DIRECTION REFERENCE",
-                    super::SolidField::SecondDirectionEdge => "SECOND DIRECTION REFERENCE",
-                    super::SolidField::AxisLine => "AXIS LINE",
-                    super::SolidField::Targets => "TARGET BODIES",
-                    super::SolidField::StopFace => "STOP FACE",
-                    super::SolidField::Path => {
-                        if matches!(
-                            panel.kind,
-                            super::SolidFormKind::Loft | super::SolidFormKind::Rib
-                        ) {
-                            "CENTERLINE"
-                        } else {
-                            "PATH"
-                        }
-                    }
-                    super::SolidField::Guide => "GUIDE RAIL",
-                    _ => "REFERENCE",
-                };
-                label(
-                    world,
-                    state,
-                    &mut live_labels,
-                    &format!("{key}-label"),
-                    body,
-                    camera,
-                    label_text,
-                    node(0., y - state.scroll, inner, 18.),
-                    theme,
-                    &assets,
-                    false,
-                );
-                y += 20.;
-                action = FeatureControl::Pick(row.field);
-                control.selected = Some(panel.pick_target == Some(row.field));
-                if row.field.is_move_point() {
-                    control.label = match row.field {
-                        super::SolidField::FromPoint => "Pick from point",
-                        super::SolidField::ToPoint => "Pick to point",
-                        _ => "Pick rotation pivot",
-                    }
-                    .into();
-                }
-            }
+            Field::None => unreachable!(),
         }
-        let reference = matches!(row.value, Field::None);
         widget(
             world,
             state,
@@ -567,12 +582,7 @@ fn synchronize_owned(
             body,
             camera,
             control,
-            node(
-                0.,
-                y - state.scroll,
-                inner,
-                if reference { 62. } else { 30. },
-            ),
+            node(0., y - state.scroll, inner, 28.),
             FeatureCommand::Control {
                 form_id: panel.form_id,
                 action,
@@ -580,113 +590,22 @@ fn synchronize_owned(
             theme,
             &assets,
         )?;
-        if reference {
-            if row.field.is_move_point() {
-                world
-                    .entity_mut(state.controls[&key].0)
-                    .insert(interface_shell::InterfaceCaption(row.label.clone()));
-            }
-            interface_shell::reference_caption(world, state.controls[&key].0);
-            label(
-                world,
-                state,
-                &mut live_labels,
-                &format!("{key}-hint"),
-                body,
-                camera,
-                match row.field {
-                    super::SolidField::Source if panel.kind == super::SolidFormKind::Loft => {
-                        "Click sections in order; click again to remove."
-                    }
-                    super::SolidField::Source => "Click a profile in the viewport.",
-                    super::SolidField::Edges => "Click edges to add or remove from this body.",
-                    field if field.is_move_point() => {
-                        "Pick a sketch point, body vertex or surface."
-                    }
-                    super::SolidField::HoleSupport => {
-                        "Select a planar face for the hole direction."
-                    }
-                    super::SolidField::HolePositions => {
-                        "Pick sketch points or click on the support face."
-                    }
-                    super::SolidField::Cylinder => {
-                        "Choose an exterior cylinder; hole walls are rejected."
-                    }
-                    super::SolidField::Faces => {
-                        "Click faces on one body to add or remove openings."
-                    }
-                    super::SolidField::TargetBody => "Click the body that will receive the result.",
-                    super::SolidField::Bodies if panel.kind == super::SolidFormKind::SplitBody => {
-                        "Click the body to divide at the reference plane."
-                    }
-                    super::SolidField::Bodies if component => {
-                        "Click an instance to place its component."
-                    }
-                    super::SolidField::Bodies => "Click bodies to add or remove.",
-                    super::SolidField::ToolBodies => {
-                        "The target stays separate from the tool bodies."
-                    }
-                    super::SolidField::FirstPlane | super::SolidField::SecondPlane => {
-                        "Choose in the browser or click a planar face."
-                    }
-                    super::SolidField::AxisEdge if panel.kind.is_pattern() => {
-                        "An edge supplies both origin and direction."
-                    }
-                    super::SolidField::AxisEdge => "Choose a straight edge on the reference plane.",
-                    super::SolidField::DirectionEdge | super::SolidField::SecondDirectionEdge => {
-                        "Choose a straight edge or enter XYZ below."
-                    }
-                    super::SolidField::AxisLine => "Click a straight line on the profile plane.",
-                    super::SolidField::Path if panel.kind == super::SolidFormKind::Rib => {
-                        "Click centerline curves to add or remove."
-                    }
-                    super::SolidField::Path | super::SolidField::Guide => {
-                        "Click connected curves to add or remove."
-                    }
-                    super::SolidField::Targets => "Click bodies to add or remove.",
-                    _ => "Click a planar face in the viewport.",
-                },
-                node(8., y + 32. - state.scroll, inner - 16., 24.),
-                theme,
-                &assets,
-                false,
-            );
-            let mut clear = InterfaceControl::button(
-                panel.kind.group(),
-                match row.field {
-                    super::SolidField::FromPoint => "Clear from point",
-                    super::SolidField::ToPoint => "Clear to point",
-                    super::SolidField::PivotPoint => "Clear rotation pivot",
-                    super::SolidField::HoleSupport => "Clear support face",
-                    super::SolidField::HolePositions => "Clear hole positions",
-                    super::SolidField::Source => "Clear source profiles",
-                    super::SolidField::AxisLine => "Clear axis line",
-                    super::SolidField::Targets => "Clear target bodies",
-                    super::SolidField::StopFace => "Clear stop face",
-                    super::SolidField::Path => "Clear path curves",
-                    super::SolidField::Guide => "Clear guide curves",
-                    _ => "Clear reference",
-                },
-            );
-            clear.disabled = !row.enabled;
-            widget(
-                world,
-                state,
-                &mut live_controls,
-                &format!("{key}-clear"),
-                body,
-                camera,
-                clear,
-                node(inner - 54., y + 5. - state.scroll, 48., 22.),
-                FeatureCommand::Control {
-                    form_id: panel.form_id,
-                    action: FeatureControl::Clear(row.field),
-                },
-                theme,
-                &assets,
-            )?;
-        }
-        y += if reference { 68. } else { 36. };
+        numeric_steps(
+            world,
+            state,
+            &mut live_controls,
+            body,
+            camera,
+            &panel,
+            row,
+            &key,
+            0.,
+            y - state.scroll,
+            inner,
+            theme,
+            &assets,
+        )?;
+        y += 40.;
         choice_options(
             world,
             state,
@@ -870,66 +789,49 @@ fn synchronize_owned(
         theme,
         &assets,
     )?;
-    if let Some(anchor) = super::manipulator::anchor(world) {
-        let viewport = world
-            .get_resource::<NativeInterfaceHandle>()
-            .and_then(|handle| handle.frame())
-            .and_then(|frame| {
-                frame
-                    .canvases
-                    .iter()
-                    .find(|c| c.name == "viewport")
-                    .map(|c| c.bounds)
-            });
-        if let (Some(canvas), Some(row)) = (
-            viewport,
-            panel
-                .fields
-                .iter()
-                .find(|r| r.field == super::SolidField::Distance),
-        ) {
-            let min_x = canvas.x as f32 + 8.;
-            let x =
-                (canvas.x as f32 + anchor[0] + 24.).clamp(min_x, (area.x as f32 - 150.).max(min_x));
-            let min_y = canvas.y as f32 + 8.;
-            let y = (canvas.y as f32 + anchor[1] + 8.).clamp(
-                min_y,
-                (canvas.y as f32 + canvas.height as f32 - 42.).max(min_y),
-            );
-            let mut control = InterfaceControl::button(panel.kind.group(), "Offset plane distance");
-            control.field = row.value.clone();
-            control.disabled = panel.busy;
-            label(
-                world,
-                state,
-                &mut live_labels,
-                "offset-caption",
-                root,
-                camera,
-                "OFFSET",
-                node(x - area.x as f32, y - area.y as f32 - 19., 132., 18.),
-                theme,
-                &assets,
-                false,
-            );
-            widget(
-                world,
-                state,
-                &mut live_controls,
-                "offset-distance",
-                root,
-                camera,
-                control,
-                node(x - area.x as f32, y - area.y as f32, 132., 30.),
-                FeatureCommand::Control {
-                    form_id: panel.form_id,
-                    action: FeatureControl::Field(super::SolidField::Distance),
-                },
-                theme,
-                &assets,
-            )?;
+    floating_distance(
+        world,
+        state,
+        &mut live_controls,
+        &mut live_labels,
+        root,
+        camera,
+        &panel,
+        area,
+        theme,
+        &assets,
+    )?;
+    overlays::selection_prompt(
+        world,
+        state,
+        &mut live_labels,
+        root,
+        camera,
+        &panel,
+        area,
+        theme,
+        &assets,
+    );
+    if let Some((field, signature)) = &panel.presentation.auto_focus {
+        if state.focus_signature.as_ref() != Some(signature) {
+            if let Some((entity, _)) = state.controls.get(&format!("{field:?}")) {
+                fields::request_focus(world, *entity, owner);
+                state.focus_signature = Some(signature.clone());
+            }
         }
+    } else {
+        state.focus_signature = None;
     }
+    state.decorations.retain(|key, entity| {
+        if live_labels.contains(key) {
+            true
+        } else {
+            if world.get_entity(*entity).is_ok() {
+                world.despawn(*entity);
+            }
+            false
+        }
+    });
     state.controls.retain(|key, (entity, _)| {
         if live_controls.contains(key) {
             true
@@ -967,6 +869,18 @@ fn widget(
     node.border = UiRect::all(px(1.));
     node.border_radius = BorderRadius::all(px(4.));
     node.padding = UiRect::axes(px(7.), px(3.));
+    if matches!(control.field, Field::Text { .. }) {
+        if let FeatureCommand::Control {
+            action: FeatureControl::Field(field),
+            ..
+        } = command
+        {
+            if field.dimension_kind().is_some() {
+                node.padding.right = px(22.);
+            }
+        }
+        control.owned_keys = vec![KeyChord::plain("Enter")];
+    }
     let entity = if let Some((entity, _)) = state.controls.get(key) {
         *entity
     } else {
@@ -1020,6 +934,14 @@ fn widget(
         if key == "close" {
             ribbon::compact_glyph(world, entity, Icon::Cancel, 0., 14.);
         }
+        if key.ends_with("-step-up") || key.ends_with("-step-down") {
+            let glyph = ribbon::compact_glyph(world, entity, Icon::Chevron, 0., 10.);
+            if key.ends_with("-step-up") {
+                world
+                    .entity_mut(glyph)
+                    .insert(bevy::ui::UiTransform::from_rotation(Rot2::PI));
+            }
+        }
         bind_command(world, entity, NativeCommand::Feature(command.clone()))?;
         state.controls.insert(key.into(), (entity, command.clone()));
         entity
@@ -1061,6 +983,13 @@ fn widget(
     if key == "apply" {
         interface_shell::primary_button(world, entity);
     }
+    if world
+        .get::<InterfaceControl>(entity)
+        .is_some_and(|control| control.role == "radio")
+    {
+        interface_shell::reference_button(world, entity);
+        interface_shell::caption_weight(world, entity, FontWeight::NORMAL);
+    }
     let caption = if key == "close" {
         Some("")
     } else if key == "apply" {
@@ -1073,6 +1002,8 @@ fn widget(
         Some("↓")
     } else if key.ends_with("-clear") {
         Some("Clear")
+    } else if key.ends_with("-step-up") || key.ends_with("-step-down") {
+        Some("")
     } else {
         None
     };
@@ -1100,6 +1031,15 @@ fn widget(
             .insert(interface_shell::InterfaceFlat);
         ribbon::center_glyph(world, entity);
     }
+    if key.ends_with("-step-up") || key.ends_with("-step-down") {
+        world
+            .entity_mut(entity)
+            .insert(interface_shell::InterfaceFlat);
+        ribbon::center_glyph(world, entity);
+        if let Some(handle) = world.get_resource::<NativeInterfaceHandle>() {
+            handle.exclude_from_tab(limo_cad_interface::ControlKey(entity.to_bits()))?;
+        }
+    }
     if let Some(control) = world.get::<InterfaceControl>(entity) {
         if let Field::Toggle(checked) = control.field {
             interface_shell::checkbox_button(world, entity, camera, checked);
@@ -1117,15 +1057,296 @@ fn widget(
             if world.get::<interface_shell::InterfaceCaption>(entity) != Some(&caption) {
                 world.entity_mut(entity).insert(caption);
             }
+            interface_shell::caption_node(
+                world,
+                entity,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(8.),
+                    right: px(24.),
+                    top: px(5.),
+                    height: px(20.),
+                    ..default()
+                },
+            );
+            interface_shell::caption_weight(world, entity, FontWeight::NORMAL);
         }
     }
     Ok(())
 }
 
-fn content_height(panel: &super::FeaturePanel) -> f32 {
-    let mut height = panel.notes.iter().map(|s| note_height(s)).sum::<f32>();
+pub(super) fn focus_measurement(
+    world: &mut World,
+    owner: &DocumentContext,
+    field: super::SolidField,
+) {
+    let focused = world
+        .get_resource::<NativeInterfaceHandle>()
+        .and_then(|h| h.focused_key());
+    let entity = world.get_resource::<PanelWidgets>().and_then(|state| {
+        let canvas = state.controls.iter().any(|(key, (e, _))| {
+            (key.starts_with("extrude-distance-step") || key.starts_with("offset-distance-step"))
+                && focused == Some(limo_cad_interface::ControlKey(e.to_bits()))
+        });
+        let key = if canvas {
+            if state.controls.contains_key("extrude-distance") {
+                "extrude-distance".into()
+            } else {
+                "offset-distance".into()
+            }
+        } else {
+            format!("{field:?}")
+        };
+        state.controls.get(&key).map(|(entity, _)| *entity)
+    });
+    if let Some(entity) = entity {
+        fields::request_focus(world, entity, owner);
+    }
+}
+
+fn compact_row(
+    field: super::SolidField,
+    panel: &super::FeaturePanel,
+) -> Option<(&'static str, usize, &'static [super::SolidField])> {
+    let row = field.compact_row(panel.kind)?;
+    row.2
+        .iter()
+        .all(|f| panel.fields.iter().any(|r| r.field == *f && r.visible))
+        .then_some(row)
+}
+
+fn visible_error<'a>(
+    panel: &super::FeaturePanel,
+    row: &'a super::SolidFieldView,
+) -> Option<&'a str> {
+    if matches!(row.value, Field::None)
+        && !panel
+            .presentation
+            .references
+            .get(&row.field)
+            .is_some_and(|r| r.has_selection)
+    {
+        None
+    } else {
+        row.error.as_deref()
+    }
+}
+
+fn operation_hints_height(panel: &super::FeaturePanel, inner: f32) -> f32 {
+    use crate::app_preferences::{locale::translate, Locale};
+    [
+        panel.presentation.operation_hint,
+        panel.presentation.automatic_hint,
+    ]
+    .into_iter()
+    .flatten()
+    .map(|key| selection::text_height(translate(Locale::En, key), inner) + 4.)
+    .sum()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn numeric_steps(
+    world: &mut World,
+    state: &mut PanelWidgets,
+    controls: &mut HashSet<String>,
+    parent: Entity,
+    camera: Entity,
+    panel: &super::FeaturePanel,
+    row: &super::SolidFieldView,
+    key: &str,
+    x: f32,
+    y: f32,
+    width: f32,
+    theme: ViewportUiTheme,
+    assets: &ViewportUiAssets,
+) -> Result<(), String> {
+    if !matches!(row.value, Field::Text { .. }) || row.field.dimension_kind().is_none() {
+        return Ok(());
+    }
+    for (suffix, label, delta, dy) in [("up", "Increase", 1, 1.), ("down", "Decrease", -1, 14.)] {
+        let name = match key {
+            "extrude-distance" => "Extrude canvas distance",
+            "offset-distance" => "Offset plane distance",
+            _ => &row.label,
+        };
+        let mut control = InterfaceControl::button(panel.kind.group(), format!("{label} {name}"));
+        control.disabled = !row.enabled || panel.busy;
+        widget(
+            world,
+            state,
+            controls,
+            &format!("{key}-step-{suffix}"),
+            parent,
+            camera,
+            control,
+            node(x + width - 19., y + dy, 14., 12.),
+            FeatureCommand::Control {
+                form_id: panel.form_id,
+                action: FeatureControl::Step {
+                    field: row.field,
+                    delta,
+                },
+            },
+            theme,
+            assets,
+        )?;
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn floating_distance(
+    world: &mut World,
+    state: &mut PanelWidgets,
+    controls: &mut HashSet<String>,
+    labels: &mut HashSet<String>,
+    root: Entity,
+    camera: Entity,
+    panel: &super::FeaturePanel,
+    area: Area,
+    theme: ViewportUiTheme,
+    assets: &ViewportUiAssets,
+) -> Result<(), String> {
+    let extrude = panel.kind == super::SolidFormKind::Extrude;
+    let anchor = if extrude {
+        super::manipulator::distance_anchor(world)
+    } else {
+        super::manipulator::anchor(world)
+    };
+    let viewport = world
+        .get_resource::<NativeInterfaceHandle>()
+        .and_then(|h| h.frame())
+        .and_then(|frame| {
+            frame
+                .canvases
+                .iter()
+                .find(|c| c.name == "viewport")
+                .map(|c| c.bounds)
+        });
+    let row = panel
+        .fields
+        .iter()
+        .find(|r| r.field == super::SolidField::Distance && r.visible);
+    let (Some(anchor), Some(canvas), Some(row)) = (anchor, viewport, row) else {
+        return Ok(());
+    };
+    let frame_width = if extrude { 150. } else { 132. };
+    let min_x = canvas.x as f32 + 8.;
+    let x = (canvas.x as f32 + anchor[0] - if extrude { frame_width * 0.5 } else { -24. })
+        .clamp(min_x, (area.x as f32 - frame_width - 12.).max(min_x));
+    let min_y = canvas.y as f32 + 8.;
+    let y = (canvas.y as f32 + anchor[1] - if extrude { 16. } else { -8. }).clamp(
+        min_y,
+        (canvas.y as f32 + canvas.height as f32 - 42.).max(min_y),
+    );
+    let frame_key = "distance-overlay-frame";
+    labels.insert(frame_key.into());
+    let frame = *state
+        .decorations
+        .entry(frame_key.into())
+        .or_insert_with(|| {
+            let e = world
+                .spawn((UiTargetCamera(camera), InterfaceOccluder, ZIndex(43)))
+                .id();
+            world.entity_mut(root).add_child(e);
+            e
+        });
+    let mut bounds = node(x - area.x as f32, y - area.y as f32, frame_width, 32.);
+    bounds.border = UiRect::all(px(1.));
+    bounds.border_radius = BorderRadius::all(px(6.));
+    world.entity_mut(frame).insert((
+        bounds,
+        BackgroundColor(theme.header.with_alpha(0.95)),
+        BorderColor::all(theme.accent),
+        bevy::ui::BoxShadow::new(theme.dialog_shadow, px(0), px(5), px(0), px(12)),
+    ));
+    label(
+        world,
+        state,
+        labels,
+        "distance-overlay-caption",
+        frame,
+        camera,
+        if extrude { "DISTANCE" } else { "OFFSET" },
+        node(8., 7., 55., 18.),
+        theme,
+        assets,
+        false,
+    );
+    label(
+        world,
+        state,
+        labels,
+        "distance-overlay-units",
+        frame,
+        camera,
+        &panel.presentation.units,
+        node(frame_width - 24., 7., 19., 18.),
+        theme,
+        assets,
+        false,
+    );
+    let mut control = InterfaceControl::button(
+        panel.kind.group(),
+        if extrude {
+            "Extrude canvas distance"
+        } else {
+            "Offset plane distance"
+        },
+    );
+    control.field = row.value.clone();
+    control.disabled = panel.busy;
+    let key = if extrude {
+        "extrude-distance"
+    } else {
+        "offset-distance"
+    };
+    let mut field_theme = theme;
+    field_theme.header = Color::NONE;
+    field_theme.edge = Color::NONE;
+    let field_width = frame_width - 84.;
+    widget(
+        world,
+        state,
+        controls,
+        key,
+        frame,
+        camera,
+        control,
+        node(61., 2., field_width, 28.),
+        FeatureCommand::Control {
+            form_id: panel.form_id,
+            action: FeatureControl::Field(super::SolidField::Distance),
+        },
+        field_theme,
+        assets,
+    )?;
+    numeric_steps(
+        world,
+        state,
+        controls,
+        frame,
+        camera,
+        panel,
+        row,
+        key,
+        61.,
+        2.,
+        field_width,
+        field_theme,
+        assets,
+    )?;
+    Ok(())
+}
+
+fn content_height(panel: &super::FeaturePanel, inner: f32) -> f32 {
+    let mut height = 24. + panel.notes.iter().map(|s| note_height(s)).sum::<f32>();
     for row in panel.fields.iter().filter(|row| row.visible) {
-        if let Some((title, index, columns)) = row.field.compact_row(panel.kind) {
+        if row.field == super::SolidField::Copy && panel.kind == super::SolidFormKind::MoveCopy {
+            height += overlays::copy_height(panel, inner);
+            continue;
+        }
+        if let Some((title, index, columns)) = compact_row(row.field, &panel) {
             if panel.choice_field == Some(row.field) {
                 if let Field::Choice { options, .. } = &row.value {
                     height += options.len() as f32 * 30.;
@@ -1146,25 +1367,29 @@ fn content_height(panel: &super::FeaturePanel) -> f32 {
         if matches!(
             row.field,
             super::SolidField::Axis | super::SolidField::MoveObjectType
-        ) {
+        ) || (row.field == super::SolidField::Operation
+            && panel.kind == super::SolidFormKind::Extrude)
+        {
             height += if row.field == super::SolidField::Axis {
                 96.
+            } else if row.field == super::SolidField::Operation {
+                96. + operation_hints_height(panel, inner)
             } else {
                 60.
             };
             continue;
         }
         height += match row.value {
-            Field::Toggle(_) => 36.,
-            Field::None => 88.,
-            _ => 56.,
+            Field::Toggle(_) => 40.,
+            Field::None => selection::height(panel, row, inner),
+            _ => 60.,
         };
         if panel.choice_field == Some(row.field) {
             if let Field::Choice { options, .. } = &row.value {
                 height += options.len() as f32 * 30.;
             }
         }
-        if row.error.is_some() {
+        if visible_error(panel, row).is_some() {
             height += 42.;
         }
     }

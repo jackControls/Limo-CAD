@@ -33,6 +33,8 @@ use holes::HoleFields;
 mod move_copy;
 use move_copy::MoveFields;
 pub(crate) use move_copy::MoveMode;
+mod presentation;
+pub(crate) use presentation::SolidFormPresentation;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SolidFormKind {
@@ -1043,10 +1045,10 @@ impl SolidForm {
                 choice(
                     json!(self.operation),
                     vec![
-                        ("new_body", "New body"),
-                        ("join", "Join"),
-                        ("cut", "Cut"),
-                        ("intersect", "Intersect"),
+                        ("new_body", "Create Body"),
+                        ("join", "Add"),
+                        ("cut", "Subtract"),
+                        ("intersect", "Common"),
                     ],
                 ),
                 true,
@@ -1089,7 +1091,12 @@ impl SolidForm {
                 text(&self.second_distance),
                 matches!(self.extent, ExtrudeExtent::TwoSides { .. }),
             ),
-            (F::Taper, "Taper (degrees)".into(), text(&self.taper), true),
+            (
+                F::Taper,
+                "Taper angle (deg)".into(),
+                text(&self.taper),
+                true,
+            ),
             (
                 F::Flip,
                 "Flip direction".into(),

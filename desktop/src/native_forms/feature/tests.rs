@@ -2,6 +2,94 @@ use super::*;
 use limo_cad_core::{Document, FaceId, Feature, UnitSystem};
 
 #[test]
+fn numeric_steps_resolve_units_and_expressions_without_reusing_invalid_input() {
+    let mut fixture = Fixture::new();
+    fixture.document.settings.units = UnitSystem::In;
+    let parameters = vec![ParameterValue {
+        name: "stock".into(),
+        kind: DimensionKind::Length,
+        value: 25.4,
+    }];
+    let mut model = fixture.model();
+    model.parameters = &parameters;
+    let mut form = fixture.form();
+    form.set_value(SolidField::Distance, "stock/2", &model)
+        .unwrap();
+    form.step_value(SolidField::Distance, 1, &model).unwrap();
+    let ExtrudeExtent::Distance { distance } =
+        form.prepare_preview(&model).unwrap().request().extent
+    else {
+        panic!("A stepped length keeps its extent");
+    };
+    assert!((distance - 38.1).abs() < 1e-9);
+    form.set_value(SolidField::Taper, "45/3 deg", &model)
+        .unwrap();
+    form.step_value(SolidField::Taper, -1, &model).unwrap();
+    assert_eq!(
+        form.prepare_preview(&model)
+            .unwrap()
+            .request()
+            .taper_angle_deg,
+        14.
+    );
+    form.set_value(SolidField::Distance, "unfinished+", &model)
+        .unwrap();
+    assert!(form.step_value(SolidField::Distance, 1, &model).is_err());
+    assert!(form
+        .fields(&model)
+        .iter()
+        .any(|r| matches!(&r.value, Field::Text{value,..} if value=="unfinished+")));
+    assert!(!form.can_apply(&model));
+}
+
+#[test]
+fn reference_presentation_keeps_numeric_focus_stable_until_the_accepted_source_changes() {
+    let fixture = Fixture::new();
+    let model = fixture.model();
+    let mut form = SolidForm::new(&model);
+    assert!(!form.presentation(&model).references[&SolidField::Source].has_selection);
+    assert!(form.presentation(&model).auto_focus.is_none());
+    form.set_source(
+        ProfileSource::Profiles {
+            sketch_name: "Sketch1".into(),
+            indices: vec![0],
+        },
+        &model,
+    )
+    .unwrap();
+    let accepted = form.presentation(&model);
+    assert!(accepted.references[&SolidField::Source].has_selection);
+    assert_eq!(
+        accepted.references[&SolidField::Source].caption,
+        "1 profile selected · Sketch1"
+    );
+    form.set_value(SolidField::Distance, "20", &model).unwrap();
+    assert_eq!(accepted.auto_focus, form.presentation(&model).auto_focus);
+    form.set_source(ProfileSource::None, &model).unwrap();
+    assert!(form.presentation(&model).auto_focus.is_none());
+    assert!(!form.presentation(&model).references[&SolidField::Source].has_selection);
+
+    let mut hole = SolidForm::new_kind(SolidFormKind::Hole, &model);
+    hole.set_hole_support(
+        Some(PlanarFaceSourceDto {
+            body_id: BodyId(1),
+            face_id: FaceId(12),
+        }),
+        Some([5.00001335144043, 5.0000152587890625, 10.]),
+        &model,
+    )
+    .unwrap();
+    let before = hole.hole_payload(&model).unwrap().1;
+    let status = hole.presentation(&model);
+    assert!(status.references[&SolidField::HolePositions].has_selection);
+    assert_eq!(
+        status.references[&SolidField::HolePositions].caption,
+        "1 position selected"
+    );
+    assert_eq!(before, hole.hole_payload(&model).unwrap().1);
+}
+
+#[test]
 fn rib_uses_typed_lengths_and_extent_specific_references() {
     use limo_cad_solid::{PathRefDto, RibExtent, RibRequest};
     let mut fixture = Fixture::new();

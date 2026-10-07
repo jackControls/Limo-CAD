@@ -60,6 +60,7 @@ pub(crate) enum FeatureControl {
     Clear(SolidField),
     Scroll(i32),
     Choose { field: SolidField, option: usize },
+    Step { field: SolidField, delta: i32 },
     Apply,
     Cancel,
 }
@@ -112,6 +113,7 @@ pub(crate) struct FeaturePanel {
     pub notes: Vec<String>,
     pub pick_target: Option<SolidField>,
     pub choice_field: Option<SolidField>,
+    pub presentation: crate::native_forms::SolidFormPresentation,
 }
 
 struct Snapshot {
@@ -322,6 +324,7 @@ pub(crate) fn panel(world: &World) -> Option<FeaturePanel> {
         notes: editor.form.feature_notes(),
         pick_target: editor.pick_target,
         choice_field: editor.choice_field,
+        presentation: editor.form.presentation(&model),
     })
 }
 
@@ -439,9 +442,17 @@ fn update_preview(editor: &mut Editor, world: &mut World) -> Result<(), String> 
             Ok(ticket) => match preview::build(ticket.request(), &editor.snapshot.viewport) {
                 Ok(next) if editor.form.accepts_preview(&ticket, &model) => (next, None),
                 Ok(_) => return Err("Extrude preview was superseded".into()),
-                Err(error) => (ViewportPreview::default(), Some(error)),
+                Err(error) => (
+                    preview::references(&editor.form, &model, &editor.snapshot.viewport)
+                        .unwrap_or_default(),
+                    Some(error),
+                ),
             },
-            Err(_) => (ViewportPreview::default(), None),
+            Err(_) => (
+                preview::references(&editor.form, &model, &editor.snapshot.viewport)
+                    .unwrap_or_default(),
+                None,
+            ),
         }
     };
     if let Some((body, edge)) = editor.hovered_edge {
@@ -700,6 +711,27 @@ pub(crate) fn reduce(
     input: &ControlInput,
     validate_control: impl FnOnce() -> Result<(), String>,
 ) -> Result<Value, String> {
+    if matches!(input, ControlInput::Key(key) if key.key == "Enter" && !key.ctrl && !key.meta && !key.alt && !key.shift)
+    {
+        if let FeatureCommand::Control {
+            form_id,
+            action: FeatureControl::Field(_),
+        } = command
+        {
+            return reduce(
+                engine,
+                bridge,
+                world,
+                owner,
+                &FeatureCommand::Control {
+                    form_id: *form_id,
+                    action: FeatureControl::Apply,
+                },
+                &ControlInput::Click,
+                validate_control,
+            );
+        }
+    }
     if matches!(input, ControlInput::Key(key) if key.key == "Escape" && !key.ctrl && !key.meta && !key.alt && !key.shift)
     {
         if let FeatureCommand::Control { form_id, .. } = command {
@@ -1218,6 +1250,8 @@ fn reduce_owned(
             FeatureControl::Choose { field, option } => {
                 if editor.choice_field != Some(*field)
                     && !matches!(field, SolidField::Axis | SolidField::MoveObjectType)
+                    && !(*field == SolidField::Operation
+                        && editor.form.kind() == SolidFormKind::Extrude)
                 {
                     return Err("This choice list is closed".into());
                 }
@@ -1236,6 +1270,13 @@ fn reduce_owned(
                     .ok_or("This field choice is not available")?;
                 editor.form.set_value(*field, &option.value, &model)?;
                 editor.choice_field = None;
+            }
+            FeatureControl::Step { field, delta } => {
+                if !super::is_activation(input) || !matches!(delta, -1 | 1) {
+                    return Err("Activate a measurement step control".into());
+                }
+                editor.form.step_value(*field, *delta, &model)?;
+                panel::focus_measurement(world, owner, *field);
             }
             FeatureControl::Pick(field) => {
                 if !matches!(

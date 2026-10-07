@@ -169,6 +169,49 @@ fn click(handle: &NativeInterfaceHandle) -> Result<(), String> {
 }
 
 #[test]
+fn numeric_step_buttons_remain_clickable_without_interrupting_tab_traversal() {
+    let (mut app, handle, first, _) = fixture();
+    let step = app
+        .world_mut()
+        .spawn((
+            InterfaceControl::button("Viewport", "Increase distance"),
+            ComputedNode {
+                size: Vec2::new(14., 12.),
+                inverse_scale_factor: 1.,
+                ..default()
+            },
+            UiGlobalTransform::from_translation(Vec2::new(160., 42.)),
+            ComputedStackIndex(2),
+            InheritedVisibility::VISIBLE,
+        ))
+        .id();
+    app.update();
+    let step_key = ControlKey(step.to_bits());
+    handle.exclude_from_tab(step_key).unwrap();
+    for backwards in [false, true, false] {
+        assert!(handle.focus_next(backwards).unwrap());
+        assert_eq!(handle.focused_key(), Some(ControlKey(first.to_bits())));
+    }
+    assert!(handle
+        .pointer(PointerPhase::Down, [260., 142.], PointerButton::Primary)
+        .unwrap());
+    assert!(handle
+        .pointer(PointerPhase::Up, [260., 142.], PointerButton::Primary)
+        .unwrap());
+    let actions = handle.take_actions().unwrap();
+    assert_eq!(actions.len(), 1);
+    assert_eq!(actions[0].control.key, step_key);
+    app.world_mut().despawn(step);
+    app.update();
+    assert!(!handle
+        .shared
+        .lock()
+        .unwrap()
+        .tab_excluded
+        .contains(&step_key));
+}
+
+#[test]
 fn range_drag_uses_real_bounds_coalesces_and_rejects_rebound_controls() {
     let (mut app, handle, entity, _) = fixture();
     let mut control = app.world_mut().get_mut::<InterfaceControl>(entity).unwrap();

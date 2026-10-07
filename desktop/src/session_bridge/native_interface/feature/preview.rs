@@ -18,6 +18,7 @@ pub(super) fn references(
     let mut segments = Vec::new();
     let mut triangles = Vec::new();
     let mut plane_lines = Vec::new();
+    let mut profile_segments = Vec::new();
     for body in form.selected_bodies() {
         triangles.push(body_fill(model.scene, *body, [1., 0.65, 0.25, 0.25])?);
         if triangles
@@ -175,6 +176,14 @@ pub(super) fn references(
             }
         }
     }
+    if let Some(face) = form.planar_source() {
+        triangles.push(face_fill(
+            model.scene,
+            face.body_id,
+            &[face.face_id],
+            [1., 0.80, 0.25, 0.16],
+        )?);
+    }
     if let Some(face) = form.thread_face() {
         triangles.push(face_fill(
             model.scene,
@@ -223,13 +232,54 @@ pub(super) fn references(
                     .zip(profile.points.iter().cycle().skip(1))
                     .take(profile.points.len())
                 {
-                    if segments.len() / 6 >= MAX_SEGMENTS {
+                    if (segments.len() + profile_segments.len()) / 6 >= MAX_SEGMENTS {
                         return Err("Selected profile is too large to preview".into());
                     }
-                    segments.extend(sketch.basis.to_3d([a.x, a.y]).map(|v| v as f32));
-                    segments.extend(sketch.basis.to_3d([b.x, b.y]).map(|v| v as f32));
+                    profile_segments.extend(sketch.basis.to_3d([a.x, a.y]).map(|v| v as f32));
+                    profile_segments.extend(sketch.basis.to_3d([b.x, b.y]).map(|v| v as f32));
                 }
             }
+        }
+    }
+    let mut selected_by_sketch = std::collections::BTreeMap::<String, Vec<u32>>::new();
+    for profile in form.selected_profiles() {
+        selected_by_sketch
+            .entry(profile.sketch_name)
+            .or_default()
+            .push(profile.profile_index);
+    }
+    for (sketch_name, profile_indices) in selected_by_sketch {
+        let positions = extrude::source_triangles(
+            &ExtrudeRequest {
+                sketch_name,
+                profile_indices,
+                source_face: None,
+                operation: ExtrudeOperation::NewBody,
+                extent: ExtrudeExtent::Distance { distance: 1. },
+                taper_angle_deg: 0.,
+                flip: false,
+                target_body_ids: vec![],
+            },
+            viewport,
+        )?;
+        triangles.push(crate::native_viewport::ViewportTriangleLayer {
+            color: [1., 0.80, 0.25, 0.16],
+            positions: positions
+                .into_iter()
+                .flatten()
+                .map(|v| v as f32)
+                .collect::<Vec<_>>()
+                .into(),
+            xray: true,
+            ..Default::default()
+        });
+        if triangles
+            .iter()
+            .map(|t| t.positions.len() / 9)
+            .sum::<usize>()
+            > MAX_SEGMENTS
+        {
+            return Err("Selected regions are too large to highlight together".into());
         }
     }
     for path in form.selected_paths() {
@@ -258,8 +308,20 @@ pub(super) fn references(
     if let Some(axis) = form.revolution_axis(model)? {
         segments.extend(axis.into_iter().flatten().map(|v| v as f32));
     }
-    if segments.iter().any(|v| !v.is_finite()) {
+    if segments
+        .iter()
+        .chain(profile_segments.iter())
+        .any(|v| !v.is_finite())
+    {
         return Err("Feature reference exceeds the renderer's range".into());
+    }
+    if !profile_segments.is_empty() {
+        plane_lines.push(ViewportLineLayer {
+            color: [1., 0.80, 0.25, 1.],
+            width: 1.5,
+            segments: profile_segments.into(),
+            ..Default::default()
+        });
     }
     plane_lines.push(ViewportLineLayer {
         color: if form.selected_edges().is_some() {
@@ -408,101 +470,8 @@ fn curve_points(entity: &limo_cad_sketch::EntityDto) -> Vec<limo_cad_sketch::Vec
         .collect()
 }
 
-pub(super) fn build(
-    request: &ExtrudeRequest,
-    model: &ViewportModel,
-) -> Result<ViewportPreview, String> {
-    if request.taper_angle_deg.abs() > 1e-9 {
-        return Err("Taper will be calculated by the kernel on Apply; an untapered preview would be misleading".into());
-    }
-    let (basis, boundaries) = source(request, model)?;
-    let (start, end, direction) = offsets(request, model, basis)?;
-    let stop = if let ExtrudeExtent::ToFace { face_id } = request.extent {
-        model
-            .document
-            .scene
-            .bodies
-            .iter()
-            .flat_map(|body| &body.faces)
-            .find(|face| face.id == face_id)
-            .and_then(|face| face.plane)
-    } else {
-        None
-    };
-    let mut segments = Vec::new();
-    let mut centroid = [0.; 3];
-    let mut count = 0.;
-    for boundary in boundaries {
-        for pair in boundary.windows(2) {
-            let a = pair[0];
-            let b = pair[1];
-            let translated = |point: [f64; 3], offset: f64| -> Result<[f64; 3], String> {
-                let offset = if let Some(stop) = stop {
-                    if offset == start {
-                        offset
-                    } else {
-                        let denominator = dot(basis.normal, stop.normal);
-                        if denominator.abs() < 1e-9 {
-                            return Err("Extrude direction is parallel to the stop face".into());
-                        }
-                        dot(sub(stop.origin, point), stop.normal) / denominator
-                            * if request.flip { -1. } else { 1. }
-                    }
-                } else {
-                    offset
-                };
-                Ok(add(point, scale(basis.normal, offset)))
-            };
-            let a0 = translated(a, start)?;
-            let b0 = translated(b, start)?;
-            let a1 = translated(a, end)?;
-            let b1 = translated(b, end)?;
-            for (a, b) in [(a0, b0), (a1, b1), (a0, a1)] {
-                if segments.len() / 6 >= MAX_SEGMENTS {
-                    return Err(
-                        "This profile exceeds the interactive construction preview limit".into(),
-                    );
-                }
-                for coordinate in a.into_iter().chain(b) {
-                    let value = coordinate as f32;
-                    if !value.is_finite() {
-                        return Err(
-                            "Extrude preview coordinates are outside the renderer range".into()
-                        );
-                    }
-                    segments.push(value);
-                }
-            }
-            centroid = add(centroid, a);
-            count += 1.;
-        }
-    }
-    if count == 0. {
-        return Err("No source boundary is available for a construction preview".into());
-    }
-    centroid = scale(centroid, 1. / count);
-    let color = match request.operation {
-        ExtrudeOperation::Cut => [0.96, 0.31, 0.23, 1.],
-        ExtrudeOperation::Intersect => [0.87, 0.64, 0.16, 1.],
-        _ => [0.12, 0.64, 0.97, 1.],
-    };
-    Ok(ViewportPreview {
-        lines: vec![ViewportLineLayer {
-            color,
-            width: 2.,
-            segments: segments.into(),
-            ..Default::default()
-        }],
-        arrows: vec![ViewportArrow {
-            start: centroid.map(|v| v as f32),
-            end: add(centroid, scale(basis.normal, direction)).map(|v| v as f32),
-            color,
-            width: 2.,
-            xray: false,
-        }],
-        ..Default::default()
-    })
-}
+mod extrude;
+pub(super) use extrude::{build, handle};
 
 fn source(request: &ExtrudeRequest, model: &ViewportModel) -> ProfileSource {
     if let Some(source) = request.source_face {

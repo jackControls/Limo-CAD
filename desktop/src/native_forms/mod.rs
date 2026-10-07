@@ -8,6 +8,6 @@ pub(crate) mod motion_study;
 
 pub(crate) use feature::{
     ApplyTicket, FormModel, MoveMode, ProfileSource, SolidField, SolidFieldView, SolidForm,
-    SolidFormKind,
+    SolidFormKind, SolidFormPresentation,
 };
 pub(crate) use measurement::{DimensionKind, MeasurementInput, ParameterValue};

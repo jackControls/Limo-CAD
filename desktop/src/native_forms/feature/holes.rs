@@ -106,6 +106,12 @@ impl HoleFields {
 }
 
 impl SolidForm {
+    pub(super) fn hole_position_count(&self) -> usize {
+        self.hole
+            .as_ref()
+            .filter(|fields| fields.support.is_some())
+            .map_or(0, |fields| fields.positions.len().max(1))
+    }
     pub(super) fn hole_notes(&self) -> Vec<String> {
         let Some(f) = &self.hole else {
             return vec![];

@@ -227,6 +227,7 @@ fn setup_feature_lab(world: &mut World) {
             notes: form.feature_notes(),
             pick_target: None,
             choice_field: None,
+            presentation: form.presentation(&model),
         }),
     )
     .expect("render production feature panel");

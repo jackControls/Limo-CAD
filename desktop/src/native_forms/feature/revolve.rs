@@ -44,6 +44,11 @@ impl RevolveFields {
 }
 
 impl SolidForm {
+    pub(super) fn has_axis_line(&self) -> bool {
+        self.revolve
+            .as_ref()
+            .is_some_and(|fields| fields.line.is_some())
+    }
     pub(crate) fn revolution_axis(
         &self,
         model: &FormModel<'_>,
@@ -427,10 +432,10 @@ impl SolidForm {
                 choice(
                     json!(self.operation).as_str().unwrap(),
                     &[
-                        ("new_body", "New body"),
-                        ("join", "Join"),
-                        ("cut", "Cut"),
-                        ("intersect", "Intersect"),
+                        ("new_body", "Create Body"),
+                        ("join", "Add"),
+                        ("cut", "Subtract"),
+                        ("intersect", "Common"),
                     ],
                 ),
                 true,

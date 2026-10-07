@@ -39,6 +39,14 @@ impl SolidField {
                     ("", &[RadialDepth, CornerRadius]),
                     ("", &[RadialClearance, AxialClearance]),
                 ]
+            } else if kind == SolidFormKind::Extrude {
+                &[("", &[Distance, SecondDistance])]
+            } else if kind == SolidFormKind::Sweep {
+                &[("", &[Orientation, Transition])]
+            } else if kind == SolidFormKind::Revolve {
+                &[("", &[OriginX, OriginY]), ("", &[DirectionX, DirectionY])]
+            } else if kind == SolidFormKind::Rib {
+                &[("", &[Thickness, Distance])]
             } else if kind == SolidFormKind::MoveCopy {
                 &[
                     ("Translation", &[TranslationX, TranslationY, TranslationZ]),
@@ -179,6 +187,11 @@ impl PatternFields {
     }
 }
 impl SolidForm {
+    pub(super) fn has_pattern_reference(&self, field: SolidField) -> bool {
+        self.patterns.as_ref().is_some_and(|fields| {
+            fields.edges[usize::from(field == SolidField::SecondDirectionEdge)].is_some()
+        })
+    }
     pub(crate) fn set_pattern_edge(
         &mut self,
         field: SolidField,
