@@ -9,8 +9,9 @@ use limo_cad_solid::{
 #[derive(Debug)]
 pub(super) struct HoleFields {
     support: Option<PlanarFaceSourceDto>,
-    positions: Vec<HolePositionDto>,
-    uv: [MeasurementInput; 2],
+    positions: Vec<Position>,
+    selected: Option<u64>,
+    last_position_id: u64,
     diameter: MeasurementInput,
     extent: HoleExtent,
     depth: MeasurementInput,
@@ -22,6 +23,76 @@ pub(super) struct HoleFields {
     threaded: bool,
     thread: ThreadFields,
     flip: bool,
+}
+
+const NEW_POSITION_LIMIT: usize = 256;
+
+#[derive(Debug)]
+struct Position {
+    id: u64,
+    uv: [Coordinate; 2],
+    reference: Option<SketchPointRefDto>,
+}
+
+#[derive(Debug)]
+struct Coordinate {
+    input: MeasurementInput,
+    canonical: Option<f64>,
+}
+
+impl Coordinate {
+    fn new(canonical: Option<f64>, units: UnitSystem) -> Self {
+        let mut input = length(canonical.unwrap_or(0.), units);
+        if canonical.is_none() {
+            input.set_text(String::new());
+        }
+        Self { input, canonical }
+    }
+
+    fn text(&self) -> &str {
+        self.input.text()
+    }
+
+    fn set_text(&mut self, text: String) {
+        self.input.set_text(text);
+        self.canonical = None;
+    }
+
+    /// Untouched source coordinates retain their exact canonical value across display-unit conversion.
+    fn evaluate(&self, model: &FormModel<'_>) -> Result<f64, String> {
+        self.canonical.map_or_else(
+            || {
+                self.input
+                    .evaluate(model.document.settings.units, model.parameters)
+            },
+            Ok,
+        )
+    }
+}
+
+impl Position {
+    fn new(
+        id: u64,
+        uv: Option<[f64; 2]>,
+        reference: Option<SketchPointRefDto>,
+        units: UnitSystem,
+    ) -> Self {
+        Self {
+            id,
+            uv: std::array::from_fn(|axis| Coordinate::new(uv.map(|p| p[axis]), units)),
+            reference,
+        }
+    }
+
+    fn display_uv(&self, model: &FormModel<'_>, basis: Option<PlaneBasis>) -> [String; 2] {
+        if let Some(reference) = &self.reference {
+            return basis
+                .and_then(|basis| reference_position(reference, model, basis).ok())
+                .map(|uv| uv.map(|v| length(v, model.document.settings.units).text().to_owned()))
+                .unwrap_or_else(|| std::array::from_fn(|_| "Unavailable reference".into()));
+        }
+        std::array::from_fn(|axis| self.uv[axis].text().to_owned())
+    }
 }
 fn length(v: f64, units: UnitSystem) -> MeasurementInput {
     MeasurementInput::new(DimensionKind::Length, v, units)
@@ -41,7 +112,8 @@ impl HoleFields {
         Self {
             support: None,
             positions: vec![],
-            uv: [0., 0.].map(|v| length(v, units)),
+            selected: None,
+            last_position_id: 0,
             diameter: length(5., units),
             extent: HoleExtent::ThroughAll,
             depth: length(10., units),
@@ -63,9 +135,23 @@ impl HoleFields {
     ) -> Result<(), String> {
         use SolidField::*;
         match field {
-            OriginX | OriginY => {
-                self.uv[usize::from(field == OriginY)].set_text(value.into());
-                self.positions.clear();
+            HolePositionSelection => {
+                let id = value
+                    .parse::<u64>()
+                    .map_err(|_| "Choose an available hole position")?;
+                if !self.positions.iter().any(|p| p.id == id) {
+                    return Err("The selected hole position no longer exists".into());
+                }
+                self.selected = Some(id);
+            }
+            HolePositionU(id) | HolePositionV(id) => {
+                let position = self.selected_mut(id)?;
+                if position.reference.is_some() {
+                    return Err(
+                        "Make this position independent before editing its coordinates".into(),
+                    );
+                }
+                position.uv[usize::from(field == HolePositionV(id))].set_text(value.into());
             }
             HoleDiameter => self.diameter.set_text(value.into()),
             HoleDepth => self.depth.set_text(value.into()),
@@ -103,25 +189,104 @@ impl HoleFields {
             self.diameter = length(d, model.document.settings.units);
         }
     }
+
+    fn selected_mut(&mut self, id: u64) -> Result<&mut Position, String> {
+        if self.selected != Some(id) {
+            return Err("The selected hole position changed".into());
+        }
+        self.positions
+            .iter_mut()
+            .find(|p| p.id == id)
+            .ok_or_else(|| "The selected hole position no longer exists".into())
+    }
+
+    fn add(
+        &mut self,
+        uv: Option<[f64; 2]>,
+        reference: Option<SketchPointRefDto>,
+        units: UnitSystem,
+    ) -> Result<u64, String> {
+        if self.positions.len() >= NEW_POSITION_LIMIT {
+            return Err(format!("The native editor adds up to {NEW_POSITION_LIMIT} positions; existing larger lists are preserved"));
+        }
+        let id = self
+            .last_position_id
+            .checked_add(1)
+            .ok_or("Hole position identities exhausted")?;
+        self.positions.push(Position::new(id, uv, reference, units));
+        self.last_position_id = id;
+        self.selected = Some(id);
+        Ok(id)
+    }
+
+    fn remove(&mut self, index: usize) {
+        let removed = self.positions.remove(index);
+        if self.selected == Some(removed.id) {
+            self.selected = self
+                .positions
+                .get(index.min(self.positions.len().saturating_sub(1)))
+                .map(|p| p.id);
+        }
+    }
 }
 
 impl SolidForm {
+    pub(crate) fn edit_hole_position_list(
+        &mut self,
+        field: SolidField,
+        model: &FormModel<'_>,
+    ) -> Result<(), String> {
+        self.editing(model)?;
+        let basis = self
+            .hole_basis(model)
+            .ok_or("Select a planar support face first")?;
+        let f = self
+            .hole
+            .as_mut()
+            .ok_or("This feature has no hole positions")?;
+        match field {
+            SolidField::HolePositionAdd => {
+                f.add(None, None, model.document.settings.units)?;
+            }
+            SolidField::HolePositionRemove(id) => {
+                f.selected_mut(id)?;
+                let index = f.positions.iter().position(|p| p.id == id).unwrap();
+                f.remove(index);
+            }
+            SolidField::HolePositionIndependent(id) => {
+                let position = f.selected_mut(id)?;
+                let reference = position
+                    .reference
+                    .as_ref()
+                    .ok_or("This position is already independent")?;
+                let uv = reference_position(reference, model, basis)?;
+                position.uv = uv.map(|v| Coordinate::new(Some(v), model.document.settings.units));
+                position.reference = None;
+            }
+            _ => return Err("This control does not edit the hole position list".into()),
+        }
+        self.changed();
+        Ok(())
+    }
     pub(super) fn hole_position_count(&self) -> usize {
         self.hole
             .as_ref()
             .filter(|fields| fields.support.is_some())
-            .map_or(0, |fields| fields.positions.len().max(1))
+            .map_or(0, |fields| fields.positions.len())
     }
     pub(super) fn hole_notes(&self) -> Vec<String> {
         let Some(f) = &self.hole else {
             return vec![];
         };
         let mut notes = if f.threaded { f.thread.notes() } else { vec![] };
-        if f.positions.iter().any(|p| p.position_reference.is_some()) {
+        if f.positions.iter().any(|p| p.reference.is_some()) {
             notes.insert(
                 0,
                 "Sketch point references move these holes when the source sketch changes.".into(),
             );
+        }
+        if f.positions.len() >= NEW_POSITION_LIMIT {
+            notes.push(format!("Add position is unavailable at the native editor's {NEW_POSITION_LIMIT}-position limit. Existing positions remain editable and removable."));
         }
         notes
     }
@@ -171,15 +336,34 @@ impl SolidForm {
             .hole
             .as_mut()
             .ok_or("This feature has no hole support")?;
+        let first = if support.is_some() {
+            let id = f
+                .last_position_id
+                .checked_add(1)
+                .ok_or("Hole position identities exhausted")?;
+            Some(Position::new(
+                id,
+                Some(position),
+                None,
+                model.document.settings.units,
+            ))
+        } else {
+            None
+        };
         f.support = support;
         f.positions.clear();
-        f.uv = position.map(|v| length(v, model.document.settings.units));
+        f.selected = None;
+        if let Some(first) = first {
+            f.last_position_id = first.id;
+            f.selected = Some(first.id);
+            f.positions.push(first);
+        }
         self.changed();
         Ok(())
     }
     pub(crate) fn set_hole_position(
         &mut self,
-        world: [f64; 3],
+        local: [f64; 3],
         reference: Option<SketchPointRefDto>,
         model: &FormModel<'_>,
     ) -> Result<(), String> {
@@ -187,7 +371,7 @@ impl SolidForm {
         let basis = self
             .hole_basis(model)
             .ok_or("Select a planar support face first")?;
-        let mut uv = basis.to_2d(world);
+        let mut uv = basis.to_2d(local);
         if let Some(r) = &reference {
             uv = reference_position(r, model, basis)?;
         }
@@ -195,24 +379,34 @@ impl SolidForm {
             return Err("Hole position must be finite".into());
         }
         let f = self.hole.as_mut().unwrap();
-        if let Some(r) = reference {
+        if let Some(reference) = reference {
             if let Some(index) = f
                 .positions
                 .iter()
-                .position(|p| p.position_reference.as_ref() == Some(&r))
+                .position(|p| p.reference.as_ref() == Some(&reference))
             {
-                f.positions.remove(index);
+                f.remove(index);
+            } else if let Some(position) = f.positions.iter_mut().find(|p| {
+                Some(p.id) == f.selected
+                    && p.reference.is_none()
+                    && p.uv.iter().all(|v| v.text().trim().is_empty())
+            }) {
+                position.reference = Some(reference);
+                position.uv = uv.map(|v| Coordinate::new(Some(v), model.document.settings.units));
             } else {
-                f.positions.retain(|p| p.position_reference.is_some());
-                f.positions.push(HolePositionDto {
-                    position: Point2Dto::new(uv[0], uv[1]),
-                    position_reference: Some(r),
-                });
+                f.add(Some(uv), Some(reference), model.document.settings.units)?;
             }
-        } else {
-            f.positions.clear();
+            self.changed();
+            return Ok(());
         }
-        f.uv = uv.map(|v| length(v, model.document.settings.units));
+        let id = f
+            .selected
+            .ok_or("Add a position before picking its location")?;
+        let position = f.selected_mut(id)?;
+        if position.reference.is_some() {
+            return Err("Make this position independent before picking a free location".into());
+        }
+        position.uv = uv.map(|v| Coordinate::new(Some(v), model.document.settings.units));
         self.changed();
         Ok(())
     }
@@ -223,7 +417,7 @@ impl SolidForm {
             .as_mut()
             .ok_or("This feature has no hole positions")?;
         f.positions.clear();
-        f.uv = [0., 0.].map(|v| length(v, model.document.settings.units));
+        f.selected = None;
         self.changed();
         Ok(())
     }
@@ -238,7 +432,7 @@ impl SolidForm {
             body_id: d.body_id,
             face_id: d.face_id,
         });
-        f.positions = if d.positions.is_empty() {
+        let positions = if d.positions.is_empty() {
             vec![HolePositionDto {
                 position: d.position,
                 position_reference: d.position_reference,
@@ -246,8 +440,20 @@ impl SolidForm {
         } else {
             d.positions
         };
-        let p = &f.positions[0].position;
-        f.uv = [p.x, p.y].map(|v| length(v, units));
+        for position in positions {
+            let id = f
+                .last_position_id
+                .checked_add(1)
+                .ok_or("Hole position identities exhausted")?;
+            f.positions.push(Position::new(
+                id,
+                Some([position.position.x, position.position.y]),
+                position.position_reference,
+                units,
+            ));
+            f.last_position_id = id;
+        }
+        f.selected = f.positions.first().map(|p| p.id);
         f.diameter = length(d.diameter, units);
         f.extent = d.extent;
         if let HoleExtent::Distance { depth } = d.extent {
@@ -306,11 +512,6 @@ impl SolidForm {
                 0.
             }
         };
-        let uv = if f.positions.is_empty() {
-            [number(F::OriginX, &f.uv[0]), number(F::OriginY, &f.uv[1])]
-        } else {
-            [f.positions[0].position.x, f.positions[0].position.y]
-        };
         let diameter = number(F::HoleDiameter, &f.diameter);
         let extent = if matches!(f.extent, HoleExtent::ThroughAll) {
             HoleExtent::ThroughAll
@@ -340,21 +541,36 @@ impl SolidForm {
         } else {
             118.
         };
-        let mut positions = if f.positions.is_empty() {
-            vec![HolePositionDto {
-                position: Point2Dto::new(uv[0], uv[1]),
-                position_reference: None,
-            }]
-        } else {
-            f.positions.clone()
-        };
-        for p in &mut positions {
-            if let Some(r) = &p.position_reference {
-                match reference_position(r, model, basis) {
-                    Ok(puv) => p.position = Point2Dto::new(puv[0], puv[1]),
-                    Err(e) => errors.push((F::HolePositions, e)),
+        if f.positions.is_empty() {
+            errors.push((F::HolePositions, "Add at least one hole position".into()));
+        }
+        let mut positions = Vec::with_capacity(f.positions.len());
+        for (index, position) in f.positions.iter().enumerate() {
+            let mut uv = [0.; 2];
+            if let Some(reference) = &position.reference {
+                match reference_position(reference, model, basis) {
+                    Ok(point) => uv = point,
+                    Err(error) => {
+                        errors.push((F::HolePositions, format!("Position {}: {error}", index + 1)))
+                    }
+                }
+            } else {
+                for (axis, field) in [F::HolePositionU(position.id), F::HolePositionV(position.id)]
+                    .into_iter()
+                    .enumerate()
+                {
+                    match position.uv[axis].evaluate(model) {
+                        Ok(value) => uv[axis] = value,
+                        Err(error) => {
+                            errors.push((field, format!("Position {}: {error}", index + 1)))
+                        }
+                    }
                 }
             }
+            positions.push(HolePositionDto {
+                position: Point2Dto::new(uv[0], uv[1]),
+                position_reference: position.reference.clone(),
+            });
         }
         let thread = if f.threaded {
             match f.thread.evaluate(model) {
@@ -367,7 +583,9 @@ impl SolidForm {
         } else {
             None
         };
-        let first = &positions[0];
+        let Some(first) = positions.first() else {
+            return Err(errors);
+        };
         let request = HoleRequest {
             body_id: support.body_id,
             face_id: support.face_id,
@@ -441,6 +659,7 @@ impl SolidForm {
         use SolidField as F;
         let f = self.hole.as_ref().unwrap();
         let errors = self.hole_request(model).err().unwrap_or_default();
+        let basis = self.hole_basis(model);
         let editable = self.phase == Phase::Editing && self.check_model(model).is_ok();
         let text = |v: &str| Field::Text {
             value: v.into(),
@@ -465,12 +684,11 @@ impl SolidForm {
             .unwrap_or_else(|| "Click a planar face".into());
         let position = if f.support.is_none() {
             "Select a support face first".into()
-        } else if f.positions.len() > 1
-            || f.positions.iter().any(|p| p.position_reference.is_some())
-        {
-            format!("{} selected positions", f.positions.len())
         } else {
-            format!("U {} · V {}", f.uv[0].text(), f.uv[1].text())
+            format!(
+                "Pick the selected position · {} positions",
+                f.positions.len()
+            )
         };
         let mut rows = vec![
             (F::HoleSupport, support, Field::None, true, true),
@@ -482,19 +700,86 @@ impl SolidForm {
                 f.support.is_some(),
             ),
             (
-                F::OriginX,
-                "Position U".into(),
-                text(f.uv[0].text()),
+                F::HolePositionSelection,
+                "Position".into(),
+                Field::Choice {
+                    value: f.selected.map(|id| id.to_string()).unwrap_or_default(),
+                    options: f
+                        .positions
+                        .iter()
+                        .enumerate()
+                        .map(|(index, p)| {
+                            let uv = p.display_uv(model, basis);
+                            let association = if let Some(reference) = &p.reference {
+                                format!(" · linked to {}", reference.sketch_name)
+                            } else {
+                                String::new()
+                            };
+                            ChoiceOption {
+                                value: p.id.to_string(),
+                                label: format!(
+                                    "{} · U {} · V {}{association}",
+                                    index + 1,
+                                    uv[0],
+                                    uv[1]
+                                ),
+                                disabled: false,
+                            }
+                        })
+                        .collect(),
+                },
                 true,
-                true,
+                f.selected.is_some(),
             ),
             (
-                F::OriginY,
-                "Position V".into(),
-                text(f.uv[1].text()),
+                F::HolePositionAdd,
+                "Add position".into(),
+                Field::None,
                 true,
-                true,
+                f.support.is_some() && f.positions.len() < NEW_POSITION_LIMIT,
             ),
+        ];
+        if let Some(position) = f.positions.iter().find(|p| Some(p.id) == f.selected) {
+            let uv = position.display_uv(model, basis);
+            for (axis, field) in [F::HolePositionU(position.id), F::HolePositionV(position.id)]
+                .into_iter()
+                .enumerate()
+            {
+                rows.push((
+                    field,
+                    if axis == 0 {
+                        "Position U"
+                    } else {
+                        "Position V"
+                    }
+                    .into(),
+                    Field::Text {
+                        value: uv[axis].clone(),
+                        read_only: position.reference.is_some(),
+                        selection: None,
+                    },
+                    true,
+                    position.reference.is_none(),
+                ));
+            }
+            rows.push((
+                F::HolePositionRemove(position.id),
+                "Remove position".into(),
+                Field::None,
+                true,
+                true,
+            ));
+            if position.reference.is_some() {
+                rows.push((
+                    F::HolePositionIndependent(position.id),
+                    "Make independent".into(),
+                    Field::None,
+                    true,
+                    true,
+                ));
+            }
+        }
+        rows.extend([
             (
                 F::HoleStyle,
                 "Hole style".into(),
@@ -516,7 +801,7 @@ impl SolidForm {
                 true,
                 true,
             ),
-        ];
+        ]);
         let mut fields: Vec<_> = rows
             .drain(..)
             .map(|(field, label, value, visible, enabled)| SolidFieldView {
@@ -531,6 +816,20 @@ impl SolidForm {
                     .map(|(_, e)| e.clone()),
             })
             .collect();
+        if let Some(row) = fields
+            .iter_mut()
+            .find(|r| r.field == F::HolePositionSelection)
+        {
+            row.error = errors
+                .iter()
+                .find(|(field, _)| {
+                    matches!(
+                        field,
+                        F::HolePositions | F::HolePositionU(_) | F::HolePositionV(_)
+                    )
+                })
+                .map(|(_, error)| error.clone());
+        }
         if f.threaded {
             fields.extend(
                 f.thread

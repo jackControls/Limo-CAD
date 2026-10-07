@@ -706,6 +706,7 @@ fn apply_pick(editor: &mut Editor, pick: FeaturePick) -> Result<(), String> {
             editor.form.set_hole_support(Some(face), point, &model)?;
             if let Some(point) = point {
                 if reference.is_some() {
+                    editor.form.clear_hole_positions(&model)?;
                     editor.form.set_hole_position(point, reference, &model)?;
                 }
             }
@@ -1335,6 +1336,13 @@ fn reduce_owned(
                     .find(|row| row.field == *field && row.visible && row.enabled)
                     .ok_or("This feature field is not available")?;
                 match (input, row.value) {
+                    (input, limo_cad_interface::Field::None)
+                        if field.is_hole_position_action() && super::is_activation(input) =>
+                    {
+                        editor.form.edit_hole_position_list(*field, &model)?;
+                        editor.choice_field = None;
+                        editor.pick_target = Some(SolidField::HolePositions);
+                    }
                     (ControlInput::SetValue(value), _) => {
                         editor.form.set_value(*field, value, &model)?;
                         editor.choice_field = None;

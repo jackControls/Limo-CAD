@@ -124,6 +124,8 @@ fn field_key(kind: K, field: F, label: &str) -> Option<&'static str> {
                 "revolve.originY"
             }
         }
+        F::HolePositionU(_) => "hole.positionX",
+        F::HolePositionV(_) => "hole.positionY",
         F::DirectionX => "revolve.directionX",
         F::DirectionY => "revolve.directionY",
         F::Angle => {

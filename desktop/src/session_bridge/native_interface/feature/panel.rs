@@ -533,6 +533,28 @@ fn synchronize_owned(
             }
         }
         if matches!(row.value, Field::None) {
+            if row.field.is_hole_position_action() {
+                let mut control = InterfaceControl::button(panel.kind.group(), &row.label);
+                control.disabled = !row.enabled;
+                widget(
+                    world,
+                    state,
+                    &mut live_controls,
+                    &key,
+                    body,
+                    camera,
+                    control,
+                    node(0., y - state.scroll, inner, 32.),
+                    FeatureCommand::Control {
+                        form_id: panel.form_id,
+                        action: FeatureControl::Field(row.field),
+                    },
+                    theme,
+                    &assets,
+                )?;
+                y += 40.;
+                continue;
+            }
             selection::render(
                 world,
                 state,
@@ -1178,7 +1200,14 @@ fn numeric_steps(
     theme: ViewportUiTheme,
     assets: &ViewportUiAssets,
 ) -> Result<(), String> {
-    if !matches!(row.value, Field::Text { .. }) || row.field.dimension_kind().is_none() {
+    if !matches!(
+        row.value,
+        Field::Text {
+            read_only: false,
+            ..
+        }
+    ) || row.field.dimension_kind().is_none()
+    {
         return Ok(());
     }
     for (suffix, label, delta, dy) in [("up", "Increase", 1, 1.), ("down", "Decrease", -1, 14.)] {
@@ -1360,6 +1389,10 @@ fn floating_distance(
 fn content_height(panel: &super::FeaturePanel, inner: f32) -> f32 {
     let mut height = 24. + panel.notes.iter().map(|s| note_height(s)).sum::<f32>();
     for row in panel.fields.iter().filter(|row| row.visible) {
+        if row.field.is_hole_position_action() {
+            height += 40.;
+            continue;
+        }
         if row.field == super::SolidField::Copy && panel.kind == super::SolidFormKind::MoveCopy {
             height += overlays::copy_height(panel, inner);
             continue;

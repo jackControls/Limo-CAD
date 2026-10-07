@@ -110,7 +110,7 @@ fn prompt(panel: &FeaturePanel) -> Option<String> {
         F::Faces => "Select faces to remove for Shell".into(),
         F::Cylinder => "Select an exterior cylindrical face for External Thread".into(),
         F::HoleSupport => "Select a planar face for Hole".into(),
-        F::HolePositions => "Select visible sketch points for holes".into(),
+        F::HolePositions => "Pick the selected free position on its support face, or toggle a sketch point reference".into(),
         F::FirstPlane => "Select a planar face or reference plane".into(),
         F::SecondPlane => "Select another parallel face or reference plane".into(),
         F::AxisLine => "Select a straight sketch line for the Revolve axis".into(),

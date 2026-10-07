@@ -121,10 +121,9 @@ impl SolidForm {
                 .into(),
             ..Default::default()
         };
-        for row in fields
-            .iter()
-            .filter(|row| row.visible && matches!(row.value, Field::None))
-        {
+        for row in fields.iter().filter(|row| {
+            row.visible && matches!(row.value, Field::None) && !row.field.is_hole_position_action()
+        }) {
             let selected = self.has_reference(row.field);
             let caption = if selected && row.field == F::Source {
                 match &self.source {
@@ -163,7 +162,11 @@ impl SolidForm {
                     if count == 1 { "" } else { "s" }
                 )
             } else if row.field == F::HolePositions {
-                "Select a support face first".into()
+                if self.hole_support().is_some() {
+                    "No positions selected".into()
+                } else {
+                    "Select a support face first".into()
+                }
             } else if selected && row.field == F::Targets {
                 format!(
                     "{} {} selected",
@@ -313,10 +316,22 @@ impl SolidForm {
 }
 
 impl SolidField {
+    pub(crate) fn is_hole_position_action(self) -> bool {
+        matches!(
+            self,
+            Self::HolePositionAdd | Self::HolePositionRemove(_) | Self::HolePositionIndependent(_)
+        )
+    }
+
     pub(crate) fn dimension_kind(self) -> Option<DimensionKind> {
         use SolidField::*;
         Some(match self {
-            ThreadClass | Designation => return None,
+            ThreadClass
+            | Designation
+            | HolePositionSelection
+            | HolePositionAdd
+            | HolePositionRemove(_)
+            | HolePositionIndependent(_) => return None,
             Taper | Angle | RotationX | RotationY | RotationZ | CountersinkAngle
             | DrillPointAngle => DimensionKind::Angle,
             Count | SecondCount | DirectionX | DirectionY | DirectionZ | SecondDirectionX

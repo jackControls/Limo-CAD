@@ -1,4 +1,4 @@
-//! Shared noBS viewport selection cards, including the separate clear action.
+//! Shared viewport selection cards, including the separate clear action.
 use super::super::{FeaturePanel, SolidField as F, SolidFieldView, SolidFormKind as K};
 use super::*;
 
@@ -14,7 +14,7 @@ fn hint(panel: &FeaturePanel, field: F) -> &'static str {
         F::Source => "Selected regions are highlighted in the model. Click this field to change them.",
         F::Edges => "Click edges on one body to add or remove them from the selection.",
         F::HoleSupport => "Select a planar face for the hole direction.",
-        F::HolePositions => "Pick sketch points or click on the support face.",
+        F::HolePositions => "Face picks update the selected free position. Sketch points add linked positions; pick one again to remove it.",
         F::Cylinder => "Choose an exterior cylinder; hole walls are rejected.",
         F::Faces => "Click faces on one body to add or remove openings.",
         F::TargetBody => "Click the body that will receive the result.",

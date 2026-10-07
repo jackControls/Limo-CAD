@@ -98,6 +98,15 @@ fn holes_keep_associative_positions_validate_styles_and_edit_original_input_atom
             || Ok(()),
         )
         .unwrap();
+        action(
+            &fixture,
+            app.world_mut(),
+            &owner,
+            id,
+            FeatureControl::Clear(F::HolePositions),
+            ControlInput::Click,
+        )
+        .unwrap();
         for p in &points {
             accept_pick(
                 &fixture.engine,
