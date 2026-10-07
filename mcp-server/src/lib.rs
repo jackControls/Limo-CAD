@@ -844,7 +844,31 @@ impl CadServer {
                 }
                 json!({ "calls": self.tool_trace.clone() })
             }
-            "cad_compare_solids" => compare_solids_summary(self.manager.solid_scene_ref()),
+            "cad_compare_solids" => {
+                if let Some(session_id) = self.attached_document_id.as_deref() {
+                    let mut receipt = broker::inspect_solid_scene(session_id)?;
+                    let scene = receipt
+                        .as_object_mut()
+                        .and_then(|receipt| receipt.remove("value"))
+                        .ok_or_else(|| {
+                            json!({"code":"missing_live_solid_scene",
+                                "message":"Live solid scene query omitted its scene",
+                                "source":receipt})
+                            .to_string()
+                        })?;
+                    let scene: limo_cad_solid::SolidSceneDto = serde_json::from_value(scene)
+                        .map_err(|error| {
+                            json!({"code":"invalid_live_solid_scene",
+                                "message":format!("Live solid scene query returned invalid scene: {error}"),
+                                "source":receipt}).to_string()
+                        })?;
+                    let mut summary = compare_solids_summary(&scene);
+                    summary["source"] = receipt;
+                    summary
+                } else {
+                    compare_solids_summary(self.manager.solid_scene_ref())
+                }
+            }
             "cad_submit" => self.submit_inbox_op(&arguments)?,
             "cad_await_apply" => self.await_inbox_apply(&arguments)?,
             "cad_session_status" => self.session_status()?,
@@ -2300,6 +2324,7 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "cad_session_status"
             | "cad_document"
             | "cad_project_model"
+            | "cad_compare_solids"
             | "project_visibility"
             | "named_views"
             | "named_view_solution"
@@ -4303,8 +4328,8 @@ fn build_tool_specs() -> Vec<ToolSpec> {
         ),
         ToolSpec::direct(
             "solid_rename_feature",
-            "Rename solid history operation",
-            "Set a descriptive name on a solid history feature without recomputing geometry. The name persists through edits, undo and save/reopen. Name sketches and datum planes when creating them.",
+            "Rename history operation",
+            "Set a descriptive name on a sketch or solid history feature without recomputing geometry. Sketch renames rebind persisted references while preserving operation IDs. Names persist through edits, undo/redo and save/reopen. Name construction planes when creating them.",
             "solid_rename_feature",
             Payload::Object,
             object_schema(json!({"feature_id":{"type":"integer","minimum":1},"name":{"type":"string","minLength":1,"maxLength":256}}), &["feature_id","name"]),
@@ -4996,7 +5021,7 @@ fn build_tool_specs() -> Vec<ToolSpec> {
         ToolSpec::control(
             "cad_compare_solids",
             "Compare solid scene metrics",
-            "Summarize active bodies from solid_scene: body count plus per-body bbox, vertex_count, and triangle_count from existing mesh fields. Use to check a rebuilt history against an imported reference solid. Does not invent volume.",
+            "Summarize active bodies from solid_scene: body count plus per-body bbox, vertex_count, and triangle_count from existing mesh fields. Attached calls inspect the owning desktop's live scene with owner/generation fences and retain its source receipt; headless calls read the existing local scene. No geometry replay or model mutation. Use to check a rebuilt history against an imported reference solid. Does not invent volume.",
             empty_schema(),
         ),
         ToolSpec::control(

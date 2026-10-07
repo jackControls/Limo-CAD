@@ -197,6 +197,43 @@ pub(super) fn call(arguments: Value) -> Result<Value, String> {
     }
 }
 
+/// Summaries inspect the owning desktop's existing scene without loading it into MCP.
+/// The original owner and generation stay fenced throughout submission and polling.
+pub(super) fn inspect_solid_scene(session_id: &str) -> Result<Value, String> {
+    let route = resolve(Selectors {
+        session_id: Some(session_id.into()),
+        window_id: None,
+        document_id: None,
+        process_instance_id: None,
+    })?;
+    let generation = session::read_heartbeat_generation(&route.session_id)?;
+    let submitted = submit(route, "solid_scene", json!({}), Some(generation))?;
+    let ticket: Ticket = serde_json::from_value(submitted["ticket"].clone()).map_err(|error| {
+        json!({"status":"ticket_error","error":error.to_string(),"submitted":submitted}).to_string()
+    })?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(31);
+    loop {
+        let mut receipt = status(ticket.clone()).map_err(|error| {
+            json!({"status":"receipt_error","error":error,"ticket":ticket,
+                "base_generation":generation,"writeback":false})
+            .to_string()
+        })?;
+        receipt["base_generation"] = json!(generation);
+        if receipt["status"] == "applied" {
+            return Ok(receipt);
+        }
+        if receipt["status"] != "pending" {
+            return Err(receipt.to_string());
+        }
+        if std::time::Instant::now() >= deadline {
+            receipt["status"] = json!("timeout");
+            receipt["hint"] = json!("Live scene query is still pending. Poll its retained cad_route ticket; this helper never resubmits or falls back to another scene.");
+            return Err(receipt.to_string());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 fn submit(
     route: Route,
     name: &str,
