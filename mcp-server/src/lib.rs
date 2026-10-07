@@ -11,6 +11,7 @@ use serde_json::{json, Map, Value};
 
 mod assembly_tools;
 mod broker;
+mod build_pair;
 mod cam_tools;
 #[cfg(test)]
 mod component_edit_tests;
@@ -785,6 +786,9 @@ impl CadServer {
                     launched
                 } else {
                     let mut result = session::request_ui(&arguments, self.interface_session())?;
+                    if arguments["action"] == "inspect" {
+                        build_pair::decorate(&mut result);
+                    }
                     if result["status"] == "applied" {
                         if let Some(active) =
                             result["active_session_id"].as_str().map(str::to_owned)

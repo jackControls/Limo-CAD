@@ -159,6 +159,7 @@ pub(super) fn instructions(desktop: bool) -> String {
          Prefer cad_help and limo-cad://knowledge resources before web search for design guidance. \
          Build and iterate start to finish through MCP using cad_interface execute or individual tools; inspect solid_scene/cad_document between changes. \
          Use cad_batch for small ordered groups of literal typed operations on an explicit live route. Inspect its individual receipts; completed calls remain applied and pending calls must be polled by cad_route ticket before any retry. \
+         Before qualifying a desktop/MCP pair, inspect and require build_pair.status matched. Different, unknown or modified identities require explicit provenance checks. \
          Save the working design as .limo. Use upsert_named_view/rename_named_view/delete_named_view/recall_named_view/clear_named_view for review configurations. \
          Attached cad_interface inspect returns view_state; camera is null without a mounted modeling viewport. \
          For headless persistence use cad_project_model/cad_load_project_model. On desktop use cad_interface action file, command save, with an absolute .limo path; set overwrite true only to replace that file. \

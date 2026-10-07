@@ -2669,6 +2669,8 @@ fn complete_control(world: &mut World) {
                     Ok(snapshot) => {
                         pending.response["ui"] = snapshot;
                         if pending.inspect {
+                            pending.response["desktop_build"] =
+                                json!(limo_cad_build_info::build_info());
                             match inspect_document(
                                 world,
                                 &handle,

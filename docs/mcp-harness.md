@@ -11,6 +11,13 @@ See [the product interface](interface.md) for the complete contract and
 
 `cad_route` addresses multiple live desktop documents through one stdio server.
 
+Live `cad_interface` inspection reports `build_pair` with the actual compiled
+desktop and MCP identities. Require `status:matched` before qualifying a paired
+build. `different` means the clean revisions or release identities differ;
+`unknown` means identity reporting is unavailable; `unverified_modified` means
+source changes prevent the commit alone from proving equality. Compatible
+desktop control remains available so existing live work can be preserved.
+
 `cad_batch` sends 1–16 literal modeling operations or live engine queries to
 one explicit route, with its current `base_generation`. It validates every
 operation name and argument envelope before publication, then submits and

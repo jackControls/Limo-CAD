@@ -289,6 +289,9 @@ fn status(ticket: Ticket) -> Result<Value, String> {
         }
     };
     result["ticket"] = serde_json::to_value(ticket).map_err(|error| error.to_string())?;
+    if result.get("desktop_build").is_some() {
+        build_pair::decorate(&mut result);
+    }
     result["writeback"] = json!(false);
     Ok(result)
 }
