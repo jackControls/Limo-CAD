@@ -5,8 +5,39 @@ The Bevy desktop and MCP share the same Rust engine. The desktop workspace is
 Rust imports. `cargo xtask` owns builds, packages, WASM bindings and MCP setup.
 
 The Windows deployment is `%LOCALAPPDATA%/limo-cad/bevy/Limo-CAD.exe`.
+This is the sole installed executable. GUI launches and MCP workers with
+`--headless` use it; legacy application names are registry aliases to this path.
+
+For local Windows iteration, run:
+
+```text
+cargo xtask deploy-native --restart --launch
+```
+
+The task builds the current checkout, selects the executable reported by Cargo,
+stages its SDK runtime and verifies source and payload hashes before promotion.
+The default keeps local crates at optimization level 1 and third-party dependencies
+at level 3 with incremental compilation. `--release` selects full optimization.
+`--restart` explicitly terminates the installed GUI/MCP workers without saving;
+without it, a changed build cannot replace a running installation.
+`--jobs N` controls build concurrency and `CARGO_TARGET_DIR` retains the shared cache.
+
+The managed installation's `runtime-manifest.json` binds the executable to its
+checkout, source digest and OCCT SDK. Local `test-mcp`, `verify-package-mcp`,
+`run-script` and `cad-call` commands build and promote from the recorded checkout
+first, then select that canonical executable. Only an explicit `deploy-native`
+changes the source binding. A failed build, changed source or locked promotion stops
+the command instead of falling back to an old artifact. Hosted GitHub package
+checks keep their explicit artifact subjects. Unix local runtime promotion is
+not implemented by this task; existing Unix packaging remains available.
+
 `cargo xtask install-mcp` registers `limo-cad`, removes retired CAD server entries
-and preserves unrelated servers. Reload the client configuration after setup.
+and preserves unrelated servers. Its default builds and promotes the unified
+application; it never creates a second MCP installation. `--no-build` verifies
+the managed installation, including an explicit canonical `--binary` path.
+Machines without a managed installation may register a portable executable with
+`--in-place`; managed machines reject other executable bindings.
+Reload the client configuration after setup.
 
 ```text
 cargo xtask install-mcp --clients cursor,codex --no-build --binary ABSOLUTE_LIMO_CAD_PATH --in-place --server-arg --headless --desktop ABSOLUTE_LIMO_CAD_PATH
@@ -19,6 +50,16 @@ losing ancillary archive entries. New command scripts use `.limo.jsonc`.
 Script parsing remains content based, so existing command files remain readable.
 Project-file launch arguments use the same guarded File workflow as UI and MCP
 opens. Windows registers `.limo` and `.nbcad` projects with the current executable.
+
+On Windows, `cad_computer_control` provides real OS mouse and keyboard input for
+the owned CAD window. It is also available through `cad_interface execute`, group
+`document/session`, operation `cad_computer_control`. Observe returns a one-shot
+token and physical client-pixel coordinates. Focus, observe again, capture the
+rendered window, then send one input and inspect its visible result. Owner,
+build, layout, foreground and occlusion checks reject stale targets. An
+`input_sent` receipt confirms Windows accepted input; it does not confirm the
+product action. Native modal dialogs are currently rejected. No external
+computer-control helper or named pipe is required for this CAD surface.
 
 Recipe and knowledge links use `limo-cad://`; old `nbcad://` links remain accepted
 at the same restricted parsing boundaries. MCP build metadata is `limo-cad/build`.

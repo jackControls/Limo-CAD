@@ -5,7 +5,7 @@ That setup uses the installed CAD executable with `--headless` and needs no sour
 
 `cargo xtask install-mcp` updates selected clients' user configurations and
 preserves unrelated entries. It can use the installed Bevy application in place
-or copy a standalone development server. It does not launch CAD or create a live
+and never creates a separate executable copy. It does not launch CAD or create a live
 session.
 
 ## Installed Bevy application
@@ -27,38 +27,33 @@ GUI and MCP use the same Bevy binary. `--headless` runs an independent document
 without a window; explicit attach selects a live document. Without that flag,
 the application opens a Bevy window and its stdio MCP controls that window.
 
-Standalone installation refuses to write through a redirected install directory
-(a symlink or Windows junction). Use `--in-place` when an old MCP path has been
-redirected to the packaged application.
+## Source iteration
 
-## Standalone development server
+On Windows, build and promote the current checkout into the canonical runtime:
 
-Use the [developer guide](../DEVELOPMENT.md#standalone-mcp-server) to build the
-standalone server and configure its native OCCT runtime. Pair it with a desktop
-from the same source revision when using live control. A standalone server uses
-no arguments. Packaged desktop executables must use `--in-place` and the launch
-arguments above rather than being copied out of their runtime directory.
+```text
+cargo xtask deploy-native --restart --launch
+cargo xtask install-mcp --clients cursor,codex
+```
 
-From the repository root:
+`deploy-native` also registers detected clients. Its default keeps local Rust
+crates at optimization level 1 and dependencies at level 3, using incremental
+compilation. `--release` selects full optimization. `--restart` explicitly
+terminates GUI/MCP workers without saving; otherwise a changed runtime that is
+still running blocks promotion. Build or provenance failures preserve the old
+installation and stop before launching or testing it. The command currently
+supports Windows runtime promotion; use explicit portable executables on Unix.
 
-```sh
+A dry run discovers clients and prints planned configuration without building,
+copying or writing:
+
+```text
 cargo xtask install-mcp --dry-run
-cargo xtask install-mcp --clients cursor,vscode
 ```
 
-The dry run discovers client configuration directories and prints the intended
-changes without building, copying or writing. A real install requires an
-explicit `--clients` list. Supported names are `codex`, `cursor`, `vscode`, `claude` and
-`opencode`; an absent client is skipped with a log message.
-
-To select an already-built standalone server explicitly:
-
-```sh
-cargo xtask install-mcp --clients cursor --no-build --binary /absolute/path/to/limo-cad-mcp
-```
-
-Use `limo-cad-mcp.exe` on Windows. The server entry is named **limo-cad**.
-Reload the client's MCP servers after installation.
+A real install requires `--clients`. Supported names are `codex`, `cursor`,
+`vscode`, `claude` and `opencode`; absent clients are skipped. Explicit executable
+selection always requires `--in-place`, so it cannot create a second copy.
 
 ## Configuration destinations
 
@@ -85,24 +80,24 @@ manual Cursor and VS Code configurations. Keep those formats separate.
 
 ## Binary and runtime resolution
 
-The installer resolves a standalone binary in this order:
+Default installation builds the desktop first and installs the executable Cargo
+reports. GUI and MCP share this single runtime and its adjacent libraries.
+`--no-build` verifies the managed installation's source and payload hashes,
+including an explicit canonical `--binary` path. Managed machines reject other
+executable bindings. Without a managed installation, `--binary PATH --in-place`
+configures a portable executable without copying it.
 
-1. An explicit `--binary PATH`.
-2. `mcp-server/target/release/limo-cad-mcp(.exe)`.
-3. `mcp-server/target/debug/limo-cad-mcp(.exe)`.
-4. A release build, only if no binary exists and neither `--dry-run` nor
-   `--no-build` prohibits it.
+The shared-runtime entry includes `LIMO_CAD_LOCAL_RUNTIME` and
+`LIMO_CAD_DESKTOP_BIN` pointing to the same executable. Managed desktop launch
+always selects that runtime. The executable also sets its own desktop path,
+preventing an inherited stale desktop override from splitting GUI and MCP.
 
-Build the intended source revision before installing; an existing executable
-can be reused without rebuilding. On write, the binary is copied to
-`%LOCALAPPDATA%/limo-cad/mcp/limo-cad-mcp.exe` on Windows, or
-`$XDG_DATA_HOME/limo-cad/mcp/limo-cad-mcp` (default
-`~/.local/share/limo-cad/mcp/limo-cad-mcp`) on Unix.
-
-The generated entry includes the discovered `LIMO_CAD_REPO_ROOT`, `OCCT_ROOT` and
-OCCT `bin` addition to `PATH`. The SDK runtime remains necessary for this
-standalone development installation. Packaged CAD already bundles its
-runtime separately.
+The managed installation records its checkout in `runtime-manifest.json`.
+Local `test-mcp`, `verify-package-mcp`, `run-script` and `cad-call` commands build
+and promote that checkout before selecting the canonical executable. Automatic
+commands retain the recorded source binding; only `deploy-native` can change it.
+Failed promotion stops the command. Hosted GitHub package checks retain explicit
+isolated artifact selection.
 
 ## Existing configurations
 

@@ -82,6 +82,9 @@ impl Options {
     /// Real installs require an explicit `--clients` list. Dry-run may omit it
     /// to discover/print detected clients only.
     pub fn validate(&self) -> Result<()> {
+        if self.binary.is_some() && !self.in_place {
+            bail!("--binary requires --in-place; MCP uses the installed CAD executable without creating another copy");
+        }
         if self.in_place && self.binary.is_none() {
             bail!("--in-place requires --binary pointing to an installed executable");
         }
@@ -156,16 +159,53 @@ struct ServerLaunch {
     env: Map<String, Value>,
 }
 
-pub fn run(options: Options) -> Result<()> {
+pub fn run(mut options: Options) -> Result<()> {
     options.validate()?;
 
     let repo_root = repo_root()?;
+    let managed = crate::deploy_native::managed_install_exists()?;
+    if options.binary.is_none() {
+        let binary = if options.dry_run {
+            crate::deploy_native::installed_executable()?
+        } else if options.build {
+            let source = if managed {
+                crate::deploy_native::managed_source_checkout()?
+            } else {
+                repo_root.clone()
+            };
+            crate::deploy_native::prepare_runtime(
+                &source,
+                &crate::deploy_native::BuildOptions::default(),
+            )?
+        } else {
+            crate::deploy_native::verify_installed_runtime()?
+        };
+        options.desktop = Some(binary.clone());
+        options.binary = Some(binary);
+        options.in_place = true;
+        if !options.server_args.iter().any(|arg| arg == "--headless") {
+            options.server_args.push("--headless".into());
+        }
+    }
+    if managed && !options.dry_run {
+        let canonical = crate::deploy_native::verify_installed_runtime()?;
+        if options
+            .binary
+            .as_ref()
+            .map(|path| normalize_path(path.clone()))
+            != Some(normalize_path(canonical.clone()))
+        {
+            bail!("This machine uses one managed CAD runtime; run cargo xtask deploy-native to select another source checkout");
+        }
+        if options.server_args.iter().any(|arg| arg != "--headless") {
+            bail!("The managed MCP runtime accepts only --headless");
+        }
+        options.binary = Some(canonical.clone());
+        options.desktop = Some(canonical);
+        options.server_args = vec!["--headless".into()];
+    }
     let binary = resolve_binary(&repo_root, &options)?;
-    let mut environment = if options.in_place {
-        Map::new()
-    } else {
-        server_env(&repo_root)
-    };
+    let mut environment = Map::new();
     if let Some(desktop) = &options.desktop {
         if !options.dry_run && !desktop.is_file() {
             bail!("--desktop executable does not exist: {}", desktop.display());
@@ -174,6 +214,12 @@ pub fn run(options: Options) -> Result<()> {
             "LIMO_CAD_DESKTOP_BIN".into(),
             Value::String(path_string(&normalize_path(desktop.clone()))),
         );
+        if normalize_path(desktop.clone()) == normalize_path(binary.clone()) {
+            environment.insert(
+                "LIMO_CAD_LOCAL_RUNTIME".into(),
+                Value::String(path_string(&normalize_path(binary.clone()))),
+            );
+        }
     }
     let launch = ServerLaunch {
         command: binary,
@@ -792,40 +838,6 @@ fn path_string(path: &Path) -> String {
     }
 }
 
-/// Prepend OCCT `bin` once and keep a short, deduped PATH for MCP child processes.
-fn clean_path_with_occt_bin(occt_bin: &Path) -> String {
-    let sep = if cfg!(windows) { ';' } else { ':' };
-    let mut parts: Vec<String> = vec![path_string(occt_bin)];
-    if let Ok(existing) = env::var("PATH") {
-        for part in existing.split(sep) {
-            if part.is_empty() {
-                continue;
-            }
-
-            let lower = part.to_ascii_lowercase();
-            if lower.contains("\\target\\debug")
-                || lower.contains("/target/debug")
-                || lower.contains("vcpkg_installed")
-                    && lower.ends_with(&format!("{}bin", std::path::MAIN_SEPARATOR))
-            {
-                continue;
-            }
-            if parts
-                .iter()
-                .any(|existing_part| existing_part.eq_ignore_ascii_case(part))
-            {
-                continue;
-            }
-            parts.push(part.to_string());
-        }
-    }
-
-    if parts.len() > 40 {
-        parts.truncate(40);
-    }
-    parts.join(&sep.to_string())
-}
-
 fn normalize_path(path: PathBuf) -> PathBuf {
     path.canonicalize()
         .map(|canonical| {
@@ -835,230 +847,18 @@ fn normalize_path(path: PathBuf) -> PathBuf {
         .unwrap_or(path)
 }
 
-fn server_env(repo_root: &Path) -> Map<String, Value> {
-    let mut env_map = Map::new();
-    env_map.insert(
-        "LIMO_CAD_REPO_ROOT".to_string(),
-        Value::String(path_string(repo_root)),
-    );
-    if let Some(occt) = default_occt_root(repo_root) {
-        env_map.insert(
-            "OCCT_ROOT".to_string(),
-            Value::String(occt.to_string_lossy().into_owned()),
-        );
-        let bin = occt.join("bin");
-        if bin.is_dir() {
-            env_map.insert(
-                "PATH".to_string(),
-                Value::String(clean_path_with_occt_bin(&bin)),
-            );
-        }
+/// Resolve only an explicitly selected installed executable. Default setup
+/// builds and promotes the unified desktop before reaching this boundary.
+fn resolve_binary(_repo_root: &Path, options: &Options) -> Result<PathBuf> {
+    let path = options
+        .binary
+        .as_ref()
+        .context("No installed runtime selected")?;
+    if !options.dry_run && !path.is_file() {
+        bail!("Installed executable does not exist: {}", path.display());
     }
-    env_map
+    Ok(normalize_path(path.clone()))
 }
-
-fn default_occt_root(repo_root: &Path) -> Option<PathBuf> {
-    if let Ok(explicit) = env::var("OCCT_ROOT") {
-        let path = PathBuf::from(explicit);
-        if path.is_dir() {
-            return Some(path);
-        }
-    }
-    let candidates = [
-        repo_root.join("vcpkg_installed").join("x64-windows"),
-        repo_root.join("vcpkg_installed").join("x64-linux"),
-        repo_root.join("vcpkg_installed").join("arm64-osx"),
-        repo_root.join("vcpkg_installed").join("x64-osx"),
-    ];
-    candidates.into_iter().find(|path| path.is_dir())
-}
-
-/// Resolve the MCP binary path.
-///
-/// Dry-run never builds or copies. Real installs honor `--binary`, else look for
-/// the executable reported by a fresh Cargo build. `--no-build` discovers release
-/// then debug under `mcp-server/target/`. Copied binaries use a stable user path.
-fn resolve_binary(repo_root: &Path, options: &Options) -> Result<PathBuf> {
-    if let Some(path) = &options.binary {
-        if options.dry_run {
-            return Ok(path.clone());
-        }
-        if !path.is_file() {
-            bail!("--binary path does not exist: {}", path.display());
-        }
-        if options.in_place {
-            return Ok(normalize_path(path.clone()));
-        }
-        return install_user_binary(path);
-    }
-
-    if options.build && !options.dry_run {
-        let built = build_mcp_server(repo_root)?;
-        return install_user_binary(&built);
-    }
-
-    let release = mcp_binary_path(repo_root, "release");
-    let debug = mcp_binary_path(repo_root, "debug");
-
-    let found = if release.is_file() {
-        Some(release.clone())
-    } else if debug.is_file() {
-        if !options.dry_run {
-            eprintln!(
-                "warning: using debug MCP binary (release missing): {}",
-                debug.display()
-            );
-        }
-        Some(debug.clone())
-    } else {
-        None
-    };
-
-    if let Some(built) = found {
-        if options.dry_run {
-            return Ok(normalize_path(built));
-        }
-        return install_user_binary(&built);
-    }
-
-    if options.dry_run {
-        let planned = user_mcp_install_dir()
-            .map(|dir| {
-                dir.join(if cfg!(windows) {
-                    "limo-cad-mcp.exe"
-                } else {
-                    "limo-cad-mcp"
-                })
-            })
-            .unwrap_or_else(|_| release.clone());
-        println!(
-            "note: MCP binary not found yet; would build {} and install to {}",
-            release.display(),
-            planned.display()
-        );
-        return Ok(planned);
-    }
-
-    bail!(
-        "MCP binary not found at {} (run without --no-build, or pass --binary)",
-        mcp_binary_path(repo_root, "release").display()
-    )
-}
-
-/// Copy the built MCP binary to a stable user path (never called on dry-run).
-fn install_user_binary(built: &Path) -> Result<PathBuf> {
-    let dir = user_mcp_install_dir()?;
-    fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
-    refuse_redirected_install_dir(&dir)?;
-    let name = if cfg!(windows) {
-        "limo-cad-mcp.exe"
-    } else {
-        "limo-cad-mcp"
-    };
-    let dest = dir.join(name);
-    let staging = dir.join(format!(".{name}.{}.tmp", std::process::id()));
-    fs::copy(built, &staging)
-        .with_context(|| format!("copy {} → {}", built.display(), staging.display()))?;
-    if dest.exists() {
-        let bak = dir.join(format!("{name}.prev"));
-        let _ = fs::remove_file(&bak);
-        let _ = fs::rename(&dest, &bak);
-    }
-    if let Err(error) = fs::rename(&staging, &dest) {
-        let _ = fs::remove_file(&staging);
-        return Err(error).with_context(|| format!("rename → {}", dest.display()));
-    }
-    Ok(normalize_path(dest))
-}
-
-fn refuse_redirected_install_dir(dir: &Path) -> Result<()> {
-    let metadata = fs::symlink_metadata(dir)?;
-    #[cfg(windows)]
-    let redirected = {
-        use std::os::windows::fs::MetadataExt;
-        metadata.file_attributes() & 0x400 != 0
-    };
-    #[cfg(not(windows))]
-    let redirected = metadata.file_type().is_symlink();
-    if redirected {
-        bail!("MCP install directory redirects to another runtime: {}. Use --in-place --binary to configure the installed executable without replacing its aliases.", dir.display());
-    }
-    Ok(())
-}
-
-fn user_mcp_install_dir() -> Result<PathBuf> {
-    if let Some(base) = env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .or_else(|| env::var_os("XDG_DATA_HOME").map(PathBuf::from))
-        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share")))
-    {
-        return Ok(base.join("limo-cad").join("mcp"));
-    }
-    bail!("could not resolve a user install directory (LOCALAPPDATA / HOME)");
-}
-
-fn mcp_binary_path(repo_root: &Path, profile: &str) -> PathBuf {
-    let name = if cfg!(windows) {
-        "limo-cad-mcp.exe"
-    } else {
-        "limo-cad-mcp"
-    };
-    repo_root
-        .join("mcp-server")
-        .join("target")
-        .join(profile)
-        .join(name)
-}
-
-fn build_mcp_server(repo_root: &Path) -> Result<PathBuf> {
-    println!("building mcp-server (release)...");
-    let mut command = crate::build_tools::cargo();
-    command.current_dir(repo_root).args([
-        "build",
-        "--release",
-        "--manifest-path",
-        "mcp-server/Cargo.toml",
-        "--bin",
-        "limo-cad-mcp",
-        "--message-format=json-render-diagnostics",
-    ]);
-    if let Some(occt) = default_occt_root(repo_root) {
-        command.env("OCCT_ROOT", &occt);
-        let bin = occt.join("bin");
-        if bin.is_dir() {
-            let mut path = bin.to_string_lossy().into_owned();
-            if let Ok(existing) = env::var("PATH") {
-                let sep = if cfg!(windows) { ';' } else { ':' };
-                path.push(sep);
-                path.push_str(&existing);
-            }
-            command.env("PATH", path);
-        }
-    }
-    let output = command
-        .stderr(std::process::Stdio::inherit())
-        .output()
-        .context("spawn cargo build for mcp-server")?;
-    if !output.status.success() {
-        bail!("cargo build --release --manifest-path mcp-server/Cargo.toml failed");
-    }
-    output
-        .stdout
-        .split(|byte| *byte == b'\n')
-        .filter_map(|line| serde_json::from_slice::<Value>(line).ok())
-        .find_map(|message| {
-            if message["reason"] == "compiler-artifact"
-                && message["target"]["name"] == "limo-cad-mcp"
-            {
-                message["executable"].as_str().map(PathBuf::from)
-            } else {
-                None
-            }
-        })
-        .filter(|path| path.is_file())
-        .ok_or_else(|| anyhow!("Cargo did not report the built limo-cad-mcp executable"))
-}
-
 fn repo_root() -> Result<PathBuf> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let root = manifest_dir
@@ -1280,19 +1080,6 @@ mod tests {
             normalize_path(binary)
         );
         assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 2);
-    }
-
-    #[test]
-    fn standalone_install_directory_must_not_redirect() {
-        let directory = tempfile::tempdir().unwrap();
-        refuse_redirected_install_dir(directory.path()).unwrap();
-        #[cfg(unix)]
-        {
-            let alias = directory.path().join("runtime-alias");
-            std::os::unix::fs::symlink(directory.path(), &alias).unwrap();
-            let error = refuse_redirected_install_dir(&alias).unwrap_err();
-            assert!(error.to_string().contains("--in-place"));
-        }
     }
 
     fn launch_fixture() -> ServerLaunch {

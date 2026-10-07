@@ -27,10 +27,9 @@ fn main() -> std::process::ExitCode {
         }
     }
 
-    if std::env::var_os("LIMO_CAD_DESKTOP_BIN").is_none() {
-        if let Ok(executable) = std::env::current_exe() {
-            std::env::set_var("LIMO_CAD_DESKTOP_BIN", executable);
-        }
+    if let Ok(executable) = std::env::current_exe() {
+        std::env::set_var("LIMO_CAD_DESKTOP_BIN", &executable);
+        std::env::set_var("LIMO_CAD_LOCAL_RUNTIME", &executable);
     }
 
     if startup == Startup::Headless {

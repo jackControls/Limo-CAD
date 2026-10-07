@@ -6,12 +6,14 @@
 //! ```
 
 mod build_tools;
+mod deploy_native;
 mod desktop_changes;
 mod hash;
 mod icon_audit;
 mod install_mcp;
 mod knowledge;
 mod linux_fixture;
+mod local_subject;
 mod material_catalog;
 mod mcp_scenarios;
 mod native_assembly_test;
@@ -92,8 +94,10 @@ fn run() -> Result<()> {
         print_usage();
         bail!("missing command");
     };
+    let args = local_subject::prepare(&command, args.collect())?.into_iter();
 
     match command.as_str() {
+        "deploy-native" => deploy_native::run(args),
         "materials" => material_catalog::run(args),
         "printer-profiles" => printer_profiles::run(args),
         "doctor" => build_tools::doctor(args),
@@ -140,10 +144,12 @@ Limo CAD xtask
 
 Usage:
   cargo xtask package
+  cargo xtask deploy-native [--restart] [--release] [--launch]
   cargo run -p xtask -- install-mcp --dry-run
   cargo run -p xtask -- install-mcp --clients LIST [--no-build] [--binary PATH]
 
 Commands:
+  deploy-native Build first and install one Windows GUI/MCP runtime; --help for options.
   materials     Fetch pinned engineering/filament data into the unified catalog; --fetch, --check.
   printer-profiles Fetch pinned printer geometry into the embedded catalog; --fetch, --check.
   doctor        Read-only compiler/SDK prerequisites; --scope engine|desktop|mcp|wasm.
@@ -213,14 +219,14 @@ Commands:
                 Native application preferences: test-mcp native-preferences with the same blank-session arguments and isolated LIMO_CAD_CONFIG_DIR.
                 Disposable switching timings: test-mcp switching-measurement; see docs/native-switching-measurement.md for matched archives and receipt limits.
                 Both save editable models and window PNGs for visual review.
-  install-mcp   Detect installed agent clients and upsert the local limo-cad-mcp
-                stdio server into each client's user config (Cursor, VS Code,
+  install-mcp   Build/promote the unified local CAD runtime and upsert its
+                --headless server into each client's user config (Cursor, VS Code,
                 Codex, Claude, OpenCode).
 
 Options for install-mcp:
   --dry-run           Discover/print only — zero build, copy, or config write
-  --no-build          Do not cargo-build the MCP server (use existing binary)
-  --binary PATH       Explicit path to limo-cad-mcp (skips default discovery)
+  --no-build          Verify the current managed installation without rebuilding
+  --binary PATH       Explicit portable executable; requires --in-place
   --in-place          Use --binary at its installed location, preserving runtime libraries
   --server-arg ARG    Literal stdio argument; repeat as needed (e.g. --headless)
   --desktop PATH      Set the executable launched by cad_interface launch

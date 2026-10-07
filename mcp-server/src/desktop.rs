@@ -34,14 +34,19 @@ fn recipe_was_queued(reply: &Value) -> bool {
     reply["status"] == "applied" && reply["recipe"]["status"] == "queued"
 }
 
-/// Launch only the explicitly configured CAD executable, without a shell or
+/// Managed desktop workers launch their own installed runtime. Standalone
+/// workers retain explicit artifact selection, without a shell or
 /// inherited stdio handles. Correlate readiness with the child's PID lease.
 pub fn launch(arguments: &Value) -> Result<Value, String> {
-    let configured = arguments
-        .get("executable")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .or_else(|| std::env::var("LIMO_CAD_DESKTOP_BIN").ok())
+    let configured = std::env::var("LIMO_CAD_LOCAL_RUNTIME")
+        .ok()
+        .or_else(|| {
+            arguments
+                .get("executable")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .or_else(|| std::env::var("LIMO_CAD_DESKTOP_BIN").ok())
+        })
         .ok_or("Set LIMO_CAD_DESKTOP_BIN or provide the CAD executable path")?;
     let path = PathBuf::from(configured)
         .canonicalize()

@@ -334,10 +334,14 @@ cargo xtask install-mcp --dry-run
 cargo xtask install-mcp --clients cursor
 ```
 
-It builds/copies the standalone server, backs up the selected client's config,
-and preserves unrelated entries. It does not install or configure the packaged
-desktop application. See the [source MCP installer guide](agentic/INSTALL_MCP.md)
-for supported clients, runtime setup and manual configuration.
+The source installer builds and promotes the unified Windows desktop, registers
+that executable with `--headless`, backs up client configuration and preserves
+unrelated entries. It creates no standalone MCP copy. Use
+`cargo xtask deploy-native --restart --launch` for build-and-launch iteration;
+the managed local drivers select its newly built executable automatically.
+Portable installations on any OS use explicit `--binary PATH --in-place`.
+See the [source MCP installer guide](agentic/INSTALL_MCP.md) and
+[runtime identity](limo-cad-runtime.md) for supported clients and build selection.
 
 </details>
 
