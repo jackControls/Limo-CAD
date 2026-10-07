@@ -226,7 +226,8 @@ impl ComputerControl {
                 });
                 json!({"png_base64":base64::engine::general_purpose::STANDARD.encode(captured.png),
                     "width":captured.width,"height":captured.height,
-                    "screen_bounds":captured.screen_bounds,"client_to_image_offset":offset})
+                    "screen_bounds":captured.screen_bounds,"client_to_image_offset":offset,
+                    "cleanup":captured.cleanup})
             });
             return Ok(
                 json!({"status":"observed","observation":token,"expires_ms":expires_ms,

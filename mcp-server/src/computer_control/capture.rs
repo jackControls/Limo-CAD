@@ -4,13 +4,14 @@ use std::mem::size_of;
 use std::os::windows::io::AsRawHandle;
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use windows_capture::capture::{Context, GraphicsCaptureApiHandler};
 use windows_capture::frame::Frame;
 use windows_capture::graphics_capture_api::InternalCaptureControl;
@@ -44,6 +45,7 @@ pub(super) struct CapturedWindow {
     pub(super) width: u32,
     pub(super) height: u32,
     pub(super) screen_bounds: [i32; 4],
+    pub(super) cleanup: Value,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -67,6 +69,9 @@ enum Response {
     },
     Error {
         message: String,
+    },
+    Cleanup {
+        error: Option<String>,
     },
 }
 
@@ -111,16 +116,17 @@ pub(super) fn png(hwnd: usize) -> Result<CapturedWindow, String> {
             return Err(format!("Could not read native capture worker: {error}"));
         }
     };
+    let mut stopped = None;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status),
             Ok(None) if started.elapsed() < DEADLINE => thread::sleep(Duration::from_millis(10)),
             Ok(None) => {
-                stop_child(&mut child)?;
+                stopped = Some(stop_child(&mut child)?);
                 break Err("Native capture exceeded its three-second deadline".to_string());
             }
             Err(error) => {
-                stop_child(&mut child)?;
+                stopped = Some(stop_child(&mut child)?);
                 break Err(format!("Could not wait for native capture worker: {error}"));
             }
         }
@@ -128,18 +134,28 @@ pub(super) fn png(hwnd: usize) -> Result<CapturedWindow, String> {
     let bytes = reader
         .join()
         .map_err(|_| "Native capture output reader failed".to_string())?;
-    let status = status?;
     let bytes = bytes?;
-    if !status.success() {
-        return Err(format!("Native capture worker exited with {status}"));
-    }
+    let mut replies = bytes.split_inclusive(|byte| *byte == b'\n');
+    let first = replies.next().filter(|line| line.ends_with(b"\n"));
+    let first = match first {
+        Some(first) => first,
+        None => {
+            return Err(match status {
+                Err(error) => error,
+                Ok(status) => {
+                    format!("Native capture worker exited with {status} without a completed reply")
+                }
+            });
+        }
+    };
     if snapshot(hwnd)? != target {
         return Err("Native capture target changed during capture; observe again".into());
     }
-    match serde_json::from_slice::<Response>(&bytes)
+    match serde_json::from_slice::<Response>(first)
         .map_err(|error| format!("Invalid native capture response: {error}"))?
     {
         Response::Error { message } => Err(message),
+        Response::Cleanup { .. } => Err("Native capture returned cleanup without an image".into()),
         Response::Captured {
             png_base64,
             width,
@@ -161,25 +177,65 @@ pub(super) fn png(hwnd: usize) -> Result<CapturedWindow, String> {
                 width,
                 height,
                 screen_bounds,
+                cleanup: cleanup_status(replies.next(), &status, stopped.as_ref()),
             })
         }
     }
 }
 
-fn stop_child(child: &mut Child) -> Result<(), String> {
-    if child
+fn cleanup_status(
+    reply: Option<&[u8]>,
+    worker: &Result<ExitStatus, String>,
+    stopped: Option<&StopOutcome>,
+) -> Value {
+    let session = match reply.filter(|line| line.ends_with(b"\n")) {
+        Some(reply) => match serde_json::from_slice::<Response>(reply) {
+            Ok(Response::Cleanup { error: None }) => json!({"status":"stopped"}),
+            Ok(Response::Cleanup { error: Some(error) }) => {
+                json!({"status":"stop_failed","message":error})
+            }
+            _ => json!({"status":"unconfirmed","message":"Invalid capture cleanup receipt"}),
+        },
+        None => {
+            json!({"status":"unconfirmed","message":"Capture worker did not complete its cleanup receipt"})
+        }
+    };
+    let worker = match worker {
+        Ok(status) => {
+            json!({"status":if status.success() {"exited"} else {"exit_failed"},"exit":status.to_string()})
+        }
+        Err(error) => match stopped {
+            Some(StopOutcome::Terminated(status)) => {
+                json!({"status":"terminated","exit":status.to_string(),"message":error})
+            }
+            Some(StopOutcome::Exited(status)) => {
+                json!({"status":if status.success() {"exited"} else {"exit_failed"},"exit":status.to_string(),"wait_error":error})
+            }
+            None => json!({"status":"unconfirmed","message":error}),
+        },
+    };
+    json!({"session":session,"worker":worker,"deadline_ms":DEADLINE.as_millis()})
+}
+
+enum StopOutcome {
+    Exited(ExitStatus),
+    Terminated(ExitStatus),
+}
+
+fn stop_child(child: &mut Child) -> Result<StopOutcome, String> {
+    if let Some(status) = child
         .try_wait()
         .map_err(|error| format!("Could not inspect native capture worker: {error}"))?
-        .is_some()
     {
-        return Ok(());
+        return Ok(StopOutcome::Exited(status));
     }
     if let Err(error) = child.kill() {
-        if child.try_wait().ok().flatten().is_none() {
-            return Err(format!(
+        return match child.try_wait() {
+            Ok(Some(status)) => Ok(StopOutcome::Exited(status)),
+            _ => Err(format!(
                 "Could not terminate owned native capture worker: {error}"
-            ));
-        }
+            )),
+        };
     }
     if unsafe { WaitForSingleObject(child.as_raw_handle() as HANDLE, 500) } != WAIT_OBJECT_0 {
         return Err(
@@ -188,8 +244,8 @@ fn stop_child(child: &mut Child) -> Result<(), String> {
     }
     child
         .wait()
-        .map_err(|error| format!("Could not reap native capture worker: {error}"))?;
-    Ok(())
+        .map(StopOutcome::Terminated)
+        .map_err(|error| format!("Could not reap native capture worker: {error}"))
 }
 
 /// Called before MCP initialization by the same executable's --headless path.
@@ -205,24 +261,21 @@ pub(crate) fn run_worker_if_requested() -> Option<Result<(), String>> {
                 .map_err(|error| format!("Invalid native capture request: {error}"))
         })
         .and_then(capture);
-    let response = match result {
-        Ok(frame) => Response::Captured {
-            png_base64: base64::engine::general_purpose::STANDARD.encode(frame.png),
-            width: frame.width,
-            height: frame.height,
-            screen_bounds: frame.screen_bounds,
-        },
-        Err(message) => Response::Error { message },
-    };
-    Some((|| {
-        let mut stdout = std::io::stdout().lock();
-        serde_json::to_writer(&mut stdout, &response)
-            .map_err(|error| format!("Could not write native capture: {error}"))?;
-        stdout.flush().map_err(|error| error.to_string())
-    })())
+    Some(match result {
+        Ok(()) => Ok(()),
+        Err(message) => publish(&Response::Error { message }),
+    })
 }
 
-fn capture(target: Target) -> Result<CapturedWindow, String> {
+fn publish(response: &Response) -> Result<(), String> {
+    let mut stdout = std::io::stdout().lock();
+    serde_json::to_writer(&mut stdout, response)
+        .map_err(|error| format!("Could not write native capture: {error}"))?;
+    stdout.write_all(b"\n").map_err(|error| error.to_string())?;
+    stdout.flush().map_err(|error| error.to_string())
+}
+
+fn capture(target: Target) -> Result<(), String> {
     if snapshot(target.hwnd)? != target {
         return Err("Native capture target changed before capture".into());
     }
@@ -241,20 +294,31 @@ fn capture(target: Target) -> Result<CapturedWindow, String> {
         .map_err(|error| format!("Could not start Windows capture: {error}"))?;
     let frame = receiver
         .recv_timeout(Duration::from_secs(2))
-        .map_err(|error| format!("Windows did not provide a capture frame: {error}"));
+        .map_err(|error| format!("Windows did not provide a capture frame: {error}"))
+        .flatten()
+        .and_then(|(png, width, height)| {
+            if snapshot(target.hwnd)? != target {
+                return Err("Native capture target changed while capturing".into());
+            }
+            let screen_bounds = matching_bounds(&target, width, height)?;
+            Ok(Response::Captured {
+                png_base64: base64::engine::general_purpose::STANDARD.encode(png),
+                width,
+                height,
+                screen_bounds,
+            })
+        });
+    let response = match frame {
+        Ok(response) => response,
+        Err(message) => Response::Error { message },
+    };
+    let published = publish(&response);
     let stopped = control
         .stop()
         .map_err(|error| format!("Could not stop Windows capture: {error}"));
-    stopped?;
-    let (png, width, height) = frame??;
-    if snapshot(target.hwnd)? != target {
-        return Err("Native capture target changed while capturing".into());
-    }
-    Ok(CapturedWindow {
-        png,
-        width,
-        height,
-        screen_bounds: matching_bounds(&target, width, height)?,
+    published?;
+    publish(&Response::Cleanup {
+        error: stopped.err(),
     })
 }
 
