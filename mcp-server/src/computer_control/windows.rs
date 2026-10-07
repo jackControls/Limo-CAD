@@ -42,8 +42,8 @@ struct Observation {
     expires_ms: u64,
     owner: Value,
     hwnd: usize,
-    bounds: [i32; 4],
-    layout: Value,
+    bounds: Option<[i32; 4]>,
+    layout: Option<Value>,
     editable_focus: bool,
     process: DesktopProcess,
 }
@@ -113,12 +113,17 @@ impl ComputerControl {
                     .ok_or("Owner has no PID")?,
             )?;
             let hwnd = native_window(&owner)?;
-            let inspect = inspect(session_id)?;
+            let inspect = inspect(session_id, false)?;
             process.verify()?;
             if session::computer_control_owner(session_id)? != owner {
                 return Err("Desktop owner changed during observation; observe again".into());
             }
-            let bounds = client_bounds(hwnd)?;
+            let presented = inspect["presented"] == true && unsafe { IsIconic(hwnd) } == 0;
+            let bounds = if presented {
+                Some(client_bounds(hwnd)?)
+            } else {
+                None
+            };
             static NEXT: AtomicU64 = AtomicU64::new(0);
             let token = format!(
                 "computer-{}-{}-{}",
@@ -128,38 +133,60 @@ impl ComputerControl {
             );
             let expires_ms = session::now_ms().saturating_add(OBSERVATION_MS);
             let focused = &inspect["ui"]["focused_control"];
-            let editable_focus = inspect["ui"]["surfaces"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .flat_map(|surface| surface["controls"].as_array().into_iter().flatten())
-                .any(|control| {
-                    control["id"] == *focused
-                        && matches!(
-                            control["role"].as_str(),
-                            Some("textbox" | "multiline_textbox")
-                        )
-                        && control["read_only"] != true
-                        && control["disabled"] != true
-                });
+            let editable_focus = presented
+                && inspect["ui"]["surfaces"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|surface| surface["controls"].as_array().into_iter().flatten())
+                    .any(|control| {
+                        control["id"] == *focused
+                            && matches!(
+                                control["role"].as_str(),
+                                Some("textbox" | "multiline_textbox")
+                            )
+                            && control["read_only"] != true
+                            && control["disabled"] != true
+                    });
             self.observation = Some(Observation {
                 token: token.clone(),
                 expires_ms,
                 owner: owner.clone(),
                 hwnd: hwnd as usize,
                 bounds,
-                layout: layout(&inspect),
+                layout: presented.then(|| layout(&inspect)),
                 editable_focus,
                 process,
             });
+            let screen_bounds = bounds.map(
+                |bounds| json!({"x":bounds[0],"y":bounds[1],"width":bounds[2],"height":bounds[3]}),
+            );
+            let scale = bounds.map(|bounds| {
+                [
+                    bounds[2] as f64
+                        / inspect["ui"]["client"]["width"]
+                            .as_f64()
+                            .unwrap_or(bounds[2] as f64),
+                    bounds[3] as f64
+                        / inspect["ui"]["client"]["height"]
+                            .as_f64()
+                            .unwrap_or(bounds[3] as f64),
+                ]
+            });
+            let inspection = if presented {
+                inspect
+            } else {
+                json!({"status":inspect["status"],"presented":false,"build_pair":inspect["build_pair"],
+                    "render_status":inspect["render_status"],"hint":"Owner-only focus observation; no rendered controls or pointer coordinates are qualified."})
+            };
             return Ok(
                 json!({"status":"observed","observation":token,"expires_ms":expires_ms,
                 "owner":owner,"window_handle":hwnd as usize,"executable":std::env::current_exe().map_err(|e|e.to_string())?,
-                "client_screen_bounds":{"x":bounds[0],"y":bounds[1],"width":bounds[2],"height":bounds[3]},
+                "presented":presented,"focus_only":!presented,"minimized":unsafe { IsIconic(hwnd) } != 0,
+                "client_screen_bounds":screen_bounds,
                 "coordinate_space":"physical_client_pixels","dpi":unsafe { GetDpiForWindow(hwnd) },
-                "interface_to_physical_scale":[bounds[2] as f64 / inspect["ui"]["client"]["width"].as_f64().unwrap_or(bounds[2] as f64),
-                    bounds[3] as f64 / inspect["ui"]["client"]["height"].as_f64().unwrap_or(bounds[3] as f64)],
-                "foreground":unsafe { GetForegroundWindow() == hwnd },"editable_focus":editable_focus,"inspection":inspect,
+                "interface_to_physical_scale":scale,
+                "foreground":unsafe { GetForegroundWindow() == hwnd },"editable_focus":editable_focus,"inspection":inspection,
                 "hint":"Use cad_interface capture for the actual rendered image. Focus if needed, observe again, then send one input and observe its visible result."}),
             );
         }
@@ -188,20 +215,37 @@ impl ComputerControl {
             return Err("Active desktop document changed; observe again before input".into());
         }
         let hwnd = native_window(&observed.owner)?;
-        if hwnd as usize != observed.hwnd || client_bounds(hwnd)? != observed.bounds {
+        if hwnd as usize != observed.hwnd {
             return Err("CAD window was replaced, moved or resized; observe again".into());
         }
-        if layout(&inspect(session_id)?) != observed.layout {
-            return Err("Rendered controls or camera changed; observe again before input".into());
+        let focus = request.action == "focus";
+        if !focus && observed.bounds.is_none() {
+            return Err("This observation qualifies focus only; restore/focus CAD and observe a presented frame before input".into());
+        }
+        if let Some(bounds) = observed.bounds {
+            if client_bounds(hwnd)? != bounds {
+                return Err("CAD window moved or resized; observe again".into());
+            }
+        }
+        let current = inspect(session_id, !focus)?;
+        if let Some(expected) = &observed.layout {
+            if layout(&current) != *expected {
+                return Err(
+                    "Rendered controls or camera changed; observe again before input".into(),
+                );
+            }
         }
         if session::computer_control_owner(session_id)? != observed.owner {
             return Err("Desktop changed while checking input guards; observe again".into());
         }
-        if request.action == "focus" {
+        if focus {
             unsafe {
+                if IsIconic(hwnd) != 0 {
+                    ShowWindow(hwnd, SW_RESTORE);
+                }
                 SetForegroundWindow(hwnd);
             }
-            if unsafe { GetForegroundWindow() } != hwnd {
+            if unsafe { GetForegroundWindow() } != hwnd || unsafe { IsIconic(hwnd) } != 0 {
                 return Err("Windows denied CAD foreground activation; no input was sent".into());
             }
             return Ok(
@@ -213,7 +257,7 @@ impl ComputerControl {
         guard_held_input()?;
         let inputs = inputs(&request, &observed, hwnd)?;
         guard_foreground(hwnd)?;
-        if client_bounds(hwnd)? != observed.bounds
+        if Some(client_bounds(hwnd)?) != observed.bounds
             || session::computer_control_owner(session_id)? != observed.owner
             || session::now_ms() > observed.expires_ms
         {
@@ -239,16 +283,16 @@ impl ComputerControl {
     }
 }
 
-fn inspect(session_id: &str) -> Result<Value, String> {
+fn inspect(session_id: &str, require_presented: bool) -> Result<Value, String> {
     let mut result =
         session::request_ui(&json!({"action":"inspect","session_id":session_id}), None)?;
     build_pair::decorate(&mut result);
     if result["status"] != "applied"
-        || result["presented"] != true
+        || (require_presented && result["presented"] != true)
         || result["build_pair"]["status"] != "matched"
     {
         return Err(json!({"code":"computer_control_not_ready","inspection":result,
-            "hint":"The current CAD window must have a presented frame and the same clean build as this MCP process."}).to_string());
+            "hint":"The current CAD window must have the same clean build as this MCP process. Pointer and keyboard input additionally require a presented frame; focus can restore a retained window."}).to_string());
     }
     Ok(result)
 }
@@ -311,10 +355,8 @@ fn native_window(owner: &Value) -> Result<HWND, String> {
         );
     };
     let hwnd = *window as HWND;
-    if unsafe { IsIconic(hwnd) } != 0 || unsafe { IsWindowEnabled(hwnd) } == 0 {
-        return Err(
-            "CAD window is minimized or blocked by a native modal dialog; no input was sent".into(),
-        );
+    if unsafe { IsWindowEnabled(hwnd) } == 0 {
+        return Err("CAD window is blocked by a native modal dialog; no input was sent".into());
     }
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
     if !same_path(&process_image(pid)?, &current)? {
@@ -448,16 +490,15 @@ fn mouse(flags: u32, data: u32, dx: i32, dy: i32) -> INPUT {
 
 fn move_to(point: [i32; 2], observed: &Observation, hwnd: HWND) -> Result<INPUT, String> {
     let _dpi = DpiGuard::enter()?;
-    if point[0] < 0
-        || point[1] < 0
-        || point[0] >= observed.bounds[2]
-        || point[1] >= observed.bounds[3]
-    {
+    let bounds = observed
+        .bounds
+        .ok_or("This observation has no qualified pointer coordinates")?;
+    if point[0] < 0 || point[1] < 0 || point[0] >= bounds[2] || point[1] >= bounds[3] {
         return Err("Pointer point is outside the observed CAD client rectangle".into());
     }
     let screen = POINT {
-        x: observed.bounds[0] + point[0],
-        y: observed.bounds[1] + point[1],
+        x: bounds[0] + point[0],
+        y: bounds[1] + point[1],
     };
     let target = unsafe { WindowFromPoint(screen) };
     if target.is_null() || unsafe { GetAncestor(target, GA_ROOT) } != hwnd {
