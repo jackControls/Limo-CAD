@@ -160,13 +160,13 @@ pub(crate) fn paint_source(
     )?;
     fields::multiline::enable(world, message_entity)?;
     if let Some((token, _)) = pending {
-        let cancel = InterfaceControl::button("document/scripts", "Cancel opening recipe");
+        let cancel = InterfaceControl::button("document/scripts", "Cancel opening example");
         widgets.button(
             world,
             camera,
             "scripts-cancel-recipe",
             cancel,
-            Some("Cancel opening recipe"),
+            Some("Cancel opening example"),
             NativeCommand::File(FileCommand::CancelRecipe(token)),
             rect(x + 12., y + h - 146., w - 24., 26.),
             None,

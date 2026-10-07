@@ -40,7 +40,6 @@ pub(crate) enum FileCommand {
     ReportMcp,
     ShowScripts,
     ShowSettings,
-    RunLesson(String),
     OpenScript,
     ScriptPath,
     ScriptSource(u64),
@@ -119,7 +118,6 @@ pub(super) struct Files {
     scripts: bool,
     settings: bool,
     lesson: Option<lessons::Running>,
-    lesson_status: Option<(DocumentContext, String)>,
     script: scripts::State,
     next_token: u64,
     dialog: Option<Dialog>,
@@ -636,10 +634,6 @@ fn execute(
             }
         }
         return Ok(json!({"scripts": files.scripts, "settings": files.settings}));
-    }
-    if let FileCommand::RunLesson(id) = &command {
-        require_idle_model(world)?;
-        return lessons::start(world, handle, services, owner, id);
     }
     match &command {
         FileCommand::ScriptLaunch(action) => return scripts::launch_command(world, *action),
@@ -1214,7 +1208,7 @@ fn choose_path(
 }
 pub(super) fn poll(world: &mut World, services: &NativeServices) -> Result<(), String> {
     printing::poll(world);
-    lessons::poll(world);
+    lessons::poll(world, services);
     scripts::poll(world);
     let result = world.resource::<Files>().picker.as_ref().map(|p| {
         p.result

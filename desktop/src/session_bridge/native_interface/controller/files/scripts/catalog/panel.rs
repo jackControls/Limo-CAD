@@ -31,7 +31,7 @@ pub(crate) fn paint_library(
         camera,
         "scripts-library-title",
         rect(x + 12., y + 8., w - 24., 24.),
-        "Installed examples",
+        "Script examples",
         15.,
         61,
     );

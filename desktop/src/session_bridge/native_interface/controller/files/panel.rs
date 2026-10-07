@@ -1414,15 +1414,7 @@ pub(crate) fn synchronize(
             42,
         )?;
         if world.resource::<Files>().scripts {
-            paint_lessons(
-                (world, camera),
-                &mut state,
-                width,
-                height,
-                theme,
-                services,
-                owner,
-            )?;
+            paint_scripts((world, camera), &mut state, width, height, theme)?;
         }
         state.chrome.finish(world);
         state.controls.retain(|key, (entity, _)| {
@@ -1439,17 +1431,13 @@ pub(crate) fn synchronize(
     result
 }
 
-fn paint_lessons(
+fn paint_scripts(
     (world, camera): (&mut World, Entity),
     state: &mut Widgets,
     width: f32,
     viewport_height: f32,
     theme: ViewportUiTheme,
-    services: &NativeServices,
-    owner: &DocumentContext,
 ) -> Result<(), String> {
-    let lessons = lessons::catalog();
-    let blank = services.engine.is_blank_for_script();
     let files = world.resource::<Files>();
     let script_blocked = files.lesson.is_some()
         || files.script.loading()
@@ -1458,7 +1446,6 @@ fn paint_lessons(
         || awaiting(world)
         || feature::panel(world).is_some()
         || native_viewport::interface_view(world).2.mode == native_viewport::ViewportMode::Sketch;
-    let blocked = script_blocked || !blank;
     if files.script.preview.open {
         return scripts::paint_preview(
             world,
@@ -1505,73 +1492,61 @@ fn paint_lessons(
     let loaded = files.script.loaded.clone();
     let script_path = files.script.path.clone();
     let script_generation = files.script.generation;
-    let can_run = files.script.selected(script_generation).is_ok()
-        && files.script.library.pending().is_none();
+    let validated = files.script.selected(script_generation).is_ok();
     let source_label = files.script.source_label();
     let has_file_path = files.script.source_path.is_some();
     let script_status = files.script.status.clone().unwrap_or_else(|| {
         "Opening a script does not run it. Run creates a separate design tab.".into()
     });
-    let status = files
-        .lesson_status
-        .as_ref()
-        .filter(|(context, _)| context == owner)
-        .map(|(_, text)| text.clone())
-        .unwrap_or_else(|| {
-            if blank {
-                "Choose a lesson to run".into()
-            } else {
-                "Use New document to run a lesson".into()
-            }
-        });
-    let row = 40. + lessons.len() as f32 * 28.;
-    let browse_y = row + if loaded.is_some() { 380. } else { 188. };
-    let height = browse_y;
+    let x = (width - 300.).max(4.);
+    let content_x = x + 12.;
+    let height = if loaded.is_some() { 416. } else { 296. };
     state.chrome.panel(
         world,
         camera,
         "scripts-card",
-        node(width - 300., 32., 280., height),
+        node(x, 32., 280., height),
         theme.panel.with_alpha(1.),
         60,
     );
-    for (index, lesson) in lessons.iter().enumerate() {
-        let mut control = InterfaceControl::button("document/session", &lesson.name);
-        control.disabled = blocked;
-        state.chrome.button(
-            world,
-            camera,
-            &format!("scripts-lesson-{index}"),
-            control,
-            Some(&lesson.name),
-            NativeCommand::File(FileCommand::RunLesson(lesson.id.clone())),
-            node(width - 288., 40. + index as f32 * 28., 256., 24.),
-            None,
-            61,
-        )?;
-    }
     state.chrome.text(
         world,
         camera,
-        "scripts-status",
-        node(width - 288., row + 4., 256., 44.),
-        &status,
+        "scripts-heading",
+        node(content_x, 40., 256., 24.),
+        "Scripts",
+        15.,
+        61,
+    );
+    state.chrome.text(
+        world,
+        camera,
+        "scripts-purpose",
+        node(content_x, 72., 256., 44.),
+        "Choose an example or open a source file, then edit and run it in a new design.",
         11.,
         61,
     );
     for (key, label, command, y, disabled) in [
         (
+            "scripts-browse",
+            "Browse examples",
+            FileCommand::BrowseExamples,
+            124.,
+            script_blocked,
+        ),
+        (
             "scripts-open",
             "Open script...",
             FileCommand::OpenScript,
-            row + 52.,
+            156.,
             script_blocked,
         ),
         (
             "scripts-load",
             "Load script",
             FileCommand::LoadScript,
-            row + 112.,
+            220.,
             script_blocked || script_path.trim().is_empty(),
         ),
     ] {
@@ -1584,7 +1559,7 @@ fn paint_lessons(
             control,
             Some(label),
             NativeCommand::File(command),
-            node(width - 288., y, 256., 24.),
+            node(content_x, y, 256., 24.),
             None,
             61,
         )?;
@@ -1600,7 +1575,7 @@ fn paint_lessons(
         world,
         camera,
         "scripts-path-label",
-        node(width - 288., row + 82., 40., 24.),
+        node(content_x, 188., 40., 24.),
         "Path",
         11.,
         61,
@@ -1612,7 +1587,7 @@ fn paint_lessons(
         path,
         None,
         NativeCommand::File(FileCommand::ScriptPath),
-        node(width - 246., row + 82., 214., 24.),
+        node(content_x + 42., 188., 214., 24.),
         None,
         61,
     )?;
@@ -1622,7 +1597,7 @@ fn paint_lessons(
         "scripts-file-status",
         Node {
             overflow: Overflow::clip(),
-            ..node(width - 288., row + 144., 256., 44.)
+            ..node(content_x, 252., 256., 60.)
         },
         &script_status,
         11.,
@@ -1631,7 +1606,7 @@ fn paint_lessons(
     if let Some(loaded) = loaded {
         let summary = format!(
             "{}{}\n{} steps, {} checks",
-            if can_run { "" } else { "Last validated: " },
+            if validated { "" } else { "Last validated: " },
             loaded.name,
             loaded.steps,
             loaded.checks
@@ -1642,7 +1617,7 @@ fn paint_lessons(
             "scripts-file-summary",
             Node {
                 overflow: Overflow::clip(),
-                ..node(width - 288., row + 192., 256., 44.)
+                ..node(content_x, 320., 256., 44.)
             },
             &summary,
             11.,
@@ -1665,7 +1640,7 @@ fn paint_lessons(
             world,
             camera,
             "scripts-loaded-label",
-            node(width - 288., row + 240., 48., 24.),
+            node(content_x, 368., 48., 24.),
             "Loaded",
             11.,
             61,
@@ -1677,7 +1652,7 @@ fn paint_lessons(
             provenance,
             None,
             NativeCommand::File(FileCommand::ScriptPath),
-            node(width - 238., row + 240., 206., 24.),
+            node(content_x + 50., 368., 206., 24.),
             None,
             61,
         )?;
@@ -1690,46 +1665,11 @@ fn paint_lessons(
             source,
             Some("Inspect / edit source"),
             NativeCommand::File(FileCommand::ShowScriptSource),
-            node(width - 288., row + 276., 256., 24.),
-            None,
-            61,
-        )?;
-        let mut run = InterfaceControl::button("document/scripts", "Run in new design");
-        scripts::paint_launch(
-            world,
-            camera,
-            &mut state.chrome,
-            width - 288.,
-            row + 308.,
-            256.,
-            script_blocked,
-        )?;
-        run.disabled = script_blocked || !can_run;
-        state.chrome.button(
-            world,
-            camera,
-            "scripts-run",
-            run,
-            Some("Run in new design"),
-            NativeCommand::File(FileCommand::RunScript(script_generation)),
-            node(width - 288., row + 344., 256., 28.),
+            node(content_x, 404., 256., 28.),
             None,
             61,
         )?;
     }
-    let mut browse = InterfaceControl::button("document/scripts", "Browse examples");
-    browse.disabled = script_blocked;
-    state.chrome.button(
-        world,
-        camera,
-        "scripts-browse",
-        browse,
-        Some("Browse examples"),
-        NativeCommand::File(FileCommand::BrowseExamples),
-        node(width - 288., browse_y, 256., 26.),
-        None,
-        61,
-    )?;
     Ok(())
 }
 
@@ -1791,15 +1731,5 @@ mod tests {
         assert!(!shape.matches(&dialog, "Part"));
         dialog.error = Some("Review layout".into());
         assert!(dialog_decoration(&dialog, "Part").error.is_some());
-    }
-
-    #[test]
-    fn lesson_catalog_lists_the_short_built_in_lessons() {
-        let lessons = super::lessons::catalog();
-        assert!(lessons
-            .iter()
-            .any(|lesson| lesson.name == "Sketch, extrude, ease the edges"));
-        assert!(lessons.len() >= 4);
-        assert!(lessons.iter().all(|lesson| !lesson.name.is_empty()));
     }
 }

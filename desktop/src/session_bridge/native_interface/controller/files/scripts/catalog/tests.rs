@@ -45,11 +45,6 @@ fn native_script_catalog_is_shared_and_source_only_including_flagship_recipes() 
     assert!(examples()
         .iter()
         .any(|entry| entry.kind == "flagship-candidate"));
-    assert_eq!(
-        lessons::catalog().len(),
-        5,
-        "Quick lesson buttons remain separate"
-    );
     let mut world = world();
     let before = world.resource::<Files>().script.generation;
     assert!(open_recipe(&mut world, "not-installed").is_err());

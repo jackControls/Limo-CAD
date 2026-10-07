@@ -1,83 +1,12 @@
-//! Short installed lessons use the existing live script runner. The runner
+//! Loaded scripts use the shared live runner. The runner
 //! waits for inbox receipts, so it must never occupy the modeling worker.
 use super::*;
-use std::sync::OnceLock;
-
-pub(super) struct Lesson {
-    pub id: String,
-    pub name: String,
-    source: String,
-}
-
-pub(super) fn catalog() -> &'static [Lesson] {
-    static LESSONS: OnceLock<Vec<Lesson>> = OnceLock::new();
-    LESSONS.get_or_init(|| {
-        limo_cad_mcp::script_examples()
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|entry| entry["kind"] == "lesson")
-            .filter_map(|entry| {
-                Some(Lesson {
-                    id: entry["id"].as_str()?.into(),
-                    name: entry["name"].as_str()?.into(),
-                    source: entry["source"].as_str()?.into(),
-                })
-            })
-            .collect()
-    })
-}
-
-fn lesson(id: &str) -> Result<&'static Lesson, String> {
-    catalog()
-        .iter()
-        .find(|lesson| lesson.id == id)
-        .ok_or_else(|| "Choose a short built-in lesson from Scripts".into())
-}
 
 pub(super) struct Running {
     owner: DocumentContext,
+    source_generation: u64,
     kind: &'static str,
     result: Mutex<mpsc::Receiver<Result<Value, String>>>,
-}
-
-pub(super) fn start(
-    world: &mut World,
-    handle: &NativeInterfaceHandle,
-    services: &NativeServices,
-    owner: &DocumentContext,
-    id: &str,
-) -> Result<Value, String> {
-    let lesson = lesson(id)?;
-    start_source(
-        world,
-        handle,
-        services,
-        owner,
-        &lesson.name,
-        lesson.source.clone(),
-        "Lesson",
-    )?;
-    Ok(json!({"lesson_started":lesson.id}))
-}
-
-pub(super) fn start_source(
-    world: &mut World,
-    handle: &NativeInterfaceHandle,
-    services: &NativeServices,
-    owner: &DocumentContext,
-    name: &str,
-    source: String,
-    kind: &'static str,
-) -> Result<(), String> {
-    start_source_with_options(
-        world,
-        handle,
-        (services, owner),
-        name,
-        source,
-        (kind, "present", 1.),
-    )
 }
 
 pub(super) fn start_source_with_options(
@@ -148,17 +77,19 @@ pub(super) fn start_source_with_options(
         })
         .map_err(|error| format!("Cannot start script: {error}"))?;
     let mut files = world.resource_mut::<Files>();
+    let source_generation = files.script.generation;
     files.lesson = Some(Running {
         owner: owner.clone(),
+        source_generation,
         kind,
         result: Mutex::new(receive),
     });
-    files.lesson_status = Some((owner.clone(), format!("Running {name}")));
+    files.script.status = Some(format!("Running {name}"));
     files.scripts = false;
     Ok(())
 }
 
-pub(super) fn poll(world: &mut World) {
+pub(super) fn poll(world: &mut World, services: &NativeServices) {
     let result = world
         .resource::<Files>()
         .lesson
@@ -176,48 +107,28 @@ pub(super) fn poll(world: &mut World) {
             })
         });
     let Some(result) = result else { return };
-    let mut files = world.resource_mut::<Files>();
-    let running = files.lesson.take().unwrap();
+    let running = world.resource_mut::<Files>().lesson.take().unwrap();
+    if world.resource::<Files>().script.generation != running.source_generation {
+        return;
+    }
+    let same_owner = tabs(world, services, &running.owner)
+        .is_ok_and(|tabs| tabs.iter().any(|tab| tab.owner == running.owner));
     let status = match result {
+        Ok(_) if !same_owner => {
+            "Script finished in a document that has since closed or changed; inspect retained work before running again".into()
+        }
         Ok(report) => format!(
             "{} complete: {} steps, {} checks",
             running.kind, report["steps_completed"], report["checks_completed"]
         ),
         Err(error) => format!("{} stopped: {error}", running.kind),
     };
-    files.lesson_status = Some((running.owner, status));
+    world.resource_mut::<Files>().script.status = Some(status);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn lesson_catalog_excludes_flagship_and_arbitrary_sources() {
-        let ids: Vec<_> = catalog().iter().map(|lesson| lesson.id.as_str()).collect();
-        assert_eq!(
-            ids,
-            [
-                "fillet-basics",
-                "mounting-plate",
-                "component-edit-recovery",
-                "revolved-spacer",
-                "angle-bracket"
-            ]
-        );
-        assert!(lesson("fillet-basics")
-            .unwrap()
-            .source
-            .contains("solid_fillet"));
-        for id in [
-            "d-screw-vise",
-            "garden-bench",
-            "vertical-axis-turbine",
-            "../lesson.jsonc",
-        ] {
-            assert!(lesson(id).is_err(), "{id}");
-        }
-    }
 
     #[test]
     fn lesson_refuses_work_before_starting_any_worker() {
@@ -244,12 +155,13 @@ mod tests {
             )
             .unwrap();
         let before = fixture.engine.engine_call("project_export_model", "");
-        let error = start(
+        let error = start_source_with_options(
             &mut world,
             &NativeInterfaceHandle::new(|| {}),
-            &services,
-            &owner,
-            "fillet-basics",
+            (&services, &owner),
+            "Blank-document guard",
+            String::new(),
+            ("Script", "present", 1.),
         )
         .unwrap_err();
         assert!(error.contains("blank"));

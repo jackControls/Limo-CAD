@@ -16,7 +16,7 @@ pub(super) use editor::{
     discard, edit_source, paint_source, retain_source_error, save, save_as, show_source, validate,
 };
 pub(super) use exit::guard_exit;
-pub(super) use launch::{command as launch_command, paint as paint_launch, Action as LaunchAction};
+pub(super) use launch::{command as launch_command, Action as LaunchAction};
 pub(super) use preview::{
     cancel_pointer as cancel_preview_pointer, command as preview_command, input as preview_input,
     paint as paint_preview, Action as PreviewAction,
@@ -110,10 +110,8 @@ impl State {
             .unwrap_or_default();
         self.source_path = loaded.path.clone();
         self.example = loaded.example;
-        if loaded.example.is_some() {
-            self.editor_open = true;
-            self.library.open = false;
-        }
+        self.editor_open = true;
+        self.library.open = false;
         self.source = loaded.authored().to_owned();
         self.baseline = self.source.clone();
         self.loaded = Some(Arc::new(loaded));
@@ -346,7 +344,7 @@ pub(super) fn run(
     available(world)?;
     editor::source_ready(world)?;
     if world.resource::<Files>().script.library.pending().is_some() {
-        return Err("Finish opening or cancel the queued recipe before running a script".into());
+        return Err("Finish opening or cancel the queued example before running a script".into());
     }
     let loaded = world.resource::<Files>().script.selected(generation)?;
     let options = world.resource::<Files>().script.launch;

@@ -1,7 +1,10 @@
-# Native recipe library
+# Bundled script examples
 
-Open **Scripts** in CAD and select a bundled example, then choose **Run in new
-design**. Start with **Sketch, extrude, ease the edges**: it builds a small part,
+Recipes are bundled construction scripts in the same Scripts feature as your
+own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
+example to inspect its source, then choose **Run in new design** in the source
+editor. Edit and **Validate source** before running if you want to change it.
+Start with **Sketch, extrude, ease the edges**: it builds a small part,
 changes its extrusion from 12 to 18 mm while retaining the fillet, and restores
 the 12 mm reference. Follow [the first-part guide](../../docs/INSTALL.md#make-your-first-part)
 to edit, save and reopen the result yourself.
@@ -69,8 +72,9 @@ Use the saved **Named Views** for a demonstration:
    the handed armrests, fastening, joints and drawing package in the design plan.
 
 Build the next steps through UI controls or literal typed MCP operations.
-[`cad_batch`](../../docs/mcp-harness.md#choose-the-document-owner) groups up to 16 ordered calls; inspect each
-receipt and return to the agent loop for new IDs. Follow `active_session_id` after
+[`cad_route` with `action: "batch"`](../../docs/mcp-harness.md#choose-the-document-owner)
+groups up to 16 ordered calls; inspect each receipt and return to the agent loop
+for new IDs. Follow `active_session_id` after
 Undo, Redo or document replacement, and inspect `build_pair.status` before
 qualifying a live GUI/MCP pair.
 

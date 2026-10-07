@@ -1,8 +1,10 @@
 # Native command scripts
 
-Recipes build editable parts and assemblies, explain their construction and
-present the result. Start with [your first part](INSTALL.md#make-your-first-part)
-or choose from the [recipe library](../examples/scripts/README.md).
+Scripts build editable parts and assemblies, explain their construction and
+present the result. Recipes are the bundled examples of those scripts, using the
+same source editor, interpreter and runner. Start with
+[your first part](INSTALL.md#make-your-first-part) or choose from the
+[script examples](../examples/scripts/README.md).
 
 A `.limo.jsonc` file is the reproducible construction source for a native design.
 A `.limo` file is the editable project produced by those commands. Keep both when
@@ -27,55 +29,30 @@ runtime.
 
 ## Open and run scripts in CAD
 
-The **Scripts** button opens the script workspace beside the current design.
-Load a commented source file to inspect its chapter notes and grouped commands.
-The bundled examples appear in that same workspace.
+The **Scripts** button opens one workspace beside the current design. Choose
+**Browse examples** for bundled lessons, complete designs and manufacturing
+coupons, or **Open script...** for a `.limo.jsonc` file. **Path / Load script**
+uses that same file loader when entering a path directly. **File → Open Script…**
+also opens source in this workspace; the native macOS File menu uses the same
+action as the in-window File menu.
 
-The Source tab supports editing, validation through the Rust parser, and **Save
-script as…**. The file-path disclosure exposes the same loader to the semantic
-MCP controls without having to operate an operating-system file picker.
+Both an example and a file open the authored source editor without running
+modeling commands or changing the current design. Bundled source has no
+filesystem path until **Save script as...**. Lessons use this same select,
+inspect, edit and run workflow.
 
-Use **File → Open Script…** to load a `.limo.jsonc` file into that workspace. The
-native macOS File menu routes this through the same action as the in-window File
-menu. Opening a source file does not execute its modeling commands. Close the
-script dock when you want the space back; use **Scripts** to show it again.
+**Run in new design** is available in the source editor. It creates a new retained
+document tab before starting the shared live runner. The previous design stays
+available in its tab. Execution uses the inspected, expanded source snapshot,
+including its loaded includes; loading or validating again is required to pick
+up later included-file edits. **Chapters** lets you inspect the teaching notes
+before running, and the presentation and rate controls choose how the run is
+shown. Pause, Step, Resume, Stop and rate controls use the native playback bar.
+Save the result as an ordinary editable `.limo` project.
 
-**Run in new design** creates a blank design in the existing CAD window and replays
-the selected source there. The existing project remains separate. Presentation
-controls provide Pause, Step, Resume, speed and Maximum rate during the run. Save
-the resulting `.limo` project to retain its editable feature history.
 The playback bar docks below the viewport. **Close** hides it without changing
 execution; **Show playback** restores it from the top bar, including after a run
 has completed or stopped.
-
-Short lessons can also provide an isolated miniature preview by exporting
-captioned scene frames. Preview execution
-uses a separate headless engine, then displays its returned tessellation in the
-small preview surface; it does not borrow the active document, camera or native
-viewport’s feature-preview channel. Ribbon hover help can show the same lesson
-where an example is associated with that operation. Hovering does not run the
-lesson in the active design.
-
-Preview is intentionally bounded to short source files: at most 80 construction
-steps and checks combined, and 2 MiB of source. Use **Run in new design** for a
-larger assembly. Both paths execute the same native command interpreter; a preview is
-not a replacement for the editable `.limo` project or the final validation gate.
-
-## Bevy development host
-
-The `dev-bevy-host` Scripts card keeps its four short built-in lesson buttons.
-They run only in the current blank document and do not select flagship recipes.
-The separate **Open script...** chooser and **Path / Load script** controls accept
-an absolute `.limo.jsonc` file through the same Rust parser and include loader.
-Loading displays the source name, step/check counts and loaded path; it does not
-run commands or change the active design.
-
-**Run in new design** creates a new retained document tab before starting the
-shared live runner. The previous design stays available in its tab. Execution
-uses the inspected, expanded source snapshot, including its loaded includes;
-loading or validating again is required to pick up later included-file edits. Pause, Step,
-Resume, Stop and rate controls use the existing native playback bar. Saving the
-result writes the ordinary editable `.limo` project.
 
 **Inspect / edit source** opens the authored JSONC in the existing native
 multiline text field. Comments and `includes` remain intact. **Validate source**
@@ -90,27 +67,28 @@ discarding unsaved edits first. Closing the Scripts card retains its draft.
 Application exit waits for script file operations and requires Save As or
 Discard for an unsaved draft, including text still being edited in the field.
 
-**Browse examples** lists the installed catalog, including complete designs,
-feature and assembly lessons, and manufacturing coupons. Selecting an example
-opens its authored source without running it. Bundled source has no filesystem
-path until Save As. The four quick lesson buttons remain separate and still
-require a blank document.
-
 Recipe command-line URLs and `cad_interface` action `open_recipe` enter that
 same source-only queue. Busy file/script work finishes first; unsaved source
 requires Save As, Discard, or Cancel opening. A queued receipt acknowledges
 delivery, not playback or replacement of the design. Native OS protocol
 registration delivers recipe URLs to the Bevy Scripts editor.
 
-For the catalog's preview-enabled lesson, **Preview lesson** renders the shared
-isolated teaching frames without accessing the current CAD document. Previous,
+For a preview-enabled example, **Preview lesson** renders its isolated captioned
+teaching frames without accessing the current CAD document. Previous,
 Next, explicit Replay/Stop, Fit, drag and arrow/Home keys use the preview camera.
 It does not autoplay. Editing the bundled source disables its preview; use Run
 in new design to inspect those edits. Closing the preview releases its retained
 document, view and image. DPI-scaled requests use the shared bounded renderer.
 
-The Bevy desktop uses native source editing, file dialogs, IME and lesson
-preview rendering through this shared Rust workflow.
+Previews are bounded to short sources: at most 80 construction steps and checks
+combined, and 2 MiB of source. They use a separate headless engine and the same
+native interpreter. Ribbon hover help can show the same lesson for its associated
+operation. Use **Run in new design** to build and inspect the editable model,
+including larger assemblies.
+
+The Bevy desktop uses native source editing, file dialogs, IME and lesson preview
+rendering through this shared Rust workflow. Close the Scripts workspace to
+restore viewport space, then use **Scripts** to reopen the retained draft.
 
 ## One execution path
 

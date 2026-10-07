@@ -81,9 +81,11 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         std::thread::sleep(Duration::from_millis(100));
     };
     ensure!(
-        controls(&loaded).any(|row| row["label"] == "Loaded script path"
-            && row["value"] == source_path.to_string_lossy().as_ref()
-            && row["read_only"] == true),
+        controls(&loaded).any(
+            |row| row["label"] == "Script source path and include directory"
+                && row["value"] == source_path.to_string_lossy().as_ref()
+                && row["read_only"] == true
+        ),
         "Loaded script lost its inspected file identity: {loaded}"
     );
     ensure!(
@@ -91,7 +93,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         "Inspecting a script changed the nonblank design"
     );
     capture(c, out, "scripts-imported-ready")?;
-    control(c, "Inspect and edit source", None)?;
     let editor = ui(c, json!({"action":"inspect"}))?;
     ensure!(
         controls(&editor).any(|row| row["label"] == "Authored script source"
@@ -157,7 +158,6 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
         control(c, "Validate source", None)?;
         let _revalidated = wait_validation(c, true)?;
     }
-    control(c, "Back to Scripts", None)?;
     std::fs::write(&source_path, "invalid root changed after inspection")?;
     std::fs::write(&fragment_path, "invalid include changed after inspection")?;
     let started = control(c, "Run in new design", None)?;
@@ -293,7 +293,7 @@ fn exercise_catalog(c: &mut Client, out: &Path, model: &Value, edited: &str) -> 
     let deadline = Instant::now() + Duration::from_secs(30);
     let pending = loop {
         let state = ui(c, json!({"action":"inspect"}))?;
-        if controls(&state).any(|row| row["label"] == "Cancel opening recipe") {
+        if controls(&state).any(|row| row["label"] == "Cancel opening example") {
             break state;
         }
         ensure!(
@@ -307,7 +307,7 @@ fn exercise_catalog(c: &mut Client, out: &Path, model: &Value, edited: &str) -> 
             .any(|row| row["label"] == "Authored script source" && row["value"] == edited),
         "Queued recipe replaced unsaved authored source: {pending}"
     );
-    control(c, "Cancel opening recipe", None)?;
+    control(c, "Cancel opening example", None)?;
     let cancelled = ui(c, json!({"action":"inspect"}))?;
     ensure!(
         controls(&cancelled)

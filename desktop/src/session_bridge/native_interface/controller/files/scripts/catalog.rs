@@ -1,4 +1,4 @@
-//! The installed recipe catalog opens authored source; it never starts playback.
+//! Bundled script examples open authored source for the shared editor and runner.
 use super::*;
 use std::{collections::VecDeque, sync::OnceLock};
 
@@ -57,7 +57,7 @@ fn example(id: &str) -> Result<&'static Example, String> {
     examples()
         .iter()
         .find(|entry| entry.id == id)
-        .ok_or_else(|| format!("Recipe {id:?} is not included in this build"))
+        .ok_or_else(|| format!("Script example {id:?} is not included in this build"))
 }
 
 pub(crate) struct Pending {
@@ -84,12 +84,12 @@ impl Library {
             return Ok(());
         }
         if self.requests.len() >= 16 {
-            return Err("Finish opening pending recipes before opening another link".into());
+            return Err("Finish opening pending examples before opening another link".into());
         }
         self.next_token = self
             .next_token
             .checked_add(1)
-            .ok_or("Recipe request sequence exhausted")?;
+            .ok_or("Script example request sequence exhausted")?;
         self.requests.push_back(Pending {
             token: self.next_token,
             example,
@@ -133,10 +133,10 @@ pub(crate) fn cancel_open(world: &mut World, token: u64) -> Result<Value, String
         .pending()
         .is_none_or(|request| request.token != token)
     {
-        return Err("The queued recipe changed before it was cancelled".into());
+        return Err("The queued example changed before it was cancelled".into());
     }
     state.library.requests.pop_front();
-    state.status = Some("Recipe opening cancelled; current source retained.".into());
+    state.status = Some("Example opening cancelled; current source retained.".into());
     Ok(json!({"recipe_cancelled":true}))
 }
 
@@ -188,7 +188,7 @@ pub(super) fn poll(world: &mut World) {
         world,
         &handle,
         move || inspect_example(selected),
-        "Opening installed recipe source; no commands have run",
+        "Opening bundled script source; no commands have run",
     );
     let state = &mut world.resource_mut::<Files>().script;
     state.library.requests.pop_front();
