@@ -8,7 +8,7 @@ pub(super) use windows::ComputerControl;
 
 #[cfg(not(windows))]
 #[derive(Default)]
-pub(super) struct ComputerControl;
+pub(super) struct ComputerControl {}
 
 #[cfg(not(windows))]
 impl ComputerControl {
