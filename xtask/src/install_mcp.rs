@@ -876,8 +876,8 @@ fn default_occt_root(repo_root: &Path) -> Option<PathBuf> {
 /// Resolve the MCP binary path.
 ///
 /// Dry-run never builds or copies. Real installs honor `--binary`, else look for
-/// release then debug under `mcp-server/target/`, build when needed, then copy to a
-/// stable user path so clients are not pointed at `target/` (wiped by `cargo clean`).
+/// the executable reported by a fresh Cargo build. `--no-build` discovers release
+/// then debug under `mcp-server/target/`. Copied binaries use a stable user path.
 fn resolve_binary(repo_root: &Path, options: &Options) -> Result<PathBuf> {
     if let Some(path) = &options.binary {
         if options.dry_run {
@@ -890,6 +890,11 @@ fn resolve_binary(repo_root: &Path, options: &Options) -> Result<PathBuf> {
             return Ok(normalize_path(path.clone()));
         }
         return install_user_binary(path);
+    }
+
+    if options.build && !options.dry_run {
+        let built = build_mcp_server(repo_root)?;
+        return install_user_binary(&built);
     }
 
     let release = mcp_binary_path(repo_root, "release");
@@ -932,20 +937,6 @@ fn resolve_binary(repo_root: &Path, options: &Options) -> Result<PathBuf> {
             planned.display()
         );
         return Ok(planned);
-    }
-
-    if options.build {
-        build_mcp_server(repo_root)?;
-        if release.is_file() {
-            return install_user_binary(&release);
-        }
-        if debug.is_file() {
-            eprintln!(
-                "warning: using debug MCP binary after build (release missing): {}",
-                debug.display()
-            );
-            return install_user_binary(&debug);
-        }
     }
 
     bail!(
@@ -1019,7 +1010,7 @@ fn mcp_binary_path(repo_root: &Path, profile: &str) -> PathBuf {
         .join(name)
 }
 
-fn build_mcp_server(repo_root: &Path) -> Result<()> {
+fn build_mcp_server(repo_root: &Path) -> Result<PathBuf> {
     println!("building mcp-server (release)...");
     let mut command = crate::build_tools::cargo();
     command.current_dir(repo_root).args([
@@ -1027,6 +1018,9 @@ fn build_mcp_server(repo_root: &Path) -> Result<()> {
         "--release",
         "--manifest-path",
         "mcp-server/Cargo.toml",
+        "--bin",
+        "limo-cad-mcp",
+        "--message-format=json-render-diagnostics",
     ]);
     if let Some(occt) = default_occt_root(repo_root) {
         command.env("OCCT_ROOT", &occt);
@@ -1041,13 +1035,28 @@ fn build_mcp_server(repo_root: &Path) -> Result<()> {
             command.env("PATH", path);
         }
     }
-    let status = command
-        .status()
+    let output = command
+        .stderr(std::process::Stdio::inherit())
+        .output()
         .context("spawn cargo build for mcp-server")?;
-    if !status.success() {
+    if !output.status.success() {
         bail!("cargo build --release --manifest-path mcp-server/Cargo.toml failed");
     }
-    Ok(())
+    output
+        .stdout
+        .split(|byte| *byte == b'\n')
+        .filter_map(|line| serde_json::from_slice::<Value>(line).ok())
+        .find_map(|message| {
+            if message["reason"] == "compiler-artifact"
+                && message["target"]["name"] == "limo-cad-mcp"
+            {
+                message["executable"].as_str().map(PathBuf::from)
+            } else {
+                None
+            }
+        })
+        .filter(|path| path.is_file())
+        .ok_or_else(|| anyhow!("Cargo did not report the built limo-cad-mcp executable"))
 }
 
 fn repo_root() -> Result<PathBuf> {
