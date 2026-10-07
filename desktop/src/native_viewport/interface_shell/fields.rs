@@ -985,7 +985,7 @@ fn logical_edit_for_platform(
         } else {
             TextEdit::LineEnd(shift)
         }),
-        Key::Character(_) | Key::Space
+        Key::Character(_) | Key::Unidentified(_) | Key::Space
             if modifiers.alt_graph
                 || (!modifiers.ctrl && !modifiers.meta && (!modifiers.alt || mac)) =>
         {
