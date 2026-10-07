@@ -25,6 +25,7 @@ pub(crate) struct BuildOptions {
     pub release: bool,
     pub occt_root: Option<PathBuf>,
     pub jobs: Option<usize>,
+    pub computer_control: Option<bool>,
     rebind_source: bool,
 }
 
@@ -48,6 +49,8 @@ struct RuntimeManifest {
     source: Source,
     build: String,
     occt_sdk: PathBuf,
+    #[serde(default)]
+    native_computer_control: bool,
     executable: String,
     executable_sha256: String,
     installed_unix_seconds: u64,
@@ -160,15 +163,22 @@ pub(crate) fn prepare_runtime(repo_root: &Path, options: &BuildOptions) -> Resul
     let _deployment = lock_runtime()?;
     let source = snapshot(repo_root)?;
     let marker = installed_executable()?.with_file_name(MANIFEST);
-    match fs::symlink_metadata(marker) {
-        Ok(_) if !options.rebind_source => ensure!(read_manifest()?.source.checkout == source.checkout,
-            "Automatic builds must use the managed source checkout; only explicit deploy-native may rebind it"),
-        Ok(_) => {},
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+    let managed = match fs::symlink_metadata(marker) {
+        Ok(_) => Some(read_manifest()?),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => return Err(error.into()),
+    };
+    if let Some(manifest) = &managed {
+        ensure!(options.rebind_source || manifest.source.checkout == source.checkout,
+            "Automatic builds must use the managed source checkout; only explicit deploy-native may rebind it");
     }
+    let computer_control = options.computer_control.unwrap_or_else(|| {
+        managed
+            .as_ref()
+            .is_some_and(|manifest| manifest.native_computer_control)
+    });
     let sdk = windows_sdk(&source.checkout, options)?;
-    let (artifact, artifact_sha256) = build(&source, options, &sdk)?;
+    let (artifact, artifact_sha256) = build(&source, options, &sdk, computer_control)?;
     ensure!(
         snapshot(&source.checkout)? == source,
         "Source changed during the build; nothing was installed. Run deploy-native again"
@@ -202,6 +212,7 @@ pub(crate) fn prepare_runtime(repo_root: &Path, options: &BuildOptions) -> Resul
         }
         .into(),
         occt_sdk: sdk.clone(),
+        native_computer_control: computer_control,
         executable: EXECUTABLE.into(),
         executable_sha256,
         installed_unix_seconds: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
@@ -257,6 +268,12 @@ pub(crate) fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
         match arg.as_str() {
             "--restart" if !options.restart => options.restart = true,
             "--release" if !options.release => options.release = true,
+            "--computer-control" if options.computer_control.is_none() => {
+                options.computer_control = Some(true)
+            }
+            "--no-computer-control" if options.computer_control.is_none() => {
+                options.computer_control = Some(false)
+            }
             "--launch" if !launch => launch = true,
             "--occt-root" if options.occt_root.is_none() => {
                 options.occt_root = Some(args.next().context("--occt-root needs a path")?.into())
@@ -276,7 +293,7 @@ pub(crate) fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
                 )
             }
             "--help" | "-h" => {
-                println!("cargo xtask deploy-native [--restart] [--release] [--occt-root PATH] [--jobs N] [--clients LIST] [--launch]\n\nBuilds and installs one Windows GUI/MCP executable. Default: incremental local crates opt1, third-party dependencies opt3.\n--restart terminates only the canonical installed runtime, discarding unsaved work.\nClient registration defaults to codex,cursor,vscode,claude,opencode. Launch occurs after verification and registration.");
+                println!("cargo xtask deploy-native [--restart] [--release] [--computer-control | --no-computer-control] [--occt-root PATH] [--jobs N] [--clients LIST] [--launch]\n\nBuilds and installs one Windows GUI/MCP executable. Default: incremental local crates opt1, third-party dependencies opt3.\nNative computer control defaults off for initial deployments; later builds preserve the installed mode unless explicitly toggled.\n--restart terminates only the canonical installed runtime, discarding unsaved work.\nClient registration defaults to codex,cursor,vscode,claude,opencode. Launch occurs after verification and registration.");
                 return Ok(());
             }
             _ => bail!("Unknown or duplicate deploy-native option {arg}"),
@@ -352,7 +369,12 @@ fn windows_sdk(root: &Path, options: &BuildOptions) -> Result<PathBuf> {
     Ok(sdk)
 }
 
-fn build(source: &Source, options: &BuildOptions, sdk: &Path) -> Result<(PathBuf, String)> {
+fn build(
+    source: &Source,
+    options: &BuildOptions,
+    sdk: &Path,
+    computer_control: bool,
+) -> Result<(PathBuf, String)> {
     let target = match env::consts::ARCH {
         "x86_64" => "x86_64-pc-windows-msvc",
         "aarch64" => "aarch64-pc-windows-msvc",
@@ -374,6 +396,9 @@ fn build(source: &Source, options: &BuildOptions, sdk: &Path) -> Result<(PathBuf
         "profile.release.opt-level=3",
     ]);
     command.args(["--target", target]);
+    if computer_control {
+        command.args(["--features", "native-computer-control"]);
+    }
     if !options.release {
         for package in local_packages(&source.checkout)? {
             command.args([
@@ -403,6 +428,11 @@ fn build(source: &Source, options: &BuildOptions, sdk: &Path) -> Result<(PathBuf
             };
             if message["reason"] == "compiler-artifact" && message["target"]["name"] == "limo-cad" {
                 if let Some(path) = message["executable"].as_str() {
+                    let features = message["features"]
+                        .as_array()
+                        .context("Cargo did not report executable features")?;
+                    ensure!(features.iter().any(|feature| feature == "native-computer-control") == computer_control,
+                        "Cargo executable feature mode does not match requested native computer control");
                     let path = PathBuf::from(path);
                     ordinary_file(&path)?;
                     let sha256 = crate::hash::file(&path)?;
