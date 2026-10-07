@@ -364,7 +364,10 @@ pub(super) fn paint(
             50,
         );
         let mut control = InterfaceControl::button("document/views", &label);
-        control.disabled = worker::busy(world);
+        control.disabled = worker::busy(world)
+            || command
+                .as_ref()
+                .is_some_and(|command| saved_action_error(state, command).is_some());
         let options = if let Some(field) = field {
             choices(state, engine, field)?
         } else {
@@ -461,6 +464,8 @@ pub(super) fn paint(
     }
     let message = state.error.as_deref().unwrap_or(if state.previewing {
         "Draft preview · save and recall before exporting"
+    } else if state.selected.is_none() {
+        "New draft · Save before recall, rename or delete"
     } else {
         "Saved views export whether or not marked for printing"
     });

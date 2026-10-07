@@ -593,7 +593,47 @@ pub(crate) fn after_mutation(
     Ok(())
 }
 
+fn saved_action_error(state: &State, command: &Command) -> Option<&'static str> {
+    let message = match command {
+        Command::Recall => "Save this draft or select a saved view before recalling it",
+        Command::Rename => "Save this draft or select a saved view before renaming it",
+        Command::Delete => "Save this draft or select a saved view before deleting it",
+        _ => return None,
+    };
+    let saved = state.draft.is_some()
+        && state.selected.as_ref().is_some_and(|name| {
+            state
+                .original
+                .as_ref()
+                .is_some_and(|view| &view.name == name)
+                && state.views.iter().any(|view| &view.name == name)
+        });
+    (!saved).then_some(message)
+}
+
 pub(crate) fn reduce(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    engine: &AppState,
+    bridge: &SessionBridgeState,
+    action: &NativeInterfaceAction,
+    generation: u64,
+    command: &Command,
+) -> Result<Value, String> {
+    let result = reduce_inner(world, handle, engine, bridge, action, generation, command);
+    if let Err(error) = &result {
+        if let Some(mut state) = world.get_resource_mut::<State>().filter(|state| {
+            state.visible
+                && state.owner.as_ref() == Some(&action.context)
+                && state.generation == generation
+        }) {
+            state.error = Some(error.clone());
+        }
+    }
+    result
+}
+
+fn reduce_inner(
     world: &mut World,
     handle: &NativeInterfaceHandle,
     engine: &AppState,
@@ -631,7 +671,7 @@ pub(crate) fn reduce(
         if matches!(&action.control.input, ControlInput::Key(k) if k == &limo_cad_interface::KeyChord::plain("Enter"))
             && panel::choices(state, engine, *field)?.is_none()
         {
-            return reduce(
+            return reduce_inner(
                 world,
                 handle,
                 engine,
@@ -656,14 +696,13 @@ pub(crate) fn reduce(
         } else {
             return Err("Enter a named-view value".into());
         };
-        let result = edit(world, engine, *field, &value, units);
-        if let Err(error) = &result {
-            world.resource_mut::<State>().error = Some(error.clone());
-        }
-        return result.map(|_| json!({"handled":true}));
+        return edit(world, engine, *field, &value, units).map(|_| json!({"handled":true}));
     }
     if !super::super::is_activation(&action.control.input) {
         return Err("Activate a named-view control".into());
+    }
+    if let Some(error) = saved_action_error(state, command) {
+        return Err(error.into());
     }
     match command {
         Command::Close => {
