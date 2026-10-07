@@ -2,6 +2,7 @@ use super::gpu_stock::{GpuStock, GpuStockInputs, GpuStockPlugin, GpuStockStamp};
 use super::interface_shell::{self, NativeInterfaceHandle};
 use super::path_progress::{active_cursor, split_segment};
 use super::profile_outline::{base_curve_remainder, profile_outline_segments, BaseCurveRemainder};
+use super::reference_planes::{ReferencePlaneMaterial, ReferencePlanePlugin};
 use super::ui::{
     self, HudAxisLabel, HudAxisMark, NativeHudRoot, ViewportUiAssets, ViewportUiTheme,
 };
@@ -690,7 +691,7 @@ pub(super) fn install_cad_scene(app: &mut bevy::app::App) {
         .init_resource::<PresentationResource>()
         .init_resource::<RenderedRevisions>()
         .init_resource::<ViewportUiAssets>()
-        .add_plugins(GpuStockPlugin)
+        .add_plugins((GpuStockPlugin, ReferencePlanePlugin))
         .add_systems(
             Startup,
             (ui::load_system_font, setup_gpu_stock, setup_scene).chain(),
@@ -728,7 +729,7 @@ struct SceneImageTarget(Handle<Image>);
 fn setup_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<ReferencePlaneMaterial>>,
     mut gizmo_config: ResMut<GizmoConfigStore>,
     target: Option<Res<SceneImageTarget>>,
 ) {
@@ -848,12 +849,8 @@ fn setup_scene(
             NativeOriginPlane { plane },
             Visibility::Hidden,
             Mesh3d(meshes.add(reference_plane_mesh(&basis, REFERENCE_PLANE_HALF_SIZE))),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: color,
-                alpha_mode: AlphaMode::Blend,
-                unlit: true,
-                cull_mode: None,
-                ..default()
+            MeshMaterial3d(materials.add(ReferencePlaneMaterial {
+                color: color.to_linear(),
             })),
         ));
     }
@@ -1317,6 +1314,7 @@ fn apply_native_presentation_styles(
     presentation: Res<PresentationResource>,
     palette: Res<PaletteResource>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut plane_materials: ResMut<Assets<ReferencePlaneMaterial>>,
     mut bodies: Query<
         (
             &NativeCadBody,
@@ -1343,7 +1341,7 @@ fn apply_native_presentation_styles(
     mut origin_planes: Query<
         (
             &NativeOriginPlane,
-            &MeshMaterial3d<StandardMaterial>,
+            &MeshMaterial3d<ReferencePlaneMaterial>,
             &mut Visibility,
         ),
         (Without<NativeCadFace>, Without<NativeDatumPlane>),
@@ -1467,7 +1465,7 @@ fn apply_native_presentation_styles(
         } else {
             Visibility::Hidden
         });
-        if let Some(mut material) = materials.get_mut(&handle.0) {
+        if let Some(mut material) = plane_materials.get_mut(&handle.0) {
             let hovered = state.hovered_origin_plane == Some(plane.plane);
             let selected = state.selected_origin_plane == Some(plane.plane);
             let base_color = origin_plane_color(&palette.0, plane.plane);
@@ -1480,9 +1478,10 @@ fn apply_native_presentation_styles(
                 } else {
                     0.10
                 },
-            );
-            if material.base_color != base_color {
-                material.base_color = base_color;
+            )
+            .to_linear();
+            if material.color != base_color {
+                material.color = base_color;
             }
         }
     }
@@ -5969,7 +5968,7 @@ mod tests {
         let mut app = App::new();
         app.insert_resource(gizmo_config)
             .init_resource::<Assets<Mesh>>()
-            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<ReferencePlaneMaterial>>()
             .add_systems(Startup, setup_scene);
         app.update();
 

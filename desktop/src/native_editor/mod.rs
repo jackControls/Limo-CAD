@@ -277,7 +277,14 @@ fn preview(
                 marker,
                 ..default()
             },
-        )
+        )?;
+        editor.draft.resolved_preview = Some([
+            resolved
+                .map(|points| points[0])
+                .unwrap_or_else(|| editor.draft.points.first().copied().unwrap_or(cursor)),
+            cursor,
+        ]);
+        Ok(())
     })
 }
 

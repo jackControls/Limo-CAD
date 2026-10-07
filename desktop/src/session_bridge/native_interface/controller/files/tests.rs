@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 mod geometry_retention;
 mod lifecycle;
+mod sketch_close;
 mod workspace;
 
 pub(super) fn setup(fixture: &Fixture) -> (App, NativeServices, NativeInterfaceHandle) {

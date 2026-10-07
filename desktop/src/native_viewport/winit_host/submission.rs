@@ -6,6 +6,7 @@ use super::super::interface_shell::NativeInterfaceHandle;
 use bevy::{
     prelude::*,
     render::{
+        render_resource::PipelineCache,
         renderer::{RenderGraph, RenderGraphSystems},
         view::window::ExtractedWindow,
         Extract, ExtractSchedule, RenderApp,
@@ -40,6 +41,8 @@ fn extract(mut commands: Commands, handle: Extract<Option<Res<NativeInterfaceHan
 fn submitted(
     receipt: Option<Res<ExtractedReceipt>>,
     windows: Query<&ExtractedWindow, With<PrimaryWindow>>,
+    pipelines: Res<PipelineCache>,
+    mut compiling: Local<bool>,
 ) {
     let Some(receipt) = receipt else {
         return;
@@ -48,6 +51,14 @@ fn submitted(
         return;
     };
     if window.swap_chain_texture.is_some() && window.swap_chain_texture_view.is_some() {
+        // The host sleeps until an event. A pipeline waiting for shader assets
+        // or background compilation needs another render pass, so keep drawing
+        // while any are pending and once more when the queue becomes ready.
+        let pending = pipelines.waiting_pipelines().next().is_some();
+        if pending || *compiling {
+            receipt.handle.request_redraw();
+        }
+        *compiling = pending;
         if let Err(error) = receipt.handle.submitted_revision(receipt.revision) {
             eprintln!("Native render receipt rejected: {error}");
         }

@@ -278,6 +278,9 @@ fn current(
     Ok(receipt)
 }
 fn require_idle_model(world: &World) -> Result<(), String> {
+    require_file_ready(world, false)
+}
+fn require_file_ready(world: &World, allow_active_sketch: bool) -> Result<(), String> {
     named_views::ensure_exportable(world)?;
     print_intent::ensure_clean(world)?;
     if workbench::cam_view::nc_dialog::awaiting(world) {
@@ -293,7 +296,7 @@ fn require_idle_model(world: &World) -> Result<(), String> {
         return Err("Apply or cancel the feature before changing files".into());
     }
     let (_, _, view, _) = native_viewport::interface_view(world);
-    if view.mode == native_viewport::ViewportMode::Sketch {
+    if !allow_active_sketch && view.mode == native_viewport::ViewportMode::Sketch {
         return Err("Finish the active sketch before changing files".into());
     }
     Ok(())
@@ -694,7 +697,16 @@ fn execute(
         world.resource_mut::<Files>().menu = false;
         return Ok(json!({"request_exit":true}));
     }
-    require_idle_model(world)?;
+    let closing = matches!(command, FileCommand::Close | FileCommand::CloseTab(_))
+        || (matches!(
+            command,
+            FileCommand::Discard(_) | FileCommand::SaveContinue(_)
+        ) && world
+            .resource::<Files>()
+            .dialog
+            .as_ref()
+            .is_some_and(|dialog| matches!(dialog.kind, DialogKind::Confirm(Intent::Close))));
+    require_file_ready(world, closing)?;
     world.resource_mut::<Files>().menu = false;
     let receipt = current(world, services, owner)?;
     match command {
@@ -1097,6 +1109,43 @@ fn save(
     overwrite: bool,
     continuation: Option<Intent>,
 ) -> Result<Value, String> {
+    if native_viewport::interface_view_snapshot(world).2.mode
+        == native_viewport::ViewportMode::Sketch
+    {
+        // A close confirmation must leave the sketch intact until the user
+        // chooses Save and accepts a destination. Project archives require a
+        // finished sketch, so finish it on the ordered worker before saving.
+        return worker::enqueue_operation(
+            world,
+            receipt.owner.clone(),
+            receipt.revision,
+            "sketch_finish".into(),
+            json!({}),
+            move |world, services, result| {
+                let result = result?;
+                let finished = DocumentReceipt {
+                    owner: result.context.clone(),
+                    revision: result.engine_revision,
+                };
+                if let Some(dialog) = world.resource_mut::<Files>().dialog.as_mut() {
+                    if dialog.receipt == receipt {
+                        dialog.receipt = finished.clone();
+                    }
+                }
+                let presented = finish_mutation(
+                    &services.engine,
+                    &services.bridge,
+                    world,
+                    "sketch_finish",
+                    result,
+                );
+                if let Some(error) = presented["render_error"].as_str() {
+                    return Err(error.into());
+                }
+                save(world, finished, path, overwrite, continuation)
+            },
+        );
+    }
     let workspace = world.resource::<Files>().workspace.clone();
     worker::enqueue_document_io(
         world,
@@ -1278,7 +1327,7 @@ pub(super) fn request(
     owner: &DocumentContext,
     ui: &Value,
 ) -> Result<Value, String> {
-    require_idle_model(world)?;
+    require_file_ready(world, ui["command"] == "close")?;
     if awaiting(world) {
         return Err("Finish the current File dialog first".into());
     }

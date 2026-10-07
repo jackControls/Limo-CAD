@@ -67,7 +67,10 @@ pub(crate) struct Prepared {
 pub(crate) struct Draft {
     pub tool: Option<CreateTool>,
     pub points: Vec<Vec2>,
+    /// Raw pointer hint for the engine's snapping and constrained construction.
     pub cursor: Option<Vec2>,
+    /// Anchor and endpoint actually used by the visible construction preview.
+    pub resolved_preview: Option<[Vec2; 2]>,
     chain_start: Option<Vec2>,
     pub generation: u64,
     pub sizes: super::dynamic::Sizes,
@@ -120,6 +123,7 @@ impl Draft {
         {
             self.points = picks;
             self.cursor = Some(point);
+            self.resolved_preview = None;
             return Ok(None);
         }
         let p1 = picks[0];
@@ -283,6 +287,7 @@ impl Draft {
             .expect("Sketch gesture identities exhausted");
         self.sizes = Default::default();
         self.snap_context = None;
+        self.resolved_preview = None;
     }
 
     pub fn instruction(&self) -> &'static str {

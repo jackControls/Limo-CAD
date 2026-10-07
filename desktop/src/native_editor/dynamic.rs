@@ -221,6 +221,7 @@ pub(super) fn set(
         .draft
         .sizes
         .set(field, text, engine.document_units(), &sketch);
+    editor.draft.resolved_preview = None;
     editor.error = fields_for(&editor.draft)
         .iter()
         .find_map(|field| editor.draft.sizes.value(*field).err())
@@ -372,7 +373,11 @@ pub(super) fn synchronize(
                 let x = left + index as f32 * 154.;
                 let locked = editor.draft.sizes.values.get(&field);
                 let value = locked.map(|v| v.text.clone()).unwrap_or_else(|| {
-                    let d = cursor - editor.draft.points[0];
+                    let [anchor, endpoint] = editor
+                        .draft
+                        .resolved_preview
+                        .unwrap_or([editor.draft.points[0]; 2]);
+                    let d = endpoint - anchor;
                     let full = if matches!(
                         editor.draft.tool,
                         Some(CreateTool::Rectangle(RectangleMode::Center))
@@ -508,6 +513,10 @@ pub(super) fn synchronize(
     world.insert_resource(panel);
     result
 }
+
+#[cfg(test)]
+#[path = "dynamic_preview_tests.rs"]
+mod preview_tests;
 
 #[cfg(test)]
 mod tests {
