@@ -60,8 +60,8 @@ Bevy GUI and MCP builds at `abf4667d`. This checkpoint has 53 named features,
 It reaches the continuous arm supports; it is not the complete bench recipe.
 
 The separate [human-operated checkpoint](../checkpoints/garden-bench-human-ui.limo)
-records the new Windows UI walkthrough at `43aee81f` on 7 October 2026. It
-contains only the first front post; the complete three-model walkthrough is
+records the Windows UI walkthrough at `43aee81f` and `841e5603` on 7 October 2026.
+It contains both front-post stocks; the complete three-model walkthrough is
 still in progress. Every modeling change used real mouse/keyboard input through
 the optional Rust `native-computer-control` feature, with no recipe replay or
 direct MCP modeling commands. Read-only MCP inspection checked the resulting
@@ -76,9 +76,17 @@ geometry and references.
    These are visual metadata, not structural material qualification.
 4. Make the reusable **Front leg and arm post** component, name its occurrence,
    place it at `[65, 30, 0]` with identity rotation and ground it.
-5. Save through the native picker. Sketch rename was also checked by closing and
-   reopening the document. Continue with the separately defined right front
-   post from the recipe; the pilot holes and remaining assembly are unfinished.
+5. Save through the native picker, close and reopen the document. Hide the
+   finished sketch and save **01 / Front post stock** as a presentation view.
+   Undo removes the view, Redo restores it, and Recall restores its camera.
+   A temporary occurrence offset previews separately from mechanical placement;
+   Escape removes the offset and restores the prior presentation.
+6. Create the separate **Right front leg and arm post / stock from A-B-C** XY
+   sketch. Constrain its rectangle to 65 × 65 mm at the origin, then finish and
+   create **Right front leg and arm post / Stock 630 mm**, with zero taper.
+   The right stock remains at its authored origin with default appearance;
+   placement, component naming, pilot holes and the remaining assembly are
+   unfinished. Continue those operations through the UI.
 
 Use the saved **Named Views** for a demonstration:
 
