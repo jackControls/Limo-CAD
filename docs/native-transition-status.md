@@ -30,14 +30,21 @@ qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
-through `4f437207`. It contains fifteen named features, four separate posts,
-two shared aprons, two shared upper side rails, eight post pilots, six shared apron clearance positions and
-four named views. UI checks cover fully
+through `f055cc02`. It contains sixteen named features, four separate posts,
+two shared aprons, two shared upper side rails, eight post pilots, six shared apron clearance positions,
+four shared upper-rail clearance positions and five named views. UI checks cover fully
 constrained stock, translated/rotated shared editing, precise multi-position Hole
 editing, instance removal and Undo/Redo. The [walkthrough](../examples/scripts/README.md)
 states its unfinished geometry, joints, drawings and print layouts. The vise and
 turbine have not yet been rebuilt in this human-operated pass. No test suites or
 recipe replay were run for this pass; read-only MCP inspection verifies the result.
+
+Live sketch checks on `f055cc02` confirmed that Dimension can pick an edge through
+its constraint glyph without hiding annotations. Select still opens the glyph
+inspector and the stored dimension editor; cancellation retains zero degrees of
+freedom. Wheel zoom worked over a glyph after ordinary Select interactions. The
+first wheel after Fit did not move the camera; its cause remains unattributed,
+so this does not qualify every move/wheel timing sequence or physical pinch input.
 
 Native computer control is opt-in through `native-computer-control`, with empty
 default features. The Windows backend reuses Enigo for input, Windows Capture for

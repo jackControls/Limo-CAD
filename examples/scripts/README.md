@@ -60,10 +60,11 @@ Bevy GUI and MCP builds at `abf4667d`. This checkpoint has 53 named features,
 It reaches the continuous arm supports; it is not the complete bench recipe.
 
 The separate [human-operated checkpoint](../checkpoints/garden-bench-human-ui.limo)
-records the Windows UI walkthrough through `4f437207` on 7 October 2026.
-It contains fifteen named features, four separately defined and placed posts,
+records the Windows UI walkthrough through `f055cc02` on 7 October 2026.
+It contains sixteen named features, four separately defined and placed posts,
 two shared long-apron occurrences, two shared upper side rails, two left-front apron pilots,
-six right-front rail/arm pilots, six shared apron clearance positions and four
+six right-front rail/arm pilots, six shared apron clearance positions,
+four shared upper-rail clearance positions and five
 presentation views. The three-model walkthrough is still in progress.
 Every modeling change used real mouse/keyboard input through
 the optional Rust `native-computer-control` feature, with no recipe replay or
@@ -139,7 +140,15 @@ geometry and references.
     instances **Left upper side rail** and **Right upper side rail**, placed at
     `[37, 30, 325]` and `[1135, 30, 325]` with identity rotations. Hide the source
     sketch and save. The assembly now has six definitions and eight occurrences.
-    Other post pilots, rail clearance bores, lower side rails, joints, drawing
+18. Pick an upper rail's outward −X face and create **Upper side rail / Post
+    clearances Ø5.5 x 28 / Four positions**. Its displayed basis has origin at
+    local Y = 415 mm, U along −Y and V along +Z. Enter `(32.5, 40)`, `(32.5, 75)`,
+    `(382.5, 40)` and `(382.5, 75)`, with 5.5 mm diameter, 28 mm distance, simple
+    style, flat bottom and no flip. Both placed rails receive the four bores.
+    Review from Left and Right, with a close-up. Undo/Redo preserves their IDs
+    and poses and restores the feature name and positions. Save **05 / Upper
+    side rails and post clearances** with all six bodies visible, then save.
+    Other post pilots, lower-rail clearance bores, lower side rails, joints, drawing
     sheets and print layouts remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
