@@ -857,16 +857,39 @@ fn replace_file(source: &Path, destination: &Path) -> Result<()> {
     std::io::copy(&mut fs::File::open(source)?, &mut temporary)?;
     temporary.flush()?;
     temporary.as_file().sync_all()?;
-    temporary
+    #[cfg(windows)]
+    let persisted = {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match temporary.persist(destination) {
+                Ok(_) => break Ok(()),
+                Err(error) => {
+                    if matches!(error.error.raw_os_error(), Some(5 | 32 | 33)) {
+                        let remaining = deadline.saturating_duration_since(Instant::now());
+                        if !remaining.is_zero() {
+                            std::thread::sleep(remaining.min(Duration::from_millis(100)));
+                            if Instant::now() < deadline {
+                                temporary = error.file;
+                                continue;
+                            }
+                        }
+                    }
+                    break Err(error.error);
+                }
+            }
+        }
+    };
+    #[cfg(not(windows))]
+    let persisted = temporary
         .persist(destination)
-        .map_err(|error| error.error)
-        .with_context(|| {
-            format!(
-                "Cannot replace {}; close the installed CAD/MCP runtime or use --restart",
-                destination.display()
-            )
-        })?;
-    Ok(())
+        .map(|_| ())
+        .map_err(|error| error.error);
+    persisted.with_context(|| {
+        format!(
+            "Cannot replace {}; close the installed CAD/MCP runtime or use --restart",
+            destination.display()
+        )
+    })
 }
 
 fn stop_runtime(executable: &Path, restart: bool) -> Result<()> {
