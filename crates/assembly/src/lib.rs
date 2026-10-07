@@ -849,6 +849,85 @@ impl AssemblyDocumentDto {
         Ok(updated)
     }
 
+    /// Remove one unreferenced leaf instance while retaining its reusable
+    /// definition, source geometry, other placements and allocation counters.
+    pub fn remove_occurrence(
+        &mut self,
+        request: RemoveOccurrenceRequestDto,
+    ) -> Result<ComponentOccurrenceDto, String> {
+        self.validate()?;
+        let index = self
+            .component_structure
+            .occurrences
+            .iter()
+            .position(|occurrence| occurrence.id == request.occurrence_id)
+            .ok_or_else(|| format!("Occurrence {} does not exist", request.occurrence_id.0))?;
+        let occurrence = &self.component_structure.occurrences[index];
+        if occurrence.grounded {
+            return Err(format!(
+                "Release grounded instance '{}' before removing it",
+                occurrence.name
+            ));
+        }
+        if let Some(child) = self
+            .component_structure
+            .occurrences
+            .iter()
+            .find(|child| child.parent_occurrence_id == Some(occurrence.id))
+        {
+            return Err(format!(
+                "Move or remove child instance '{}' before removing '{}'",
+                child.name, occurrence.name
+            ));
+        }
+        if !self
+            .component_structure
+            .occurrences
+            .iter()
+            .any(|other| other.id != occurrence.id && other.component_id == occurrence.component_id)
+        {
+            return Err(format!(
+                "'{}' is the last instance of its reusable definition; hide it instead or add another instance before removing it",
+                occurrence.name
+            ));
+        }
+        for joint in &self.joints {
+            let references = [
+                (
+                    joint.advanced.connector_a_occurrence_id,
+                    joint.connector_a.body_id,
+                ),
+                (
+                    joint.advanced.connector_b_occurrence_id,
+                    joint.connector_b.body_id,
+                ),
+            ];
+            if references.iter().any(|(bound, body)| {
+                bound.or_else(|| self.component_structure.occurrence_for_body(*body))
+                    == Some(occurrence.id)
+            }) {
+                return Err(format!(
+                    "Rebind or remove joint '{}' before removing instance '{}'",
+                    joint.name, occurrence.name
+                ));
+            }
+        }
+        if let Some(contact) = self.contact_sets.iter().find(|contact| {
+            contact.occurrence_a == occurrence.id || contact.occurrence_b == occurrence.id
+        }) {
+            return Err(format!(
+                "Rebind or remove contact set '{}' before removing instance '{}'",
+                contact.name, occurrence.name
+            ));
+        }
+        let removed = self.component_structure.occurrences.remove(index);
+        if let Err(error) = self.validate() {
+            self.component_structure.occurrences.insert(index, removed);
+            return Err(error);
+        }
+        Ok(removed)
+    }
+
     pub fn set_occurrence_grounded(
         &mut self,
         request: SetOccurrenceGroundedRequestDto,
@@ -1422,6 +1501,14 @@ pub struct DuplicateOccurrenceRequestDto {
     /// source placement before its requested placement is applied.
     #[serde(default)]
     pub local_pose: Option<AssemblyTransformDto>,
+}
+
+/// Remove exactly one instance. Dependents must be changed explicitly first;
+/// this request never deletes a definition, source body, child or joint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RemoveOccurrenceRequestDto {
+    pub occurrence_id: OccurrenceId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

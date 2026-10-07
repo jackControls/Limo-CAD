@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::f64::consts::TAU;
 
 mod component_edit;
+mod component_removal;
 mod rename;
 
 use serde::Serialize;
@@ -21,7 +22,7 @@ use limo_cad_assembly::{
     EvaluateMotionStudyRequestDto, GearRelationDto, InterferenceCheckRequestDto,
     InterferenceReportDto, JointDefinitionDto, JointId, MechanismDragRequestDto,
     MechanismPreviewDto, MotionPathRequestDto, MotionStudyDto, MotionStudyEvaluationDto,
-    MotionStudyId, MotionStudySampleDto, SampleMotionStudyRequestDto,
+    MotionStudyId, MotionStudySampleDto, RemoveOccurrenceRequestDto, SampleMotionStudyRequestDto,
     SetJointCoordinatesRequestDto, SetJointEnabledRequestDto, SetJointMotionRequestDto,
     SetOccurrenceGroundedRequestDto, SetOccurrencePoseRequestDto, SweptCollisionEventDto,
     SweptCollisionReportDto, SweptCollisionRequestDto, UpdateComponentRequestDto,

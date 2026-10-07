@@ -119,6 +119,7 @@ pub(super) fn prepare_edit_history(
             operation,
             "assembly_set_occurrence_pose"
                 | "assembly_duplicate_occurrence"
+                | "assembly_remove_occurrence"
                 | "assembly_create_component"
                 | "assembly_create_occurrence"
                 | "assembly_update_component"
@@ -929,6 +930,36 @@ pub(crate) fn finish_mutation(
                 from,
                 result.engine_revision,
             );
+        }
+        if operation == "assembly_remove_occurrence" {
+            let removed = result.value["id"]
+                .as_u64()
+                .ok_or("The removal receipt did not identify its component instance")?;
+            let (_, _, mut presentation, _) = native_viewport::interface_view_snapshot(world);
+            let selected = presentation.selected_occurrence_id == Some(removed);
+            let hovered = presentation.hovered_occurrence_id == Some(removed);
+            if selected {
+                presentation.selected_occurrence_id = None;
+                presentation.selected_body_ids.clear();
+                presentation.selected_face_ids.clear();
+                presentation.selected_edge_ids.clear();
+                presentation.selected_surface_point = None;
+            }
+            if hovered {
+                presentation.hovered_occurrence_id = None;
+                presentation.hovered_body_id = None;
+                presentation.hovered_face_id = None;
+                presentation.hovered_edge_id = None;
+                presentation.hovered_surface_point = None;
+            }
+            if selected || hovered {
+                native_viewport::apply_interface_view(
+                    world,
+                    &result.context.document_id,
+                    None,
+                    Some(presentation),
+                )?;
+            }
         }
         world.insert_resource(NativeRenderedDocument {
             owner: result.context.clone(),

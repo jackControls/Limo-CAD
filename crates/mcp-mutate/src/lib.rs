@@ -1015,6 +1015,12 @@ pub static MUTATES: &[MutateSpec] = &[
         execution: ExecutionKind::Direct,
     },
     MutateSpec {
+        name: "assembly_remove_occurrence",
+        engine_method: "assembly_remove_occurrence",
+        payload: PayloadKind::Object,
+        execution: ExecutionKind::Direct,
+    },
+    MutateSpec {
         name: "assembly_update_occurrence",
         engine_method: "assembly_update_occurrence",
         payload: PayloadKind::Object,
@@ -1415,6 +1421,7 @@ mod tests {
         for name in [
             "assembly_update_component",
             "assembly_create_occurrence",
+            "assembly_remove_occurrence",
             "assembly_update_occurrence",
             "assembly_set_occurrence_pose",
             "assembly_set_occurrence_grounded",

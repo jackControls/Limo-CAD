@@ -46,6 +46,7 @@ pub(crate) enum Command {
     Visibility(u64),
     Ground(u64),
     Duplicate(u64),
+    Remove(u64),
     Move(u64),
     Create(bool),
     Definitions,
@@ -405,7 +406,20 @@ pub(crate) fn reduce(
                 (command, input),
             );
         }
+        let selected = native_viewport::interface_view(world)
+            .2
+            .selected_occurrence_id;
         let normalized = match (command, input) {
+            (Command::Select(id), ControlInput::Key(key))
+                if key.key == "Delete" && !key.ctrl && !key.meta && !key.alt && !key.shift =>
+            {
+                if selected != Some(*id) || handle.focused_key() != Some(action.control.key) {
+                    return Err(
+                        "Focus the selected component row before removing its instance".into(),
+                    );
+                }
+                Command::Remove(*id)
+            }
             (Command::Definitions | Command::Parents, ControlInput::Key(key))
                 if !super::super::is_activation(input) =>
             {
@@ -495,9 +509,6 @@ pub(crate) fn reduce(
         if !choice_input && !super::super::is_activation(input) {
             return Err("Activate an assembly control".into());
         }
-        let selected = native_viewport::interface_view(world)
-            .2
-            .selected_occurrence_id;
         let mut request = None;
         match *command {
             Command::Tab(tab) => {
@@ -573,6 +584,13 @@ pub(crate) fn reduce(
                     "assembly_duplicate_occurrence",
                     json!({"occurrence_id":id,"parent_occurrence_id":o.parent_occurrence_id}),
                 ));
+            }
+            Command::Remove(id) => {
+                find(&a, id)?;
+                if selected != Some(id) {
+                    return Err("Select this component instance before removing it".into());
+                }
+                request = Some(("assembly_remove_occurrence", json!({"occurrence_id":id})));
             }
             Command::Move(id) => {
                 select(world, &receipt.owner, &a, id)?;

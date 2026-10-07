@@ -181,6 +181,10 @@ impl WasmEngine {
         host::handle(&mut self.manager, "assembly_duplicate_occurrence", payload)
     }
 
+    pub fn assembly_remove_occurrence(&mut self, payload: &str) -> String {
+        host::handle(&mut self.manager, "assembly_remove_occurrence", payload)
+    }
+
     pub fn assembly_set_occurrence_grounded(&mut self, payload: &str) -> String {
         host::handle(
             &mut self.manager,

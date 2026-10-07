@@ -98,6 +98,9 @@ impl Paint<'_> {
         }
         if matches!(command, Command::Select(_)) {
             control.role = "treeitem".into();
+            if selected == Some(true) {
+                control.owned_keys = vec![KeyChord::plain("Delete")];
+            }
         }
         if matches!(control.field, Field::Text { .. }) {
             control.role = "textbox".into();
@@ -135,6 +138,7 @@ impl Paint<'_> {
                 Command::Create(_)
                     | Command::Add(_)
                     | Command::Rename(..)
+                    | Command::Remove(_)
                     | Command::ApplyTransform(..)
                     | Command::Study(_)
                     | Command::Motion(
@@ -560,6 +564,26 @@ pub(super) fn paint(
             )?;
             y += 34.;
             if state.inspector {
+                p.button(
+                    (
+                        "remove-instance",
+                        &format!("Remove instance {}", o.name),
+                        Some("Remove instance"),
+                    ),
+                    Command::Remove(id),
+                    (8., y, width - 16., 28.),
+                    None,
+                    (blocked, None),
+                    Field::None,
+                )?;
+                y += 34.;
+                p.text(
+                    "remove-instance-hint",
+                    "Retains the reusable definition and source geometry. Undo restores this instance.",
+                    (8., y, width - 16., 40.),
+                    9.,
+                );
+                y += 46.;
                 for definition in [false, true] {
                     let tag = if definition { "definition" } else { "instance" };
                     let label = if definition {

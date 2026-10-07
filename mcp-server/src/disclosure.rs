@@ -530,6 +530,8 @@ pub fn tags_for_tool(name: &str) -> (FocusPack, bool) {
         | "assembly_create_component"
         | "assembly_update_component"
         | "assembly_create_occurrence"
+        | "assembly_duplicate_occurrence"
+        | "assembly_remove_occurrence"
         | "assembly_update_occurrence"
         | "assembly_set_occurrence_pose"
         | "assembly_set_occurrence_grounded"

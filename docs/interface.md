@@ -259,6 +259,20 @@ complete manufacturing sheets and export operations remain to implement.
 
 ## Inspection and reference naming
 
+The Assembly browser's selected-instance inspector provides **Remove instance**.
+Plain Delete invokes the same operation only from the focused, selected component
+tree row. MCP uses `assembly_remove_occurrence {"occurrence_id": 5}` in
+`assembly/joints`; native and WebAssembly hosts share its typed engine operation.
+Removal preserves the reusable definition, source geometry, other placements
+and allocation counters, and has one native Undo/Redo entry.
+
+Removal rejects a grounded instance, children, referenced joints or contact
+sets, saved-view occurrence offsets, drawing selections or annotations, and print
+handoff or height bindings. The error identifies the dependent item to release,
+move, rebind or remove first. The last instance of a definition must remain or be
+hidden: compatibility promotion otherwise recreates an instance of retained source
+geometry. Removal never cascades into dependent authored work.
+
 `assembly_interference_check` belongs to `assembly/inspect`, matching the existing
 Assembly browser’s Inspect panel. It uses the same exact retained-BRep query as the native
 engine, with solved occurrence transforms. An empty occurrence filter checks all

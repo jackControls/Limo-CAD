@@ -520,6 +520,9 @@ pub fn handle(manager: &mut SketchManager, method: &str, payload: &str) -> Strin
         "assembly_duplicate_occurrence" => {
             with_payload(payload, |request| manager.duplicate_occurrence(request))
         }
+        "assembly_remove_occurrence" => {
+            with_payload(payload, |request| manager.remove_occurrence(request))
+        }
         "assembly_set_occurrence_grounded" => {
             with_payload(payload, |request| manager.set_occurrence_grounded(request))
         }

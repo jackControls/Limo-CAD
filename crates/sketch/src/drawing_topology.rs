@@ -18,6 +18,35 @@ pub(crate) fn drawing_component_references(
     ),
     String,
 > {
+    if document.sheets.is_empty() {
+        return Ok(Default::default());
+    }
+    Ok(component_references(
+        &serde_json::to_value(document).map_err(|error| error.to_string())?,
+    ))
+}
+
+/// Include explicit selections and annotation anchors when removing one instance.
+pub(crate) fn drawing_sheet_component_references(
+    sheet: &DrawingSheetDto,
+) -> Result<
+    (
+        std::collections::HashSet<BodyId>,
+        std::collections::HashSet<limo_cad_assembly::OccurrenceId>,
+    ),
+    String,
+> {
+    Ok(component_references(
+        &serde_json::to_value(sheet).map_err(|error| error.to_string())?,
+    ))
+}
+
+fn component_references(
+    value: &Value,
+) -> (
+    std::collections::HashSet<BodyId>,
+    std::collections::HashSet<limo_cad_assembly::OccurrenceId>,
+) {
     use limo_cad_assembly::OccurrenceId;
     use std::collections::HashSet;
     fn collect(
@@ -53,14 +82,8 @@ pub(crate) fn drawing_component_references(
     }
     let mut bodies = HashSet::new();
     let mut occurrences = HashSet::new();
-    if !document.sheets.is_empty() {
-        collect(
-            &serde_json::to_value(document).map_err(|error| error.to_string())?,
-            &mut bodies,
-            &mut occurrences,
-        );
-    }
-    Ok((bodies, occurrences))
+    collect(value, &mut bodies, &mut occurrences);
+    (bodies, occurrences)
 }
 
 pub fn drawing_body_signature(body: &BodyDto) -> Option<String> {

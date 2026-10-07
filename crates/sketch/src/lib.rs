@@ -112,11 +112,11 @@ pub use limo_cad_assembly::{
     MotionCoordinateDto, MotionDriverDto, MotionDriverId, MotionDriverLawDto,
     MotionDriverSampleDto, MotionInterpolationDto, MotionKeyframeDto, MotionPathRequestDto,
     MotionStudyDto, MotionStudyEvaluationDto, MotionStudyId, MotionStudySampleDto, OccurrenceId,
-    OccurrencePoseDto, SampleMotionStudyRequestDto, SetJointCoordinatesRequestDto,
-    SetJointEnabledRequestDto, SetJointMotionRequestDto, SetOccurrenceGroundedRequestDto,
-    SetOccurrencePoseRequestDto, SweptCollisionEventDto, SweptCollisionReportDto,
-    SweptCollisionRequestDto, UpdateComponentRequestDto, UpdateJointRequestDto,
-    UpdateOccurrenceRequestDto, ViewOccurrenceOffsetDto,
+    OccurrencePoseDto, RemoveOccurrenceRequestDto, SampleMotionStudyRequestDto,
+    SetJointCoordinatesRequestDto, SetJointEnabledRequestDto, SetJointMotionRequestDto,
+    SetOccurrenceGroundedRequestDto, SetOccurrencePoseRequestDto, SweptCollisionEventDto,
+    SweptCollisionReportDto, SweptCollisionRequestDto, UpdateComponentRequestDto,
+    UpdateJointRequestDto, UpdateOccurrenceRequestDto, ViewOccurrenceOffsetDto,
 };
 pub use limo_cad_cam::{
     BoxAnchor, CamArcPlane, CamCommandDto, CamDocumentDto, CamGcodeDialectDto,

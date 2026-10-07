@@ -4453,6 +4453,17 @@ fn build_tool_specs() -> Vec<ToolSpec> {
             object_schema(json!({"occurrence_id":{"type":"integer","minimum":1},"parent_occurrence_id":{"type":["integer","null"],"minimum":1},"local_pose":assembly_transform.clone()}), &["occurrence_id"]),
         ),
         ToolSpec::direct(
+            "assembly_remove_occurrence",
+            "Remove component instance",
+            "Remove one unreferenced leaf occurrence while retaining its reusable definition and source geometry. Release grounding first; children, joints, contact sets, saved-view offsets, drawing references and print bindings must be changed explicitly. The last instance of a definition must be retained or hidden.",
+            "assembly_remove_occurrence",
+            Payload::Object,
+            object_schema(
+                json!({"occurrence_id": {"type": "integer", "minimum": 1}}),
+                &["occurrence_id"],
+            ),
+        ),
+        ToolSpec::direct(
             "assembly_update_occurrence",
             "Update assembly occurrence",
             "Patch an occurrence record. Only id is required; omitted name/component_id/parent/pose/visibility/grounded keep their current values (ComponentOccurrencePatchDto).",
