@@ -85,6 +85,7 @@ impl Client {
         request_timeout: Option<Duration>,
         logs: Option<(fs::File, fs::File)>,
     ) -> Result<Self> {
+        crate::deploy_native::configure_runtime_environment(&mut command)?;
         let (mut stdout_log, stderr) = match logs {
             Some((stdout, stderr)) => (Some(stdout), Stdio::from(stderr)),
             None => (None, Stdio::inherit()),

@@ -78,6 +78,22 @@ pub(crate) fn installed_executable() -> Result<PathBuf> {
     Ok(owner.join("limo-cad/bevy").join(EXECUTABLE))
 }
 
+/// GUI and MCP children share runtime temp storage even when Cargo uses build scratch.
+/// Explicit session-directory overrides remain on the child command unchanged.
+pub(crate) fn configure_runtime_environment(command: &mut Command) -> Result<()> {
+    if cfg!(windows) {
+        let temporary =
+            PathBuf::from(env::var_os("LOCALAPPDATA").context("LOCALAPPDATA is missing")?)
+                .join("Temp");
+        ensure!(
+            temporary.is_absolute(),
+            "Runtime temp directory must be absolute"
+        );
+        command.env("TEMP", &temporary).env("TMP", &temporary);
+    }
+    Ok(())
+}
+
 pub(crate) fn managed_install_exists() -> Result<bool> {
     Ok(installed_executable()?.with_file_name(MANIFEST).is_file())
 }
@@ -328,11 +344,7 @@ pub(crate) fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             .current_dir(executable.parent().context("installed runtime parent")?)
             .env("LIMO_CAD_LOCAL_RUNTIME", &executable)
             .env("LIMO_CAD_DESKTOP_BIN", &executable);
-        if cfg!(windows) {
-            let temporary =
-                PathBuf::from(env::var_os("LOCALAPPDATA").context("LOCALAPPDATA")?).join("Temp");
-            command.env("TEMP", &temporary).env("TMP", &temporary);
-        }
+        configure_runtime_environment(&mut command)?;
         command.spawn().context("Launch installed CAD")?;
     }
     Ok(())
