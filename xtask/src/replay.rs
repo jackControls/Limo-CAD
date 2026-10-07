@@ -893,6 +893,9 @@ fn semantic_result(report: &Value) -> Result<Value> {
             if let Some(object) = value.as_object_mut() {
                 object.remove("_disclosure");
             }
+            if key == "final_model" {
+                normalize_saved_layout_ids(&mut value);
+            }
             if key == "final_sketches" {
                 if let Some(sketches) = value.as_array_mut() {
                     for sketch in sketches {
@@ -912,6 +915,50 @@ fn semantic_result(report: &Value) -> Result<Value> {
     }
     Ok(Value::Object(selected))
 }
+
+/// Independent documents mint different layout UUIDs. Compare saved layouts and
+/// their print-height ownership links by order; keep every configuration field.
+fn normalize_saved_layout_ids(model: &mut Value) {
+    let ids: HashMap<_, _> = model
+        .get("views")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .filter_map(|(index, view)| {
+            view.get("id")
+                .and_then(Value::as_str)
+                .map(|id| (id.to_owned(), format!("saved-layout-{index}")))
+        })
+        .collect();
+    if ids.is_empty() {
+        return;
+    }
+    fn remap(value: &mut Value, ids: &HashMap<String, String>) {
+        match value {
+            Value::Object(object) => {
+                if let Some(replacement) = object
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .and_then(|id| ids.get(id))
+                {
+                    object.insert("id".into(), Value::String(replacement.clone()));
+                }
+                for value in object.values_mut() {
+                    remap(value, ids);
+                }
+            }
+            Value::Array(array) => {
+                for value in array {
+                    remap(value, ids);
+                }
+            }
+            _ => {}
+        }
+    }
+    remap(model, &ids);
+}
+
 fn first_difference(a: &Value, b: &Value, path: &str) -> Option<String> {
     if a == b {
         return None;
@@ -1426,5 +1473,47 @@ cat >/dev/null"#]);
             semantic_result(&a).unwrap(),
             semantic_result(&changed).unwrap()
         );
+    }
+
+    #[test]
+    fn comparison_retains_layout_configuration_and_binding_ownership_across_documents() {
+        let a = json!({"exports":{"final_model":{
+            "views":[
+                {"id":"ca2faff1-eded-48eb-b102-1ce13fe9b0bb","name":"Assembly","camera":{"position":[200,-200,200]},"visible_body_ids":[1]},
+                {"id":"6a9dfb7c-d618-494d-bf89-e7094d6b2632","name":"Print","print_layout":true,"occurrence_offsets":[{"occurrence_id":2,"translation":[0,180,0]}]}
+            ],
+            "print_intent":{"height_ranges":[{"binding":{"layout":{"kind":"named_layout","id":"6a9dfb7c-d618-494d-bf89-e7094d6b2632"}}}]},
+            "document":{"history":{"features":[{"id":1,"name":"Named stock"}]}}
+        }}});
+        let mut b = a.clone();
+        b["exports"]["final_model"]["views"][0]["id"] =
+            json!("13067e89-15c2-4fd8-819b-e20394ed6899");
+        b["exports"]["final_model"]["views"][1]["id"] =
+            json!("2e53b282-7656-425e-baa3-2c230126311d");
+        b["exports"]["final_model"]["print_intent"]["height_ranges"][0]["binding"]["layout"]
+            ["id"] = b["exports"]["final_model"]["views"][1]["id"].clone();
+        assert_eq!(semantic_result(&a).unwrap(), semantic_result(&b).unwrap());
+        for (pointer, changed) in [
+            ("/views/0/name", json!("Changed assembly")),
+            ("/views/0/camera/position/0", json!(201)),
+            ("/views/0/visible_body_ids/0", json!(2)),
+            ("/views/1/occurrence_offsets/0/translation/1", json!(181)),
+            ("/document/history/features/0/id", json!(2)),
+            (
+                "/print_intent/height_ranges/0/binding/layout/id",
+                b["exports"]["final_model"]["views"][0]["id"].clone(),
+            ),
+        ] {
+            let mut different = b.clone();
+            *different["exports"]["final_model"]
+                .pointer_mut(pointer)
+                .unwrap() = changed;
+            assert_ne!(
+                semantic_result(&a).unwrap(),
+                semantic_result(&different).unwrap(),
+                "The comparison hid {pointer}"
+            );
+        }
+        assert_ne!(a, b, "Persisted identities must stay distinct");
     }
 }
