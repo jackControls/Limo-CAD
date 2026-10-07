@@ -60,10 +60,11 @@ Bevy GUI and MCP builds at `abf4667d`. This checkpoint has 53 named features,
 It reaches the continuous arm supports; it is not the complete bench recipe.
 
 The separate [human-operated checkpoint](../checkpoints/garden-bench-human-ui.limo)
-records the Windows UI walkthrough at `43aee81f`, `841e5603` and `d7f2f411` on
-7 October 2026. It contains five named features, both placed front-post
-components, one apron pilot hole and two presentation views. The three-model walkthrough is
-still in progress. Every modeling change used real mouse/keyboard input through
+records the Windows UI walkthrough through `69e66631` on 7 October 2026.
+It contains ten named features, four separately defined and placed posts,
+two left-front apron pilots, six right-front rail/arm pilots and three
+presentation views. The three-model walkthrough is still in progress.
+Every modeling change used real mouse/keyboard input through
 the optional Rust `native-computer-control` feature, with no recipe replay or
 direct MCP modeling commands. Read-only MCP inspection checked the resulting
 geometry and references.
@@ -94,8 +95,29 @@ geometry and references.
    the cut without changing component placement or grounding.
 9. Save **02 / Front posts and first apron pilot** with both bodies visible,
    then save the document. Recall the first view to isolate the original post;
-   the second view shows both placed stocks. The remaining pilot holes, frame,
-   joints, drawing sheets and print layouts are unfinished.
+   the second view shows both placed stocks.
+10. Repeat the fully constrained 65 × 65 mm XY stock for the separate left/right
+    rear posts, extruding 790 mm. Name both sketches, extrusions, definitions
+    and occurrences. Place them at `[65, 380, 0]` and `[1070, 380, 0]`, with
+    identity rotations and the same deep-green visual metadata.
+11. Duplicate and rotate the right-front occurrence temporarily. Create a
+    source-local pilot through the placed occurrence and verify that both
+    shared instances update. Remove the temporary instance; Undo restores its
+    exact ID, visibility and pose, and Redo removes it without deleting the
+    definition or its geometry. Restore the retained post to identity rotation.
+12. Edit the left-front apron feature to add U = 32.5 mm, V = 390 mm while
+    retaining V = 350 mm. A blank added position blocks Apply; removing that
+    blank preserves both completed rows. Apply and Undo/Redo preserve the ten
+    feature IDs and four component placements.
+13. Correct the right-front pilot support to its outward +X face, with source
+    origin `[65, 0, 0]`, U along +Y and V along +Z. Set U = 32.5 mm and V =
+    365, 400, 170, 205, 590 and 615 mm in one named rail/arm pilot feature.
+    Keep the simple 3.5 mm diameter, 39 mm blind depth and flat bottom.
+14. Save **03 / Four post stocks and handed pilots** with all four bodies visible,
+    then save the project through the native picker. Named views retain camera
+    and visibility, so recalling an earlier chapter shows its bodies' current
+    geometry; it does not roll back the feature history. Other post pilots,
+    aprons, rails, joints, drawing sheets and print layouts remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 
