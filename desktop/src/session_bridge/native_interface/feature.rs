@@ -25,6 +25,7 @@ pub(crate) use crate::native_forms::{SolidField, SolidFieldView, SolidFormKind};
 
 mod apply;
 pub(super) mod editing;
+mod hole_placement;
 pub(crate) mod manipulator;
 mod move_copy;
 pub(crate) mod panel;
@@ -86,14 +87,16 @@ pub(crate) enum FeaturePick {
     Occurrence(u64),
     Face(PlanarFaceSourceDto),
     MovePoint([f64; 3]),
+    #[cfg(test)]
     HoleSupport {
         face: PlanarFaceSourceDto,
         point: Option<[f64; 3]>,
     },
-    HoleSupportPoint {
+    PlacedHoleSupport {
         face: PlanarFaceSourceDto,
-        point: [f64; 3],
+        point: Option<[f64; 3]>,
         reference: Option<limo_cad_solid::SketchPointRefDto>,
+        placement: hole_placement::Placement,
     },
     HolePosition {
         point: [f64; 3],
@@ -245,6 +248,8 @@ struct Editor {
     previous_preview: Arc<ViewportPreview>,
     preview_revision: u64,
     preview_notice: Option<String>,
+    interaction_error: Option<String>,
+    hole_placement: Option<hole_placement::Placement>,
     pick_target: Option<SolidField>,
     choice_field: Option<SolidField>,
     stage: Option<std::sync::Arc<editing::Stage>>,
@@ -326,7 +331,10 @@ pub(crate) fn panel(world: &World) -> Option<FeaturePanel> {
         fields: editor.form.fields(&model),
         can_apply: editor.form.can_apply(&model),
         busy: editor.form.is_busy(),
-        error: editor.form.engine_error().map(str::to_owned),
+        error: editor
+            .interaction_error
+            .clone()
+            .or_else(|| editor.form.engine_error().map(str::to_owned)),
         preview_notice: editor.preview_notice.clone(),
         notes: editor.form.feature_notes(),
         pick_target: editor.pick_target,
@@ -462,6 +470,12 @@ fn update_preview(editor: &mut Editor, world: &mut World) -> Result<(), String> 
             ),
         }
     };
+    if editor.form.kind() == SolidFormKind::Hole {
+        if let Some(placement) = editor.hole_placement {
+            placement.validate(world, &editor.snapshot)?;
+            placement.preview(&mut next)?;
+        }
+    }
     if let Some((body, edge)) = editor.hovered_edge {
         if let Some(edge) = model
             .scene
@@ -512,7 +526,24 @@ fn update_preview(editor: &mut Editor, world: &mut World) -> Result<(), String> 
             .is_some_and(|(b, ids)| b == body && ids.contains(&face))
         {
             match preview::face_fill(model.scene, body, &[face], [1., 0.65, 0.2, 0.25]) {
-                Ok(fill) => next.triangles.push(fill),
+                Ok(fill) => {
+                    if editor.form.kind() == SolidFormKind::Hole {
+                        let placement = hole_placement::Placement::capture(
+                            world,
+                            &editor.snapshot,
+                            body.0,
+                            editor.hovered_occurrence,
+                        )?;
+                        let mut hover = ViewportPreview {
+                            triangles: vec![fill],
+                            ..Default::default()
+                        };
+                        placement.preview(&mut hover)?;
+                        next.triangles.extend(hover.triangles);
+                    } else {
+                        next.triangles.push(fill);
+                    }
+                }
                 Err(error) => notice = Some(error),
             }
         }
@@ -656,23 +687,29 @@ fn apply_pick(editor: &mut Editor, pick: FeaturePick) -> Result<(), String> {
             }
             Ok(())
         }
+        #[cfg(test)]
         (Some(SolidField::HoleSupport), FeaturePick::HoleSupport { face, point }) => {
             editor.form.set_hole_support(Some(face), point, &model)?;
+            editor.hole_placement = None;
             editor.pick_target = Some(SolidField::HolePositions);
             Ok(())
         }
         (
             Some(SolidField::HoleSupport),
-            FeaturePick::HoleSupportPoint {
+            FeaturePick::PlacedHoleSupport {
                 face,
                 point,
                 reference,
+                placement,
             },
         ) => {
-            editor
-                .form
-                .set_hole_support(Some(face), Some(point), &model)?;
-            editor.form.set_hole_position(point, reference, &model)?;
+            editor.form.set_hole_support(Some(face), point, &model)?;
+            if let Some(point) = point {
+                if reference.is_some() {
+                    editor.form.set_hole_position(point, reference, &model)?;
+                }
+            }
+            editor.hole_placement = Some(placement);
             editor.pick_target = Some(SolidField::HolePositions);
             Ok(())
         }
@@ -734,12 +771,39 @@ pub(crate) fn accept_pick(
             .filter(|editor| editor.id == form_id)
             .ok_or("The feature form changed")?;
         check_revision(editor, &receipt)?;
+        if let FeaturePick::PlacedHoleSupport { placement, .. } = &pick {
+            placement.validate(world, &editor.snapshot)?;
+        } else if editor.pick_target == Some(SolidField::HolePositions) {
+            if let Some(placement) = editor.hole_placement {
+                placement.validate(world, &editor.snapshot)?;
+            }
+        }
         apply_pick(editor, pick)?;
         update_preview(editor, world)?;
         Ok(json!({"form_id":form_id,"reference_accepted":true}))
     });
+    if record_interaction_result(&mut state, owner, form_id, &result) {
+        panel::reveal_error(world);
+    }
     world.insert_resource(state);
     result
+}
+
+fn record_interaction_result<T>(
+    state: &mut NativeFeature,
+    owner: &DocumentContext,
+    form_id: u64,
+    result: &Result<T, String>,
+) -> bool {
+    if let Some(editor) = state
+        .editor
+        .as_mut()
+        .filter(|e| e.id == form_id && e.snapshot.receipt.owner == *owner)
+    {
+        editor.interaction_error = result.as_ref().err().cloned();
+        return result.is_err();
+    }
+    false
 }
 
 pub(crate) fn reduce(
@@ -842,6 +906,11 @@ pub(crate) fn reduce(
         },
         &mut state,
     );
+    if let FeatureCommand::Control { form_id, .. } = command {
+        if record_interaction_result(&mut state, owner, *form_id, &result) {
+            panel::reveal_error(world);
+        }
+    }
     world.insert_resource(state);
     result
 }
@@ -971,6 +1040,8 @@ fn reduce_owned(
                 previous_preview: native_viewport::interface_preview_snapshot(world),
                 preview_revision: native_viewport::interface_preview_revision(world),
                 preview_notice: None,
+                interaction_error: None,
+                hole_placement: None,
                 pick_target: Some(if kind.selects_bodies() {
                     SolidField::Bodies
                 } else if kind.is_plane() {
@@ -1063,21 +1134,34 @@ fn reduce_owned(
                     presentation.selected_body_ids.as_slice(),
                     presentation.selected_face_ids.as_slice(),
                 ) {
-                    if editor
-                        .snapshot
-                        .source_local(*body, presentation.selected_occurrence_id)
+                    if *kind == SolidFormKind::Hole
+                        || editor
+                            .snapshot
+                            .source_local(*body, presentation.selected_occurrence_id)
                     {
+                        let placement = if *kind == SolidFormKind::Hole {
+                            Some(hole_placement::Placement::capture(
+                                world,
+                                &editor.snapshot,
+                                *body,
+                                presentation.selected_occurrence_id,
+                            )?)
+                        } else {
+                            None
+                        };
                         apply_pick(
                             &mut editor,
-                            if *kind == SolidFormKind::Hole {
-                                FeaturePick::HoleSupport {
+                            if let Some(placement) = placement {
+                                FeaturePick::PlacedHoleSupport {
                                     face: PlanarFaceSourceDto {
                                         body_id: BodyId(*body),
                                         face_id: limo_cad_core::FaceId(*face),
                                     },
                                     point: presentation
                                         .selected_surface_point
-                                        .map(|p| [p.x, p.y, p.z]),
+                                        .map(|p| placement.local_point([p.x, p.y, p.z])),
+                                    reference: None,
+                                    placement,
                                 }
                             } else {
                                 FeaturePick::Face(PlanarFaceSourceDto {
@@ -1396,6 +1480,7 @@ fn reduce_owned(
                 }
                 SolidField::HoleSupport => {
                     editor.form.set_hole_support(None, None, &model)?;
+                    editor.hole_placement = None;
                     editor.pick_target = Some(*field);
                 }
                 SolidField::HolePositions => {

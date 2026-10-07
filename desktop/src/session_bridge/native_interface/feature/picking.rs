@@ -81,8 +81,23 @@ pub(crate) fn hover_references(
                 return Ok(true);
             }
             if editor.pick_target == Some(SolidField::HolePositions) {
+                if let Some(placement) = editor.hole_placement {
+                    placement.validate(world, &editor.snapshot)?;
+                }
                 let next = point.and_then(|p| {
-                    hole_point(world, editor, owner, p, editor.form.hole_support()).map(|(_, p)| p)
+                    hole_point(
+                        world,
+                        editor,
+                        owner,
+                        p,
+                        editor.form.hole_support(),
+                        editor.hole_placement,
+                    )
+                    .map(|(_, p)| {
+                        editor
+                            .hole_placement
+                            .map_or(p, |placement| placement.world_point(p))
+                    })
                 });
                 if next != editor.hovered_point
                     || native_viewport::interface_preview_revision(world) != editor.preview_revision
@@ -192,41 +207,60 @@ pub(crate) fn hover_references(
                         | SolidField::StopFace
                 )
             ) {
-                let next = hit
-                    .filter(|hit| {
+                let hit = hit.filter(|hit| {
+                    (if editor.pick_target == Some(SolidField::HoleSupport) {
+                        hole_placement::Placement::capture(
+                            world,
+                            &editor.snapshot,
+                            hit.body_id,
+                            hit.occurrence_id,
+                        )
+                        .is_ok()
+                    } else {
                         editor.snapshot.source_local(hit.body_id, hit.occurrence_id)
-                            && (!matches!(
-                                editor.pick_target,
-                                Some(SolidField::HoleSupport | SolidField::StopFace)
-                            ) || planar_face(
-                                editor,
-                                PlanarFaceSourceDto {
-                                    body_id: BodyId(hit.body_id),
-                                    face_id: FaceId(hit.face_id),
-                                },
-                            )
-                            .is_some())
-                    })
-                    .map(|hit| (BodyId(hit.body_id), FaceId(hit.face_id)));
+                    }) && (!matches!(
+                        editor.pick_target,
+                        Some(SolidField::HoleSupport | SolidField::StopFace)
+                    ) || planar_face(
+                        editor,
+                        PlanarFaceSourceDto {
+                            body_id: BodyId(hit.body_id),
+                            face_id: FaceId(hit.face_id),
+                        },
+                    )
+                    .is_some())
+                });
+                let occurrence = hit.as_ref().and_then(|hit| hit.occurrence_id);
+                let next = hit.map(|hit| (BodyId(hit.body_id), FaceId(hit.face_id)));
                 let snap = if editor.pick_target == Some(SolidField::HoleSupport) {
                     point.zip(next).and_then(|(p, (body_id, face_id))| {
+                        let placement = hole_placement::Placement::capture(
+                            world,
+                            &editor.snapshot,
+                            body_id.0,
+                            occurrence,
+                        )
+                        .ok()?;
                         hole_point(
                             world,
                             editor,
                             owner,
                             p,
                             Some(PlanarFaceSourceDto { body_id, face_id }),
+                            Some(placement),
                         )
-                        .map(|(_, point)| point)
+                        .map(|(_, point)| placement.world_point(point))
                     })
                 } else {
                     None
                 };
                 if next != editor.hovered_face
+                    || occurrence != editor.hovered_occurrence
                     || snap != editor.hovered_point
                     || native_viewport::interface_preview_revision(world) != editor.preview_revision
                 {
                     editor.hovered_face = next;
+                    editor.hovered_occurrence = occurrence;
                     editor.hovered_point = snap;
                     update_preview(editor, world)?;
                 }
@@ -319,6 +353,25 @@ pub(crate) fn handle_canvas_pick(
     if panel.busy {
         return Err("Wait for the feature to finish".into());
     }
+    let result = canvas_pick(world, services, owner, point, &panel, target);
+    let reveal = {
+        let mut state = world.resource_mut::<NativeFeature>();
+        record_interaction_result(&mut state, owner, panel.form_id, &result)
+    };
+    if reveal {
+        panel::reveal_error(world);
+    }
+    result
+}
+
+fn canvas_pick(
+    world: &mut World,
+    services: &NativeServices,
+    owner: &DocumentContext,
+    point: [f32; 2],
+    panel: &FeaturePanel,
+    target: SolidField,
+) -> Result<Option<Value>, String> {
     let pick =
         services
             .bridge
@@ -362,9 +415,17 @@ pub(crate) fn handle_canvas_pick(
                         });
                 }
                 if target == SolidField::HolePositions {
-                    if let Some((reference, point)) =
-                        hole_point(world, editor, owner, point, editor.form.hole_support())
-                    {
+                    if let Some(placement) = editor.hole_placement {
+                        placement.validate(world, &editor.snapshot)?;
+                    }
+                    if let Some((reference, point)) = hole_point(
+                        world,
+                        editor,
+                        owner,
+                        point,
+                        editor.form.hole_support(),
+                        editor.hole_placement,
+                    ) {
                         return Ok(FeaturePick::HolePosition {
                             point,
                             reference: Some(reference),
@@ -481,7 +542,9 @@ pub(crate) fn handle_canvas_pick(
                         .map(FeaturePick::Occurrence)
                         .ok_or_else(|| "Select an assembly component".into());
                 }
-                if !editor.snapshot.source_local(hit.body_id, hit.occurrence_id) {
+                if !matches!(target, SolidField::HoleSupport | SolidField::HolePositions)
+                    && !editor.snapshot.source_local(hit.body_id, hit.occurrence_id)
+                {
                     return Err("Open the component before selecting its references".into());
                 }
                 match target {
@@ -490,20 +553,23 @@ pub(crate) fn handle_canvas_pick(
                             body_id: BodyId(hit.body_id),
                             face_id: FaceId(hit.face_id),
                         };
-                        if let Some((reference, position)) =
-                            hole_point(world, editor, owner, point, Some(face))
-                        {
-                            Ok(FeaturePick::HoleSupportPoint {
-                                face,
-                                point: position,
-                                reference: Some(reference),
-                            })
-                        } else {
-                            Ok(FeaturePick::HoleSupport {
-                                face,
-                                point: Some(hit.point.map(f64::from)),
-                            })
-                        }
+                        let placement = hole_placement::Placement::capture(
+                            world,
+                            &editor.snapshot,
+                            hit.body_id,
+                            hit.occurrence_id,
+                        )?;
+                        let snapped =
+                            hole_point(world, editor, owner, point, Some(face), Some(placement));
+                        Ok(FeaturePick::PlacedHoleSupport {
+                            face,
+                            point: Some(snapped.as_ref().map_or_else(
+                                || placement.local_point(hit.point.map(f64::from)),
+                                |(_, p)| *p,
+                            )),
+                            reference: snapped.map(|(r, _)| r),
+                            placement,
+                        })
                     }
                     SolidField::HolePositions => {
                         if editor.form.hole_support()
@@ -514,8 +580,25 @@ pub(crate) fn handle_canvas_pick(
                         {
                             return Err("Click the support face or a visible sketch point".into());
                         }
+                        let position = if let Some(placement) = editor.hole_placement {
+                            placement.validate(world, &editor.snapshot)?;
+                            if !placement.matches(hit.body_id, hit.occurrence_id) {
+                                return Err(
+                                    "Click the same component instance as the hole support".into(),
+                                );
+                            }
+                            placement.local_point(hit.point.map(f64::from))
+                        } else {
+                            if !editor.snapshot.source_local(hit.body_id, hit.occurrence_id) {
+                                return Err(
+                                    "Select the hole support on this component instance first"
+                                        .into(),
+                                );
+                            }
+                            hit.point.map(f64::from)
+                        };
                         Ok(FeaturePick::HolePosition {
-                            point: hit.point.map(f64::from),
+                            point: position,
                             reference: None,
                         })
                     }
@@ -604,6 +687,7 @@ fn hole_point(
     owner: &DocumentContext,
     cursor: [f32; 2],
     support: Option<PlanarFaceSourceDto>,
+    placement: Option<hole_placement::Placement>,
 ) -> Option<(limo_cad_solid::SketchPointRefDto, [f64; 3])> {
     let (_, _, view, _) = native_viewport::interface_view(world);
     let mut best: Option<(f32, limo_cad_solid::SketchPointRefDto, [f64; 3])> = None;
@@ -622,11 +706,13 @@ fn hole_point(
             } else {
                 world_point
             };
-            let Some(pixel) =
-                native_viewport::interface_world_point(world, &owner.document_id, point)
-                    .ok()
-                    .flatten()
-            else {
+            let Some(pixel) = native_viewport::interface_world_point(
+                world,
+                &owner.document_id,
+                placement.map_or(point, |placement| placement.world_point(point)),
+            )
+            .ok()
+            .flatten() else {
                 continue;
             };
             let distance = (pixel[0] - cursor[0]).hypot(pixel[1] - cursor[1]);
@@ -652,7 +738,7 @@ fn move_point(
     owner: &DocumentContext,
     cursor: [f32; 2],
 ) -> Option<[f64; 3]> {
-    if let Some((_, point)) = hole_point(world, editor, owner, cursor, None) {
+    if let Some((_, point)) = hole_point(world, editor, owner, cursor, None, None) {
         return Some(point);
     }
     let hit = native_viewport::interface_pick(

@@ -38,6 +38,9 @@ pub(super) fn begin(
     if editor.form.is_busy() {
         return Err("The feature is still applying".into());
     }
+    if let Some(placement) = editor.hole_placement {
+        placement.validate(world, &editor.snapshot)?;
+    }
     {
         use crate::session_bridge::native_interface::controller::worker;
         if worker::available(world) {

@@ -277,6 +277,8 @@ fn install(
         previous_preview: native_viewport::interface_preview_snapshot(world),
         preview_revision: native_viewport::interface_preview_revision(world),
         preview_notice: None,
+        interaction_error: None,
+        hole_placement: None,
         pick_target,
         choice_field: None,
         stage: Some(prepared.stage),
@@ -295,7 +297,17 @@ fn install(
         offset_drag: None,
     };
     native_viewport::apply_interface_edit_model(world, editor.snapshot.viewport.clone())?;
-    if let Err(error) = update_preview(&mut editor, world) {
+    let preview = (|| {
+        if let Some(face) = editor.form.hole_support() {
+            editor.hole_placement = Some(hole_placement::Placement::for_body(
+                world,
+                &editor.snapshot,
+                face.body_id.0,
+            )?);
+        }
+        update_preview(&mut editor, world)
+    })();
+    if let Err(error) = preview {
         native_viewport::apply_interface_model(world, editor.original_view.take().unwrap())?;
         return Err(error);
     }

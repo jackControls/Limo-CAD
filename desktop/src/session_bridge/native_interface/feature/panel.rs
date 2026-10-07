@@ -62,6 +62,12 @@ pub(crate) fn scroll_by(world: &mut World, delta: f32) -> Result<(), String> {
     Ok(())
 }
 
+pub(super) fn reveal_error(world: &mut World) {
+    if let Some(mut state) = world.get_resource_mut::<PanelWidgets>() {
+        state.scroll = 0.;
+    }
+}
+
 /// Wheel coordinates are logical window pixels, just like the published
 /// panel. The controller must call this before orbit/zoom or canvas gestures.
 pub(crate) fn scroll_panel(world: &mut World, point: [f32; 2], delta: f32) -> bool {
@@ -270,6 +276,22 @@ fn synchronize_owned(
         true,
     );
     let mut y = 12.;
+    if let Some(message) = panel.error.as_deref() {
+        label(
+            world,
+            state,
+            &mut live_labels,
+            "engine-error",
+            body,
+            camera,
+            message,
+            node(0., y - state.scroll, inner, 52.),
+            theme,
+            &assets,
+            false,
+        );
+        y += 56.;
+    }
     let mut close =
         InterfaceControl::button(panel.kind.group(), format!("Close {}", panel.kind.label()));
     if crate::native_viewport::localization::locale(world) != crate::app_preferences::Locale::En {
@@ -652,26 +674,21 @@ fn synchronize_owned(
         );
         y += note_height(message);
     }
-    for (key, message) in [
-        ("engine-error", panel.error.as_deref()),
-        ("preview-notice", panel.preview_notice.as_deref()),
-    ] {
-        if let Some(message) = message {
-            label(
-                world,
-                state,
-                &mut live_labels,
-                key,
-                body,
-                camera,
-                message,
-                node(0., y - state.scroll, inner, 52.),
-                theme,
-                &assets,
-                false,
-            );
-            y += 56.;
-        }
+    if let Some(message) = panel.preview_notice.as_deref() {
+        label(
+            world,
+            state,
+            &mut live_labels,
+            "preview-notice",
+            body,
+            camera,
+            message,
+            node(0., y - state.scroll, inner, 52.),
+            theme,
+            &assets,
+            false,
+        );
+        y += 56.;
     }
     state.max_scroll = (y - body_height).max(0.);
     state.scroll = state.scroll.min(state.max_scroll);
