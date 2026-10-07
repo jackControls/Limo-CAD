@@ -227,15 +227,15 @@ fn flat_without_flats_in_range_is_an_error() {
     );
 }
 
-/// A round floor with a through hole: annulus r 4..15 at Z0 about (20, 15),
+/// A round floor with a through hole: annulus r `hole`..15 at Z0 about (20, 15),
 /// walls down to Z-5. Faces wind outward.
-fn ring_floor() -> CamOperationDto {
+fn ring_floor(hole: f64) -> CamOperationDto {
     let (c, n) = (Point2Dto::new(20.0, 15.0), 96usize);
     let mut mesh = CamStockMeshDto {
         positions: vec![],
         indices: vec![],
     };
-    for (radius, z) in [(15.0, 0.0), (4.0, 0.0), (15.0, -5.0), (4.0, -5.0)] {
+    for (radius, z) in [(15.0, 0.0), (hole, 0.0), (15.0, -5.0), (hole, -5.0)] {
         for i in 0..n {
             let a = std::f64::consts::TAU * i as f64 / n as f64;
             mesh.positions
@@ -293,7 +293,7 @@ fn ring_floor() -> CamOperationDto {
 #[test]
 fn ring_floor_finishes_around_the_hole_first_with_every_pass_climbing() {
     let doc = document(
-        vec![ring_floor()],
+        vec![ring_floor(7.0)],
         vec![tool(2, CamToolKind::FlatEndMill, 6.0)],
     );
     let program = plan_setup(&doc, 1).unwrap();
@@ -350,15 +350,15 @@ fn ring_floor_finishes_around_the_hole_first_with_every_pass_climbing() {
         radii[first_outer..].windows(2).all(|w| w[1] > w[0]),
         "{radii:?}"
     );
-    assert!(radii.iter().all(|&r| r > 4.0 && r < 15.0), "{radii:?}");
+    assert!(radii.iter().all(|&r| r > 7.0 && r < 15.0), "{radii:?}");
     let segments: Vec<(Point2Dto, Point2Dto)> = passes
         .iter()
         .flat_map(|p| p.windows(2).map(|w| (w[0], w[1])).collect::<Vec<_>>())
         .collect();
-    for i in 0..=110 {
+    for i in 0..=80 {
         for k in 0..72 {
             let (radius, a) = (
-                4.0 + 0.1 * i as f64,
+                7.0 + 0.1 * i as f64,
                 std::f64::consts::TAU * k as f64 / 72.0,
             );
             let q = Point2Dto::new(c.x + radius * a.cos(), c.y + radius * a.sin());
@@ -370,6 +370,28 @@ fn ring_floor_finishes_around_the_hole_first_with_every_pass_climbing() {
                 reach <= 3.0,
                 "floor at r {radius:.1} uncovered ({reach:.3})"
             );
+        }
+    }
+}
+
+#[test]
+fn a_hole_up_to_two_diameters_is_machined_over_so_no_stub_stays_on_it() {
+    let doc = document(
+        vec![ring_floor(4.0)],
+        vec![tool(2, CamToolKind::FlatEndMill, 6.0)],
+    );
+    let program = plan_setup(&doc, 1).unwrap();
+    let cuts = cuts_at(&program.commands, 0.0);
+    let c = Point2Dto::new(20.0, 15.0);
+    for i in 0..=40 {
+        for k in 0..36 {
+            let (radius, a) = (0.1 * i as f64, std::f64::consts::TAU * k as f64 / 36.0);
+            let q = Point2Dto::new(c.x + radius * a.cos(), c.y + radius * a.sin());
+            let reach = cuts
+                .iter()
+                .map(|&(a, b)| segment_distance(q, a, b))
+                .fold(f64::INFINITY, f64::min);
+            assert!(reach <= 3.0, "over the hole at r {radius:.1}: {reach:.3}");
         }
     }
 }
