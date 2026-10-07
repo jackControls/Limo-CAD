@@ -97,6 +97,7 @@ fn rust_setup_and_wasm_tools_use_repository_pins() {
     assert!(matched.contains("uses: ./candidate/.github/actions/setup-unix-occt"));
     let unix_sdk = read(".github/actions/setup-unix-occt/action.yml");
     assert!(unix_sdk.contains("libfontconfig-dev libfreetype6-dev"));
+    assert!(unix_sdk.contains("libx11-dev"));
     for image in ["ubuntu-26.04", "appimage-ubuntu-22.04"] {
         assert!(read(&format!("scripts/docker/{image}.Dockerfile")).contains("libfontconfig-dev"));
     }
