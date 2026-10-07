@@ -1,6 +1,7 @@
 # Native transition status
 
-Checkpoint: **2026-10-06 UTC**. The default desktop on the Bevy integration branch
+Release qualification checkpoint: **2026-10-06 UTC**, with the local UI walkthrough
+updated **2026-10-07 UTC**. The default desktop on the Bevy integration branch
 uses **Bevy `=0.20.0-rc.2`**, application version **0.2.2**, one native host and
 one shared CAD/CAM command path. The integration is tracked by
 [PR #124](https://github.com/jackControls/Limo-CAD/pull/124) and has not merged
@@ -20,16 +21,34 @@ Application version alone does not identify which source was built. Published
 packages retain the former noBS-CAD name while the repository and public project
 name are Limo CAD.
 
-The current Thunder installation is the freshly rebuilt **Limo CAD** desktop
-from **`7137887f`**, channel **`bevy-limo-migration-20261004`**, installed at
-`%LOCALAPPDATA%/limo-cad/bevy/Limo-CAD.exe`. It includes the merged print-layout
-work, [runtime rename #317](https://github.com/jackControls/Limo-CAD/pull/317),
-[comment cleanup #319](https://github.com/jackControls/Limo-CAD/pull/319) and
-[complete identity migration #320](https://github.com/jackControls/Limo-CAD/pull/320).
-Both the candidate and installed Windows payload passed SDK-free MCP checks:
-ten checks and 27 steps, including live binding, Save, disconnect survival and
-guarded close. These results qualify this local Windows build; they do not
-replace the older public Windows/Linux release qualification.
+Thunder uses one canonical **Limo CAD** executable at
+`%LOCALAPPDATA%/limo-cad/bevy/Limo-CAD.exe` for the GUI and `--headless` MCP.
+Managed local commands verify the source checkout, SDK, feature mode and installed
+payload before reuse. The adjacent `runtime-manifest.json` records the deployed
+revision and SHA-256; inspect `build_pair.status` and require `matched` before
+qualifying a live GUI/MCP pair. Application version alone is insufficient.
+
+The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
+was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
+through `69e66631`. It contains twelve named features, four separate posts,
+two shared aprons, eight pilots and four named views. UI checks cover fully
+constrained stock, translated/rotated shared editing, precise multi-position Hole
+editing, instance removal and Undo/Redo. The [walkthrough](../examples/scripts/README.md)
+states its unfinished geometry, joints, drawings and print layouts. The vise and
+turbine have not yet been rebuilt in this human-operated pass. No test suites or
+recipe replay were run for this pass; read-only MCP inspection verifies the result.
+
+Native computer control is opt-in through `native-computer-control`, with empty
+default features. The Windows backend reuses Enigo for input, Windows Capture for
+owned native dialogs and PNG for encoding. The generic Windows qualification driver
+now uses Rust and this same control path; specialized IME/print probes and Linux/macOS
+drivers still include platform scripting. These source changes do not establish
+cross-platform input qualification.
+
+The historical `7137887f` payload passed ten SDK-free MCP checks and 27 steps,
+including Save, disconnect survival and guarded close. That evidence remains
+specific to that revision and does not qualify the newer walkthrough or replace
+the public Windows/Linux package qualification.
 
 Cursor and Codex now register **`limo-cad`**. Their retired CAD entries were
 removed; the retired Grok entry was also removed. The Start menu, project/recipe
@@ -238,8 +257,10 @@ idempotent and preserves all 883 original construction steps and original checks
 The opt-in turbine recipe reproduction binds both placed assembly views to the
 production Bevy paper image and reuses the document/image on idle repaint. Its
 linework pixels were independently inspected; this CPU image proof does not qualify
-GPU scanout or OS-window capture. These additions are source work and are not in
-the installed `7137887f` or public `9b082687` packages above.
+GPU scanout or OS-window capture. These additions postdate the historical
+`7137887f` payload and public `9b082687` packages above. Consult the current local
+runtime manifest for installed source identity; public package qualification is
+still recorded separately.
 
 ## CI and security review
 
