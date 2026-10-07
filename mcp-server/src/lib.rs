@@ -12275,6 +12275,46 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    fn unreplied_control_request(
+        entry: &std::fs::DirEntry,
+        replied: &std::collections::HashSet<String>,
+    ) -> Option<Value> {
+        let filename = entry.file_name();
+        let request_id = filename.to_str()?.strip_suffix(".request.json")?;
+        if replied.contains(request_id) {
+            return None;
+        }
+        let source = match std::fs::read_to_string(entry.path()) {
+            Ok(source) => source,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+            Err(error) => panic!("Read mock control request: {error}"),
+        };
+        let request: Value = serde_json::from_str(&source).unwrap();
+        assert_eq!(request["id"].as_str(), Some(request_id));
+        Some(request)
+    }
+
+    #[test]
+    fn mock_control_poll_retains_pending_requests_and_tolerates_acknowledgment_cleanup() {
+        let dir = std::env::temp_dir().join(format!(
+            "limo-cad-control-poll-{}",
+            session::test_session_uuid()
+        ));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("request-1.request.json");
+        let request = json!({"id":"request-1","ui":{"action":"open_recipe"}});
+        std::fs::write(&path, request.to_string()).unwrap();
+        let entry = std::fs::read_dir(&dir).unwrap().next().unwrap().unwrap();
+        let pending = std::collections::HashSet::new();
+        assert_eq!(unreplied_control_request(&entry, &pending), Some(request));
+        let replied = std::collections::HashSet::from(["request-1".to_owned()]);
+        assert!(unreplied_control_request(&entry, &replied).is_none());
+        std::fs::remove_file(&path).unwrap();
+        assert!(unreplied_control_request(&entry, &replied).is_none());
+        assert!(unreplied_control_request(&entry, &pending).is_none());
+        std::fs::remove_dir(dir).unwrap();
+    }
+
     #[test]
     fn open_recipe_receipt_never_attaches_or_rehydrates_the_model() {
         let _guard = session::env_lock();
@@ -12301,15 +12341,10 @@ mod tests {
             let mut replied = std::collections::HashSet::new();
             while std::time::Instant::now() < deadline {
                 if let Ok(entries) = std::fs::read_dir(&controls) {
-                    for entry in entries.flatten().filter(|entry| {
-                        entry
-                            .file_name()
-                            .to_string_lossy()
-                            .ends_with(".request.json")
-                    }) {
-                        let request: Value =
-                            serde_json::from_str(&std::fs::read_to_string(entry.path()).unwrap())
-                                .unwrap();
+                    for entry in entries.flatten() {
+                        let Some(request) = unreplied_control_request(&entry, &replied) else {
+                            continue;
+                        };
                         let request_id = request["id"].as_str().unwrap();
                         if !replied.insert(request_id.to_owned()) {
                             continue;
