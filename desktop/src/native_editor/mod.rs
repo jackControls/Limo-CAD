@@ -446,6 +446,33 @@ pub(crate) fn execute(
     })
 }
 
+pub(crate) fn confirm_size(
+    world: &mut World,
+    engine: &AppState,
+    bridge: &SessionBridgeState,
+    owner: &DocumentContext,
+    generation: u64,
+    validate: impl FnOnce() -> Result<(), String>,
+) -> Result<Value, String> {
+    bridge.with_native_document_owner(engine, owner, || {
+        if world
+            .get_resource::<Editor>()
+            .is_none_or(|editor| editor.draft.generation != generation)
+        {
+            return Err("This drawing gesture changed".into());
+        }
+        Ok(())
+    })?;
+    execute(
+        world,
+        engine,
+        bridge,
+        owner,
+        EditorCommand::Complete,
+        validate,
+    )
+}
+
 fn commit(
     world: &mut World,
     _engine: &AppState,

@@ -5,7 +5,7 @@ use crate::native_forms::{DimensionKind, MeasurementInput, ParameterValue};
 use crate::native_viewport::interface_shell::fields;
 use crate::session_bridge::native_interface::controller::chrome::{rect, Widgets};
 use limo_cad_core::UnitSystem;
-use limo_cad_interface::Field;
+use limo_cad_interface::{Field, KeyChord};
 use limo_cad_sketch::{
     LockedCircleRequest, LockedRectangleRequest, LockedSegmentRequest, SlotRequest,
 };
@@ -444,6 +444,7 @@ pub(super) fn synchronize(
                     read_only: false,
                     selection: None,
                 };
+                c.owned_keys.push(KeyChord::plain("Enter"));
                 let mut bounds = rect(x + 4., top + 21., 142., 28.);
                 bounds.border = UiRect::all(px(1.));
                 bounds.padding = UiRect::horizontal(px(5.));
@@ -532,6 +533,89 @@ mod tests {
             engine.engine_call(spec.engine_method, &payload),
         )
         .unwrap()
+    }
+    #[test]
+    fn enter_finishes_typed_shapes_once_and_one_undo_removes_the_geometry() {
+        for tool in [
+            CreateTool::Line,
+            CreateTool::Rectangle(RectangleMode::TwoPoint),
+            CreateTool::Rectangle(RectangleMode::Center),
+            CreateTool::Circle(CircleMode::CenterDiameter),
+            CreateTool::Circle(CircleMode::TwoPoint),
+            CreateTool::Slot(SlotMode::CenterToCenter),
+            CreateTool::Slot(SlotMode::Overall),
+            CreateTool::Slot(SlotMode::CenterPoint),
+        ] {
+            let engine = blank();
+            let initial = active(&engine).unwrap().unwrap();
+            let mut draft = Draft::default();
+            draft.select(Some(tool));
+            draft.prepare(SketchPoint::ZERO, false).unwrap();
+            if matches!(tool, CreateTool::Slot(_)) {
+                draft.prepare(SketchPoint::new(20., 0.), false).unwrap();
+            }
+            draft.cursor = Some(SketchPoint::new(12., 8.));
+            let sizes: &[(SizeField, &str)] = match tool {
+                CreateTool::Line => &[(SizeField::Length, "10"), (SizeField::Angle, "45")],
+                CreateTool::Rectangle(_) => &[(SizeField::Width, "5"), (SizeField::Height, "9")],
+                CreateTool::Circle(_) => &[(SizeField::Diameter, "6")],
+                _ => &[(SizeField::Width, "4")],
+            };
+            for (field, text) in sizes {
+                draft
+                    .sizes
+                    .set(*field, (*text).into(), UnitSystem::Mm, &initial);
+            }
+            let points = draft.points.clone();
+            let generation = draft.generation;
+            let command = draft.complete().unwrap().unwrap();
+            assert_eq!(draft.points, points, "{tool:?}");
+            assert_eq!(draft.generation, generation);
+            assert_eq!(active(&engine).unwrap().unwrap(), initial);
+            let result = apply(&engine, command);
+            draft.accepted(&result).unwrap();
+            let sketch = active(&engine).unwrap().unwrap();
+            assert!(!sketch.entities.is_empty(), "{tool:?}");
+            if tool == CreateTool::Line {
+                let json = serde_json::to_value(&sketch).unwrap();
+                let line = json["entities"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|e| e["kind"] == "line")
+                    .unwrap();
+                assert!((line["end"]["x"].as_f64().unwrap() - 10. / 2_f64.sqrt()).abs() < 1e-7);
+                assert!((line["end"]["y"].as_f64().unwrap() - 10. / 2_f64.sqrt()).abs() < 1e-7);
+                assert_eq!(sketch.dimensions.len(), 2);
+            }
+            call(&engine, "undo", json!({}));
+            let sketch = active(&engine).unwrap().unwrap();
+            assert!(
+                sketch.entities.is_empty()
+                    && sketch.dimensions.is_empty()
+                    && sketch.constraints.is_empty(),
+                "{tool:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn enter_rejects_invalid_size_without_losing_the_picked_anchor() {
+        let engine = blank();
+        let initial = active(&engine).unwrap().unwrap();
+        let mut draft = Draft::default();
+        draft.select(Some(CreateTool::Line));
+        draft.prepare(SketchPoint::ZERO, false).unwrap();
+        draft.cursor = Some(SketchPoint::new(12., 8.));
+        draft.sizes.set(
+            SizeField::Length,
+            "invalid".into(),
+            UnitSystem::Mm,
+            &initial,
+        );
+        assert!(draft.complete().is_err());
+        assert_eq!(draft.points, vec![SketchPoint::ZERO]);
+        assert_eq!(active(&engine).unwrap().unwrap(), initial);
     }
     #[test]
     fn partial_rectangle_size_at_its_anchor_waits_for_the_other_axis() {
@@ -766,8 +850,13 @@ mod tests {
                                     "{tool:?}: center handle is not at its constrained center"
                                 );
                             } else {
-                                assert!(outline.iter().flatten().any(|p| p.distance(*position) < 1e-6),
-                                    "{tool:?}: perimeter point {position:?} does not match its preview");
+                                assert!(
+                                    outline
+                                        .iter()
+                                        .flatten()
+                                        .any(|p| p.distance(*position) < 1e-6),
+                                    "{tool:?}: perimeter point {position:?} does not match its preview"
+                                );
                             }
                         }
                         limo_cad_sketch::EntityDto::Line { start, end, .. } => {

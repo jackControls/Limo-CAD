@@ -554,7 +554,7 @@ pub(crate) fn reduce_action(
                 return bridge.with_native_document_owner(engine, &action.context, || {
                     handle.validate_action(action)?;
                     Ok(json!({"focused":true}))
-                })
+                });
             }
             ControlInput::Key(key) if key.key == "Escape" => {
                 return crate::native_editor::execute(
@@ -564,7 +564,17 @@ pub(crate) fn reduce_action(
                     &action.context,
                     EditorCommand::Cancel,
                     || handle.validate_action(action),
-                )
+                );
+            }
+            ControlInput::Key(key) if key == &limo_cad_interface::KeyChord::plain("Enter") => {
+                return crate::native_editor::confirm_size(
+                    world,
+                    engine,
+                    bridge,
+                    &action.context,
+                    *generation,
+                    || handle.validate_action(action),
+                );
             }
             _ => return Err("Use the drawing size field to enter a value".into()),
         };
@@ -595,7 +605,7 @@ pub(crate) fn reduce_action(
                     return bridge.with_native_document_owner(engine, &action.context, || {
                         handle.validate_action(action)?;
                         Ok(json!({"focused":true}))
-                    })
+                    });
                 }
                 _ => return Err("Use the expression field to enter a value".into()),
             };
