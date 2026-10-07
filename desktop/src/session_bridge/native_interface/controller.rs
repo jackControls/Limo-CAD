@@ -878,7 +878,11 @@ fn control_poll_is_read_only(request: &Value) -> bool {
     request.get("sketch_query").is_none()
         || request["sketch_query"]["method"]
             .as_str()
-            .is_some_and(limo_cad_mcp_mutate::is_live_engine_query)
+            .is_some_and(|method| {
+                limo_cad_mcp_mutate::is_live_engine_query(method)
+                    || (request.get("owner").is_some()
+                        && limo_cad_mcp_mutate::is_routed_engine_query(method))
+            })
 }
 
 fn start_control(
