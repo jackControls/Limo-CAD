@@ -38,6 +38,7 @@
     "renamePrompt": "项目名称",
     "renameHint": "双击重命名项目",
     "renameEmpty": "项目名称不能为空。",
+    "importStep": "导入 STEP…",
     "exportStepAll": "导出所有实体为 STEP…",
     "exportStepSelected": "导出选中的实体为 STEP…",
     "exportStlAll": "导出所有实体为 STL…",

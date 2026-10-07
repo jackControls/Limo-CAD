@@ -38,6 +38,7 @@
     "renamePrompt": "Project name",
     "renameHint": "Double-click to rename project",
     "renameEmpty": "Project name cannot be empty.",
+    "importStep": "Import STEP…",
     "exportStepAll": "Export All Bodies as STEP…",
     "exportStepSelected": "Export Selected Body as STEP…",
     "exportStlAll": "Export All Bodies as STL…",
