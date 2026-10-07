@@ -1501,6 +1501,31 @@ fn close_from_window_event(
     request_close(world, state, bridge, engine)
 }
 
+#[cfg(all(windows, feature = "native-computer-control"))]
+fn inspect_native_window(world: &World, window_id: &str) -> Result<Value, String> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    let mut windows = world
+        .try_query_filtered::<Entity, With<PrimaryWindow>>()
+        .ok_or("The CAD primary window is unavailable")?;
+    let entity = windows
+        .single(world)
+        .map_err(|_| "The CAD primary window is not uniquely available")?;
+    bevy::winit::WINIT_WINDOWS.with_borrow(|windows| {
+        let window = windows
+            .get_window(entity)
+            .ok_or("The CAD native window is unavailable")?;
+        let handle = window
+            .window_handle()
+            .map_err(|error| format!("Cannot inspect the CAD window handle: {error}"))?;
+        let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+            return Err("The CAD native window does not have a Win32 handle".into());
+        };
+        Ok(json!({"hwnd":handle.hwnd.get() as usize,
+            "pid":std::process::id(),"window_id":window_id}))
+    })
+}
+
 fn inspect_document(
     world: &World,
     handle: &NativeInterfaceHandle,
@@ -2671,6 +2696,18 @@ fn complete_control(world: &mut World) {
                         if pending.inspect {
                             pending.response["desktop_build"] =
                                 json!(limo_cad_build_info::build_info());
+                            #[cfg(all(windows, feature = "native-computer-control"))]
+                            {
+                                pending.response["native_window"] =
+                                    inspect_native_window(world, &state.window_id).unwrap_or_else(
+                                        |message| {
+                                            json!({"status":"unavailable",
+                                                "code":"native_window_unavailable",
+                                                "message":message,"pid":std::process::id(),
+                                                "window_id":state.window_id})
+                                        },
+                                    );
+                            }
                             match inspect_document(
                                 world,
                                 &handle,

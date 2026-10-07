@@ -2,8 +2,10 @@
 //! OS pickers choose paths only. The ordered kernel worker owns file/model work.
 use super::super::workspace::{DocumentReceipt, DocumentWorkspace, TabSummary};
 use super::*;
+use bevy::window::RawHandleWrapper;
 use limo_cad_interface::ControlInput;
 use limo_cad_project_file::SaveMetadata;
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{path::PathBuf, sync::mpsc};
 
 mod bambu;
@@ -1200,6 +1202,34 @@ fn save(
     )
 }
 
+/// Qualify the owning window before moving a picker to its worker thread.
+/// Keep the returned handle alive until the dialog has closed.
+pub(super) fn parented_dialog(
+    world: &World,
+    dialog: rfd::FileDialog,
+) -> Result<(rfd::FileDialog, RawHandleWrapper), String> {
+    let mut windows = world
+        .try_query_filtered::<(Entity, &RawHandleWrapper), With<PrimaryWindow>>()
+        .ok_or("File selection requires the active desktop window")?;
+    let (window, parent) = windows
+        .single(world)
+        .map(|(entity, handle)| (entity, handle.clone()))
+        .map_err(|_| "File selection requires the active desktop window")?;
+    let dialog = bevy::winit::WINIT_WINDOWS.with_borrow(|windows| {
+        let window = windows
+            .get_window(window)
+            .ok_or("The active desktop window is unavailable")?;
+        window
+            .window_handle()
+            .map_err(|error| format!("File selection window handle: {error}"))?;
+        window
+            .display_handle()
+            .map_err(|error| format!("File selection display handle: {error}"))?;
+        Ok::<_, String>(dialog.set_parent(&**window))
+    })?;
+    Ok((dialog, parent))
+}
+
 fn choose_path(
     world: &mut World,
     handle: &NativeInterfaceHandle,
@@ -1215,13 +1245,17 @@ fn choose_path(
         .into_iter()
         .find(|tab| tab.active)
         .ok_or("Active tab disappeared")?;
+    let (dialog, parent) = parented_dialog(
+        world,
+        rfd::FileDialog::new().add_filter("Limo CAD project", &["limo", "nbcad"]),
+    )?;
     let (send, receive) = mpsc::channel();
     let handle = handle.clone();
     std::thread::Builder::new()
         .name("cad-file-picker".into())
         .spawn(move || {
-            let mut dialog =
-                rfd::FileDialog::new().add_filter("Limo CAD project", &["limo", "nbcad"]);
+            let _parent = parent;
+            let mut dialog = dialog;
             if let Some(path) = &active.path {
                 if let Some(parent) = path.parent() {
                     dialog = dialog.set_directory(parent);

@@ -162,11 +162,15 @@ fn execute_inner(world: &mut World, command: Command) -> Result<Value, String> {
             if files::awaiting(world) {
                 return Err("Finish the File dialog first".into());
             }
-            start(world, true, "Choose a private post file…", move || {
-                let source = rfd::FileDialog::new()
+            let (dialog, parent) = files::parented_dialog(
+                world,
+                rfd::FileDialog::new()
                     .set_title("Import private post")
-                    .add_filter("Private post", &["nbpost", "cps"])
-                    .pick_file();
+                    .add_filter("Private post", &["nbpost", "cps"]),
+            )?;
+            start(world, true, "Choose a private post file…", move || {
+                let _parent = parent;
+                let source = dialog.pick_file();
                 Ok(Completion::Picked { config, source })
             })
         }
