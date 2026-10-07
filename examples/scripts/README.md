@@ -60,8 +60,9 @@ Bevy GUI and MCP builds at `abf4667d`. This checkpoint has 53 named features,
 It reaches the continuous arm supports; it is not the complete bench recipe.
 
 The separate [human-operated checkpoint](../checkpoints/garden-bench-human-ui.limo)
-records the Windows UI walkthrough at `43aee81f` and `841e5603` on 7 October 2026.
-It contains both front-post stocks; the complete three-model walkthrough is
+records the Windows UI walkthrough at `43aee81f`, `841e5603` and `d7f2f411` on
+7 October 2026. It contains five named features, both placed front-post
+components, one apron pilot hole and two presentation views. The three-model walkthrough is
 still in progress. Every modeling change used real mouse/keyboard input through
 the optional Rust `native-computer-control` feature, with no recipe replay or
 direct MCP modeling commands. Read-only MCP inspection checked the resulting
@@ -84,9 +85,17 @@ geometry and references.
 6. Create the separate **Right front leg and arm post / stock from A-B-C** XY
    sketch. Constrain its rectangle to 65 × 65 mm at the origin, then finish and
    create **Right front leg and arm post / Stock 630 mm**, with zero taper.
-   The right stock remains at its authored origin with default appearance;
-   placement, component naming, pilot holes and the remaining assembly are
-   unfinished. Continue those operations through the UI.
+7. Make and name the reusable **Right front leg and arm post** component and
+   its occurrence. Place it at `[1070, 30, 0]` with identity rotation. Apply the
+   same painted-timber visual metadata and deep-green color to both posts.
+8. On the translated left post's front face, create **Front post / Apron pilot
+   Ø3.5 x 39 / Z350** at source-local U = 32.5 mm and V = 350 mm. Use a simple
+   3.5 mm hole, 39 mm blind depth and flat bottom. Undo/Redo removes and restores
+   the cut without changing component placement or grounding.
+9. Save **02 / Front posts and first apron pilot** with both bodies visible,
+   then save the document. Recall the first view to isolate the original post;
+   the second view shows both placed stocks. The remaining pilot holes, frame,
+   joints, drawing sheets and print layouts are unfinished.
 
 Use the saved **Named Views** for a demonstration:
 
