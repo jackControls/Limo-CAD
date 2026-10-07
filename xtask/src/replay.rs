@@ -496,9 +496,14 @@ fn interactive_calls(mut client: Client, output: Option<&Path>) -> Result<()> {
         };
         if let Some(output) = output {
             if let Err(error) = fs::write(output, serde_json::to_vec_pretty(&result)?) {
-                writeln!(stdout, "{}", json!({"status":"output_error","error":error.to_string(),"response":result}))?;
+                writeln!(
+                    stdout,
+                    "{}",
+                    json!({"status":"output_error","error":error.to_string(),"response":result})
+                )?;
                 stdout.flush()?;
-                return Err(error).context("MCP response was printed to stdout; the call was not retried");
+                return Err(error)
+                    .context("MCP response was printed to stdout; the call was not retried");
             }
             writeln!(
                 stdout,
