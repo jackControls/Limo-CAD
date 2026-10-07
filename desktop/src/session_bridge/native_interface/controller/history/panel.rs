@@ -547,7 +547,7 @@ pub(crate) fn synchronize(
                 }
             }
         }
-        if let Some(rename) = &state.rename {
+        if let Some(rename) = &mut state.rename {
             let scope = "rename-feature";
             let w = 448_f32.min((width - 32.).max(1.));
             let x = (width - w) / 2.;
@@ -592,17 +592,24 @@ pub(crate) fn synchronize(
                 read_only: false,
                 selection: None,
             };
-            state.widgets.button(
+            let mut bounds = rect(x + 16., y + 51., w - 32., 32.);
+            bounds.border = UiRect::all(px(1.));
+            bounds.padding = UiRect::axes(px(8.), px(4.));
+            let entity = state.widgets.button(
                 world,
                 camera,
                 "rename-name",
                 field,
                 None,
                 NativeCommand::History(HistoryCommand::RenameValue(rename.target.id)),
-                rect(x + 16., y + 51., w - 32., 32.),
+                bounds,
                 None,
                 72,
             )?;
+            if !rename.focus_requested {
+                fields::request_focus(world, entity, owner);
+                rename.focus_requested = true;
+            }
             if let Some(error) = &state.error {
                 state.widgets.text(
                     world,

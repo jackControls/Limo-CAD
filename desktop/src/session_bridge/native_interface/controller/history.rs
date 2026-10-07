@@ -100,6 +100,7 @@ struct Target {
 struct Rename {
     target: Target,
     name: String,
+    focus_requested: bool,
 }
 #[derive(Resource, Default)]
 struct History {
@@ -330,6 +331,7 @@ pub(crate) fn reduce(
                     anchor: [0., 0.],
                 },
                 name,
+                focus_requested: false,
             });
             state.error = None;
             Ok(json!({"awaiting_input":true}))

@@ -102,11 +102,24 @@ pub(crate) struct DrawingDimension {
 }
 
 #[derive(Resource, Default)]
-struct RequestedFocus(Option<(Entity, u64, DocumentContext)>);
+struct RequestedFocus(Option<FocusRequest>);
+
+struct FocusRequest {
+    entity: Entity,
+    binding: u64,
+    owner: DocumentContext,
+    modal_scope: Option<String>,
+}
 
 pub(crate) fn request_focus(world: &mut World, entity: Entity, owner: &DocumentContext) {
-    let binding = world.get::<InterfaceControl>(entity).unwrap().binding;
-    world.insert_resource(RequestedFocus(Some((entity, binding, owner.clone()))));
+    let control = world.get::<InterfaceControl>(entity).unwrap();
+    let request = FocusRequest {
+        entity,
+        binding: control.binding,
+        owner: owner.clone(),
+        modal_scope: control.modal_scope.clone(),
+    };
+    world.insert_resource(RequestedFocus(Some(request)));
 }
 
 /// A moving preview must never replace a number or expression being typed,
@@ -121,17 +134,24 @@ pub(crate) fn has_uncommitted_edit(world: &World, entity: Entity) -> bool {
 }
 
 fn apply_requested_focus(world: &mut World) {
-    let Some((entity, binding, owner)) = world.resource_mut::<RequestedFocus>().0.take() else {
+    let Some(request) = world.resource_mut::<RequestedFocus>().0.take() else {
         return;
     };
+    let FocusRequest {
+        entity,
+        binding,
+        ref owner,
+        ref modal_scope,
+    } = request;
     let handle = world.resource::<NativeInterfaceHandle>().clone();
-    if world
-        .get::<InterfaceControl>(entity)
-        .is_none_or(|control| control.binding != binding || !control.visible || control.disabled)
-        || handle
-            .frame()
-            .is_none_or(|frame| frame.context != owner || !frame.modal_stack.is_empty())
-    {
+    if world.get::<InterfaceControl>(entity).is_none_or(|control| {
+        control.binding != binding
+            || control.modal_scope != *modal_scope
+            || !control.visible
+            || control.disabled
+    }) || handle.frame().is_none_or(|frame| {
+        frame.context != *owner || frame.modal_stack.last() != modal_scope.as_ref()
+    }) {
         return;
     }
     // Newly spawned editors can need another text/layout pass before their
@@ -140,9 +160,9 @@ fn apply_requested_focus(world: &mut World) {
     let action = handle
         .resolve_retained(ControlKey(entity.to_bits()))
         .ok()
-        .filter(|action| action.context == owner && action.control.binding() == binding);
+        .filter(|action| action.context == *owner && action.control.binding() == binding);
     let Some(action) = action else {
-        world.resource_mut::<RequestedFocus>().0 = Some((entity, binding, owner));
+        world.resource_mut::<RequestedFocus>().0 = Some(request);
         handle.request_redraw();
         return;
     };
