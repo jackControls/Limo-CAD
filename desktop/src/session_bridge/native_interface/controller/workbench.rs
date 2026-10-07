@@ -294,6 +294,11 @@ pub(super) fn tool_node() -> Node {
     ribbon::node(0., 0., 48.)
 }
 
+/// Status captions reserve space above this retained navigation row.
+pub(super) fn navigation_top(height: f32) -> f32 {
+    height - 94.
+}
+
 fn centered_button(
     (widgets, world, camera): (&mut Widgets, &mut World, Entity),
     (key, label, caption): (&str, &str, &str),

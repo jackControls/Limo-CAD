@@ -1222,6 +1222,7 @@ fn maintain_busy_window(
         let _ = handle.take_actions()?;
         let _ = handle.take_modal_keys()?;
     }
+    let mut status_changed = false;
     if !interface_only {
         let message = if state.close_after_worker {
             "Finishing the current modeling operation before closing…"
@@ -1229,11 +1230,22 @@ fn maintain_busy_window(
             presentation::busy_status(world)
                 .unwrap_or("Building the model… You can still pan, orbit and zoom.")
         };
-        state.status = message.into();
+        status_changed = state.status != message;
+        if status_changed {
+            state.status.clear();
+            state.status.push_str(message);
+        }
+        if let Some(entity) = state.decoration.get("status-clip") {
+            let background = BackgroundColor(crate::native_viewport::ui::theme(world).panel);
+            if world.get::<BackgroundColor>(*entity) != Some(&background) {
+                world.entity_mut(*entity).insert(background);
+            }
+        }
         if let Some(entity) = state.decoration.get("status") {
             if let Some(mut text) = world.get_mut::<Text>(*entity) {
                 if text.0 != message {
                     text.0 = message.into();
+                    status_changed = true;
                     handle.invalidate_presentation();
                 }
             }
@@ -1270,6 +1282,20 @@ fn maintain_busy_window(
                 surface.text = Some(state.status.clone());
             }
             handle.present(frame)?;
+        }
+    }
+    if status_changed {
+        if let Some(mut frame) = handle.frame() {
+            if let Some(surface) = frame
+                .surfaces
+                .iter_mut()
+                .find(|surface| surface.name == "document/status")
+            {
+                if surface.text.as_deref() != Some(state.status.as_str()) {
+                    surface.text = Some(state.status.clone());
+                    handle.present(frame)?;
+                }
+            }
         }
     }
     Ok(())
@@ -2115,7 +2141,6 @@ fn synchronize(
         10,
     );
     let playback_caption = presentation::caption(world);
-    let showing_playback = playback_caption.is_some();
     let status = if let Some(caption) = playback_caption {
         caption
     } else if state.status.is_empty() && files::print_message(world, &owner).is_some() {
@@ -2125,23 +2150,27 @@ fn synchronize(
     } else {
         state.status.clone()
     };
-    if showing_playback {
-        decorate(
-            world,
-            state,
-            camera,
-            &assets,
-            theme,
-            "playback-caption-clip",
-            side + 12.,
-            height - bottom - 90.,
-            (width - side - 24.).max(1.),
-            58.,
-            None,
-            None,
-            20,
-        );
-    }
+    let status_height = 58_f32.min((workbench::navigation_top(height) - top - 8.).max(0.));
+    let status_width = (width - side - 360.).max(1.);
+    decorate(
+        world,
+        state,
+        camera,
+        &assets,
+        theme,
+        "status-clip",
+        side + 12.,
+        (workbench::navigation_top(height) - status_height - 8.).max(top),
+        status_width,
+        status_height,
+        None,
+        Some(if status.is_empty() {
+            Color::NONE
+        } else {
+            theme.panel
+        }),
+        20,
+    );
     decorate(
         world,
         state,
@@ -2149,32 +2178,24 @@ fn synchronize(
         &assets,
         theme,
         "status",
-        if showing_playback { 0. } else { side + 12. },
-        if showing_playback {
-            0.
-        } else {
-            height - bottom - 28.
-        },
-        (width - side - if showing_playback { 24. } else { 360. }).max(1.),
-        if showing_playback { 58. } else { 22. },
+        8.,
+        4.,
+        (status_width - 16.).max(0.),
+        (status_height - 8.).max(0.),
         Some(&status),
         None,
         20,
     );
     let status_entity = state.decoration["status"];
-    if showing_playback {
-        let clip = state.decoration["playback-caption-clip"];
-        if world
-            .get::<ChildOf>(status_entity)
-            .is_none_or(|parent| parent.parent() != clip)
-        {
-            world.entity_mut(status_entity).insert((
-                ChildOf(clip),
-                TextLayout::new(Justify::Left, bevy::text::LineBreak::WordBoundary),
-            ));
-        }
-    } else if world.get::<ChildOf>(status_entity).is_some() {
-        world.entity_mut(status_entity).remove::<ChildOf>();
+    let clip = state.decoration["status-clip"];
+    if world
+        .get::<ChildOf>(status_entity)
+        .is_none_or(|parent| parent.parent() != clip)
+    {
+        world.entity_mut(status_entity).insert((
+            ChildOf(clip),
+            TextLayout::new(Justify::Left, bevy::text::LineBreak::WordOrCharacter),
+        ));
     }
     if state.close_pending {
         decorate(
@@ -2503,6 +2524,10 @@ fn synchronize(
             Surface {
                 name: "document/history".into(),
                 text: None,
+            },
+            Surface {
+                name: "document/status".into(),
+                text: Some(status),
             },
             Surface {
                 name: "document/presentation".into(),

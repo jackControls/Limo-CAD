@@ -315,7 +315,7 @@ pub(super) fn synchronize(
     }
     let nav_width = 336.;
     let nav_x = side + (width - side - nav_width) / 2.;
-    let nav_y = height - 94.;
+    let nav_y = navigation_top(height);
     card(
         (&mut state.widgets, world, camera),
         "navigation",
