@@ -59,6 +59,27 @@ Bevy GUI and MCP builds at `abf4667d`. This checkpoint has 53 named features,
 25 fully constrained sketches, 18 body definitions and 32 placed occurrences.
 It reaches the continuous arm supports; it is not the complete bench recipe.
 
+The separate [human-operated checkpoint](../checkpoints/garden-bench-human-ui.limo)
+records the new Windows UI walkthrough at `43aee81f` on 7 October 2026. It
+contains only the first front post; the complete three-model walkthrough is
+still in progress. Every modeling change used real mouse/keyboard input through
+the optional Rust `native-computer-control` feature, with no recipe replay or
+direct MCP modeling commands. Read-only MCP inspection checked the resulting
+geometry and references.
+
+1. Create an XY sketch and anchor a 65 × 65 mm rectangle at the origin, with
+   driving width/height dimensions. Finish the sketch and extrude 630 mm.
+2. Rename the sketch **Front leg and arm post / stock from A-B-C** and the
+   extrusion **Front leg and arm post / stock from A-B-C / Stock 630 mm**.
+   Undo/Redo the sketch rename; its extrusion reference and feature IDs survive.
+3. Apply **Deep green** (`#41544D`) and **Painted timber (visual designation)**.
+   These are visual metadata, not structural material qualification.
+4. Make the reusable **Front leg and arm post** component, name its occurrence,
+   place it at `[65, 30, 0]` with identity rotation and ground it.
+5. Save through the native picker. Sketch rename was also checked by closing and
+   reopening the document. Continue with the separately defined right front
+   post from the recipe; the pilot holes and remaining assembly are unfinished.
+
 Use the saved **Named Views** for a demonstration:
 
 1. Recall **01 / Front frame assembly**, **03 / Seat support frame** and
