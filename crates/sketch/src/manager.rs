@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::f64::consts::TAU;
 
 mod component_edit;
+mod rename;
 
 use serde::Serialize;
 
@@ -261,8 +262,7 @@ impl SketchManager {
         Ok(self.document_dto())
     }
 
-    /// Rename a solid operation in both history and its persisted definition.
-    /// Source sketches and datum planes retain the names supplied at creation.
+    /// Rename an operation and its persisted source references without recomputing geometry.
     pub fn rename_solid_feature(
         &mut self,
         feature_id: FeatureId,
@@ -270,7 +270,12 @@ impl SketchManager {
     ) -> Result<DocumentDto, SessionError> {
         if self.active.is_some() {
             return Err(SessionError::Solid(
-                "finish the active sketch before renaming a solid feature".into(),
+                "finish the active sketch before renaming a feature".into(),
+            ));
+        }
+        if self.pending_project.is_some() {
+            return Err(SessionError::Solid(
+                "features cannot be renamed during project replacement".into(),
             ));
         }
         let name = name.trim();
@@ -279,24 +284,26 @@ impl SketchManager {
                 "feature name must contain 1 to 256 characters without control characters".into(),
             ));
         }
-        let feature = self
+        let index = self
             .document
-            .features_mut()
+            .features()
             .features
-            .iter_mut()
-            .find(|feature| feature.id == feature_id)
+            .iter()
+            .position(|feature| feature.id == feature_id)
             .ok_or_else(|| SessionError::Solid("the history feature no longer exists".into()))?;
-        if matches!(
-            feature.kind,
-            FeatureKind::Sketch | FeatureKind::ConstructionPlane
-        ) {
-            return Err(SessionError::Solid(
-                "name source sketches and datum planes when creating them".into(),
-            ));
+        match self.document.features().features[index].kind {
+            FeatureKind::Sketch => self.rename_sketch(feature_id, name)?,
+            FeatureKind::ConstructionPlane => {
+                return Err(SessionError::Solid(
+                    "name datum planes when creating them".into(),
+                ));
+            }
+            _ => self
+                .solids
+                .rename_feature(feature_id, name)
+                .map_err(|error| SessionError::Solid(error.to_string()))?,
         }
-        self.solids
-            .rename_feature(feature_id, name)
-            .map_err(|error| SessionError::Solid(error.to_string()))?;
+        let feature = &mut self.document.features_mut().features[index];
         feature.name.clear();
         feature.name.push_str(name);
         Ok(self.document_dto())

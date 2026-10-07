@@ -405,11 +405,7 @@ pub(crate) fn synchronize(
                     (
                         "Rename feature",
                         HistoryCommand::Rename(target.id),
-                        locked
-                            || matches!(
-                                feature.kind,
-                                FeatureKind::Sketch | FeatureKind::ConstructionPlane
-                            ),
+                        locked || feature.kind == FeatureKind::ConstructionPlane,
                     ),
                     (
                         "Roll back before",

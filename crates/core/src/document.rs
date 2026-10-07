@@ -280,6 +280,19 @@ impl Document {
         remove_browser_nodes(&mut self.browser, BrowserNodeKind::Sketch, Some(name), None) > 0
     }
 
+    /// Rename the existing sketch row without replacing its browser identity.
+    pub fn rename_sketch_node(&mut self, old: &str, new: &str) {
+        fn rename(nodes: &mut [BrowserNode], old: &str, new: &str) {
+            for node in nodes {
+                if node.kind == BrowserNodeKind::Sketch && node.name.as_deref() == Some(old) {
+                    node.name = Some(new.to_owned());
+                }
+                rename(&mut node.children, old, new);
+            }
+        }
+        rename(&mut self.browser, old, new);
+    }
+
     /// Remove the browser row owned by a deleted construction plane.
     pub fn remove_construction_plane_node(&mut self, datum_id: u64) -> bool {
         remove_browser_nodes(

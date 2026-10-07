@@ -316,11 +316,8 @@ pub(crate) fn reduce(
                     .iter()
                     .find(|feature| feature.id.0 == id)
                     .ok_or("The history feature no longer exists")?;
-                if matches!(
-                    feature.kind,
-                    FeatureKind::Sketch | FeatureKind::ConstructionPlane
-                ) {
-                    return Err("Name source sketches and datum planes when creating them");
+                if feature.kind == FeatureKind::ConstructionPlane {
+                    return Err("Name datum planes when creating them");
                 }
                 Ok(feature.name.clone())
             })?;

@@ -555,6 +555,25 @@ impl NativeEngineHost {
         let succeeded = serde_json::from_str::<serde_json::Value>(&result)
             .ok()
             .is_some_and(|reply| reply["ok"] == true);
+        if succeeded && method == "solid_rename_feature" {
+            let renamed_sketch = serde_json::from_str::<serde_json::Value>(payload)
+                .ok()
+                .and_then(|request| request["feature_id"].as_u64())
+                .is_some_and(|id| {
+                    inner
+                        .manager
+                        .document()
+                        .features()
+                        .features
+                        .iter()
+                        .any(|feature| {
+                            feature.id.0 == id && feature.kind == limo_cad_core::FeatureKind::Sketch
+                        })
+                });
+            if renamed_sketch {
+                inner.invalidate_viewport();
+            }
+        }
         if succeeded
             && matches!(
                 method,

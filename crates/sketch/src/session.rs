@@ -373,6 +373,11 @@ impl SketchSession {
         &self.name
     }
 
+    pub(crate) fn set_name(&mut self, name: &str) {
+        self.name.clear();
+        self.name.push_str(name);
+    }
+
     pub fn plane(&self) -> PlaneRef {
         self.plane
     }

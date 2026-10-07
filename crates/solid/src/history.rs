@@ -214,6 +214,58 @@ impl SolidDocument {
         Ok(())
     }
 
+    /// Rebind authored sketch references while retaining all evaluated geometry.
+    pub fn rename_sketch_references(&mut self, old: &str, new: &str) -> Result<(), SolidError> {
+        self.ensure_idle()?;
+        let rename = |name: &mut String| {
+            if name == old {
+                name.clear();
+                name.push_str(new);
+            }
+        };
+        for definition in &mut self.extrudes {
+            rename(&mut definition.sketch_name);
+        }
+        for definition in &mut self.revolves {
+            rename(&mut definition.sketch_name);
+            if let Some(name) = &mut definition.axis_line_sketch_name {
+                rename(name);
+            }
+        }
+        for definition in &mut self.sweeps {
+            rename(&mut definition.profile.sketch_name);
+            rename(&mut definition.path_sketch_name);
+            if let Some(guide) = &mut definition.guide_rail {
+                rename(&mut guide.sketch_name);
+            }
+        }
+        for definition in &mut self.lofts {
+            for section in &mut definition.sections {
+                rename(&mut section.sketch_name);
+            }
+            for path in [&mut definition.centerline, &mut definition.guide_rail]
+                .into_iter()
+                .flatten()
+            {
+                rename(&mut path.sketch_name);
+            }
+        }
+        for definition in &mut self.ribs {
+            rename(&mut definition.sketch_name);
+        }
+        for definition in &mut self.holes {
+            if let Some(reference) = &mut definition.position_reference {
+                rename(&mut reference.sketch_name);
+            }
+            for position in &mut definition.positions {
+                if let Some(reference) = &mut position.position_reference {
+                    rename(&mut reference.sketch_name);
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn set_feature_order(&mut self, order: &[FeatureId]) -> Result<(), SolidError> {
         self.ensure_idle()?;
         self.feature_order = order

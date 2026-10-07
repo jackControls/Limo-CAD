@@ -168,6 +168,33 @@ pub(crate) fn reduce(
     let node = action_node(engine, id)?;
     world.init_resource::<Browser>();
     let input = &action.control.input;
+    if matches!(command, BrowserCommand::Select(_))
+        && node.kind == Kind::Sketch
+        && (matches!(input, ControlInput::ContextMenu)
+            || matches!(input, ControlInput::Key(key) if key.key == "ContextMenu" || (key.key == "F10" && key.shift)))
+    {
+        let feature_id = engine.with_document(|document| {
+            document
+                .features()
+                .features
+                .iter()
+                .find(|feature| {
+                    feature.kind == limo_cad_core::FeatureKind::Sketch
+                        && node.name.as_deref() == Some(feature.name.as_str())
+                })
+                .map(|feature| feature.id.0)
+                .ok_or("The sketch history feature no longer exists")
+        })?;
+        world.resource_mut::<Browser>().selected = Some(id);
+        return history::reduce(
+            world,
+            handle,
+            engine,
+            bridge,
+            action,
+            &history::HistoryCommand::Select(feature_id),
+        );
+    }
     if let ControlInput::Key(chord) = input {
         if !chord.ctrl
             && !chord.meta
@@ -408,7 +435,7 @@ fn button(
         _ => "solid/selection",
     }
     .into();
-    if matches!(command, BrowserCommand::Select(_)) {
+    if let BrowserCommand::Select(id) = command {
         control.role = "treeitem".into();
         control.owned_keys = ["ArrowLeft", "ArrowRight"]
             .map(|key| KeyChord {
@@ -416,6 +443,19 @@ fn button(
                 ..default()
             })
             .to_vec();
+        if state
+            .document
+            .as_ref()
+            .and_then(|document| find(&document.browser, id))
+            .is_some_and(|node| node.kind == Kind::Sketch)
+        {
+            control.owned_keys.push(KeyChord::plain("ContextMenu"));
+            control.owned_keys.push(KeyChord {
+                key: "F10".into(),
+                shift: true,
+                ..default()
+            });
+        }
     }
     if world.get::<InterfaceControl>(entity) != Some(&control) {
         world.entity_mut(entity).insert(control);
