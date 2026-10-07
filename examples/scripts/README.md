@@ -61,8 +61,9 @@ It reaches the continuous arm supports; it is not the complete bench recipe.
 
 The separate [human-operated checkpoint](../checkpoints/garden-bench-human-ui.limo)
 records the Windows UI walkthrough through `69e66631` on 7 October 2026.
-It contains ten named features, four separately defined and placed posts,
-two left-front apron pilots, six right-front rail/arm pilots and three
+It contains twelve named features, four separately defined and placed posts,
+two shared long-apron occurrences, two left-front apron pilots,
+six right-front rail/arm pilots and four
 presentation views. The three-model walkthrough is still in progress.
 Every modeling change used real mouse/keyboard input through
 the optional Rust `native-computer-control` feature, with no recipe replay or
@@ -116,8 +117,15 @@ geometry and references.
 14. Save **03 / Four post stocks and handed pilots** with all four bodies visible,
     then save the project through the native picker. Named views retain camera
     and visibility, so recalling an earlier chapter shows its bodies' current
-    geometry; it does not roll back the feature history. Other post pilots,
-    aprons, rails, joints, drawing sheets and print layouts remain unfinished.
+    geometry; it does not roll back the feature history.
+15. Create a fully constrained 1070 × 28 mm XY rectangle and extrude 155 mm
+    as **Long apron — face lap / stock from A-B-C / Stock 155 mm**. Apply the
+    same painted-timber metadata, make one reusable definition and place its
+    front/rear occurrences at `[65, 2, 260]` and `[65, 445, 260]`, with identity
+    rotations. Their tops are at Z = 415 mm. Save **04 / Front and rear face-lap
+    aprons** with all five bodies visible, then save the document. Other post
+    pilots, apron/rail clearance bores, side rails, joints, drawing sheets and
+    print layouts remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 
