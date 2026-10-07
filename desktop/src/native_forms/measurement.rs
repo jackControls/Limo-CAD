@@ -54,6 +54,13 @@ impl MeasurementInput {
         }
     }
 
+    /// Compact read-only length labels do not replace the editor's exact measurement text.
+    pub(crate) fn display_length(canonical: f64, units: UnitSystem) -> String {
+        let value = canonical / length_scale(units);
+        let value = if value.abs() < 0.0005 { 0. } else { value };
+        limo_cad_occt::drawing_presentation::text::trim(value, 3)
+    }
+
     pub(crate) fn text(&self) -> &str {
         &self.text
     }

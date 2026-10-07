@@ -93,6 +93,22 @@ impl Position {
         }
         std::array::from_fn(|axis| self.uv[axis].text().to_owned())
     }
+
+    fn summary_uv(&self, model: &FormModel<'_>, basis: Option<PlaneBasis>) -> [String; 2] {
+        let reference = self.reference.as_ref().and_then(|reference| {
+            basis.and_then(|basis| reference_position(reference, model, basis).ok())
+        });
+        std::array::from_fn(|axis| {
+            let value = if self.reference.is_some() {
+                reference.map(|uv| uv[axis])
+            } else {
+                self.uv[axis].evaluate(model).ok()
+            };
+            value
+                .map(|v| MeasurementInput::display_length(v, model.document.settings.units))
+                .unwrap_or_else(|| "—".into())
+        })
+    }
 }
 fn length(v: f64, units: UnitSystem) -> MeasurementInput {
     MeasurementInput::new(DimensionKind::Length, v, units)
@@ -709,7 +725,7 @@ impl SolidForm {
                         .iter()
                         .enumerate()
                         .map(|(index, p)| {
-                            let uv = p.display_uv(model, basis);
+                            let uv = p.summary_uv(model, basis);
                             let association = if let Some(reference) = &p.reference {
                                 format!(" · linked to {}", reference.sketch_name)
                             } else {

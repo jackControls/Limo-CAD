@@ -1293,7 +1293,7 @@ pub(crate) fn compact_label(world: &mut World, entity: Entity, inset: f32) {
 #[derive(Component)]
 struct CaptionClip(Entity);
 
-/// Clip the painted caption while retaining the control's full accessible name
+/// Clip a single-line caption while retaining the control's full accessible name
 /// and hit area. Bevy clips descendants, so the text needs its own container.
 pub(crate) fn clip_caption(world: &mut World, entity: Entity, inset: f32, trailing: f32) {
     let label = world.get::<InterfaceLabel>(entity).unwrap().0;
@@ -1306,17 +1306,23 @@ pub(crate) fn clip_caption(world: &mut World, entity: Entity, inset: f32, traili
             .add_child(clip)
             .insert(CaptionClip(clip));
         world.entity_mut(clip).add_child(label);
-        caption_node(
-            world,
-            entity,
-            Node {
-                min_width: px(0.),
-                flex_shrink: 0.,
-                ..default()
-            },
-        );
         clip
     };
+    caption_node(
+        world,
+        entity,
+        Node {
+            min_width: px(0.),
+            flex_shrink: 0.,
+            ..default()
+        },
+    );
+    let layout = TextLayout::no_wrap();
+    if world.get::<TextLayout>(label).is_none_or(|current| {
+        current.justify != layout.justify || current.linebreak != layout.linebreak
+    }) {
+        world.entity_mut(label).insert(layout);
+    }
     let bounds = Node {
         position_type: PositionType::Absolute,
         left: px(inset),

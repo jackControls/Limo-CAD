@@ -1097,20 +1097,27 @@ fn widget(
             if world.get::<interface_shell::InterfaceCaption>(entity) != Some(&caption) {
                 world.entity_mut(entity).insert(caption);
             }
-            interface_shell::caption_node(
-                world,
-                entity,
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: px(8.),
-                    right: px(24.),
-                    top: px(5.),
-                    height: px(20.),
-                    ..default()
-                },
-            );
+            if key == "HolePositionSelection" {
+                interface_shell::clip_caption(world, entity, 8., 24.);
+            } else {
+                interface_shell::caption_node(
+                    world,
+                    entity,
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: px(8.),
+                        right: px(24.),
+                        top: px(5.),
+                        height: px(20.),
+                        ..default()
+                    },
+                );
+            }
             interface_shell::caption_weight(world, entity, FontWeight::NORMAL);
         }
+    }
+    if key.starts_with("HolePositionSelection-option-") {
+        interface_shell::clip_caption(world, entity, 8., 8.);
     }
     Ok(())
 }
