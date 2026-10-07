@@ -28,6 +28,35 @@ struct AnnotationState {
     widgets: Widgets,
 }
 
+pub(super) fn geometry_tool_active(editor: &Editor) -> bool {
+    editor.draft.tool.is_some()
+        || editor.interaction.dimension.is_some()
+        || editor.interaction.reposition_dimension.is_some()
+        || editor.interaction.relation.is_some()
+        || editor.interaction.modify.is_some()
+        || editor.interaction.form.is_some()
+}
+
+fn annotation_input(world: &mut World, entity: Entity, geometry_tool: bool) {
+    if geometry_tool {
+        if world
+            .get::<interface_shell::InterfacePointerPassthrough>(entity)
+            .is_none()
+        {
+            world
+                .entity_mut(entity)
+                .insert(interface_shell::InterfacePointerPassthrough);
+        }
+    } else if world
+        .get::<interface_shell::InterfacePointerPassthrough>(entity)
+        .is_some()
+    {
+        world
+            .entity_mut(entity)
+            .remove::<interface_shell::InterfacePointerPassthrough>();
+    }
+}
+
 fn projected(p: Point, a: Point, b: Point) -> Point {
     let d = b - a;
     let n = d.dot(d);
@@ -223,6 +252,7 @@ pub(super) fn synchronize(
     let result = (|| {
         let (_, view, _, size) = native_viewport::interface_view(world);
         let visibility = palette::visibility(world);
+        let geometry_tool = geometry_tool_active(editor);
         let mut key: Vec<_> = view
             .position
             .into_iter()
@@ -243,6 +273,7 @@ pub(super) fn synchronize(
         key.extend([
             visibility.hide_dimensions as u32,
             visibility.hide_constraints as u32,
+            geometry_tool as u32,
         ]);
         let appearance = native_viewport::ui::appearance_revision(world);
         key.extend([appearance as u32, (appearance >> 32) as u32]);
@@ -326,10 +357,11 @@ pub(super) fn synchronize(
                     20.,
                 );
                 bounds.justify_content = JustifyContent::Center;
-                let c = InterfaceControl::button(
+                let mut c = InterfaceControl::button(
                     "sketch/dimension",
                     format!("Edit dimension {}: {}", dim.constraint_id.0, dim.text),
                 );
+                c.disabled = geometry_tool;
                 let entity = state.widgets.button(
                     world,
                     camera,
@@ -343,6 +375,7 @@ pub(super) fn synchronize(
                     None,
                     22,
                 )?;
+                annotation_input(world, entity, geometry_tool);
                 interface_shell::dimension_label(
                     world,
                     entity,
@@ -398,7 +431,8 @@ pub(super) fn synchronize(
                     format!("Constraint {}: {}", constraint.id.0, kind.replace('_', " ")),
                 );
                 control.selected = Some(selected == constraint.id.0);
-                state.widgets.button(
+                control.disabled = geometry_tool;
+                let entity = state.widgets.button(
                     world,
                     camera,
                     &format!("constraint-{}", constraint.id.0),
@@ -411,6 +445,7 @@ pub(super) fn synchronize(
                     Some(Icon::Relation(relation_icon(kind))),
                     22,
                 )?;
+                annotation_input(world, entity, geometry_tool);
             }
         }
         state.widgets.finish(world);

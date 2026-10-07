@@ -64,6 +64,7 @@ type RenderedControlQuery<'w, 's> = Query<
         Option<Ref<'static, InheritedVisibility>>,
         Option<&'static bevy::text::EditableText>,
         Option<Ref<'static, InterfaceTextRevision>>,
+        Option<Ref<'static, InterfacePointerPassthrough>>,
     ),
 >;
 
@@ -175,6 +176,11 @@ pub struct InterfaceControl {
 /// font-layout updates must not clone long editor values into every frame.
 #[derive(Component, Default)]
 pub(crate) struct InterfaceTextRevision(pub u64);
+
+/// Keep an annotation painted while the active geometry tool owns its clicks.
+/// Its retained control remains inspectable, with activation disabled.
+#[derive(Component)]
+pub(crate) struct InterfacePointerPassthrough;
 
 /// A painted panel blocks model picking without inventing an actionable
 /// control for its background. Its children retain normal control semantics.
@@ -1898,6 +1904,7 @@ fn publish_layout(
     occluders: OccluderQuery,
     mut removed_occluders: RemovedComponents<InterfaceOccluder>,
     mut removed_canvas_owners: RemovedComponents<InterfaceCanvasOccluder>,
+    mut removed_passthrough: RemovedComponents<InterfacePointerPassthrough>,
     mut removed: RemovedComponents<InterfaceControl>,
     mut removed_clips: RemovedComponents<CalculatedClip>,
     mut last_revision: Local<Option<u64>>,
@@ -1908,7 +1915,8 @@ fn publish_layout(
     let removed = removed.read().count() > 0
         || removed_clips.read().count() > 0
         || removed_occluders.read().count() > 0
-        || removed_canvas_owners.read().count() > 0;
+        || removed_canvas_owners.read().count() > 0
+        || removed_passthrough.read().count() > 0;
     if *last_revision == Some(shared.revision)
         && !removed
         && scale
@@ -1925,7 +1933,7 @@ fn publish_layout(
                     || canvas.as_ref().is_some_and(|canvas| canvas.is_changed())
             })
         && !controls.iter().any(
-            |(_, control, node, transform, stack, clip, visibility, _, text)| {
+            |(_, control, node, transform, stack, clip, visibility, _, text, passthrough)| {
                 control.is_changed()
                     || node.is_changed()
                     || transform.is_changed()
@@ -1935,6 +1943,9 @@ fn publish_layout(
                         .as_ref()
                         .is_some_and(|visibility| visibility.is_changed())
                     || text.as_ref().is_some_and(|revision| revision.is_changed())
+                    || passthrough
+                        .as_ref()
+                        .is_some_and(|marker| marker.is_changed())
             },
         )
     {
@@ -1950,7 +1961,18 @@ fn publish_layout(
     let mut stacked: Vec<_> = controls
         .iter()
         .map(
-            |(entity, control, computed, transform, stack, clip, visibility, editor, _)| {
+            |(
+                entity,
+                control,
+                computed,
+                transform,
+                stack,
+                clip,
+                visibility,
+                editor,
+                _,
+                passthrough,
+            )| {
                 let area = HitArea::new(&computed, &transform, clip.as_deref(), frame.surface);
                 let bounds = area.bounds;
                 (
@@ -1968,7 +1990,7 @@ fn publish_layout(
                             && visibility
                                 .as_ref()
                                 .is_some_and(|visibility| visibility.get()),
-                        disabled: control.disabled,
+                        disabled: control.disabled || passthrough.is_some(),
                         expanded: control.expanded,
                         selected: control.selected,
                         field: match (&control.field, editor) {
@@ -1998,15 +2020,16 @@ fn publish_layout(
                         owned_keys: control.owned_keys.clone(),
                     },
                     area,
+                    passthrough.is_some(),
                 )
             },
         )
         .collect();
-    stacked.sort_by_key(|(stack, _, _)| *stack);
+    stacked.sort_by_key(|(stack, _, _, _)| *stack);
     let mut hits: Vec<_> = stacked
         .iter()
-        .filter(|(_, control, _)| control.visible)
-        .map(|(stack, control, area)| (*stack, HitTarget::Control(control.key), area.clone()))
+        .filter(|(_, control, _, passthrough)| control.visible && !*passthrough)
+        .map(|(stack, control, area, _)| (*stack, HitTarget::Control(control.key), area.clone()))
         .collect();
     for (node, transform, stack, clip, visibility, canvas) in &occluders {
         if !visibility.get() {
@@ -2025,7 +2048,10 @@ fn publish_layout(
         .into_iter()
         .map(|(_, key, bounds)| (key, bounds))
         .collect();
-    let mut published: Vec<_> = stacked.into_iter().map(|(_, control, _)| control).collect();
+    let mut published: Vec<_> = stacked
+        .into_iter()
+        .map(|(_, control, _, _)| control)
+        .collect();
     published.sort_by(|a, b| {
         a.bounds
             .y

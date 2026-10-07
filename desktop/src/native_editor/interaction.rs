@@ -235,6 +235,13 @@ pub(super) fn execute(
     validate: impl FnOnce() -> Result<(), String>,
 ) -> Result<Value, String> {
     bridge.with_native_document_owner(engine, owner, validate)?;
+    if matches!(
+        command,
+        InteractionCommand::EditDimension(_) | InteractionCommand::ConstraintInfo(_)
+    ) && annotations::geometry_tool_active(editor)
+    {
+        return Err("Finish or cancel the active tool before editing an annotation".into());
+    }
     let sketch = active(engine)?.ok_or("Start or edit a sketch first")?;
     editor.draft.select(None);
     editor.press = None;
