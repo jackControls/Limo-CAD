@@ -788,7 +788,7 @@ fn desktop_not_ready() -> String {
 }
 
 /// OS input is restricted to the process lease's current active document.
-#[cfg(windows)]
+#[cfg(all(windows, feature = "native-computer-control"))]
 pub(super) fn computer_control_owner(session_id: &str) -> Result<Value, String> {
     require_valid_session_id(session_id)?;
     require_open_session(session_id)?;

@@ -15,6 +15,7 @@ crate-type = ["rlib"]
 
 [features]
 default = []
+native-computer-control = ["limo-cad-mcp/native-computer-control"]
 dev-ui-lab = ["bevy/bevy_log"]
 dev-native-ime-trace = ["bevy/bevy_log"]
 
