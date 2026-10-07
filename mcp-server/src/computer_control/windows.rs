@@ -2,6 +2,7 @@ use std::mem::size_of;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use enigo::{Axis, Button, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use windows_sys::Win32::Foundation::{
@@ -16,7 +17,7 @@ use windows_sys::Win32::UI::HiDpi::{
     GetDpiForWindow, SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT,
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
 };
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 use crate::{build_pair, session};
@@ -74,7 +75,7 @@ impl DesktopProcess {
         if unsafe { WaitForSingleObject(self.0 as HANDLE, 0) } == WAIT_TIMEOUT {
             Ok(())
         } else {
-            Err("Observed CAD process has exited or is unavailable; no input was sent".into())
+            Err("Observed CAD process has exited or is unavailable".into())
         }
     }
 }
@@ -87,12 +88,12 @@ impl Drop for DesktopProcess {
 }
 
 #[derive(Default)]
-pub(super) struct ComputerControl {
+pub(crate) struct ComputerControl {
     observation: Option<Observation>,
 }
 
 impl ComputerControl {
-    pub(super) fn call(
+    pub(crate) fn call(
         &mut self,
         arguments: &Value,
         attached: Option<&str>,
@@ -253,10 +254,10 @@ impl ComputerControl {
                 "hint":"Observe again before sending mouse or keyboard input."}),
             );
         }
-        guard_foreground(hwnd)?;
+        guard_foreground(hwnd, false)?;
         guard_held_input()?;
-        let inputs = inputs(&request, &observed, hwnd)?;
-        guard_foreground(hwnd)?;
+        let plan = plan(&request, &observed, hwnd)?;
+        guard_foreground(hwnd, false)?;
         if Some(client_bounds(hwnd)?) != observed.bounds
             || session::computer_control_owner(session_id)? != observed.owner
             || session::now_ms() > observed.expires_ms
@@ -264,20 +265,46 @@ impl ComputerControl {
             return Err("Desktop moved or changed immediately before input; observe again".into());
         }
         observed.process.verify()?;
-        let sent = unsafe {
-            SendInput(
-                inputs.len() as u32,
-                inputs.as_ptr(),
-                size_of::<INPUT>() as i32,
-            )
-        };
-        if sent as usize != inputs.len() {
-            let error = std::io::Error::last_os_error();
-            let released = release_inserted(&inputs[..sent as usize]);
-            return Err(format!("Windows inserted {sent}/{} input events ({error}); {released} release events inserted to avoid held input. Do not repeat the action without observing the result", inputs.len()));
+        let mut driver = InputDriver::new()?;
+        let mut completed = 0;
+        let mut pointer = None;
+        for step in &plan {
+            let guard = guard_action(&observed, hwnd, driver.holds_button(), completed == 0)
+                .and_then(|()| match *step {
+                    Step::Move(point) => guard_pointer(point, hwnd),
+                    Step::Button(_, _) | Step::Scroll(_) => guard_cursor(
+                        pointer.ok_or("Pointer input has no planned position")?,
+                        hwnd,
+                    ),
+                    _ => Ok(()),
+                });
+            if let Err(error) = guard {
+                if completed == 0 {
+                    return Err(error);
+                }
+                let cleanup_errors = driver.release_all();
+                return Ok(json!({"status":"input_incomplete","action":request.action,
+                    "backend":"enigo","completed_primitives":completed,"planned_primitives":plan.len(),
+                    "failed_primitive":step.kind(),"error":error,"cleanup_errors":cleanup_errors,
+                    "input_may_have_been_inserted":true,"owner":observed.owner,
+                    "observation_consumed":true,"hint":"Input stopped when an ownership, focus or visibility guard changed. Observe and capture the result; do not blindly retry."}));
+            }
+            if let Err(error) = driver.apply(*step) {
+                let cleanup_errors = driver.release_all();
+                return Ok(json!({"status":"input_incomplete","action":request.action,
+                    "backend":"enigo","completed_primitives":completed,"planned_primitives":plan.len(),
+                    "failed_primitive":step.kind(),"error":error,"cleanup_errors":cleanup_errors,
+                    "input_may_have_been_inserted":true,"owner":observed.owner,
+                    "observation_consumed":true,"hint":"The input backend cannot report how many events a failed primitive inserted. Owned held keys/buttons received one release attempt. Observe and capture the result; do not blindly retry."}));
+            }
+            if let Step::Move(point) = *step {
+                pointer = Some(point);
+            }
+            completed += 1;
         }
         Ok(
-            json!({"status":"input_sent","action":request.action,"event_count":sent,"owner":observed.owner,
+            json!({"status":"input_sent","action":request.action,"backend":"enigo",
+            "completed_primitives":completed,"owner":observed.owner,
             "observation_consumed":true,"hint":"OS insertion does not confirm product behavior. Observe and capture before the next action; do not blindly retry."}),
         )
     }
@@ -441,7 +468,7 @@ fn client_bounds(hwnd: HWND) -> Result<[i32; 4], String> {
     Ok(bounds)
 }
 
-fn guard_foreground(hwnd: HWND) -> Result<(), String> {
+fn guard_foreground(hwnd: HWND, owns_capture: bool) -> Result<(), String> {
     if unsafe { GetForegroundWindow() } != hwnd {
         return Err("CAD is not the foreground window; focus it and observe again".into());
     }
@@ -452,14 +479,55 @@ fn guard_foreground(hwnd: HWND) -> Result<(), String> {
         ..Default::default()
     };
     if unsafe { GetGUIThreadInfo(thread, &mut info) } == 0
-        || !info.hwndCapture.is_null()
+        || (!info.hwndCapture.is_null()
+            && (!owns_capture || unsafe { GetAncestor(info.hwndCapture, GA_ROOT) } != hwnd))
         || !info.hwndMenuOwner.is_null()
+        || (!info.hwndFocus.is_null() && unsafe { GetAncestor(info.hwndFocus, GA_ROOT) } != hwnd)
     {
-        return Err(
-            "CAD input is captured by an existing gesture or native menu; no input was sent".into(),
-        );
+        return Err("CAD input is captured by an existing gesture or native menu".into());
     }
     Ok(())
+}
+
+fn guard_action(
+    observed: &Observation,
+    hwnd: HWND,
+    owns_capture: bool,
+    first: bool,
+) -> Result<(), String> {
+    observed.process.verify()?;
+    let mut pid = 0;
+    unsafe {
+        GetWindowThreadProcessId(hwnd, &mut pid);
+    }
+    if unsafe { IsWindow(hwnd) } == 0
+        || unsafe { IsWindowEnabled(hwnd) } == 0
+        || unsafe { IsWindowVisible(hwnd) } == 0
+        || unsafe { IsIconic(hwnd) } != 0
+        || observed.owner["pid"].as_u64() != Some(pid as u64)
+        || session::now_ms() > observed.expires_ms
+        || Some(client_bounds(hwnd)?) != observed.bounds
+    {
+        return Err("Observed CAD window is no longer available at its qualified bounds".into());
+    }
+    let session_id = observed.owner["session_id"]
+        .as_str()
+        .ok_or("Observation has no session")?;
+    let current = session::computer_control_owner(session_id)?;
+    if (first && current != observed.owner)
+        || [
+            "session_id",
+            "window_id",
+            "document_id",
+            "process_instance_id",
+            "pid",
+        ]
+        .iter()
+        .any(|field| current[*field] != observed.owner[*field])
+    {
+        return Err("Active CAD document or window owner changed during input".into());
+    }
+    guard_foreground(hwnd, owns_capture)
 }
 
 fn guard_held_input() -> Result<(), String> {
@@ -473,149 +541,208 @@ fn guard_held_input() -> Result<(), String> {
     Ok(())
 }
 
-fn mouse(flags: u32, data: u32, dx: i32, dy: i32) -> INPUT {
-    INPUT {
-        r#type: INPUT_MOUSE,
-        Anonymous: INPUT_0 {
-            mi: MOUSEINPUT {
-                dx,
-                dy,
-                mouseData: data,
-                dwFlags: flags,
-                ..Default::default()
-            },
-        },
-    }
-}
-
-fn move_to(point: [i32; 2], observed: &Observation, hwnd: HWND) -> Result<INPUT, String> {
-    let _dpi = DpiGuard::enter()?;
+fn screen_point(point: [i32; 2], observed: &Observation, hwnd: HWND) -> Result<[i32; 2], String> {
     let bounds = observed
         .bounds
         .ok_or("This observation has no qualified pointer coordinates")?;
     if point[0] < 0 || point[1] < 0 || point[0] >= bounds[2] || point[1] >= bounds[3] {
         return Err("Pointer point is outside the observed CAD client rectangle".into());
     }
-    let screen = POINT {
-        x: bounds[0] + point[0],
-        y: bounds[1] + point[1],
-    };
-    let target = unsafe { WindowFromPoint(screen) };
-    if target.is_null() || unsafe { GetAncestor(target, GA_ROOT) } != hwnd {
-        return Err("Pointer target is occluded by another window; no input was sent".into());
-    }
-    let origin_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
-    let origin_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
-    let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
-    let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
-    if width <= 1 || height <= 1 {
-        return Err("Windows virtual screen has no drawable bounds".into());
-    }
-    let x = ((screen.x - origin_x) as i64 * 65535 / (width - 1) as i64) as i32;
-    let y = ((screen.y - origin_y) as i64 * 65535 / (height - 1) as i64) as i32;
-    Ok(mouse(
-        MOUSEEVENTF_MOVE
-            | MOUSEEVENTF_ABSOLUTE
-            | MOUSEEVENTF_VIRTUALDESK
-            | MOUSEEVENTF_MOVE_NOCOALESCE,
-        0,
-        x,
-        y,
-    ))
+    let screen = [
+        bounds[0]
+            .checked_add(point[0])
+            .ok_or("Pointer X overflow")?,
+        bounds[1]
+            .checked_add(point[1])
+            .ok_or("Pointer Y overflow")?,
+    ];
+    guard_pointer(screen, hwnd)?;
+    Ok(screen)
 }
 
-fn keyboard(key: u16, scan: u16, flags: u32) -> INPUT {
-    INPUT {
-        r#type: INPUT_KEYBOARD,
-        Anonymous: INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: key,
-                wScan: scan,
-                dwFlags: flags,
-                ..Default::default()
-            },
-        },
-    }
-}
-
-/// On a partial insertion only release keys/buttons this request pressed.
-fn release_inserted(inserted: &[INPUT]) -> u32 {
-    let releases: Vec<_> = inserted
-        .iter()
-        .filter_map(|input| unsafe {
-            match input.r#type {
-                INPUT_KEYBOARD => {
-                    let key = input.Anonymous.ki;
-                    (key.dwFlags & KEYEVENTF_KEYUP == 0)
-                        .then(|| keyboard(key.wVk, key.wScan, key.dwFlags | KEYEVENTF_KEYUP))
-                }
-                INPUT_MOUSE => {
-                    let flags = input.Anonymous.mi.dwFlags;
-                    let up = if flags & MOUSEEVENTF_LEFTDOWN != 0 {
-                        MOUSEEVENTF_LEFTUP
-                    } else if flags & MOUSEEVENTF_MIDDLEDOWN != 0 {
-                        MOUSEEVENTF_MIDDLEUP
-                    } else if flags & MOUSEEVENTF_RIGHTDOWN != 0 {
-                        MOUSEEVENTF_RIGHTUP
-                    } else {
-                        return None;
-                    };
-                    Some(mouse(up, 0, 0, 0))
-                }
-                _ => None,
-            }
+fn guard_pointer(screen: [i32; 2], hwnd: HWND) -> Result<(), String> {
+    let _dpi = DpiGuard::enter()?;
+    let target = unsafe {
+        WindowFromPoint(POINT {
+            x: screen[0],
+            y: screen[1],
         })
-        .collect();
-    if releases.is_empty() {
-        0
-    } else {
-        unsafe {
-            SendInput(
-                releases.len() as u32,
-                releases.as_ptr(),
-                size_of::<INPUT>() as i32,
-            )
+    };
+    if target.is_null() || unsafe { GetAncestor(target, GA_ROOT) } != hwnd {
+        return Err("Pointer target is occluded by another window".into());
+    }
+    Ok(())
+}
+
+fn guard_cursor(expected: [i32; 2], hwnd: HWND) -> Result<(), String> {
+    let _dpi = DpiGuard::enter()?;
+    let mut actual = POINT::default();
+    if unsafe { GetCursorPos(&mut actual) } == 0 || [actual.x, actual.y] != expected {
+        return Err("Cursor moved away from its qualified CAD target".into());
+    }
+    guard_pointer(expected, hwnd)
+}
+
+/// Enigo 0.6.1 absolute movement normalizes against the primary monitor only.
+/// Native physical positioning preserves negative and mixed-DPI monitor coordinates.
+fn position_cursor(screen: [i32; 2]) -> Result<(), String> {
+    let _dpi = DpiGuard::enter()?;
+    let mut actual = POINT::default();
+    if unsafe { SetCursorPos(screen[0], screen[1]) } == 0
+        || unsafe { GetCursorPos(&mut actual) } == 0
+        || [actual.x, actual.y] != screen
+    {
+        return Err("Windows did not position the cursor at the qualified CAD point".into());
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum Step<'a> {
+    Move([i32; 2]),
+    Button(Button, Direction),
+    Key(Key, Direction),
+    Scroll(i32),
+    Text(&'a str),
+}
+
+impl Step<'_> {
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::Move(_) => "pointer_move",
+            Self::Button(_, Direction::Press) => "button_press",
+            Self::Button(_, _) => "button_release",
+            Self::Key(_, Direction::Press) => "key_press",
+            Self::Key(_, _) => "key_release",
+            Self::Scroll(_) => "wheel",
+            Self::Text(_) => "text",
         }
     }
 }
 
-fn inputs(request: &Request, observed: &Observation, hwnd: HWND) -> Result<Vec<INPUT>, String> {
-    let mut inputs = Vec::new();
+#[derive(Clone, Copy, PartialEq)]
+enum Held {
+    Button(Button),
+    Key(Key),
+}
+
+/// Track attempted presses too: a failed Enigo call may already have inserted input.
+struct InputDriver {
+    enigo: Enigo,
+    held: Vec<Held>,
+}
+
+impl InputDriver {
+    fn new() -> Result<Self, String> {
+        let settings = Settings {
+            release_keys_when_dropped: false,
+            ..Default::default()
+        };
+        Ok(Self {
+            enigo: Enigo::new(&settings).map_err(|error| error.to_string())?,
+            held: Vec::new(),
+        })
+    }
+
+    fn holds_button(&self) -> bool {
+        self.held.iter().any(|held| matches!(held, Held::Button(_)))
+    }
+
+    fn apply(&mut self, step: Step<'_>) -> Result<(), String> {
+        let held = match step {
+            Step::Button(button, direction) => Some((Held::Button(button), direction)),
+            Step::Key(key, direction) => Some((Held::Key(key), direction)),
+            _ => None,
+        };
+        if let Some((held, Direction::Press)) = held {
+            self.held.push(held);
+        }
+        match step {
+            Step::Move(point) => position_cursor(point)?,
+            Step::Button(button, direction) => self
+                .enigo
+                .button(button, direction)
+                .map_err(|error| error.to_string())?,
+            Step::Key(key, direction) => self
+                .enigo
+                .key(key, direction)
+                .map_err(|error| error.to_string())?,
+            Step::Scroll(notches) => self
+                .enigo
+                .scroll(notches, Axis::Vertical)
+                .map_err(|error| error.to_string())?,
+            Step::Text(text) => self.enigo.text(text).map_err(|error| error.to_string())?,
+        }
+        if let Some((held, Direction::Release)) = held {
+            self.held.retain(|candidate| *candidate != held);
+        }
+        Ok(())
+    }
+
+    fn release_all(&mut self) -> Vec<String> {
+        let mut errors = Vec::new();
+        for held in self.held.drain(..).rev() {
+            let result = match held {
+                Held::Button(button) => self.enigo.button(button, Direction::Release),
+                Held::Key(key) => self.enigo.key(key, Direction::Release),
+            };
+            if let Err(error) = result {
+                errors.push(error.to_string());
+            }
+        }
+        errors
+    }
+}
+
+impl Drop for InputDriver {
+    fn drop(&mut self) {
+        let _ = self.release_all();
+    }
+}
+
+fn plan<'a>(
+    request: &'a Request,
+    observed: &Observation,
+    hwnd: HWND,
+) -> Result<Vec<Step<'a>>, String> {
+    let mut steps = Vec::new();
     match request.action.as_str() {
         "click" | "double_click" | "drag" | "wheel" => {
             let point = request
                 .point
                 .ok_or("Pointer input needs point in physical client pixels")?;
-            inputs.push(move_to(point, observed, hwnd)?);
+            steps.push(Step::Move(screen_point(point, observed, hwnd)?));
             if request.action == "wheel" {
                 let delta = request
                     .delta
-                    .filter(|delta| *delta != 0 && (-1200..=1200).contains(delta))
-                    .ok_or("Wheel delta must be nonzero and from -1200 to 1200")?;
-                inputs.push(mouse(MOUSEEVENTF_WHEEL, delta as u32, 0, 0));
+                    .filter(|delta| {
+                        *delta != 0 && (-1200..=1200).contains(delta) && *delta % 120 == 0
+                    })
+                    .ok_or("Wheel delta must be a nonzero multiple of 120 from -1200 to 1200")?;
+                steps.push(Step::Scroll(-delta / 120));
             } else {
-                let (down, up) = match request.button.as_deref().unwrap_or("left") {
-                    "left" => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
-                    "middle" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
-                    "right" => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+                let button = match request.button.as_deref().unwrap_or("left") {
+                    "left" => Button::Left,
+                    "middle" => Button::Middle,
+                    "right" => Button::Right,
                     _ => return Err("Mouse button must be left, middle or right".into()),
                 };
-                inputs.push(mouse(down, 0, 0, 0));
+                steps.push(Step::Button(button, Direction::Press));
                 if request.action == "drag" {
                     let to = request.to.ok_or("Drag requires an endpoint to")?;
-                    move_to(to, observed, hwnd)?;
+                    screen_point(to, observed, hwnd)?;
                     for step in 1..=16 {
                         let at = [
                             point[0] + ((to[0] as i64 - point[0] as i64) * step / 16) as i32,
                             point[1] + ((to[1] as i64 - point[1] as i64) * step / 16) as i32,
                         ];
-                        inputs.push(move_to(at, observed, hwnd)?);
+                        steps.push(Step::Move(screen_point(at, observed, hwnd)?));
                     }
                 }
-                inputs.push(mouse(up, 0, 0, 0));
+                steps.push(Step::Button(button, Direction::Release));
                 if request.action == "double_click" {
-                    inputs.push(mouse(down, 0, 0, 0));
-                    inputs.push(mouse(up, 0, 0, 0));
+                    steps.push(Step::Button(button, Direction::Press));
+                    steps.push(Step::Button(button, Direction::Release));
                 }
             }
         }
@@ -626,37 +753,20 @@ fn inputs(request: &Request, observed: &Observation, hwnd: HWND) -> Result<Vec<I
             let mut modifiers = Vec::new();
             for part in parts {
                 let modifier = match part {
-                    "Ctrl" => VK_CONTROL,
-                    "Shift" => VK_SHIFT,
+                    "Ctrl" => Key::Control,
+                    "Shift" => Key::Shift,
                     _ => return Err("Only Ctrl and Shift key modifiers are supported".into()),
                 };
                 if modifiers.contains(&modifier) {
                     return Err("Duplicate key modifier".into());
                 }
                 modifiers.push(modifier);
-                inputs.push(keyboard(modifier, 0, 0));
+                steps.push(Step::Key(modifier, Direction::Press));
             }
-            let extended = if matches!(
-                key,
-                VK_LEFT
-                    | VK_RIGHT
-                    | VK_UP
-                    | VK_DOWN
-                    | VK_HOME
-                    | VK_END
-                    | VK_PRIOR
-                    | VK_NEXT
-                    | VK_INSERT
-                    | VK_DELETE
-            ) {
-                KEYEVENTF_EXTENDEDKEY
-            } else {
-                0
-            };
-            inputs.push(keyboard(key, 0, extended));
-            inputs.push(keyboard(key, 0, extended | KEYEVENTF_KEYUP));
+            steps.push(Step::Key(key, Direction::Press));
+            steps.push(Step::Key(key, Direction::Release));
             for modifier in modifiers.into_iter().rev() {
-                inputs.push(keyboard(modifier, 0, KEYEVENTF_KEYUP));
+                steps.push(Step::Key(modifier, Direction::Release));
             }
         }
         "text" => {
@@ -665,53 +775,50 @@ fn inputs(request: &Request, observed: &Observation, hwnd: HWND) -> Result<Vec<I
             }
             let text = request.text.as_deref().ok_or("Text input requires text")?;
             if text.is_empty() || text.chars().count() > 512 || text.chars().any(char::is_control) {
-                return Err("Text must contain 1–512 printable Unicode characters".into());
+                return Err("Text must contain 1-512 printable Unicode characters".into());
             }
-            for unit in text.encode_utf16() {
-                inputs.push(keyboard(0, unit, KEYEVENTF_UNICODE));
-                inputs.push(keyboard(0, unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP));
-            }
+            steps.push(Step::Text(text));
         }
         _ => return Err("Unknown computer control action".into()),
     }
-    Ok(inputs)
+    Ok(steps)
 }
 
-fn key_code(key: &str) -> Result<u16, String> {
+fn key_code(key: &str) -> Result<Key, String> {
     let code = match key {
-        "Enter" => VK_RETURN,
-        "Escape" => VK_ESCAPE,
-        "Tab" => VK_TAB,
-        "Backspace" => VK_BACK,
-        "Delete" => VK_DELETE,
-        "Insert" => VK_INSERT,
-        "ArrowLeft" => VK_LEFT,
-        "ArrowRight" => VK_RIGHT,
-        "ArrowUp" => VK_UP,
-        "ArrowDown" => VK_DOWN,
-        "Home" => VK_HOME,
-        "End" => VK_END,
-        "PageUp" => VK_PRIOR,
-        "PageDown" => VK_NEXT,
-        "Space" => VK_SPACE,
-        "F1" => VK_F1,
-        "F2" => VK_F2,
-        "F3" => VK_F3,
-        "F4" => VK_F4,
-        "F5" => VK_F5,
-        "F6" => VK_F6,
-        "F7" => VK_F7,
-        "F8" => VK_F8,
-        "F9" => VK_F9,
-        "F10" => VK_F10,
-        "F11" => VK_F11,
-        "F12" => VK_F12,
+        "Enter" => Key::Return,
+        "Escape" => Key::Escape,
+        "Tab" => Key::Tab,
+        "Backspace" => Key::Backspace,
+        "Delete" => Key::Delete,
+        "Insert" => Key::Insert,
+        "ArrowLeft" => Key::LeftArrow,
+        "ArrowRight" => Key::RightArrow,
+        "ArrowUp" => Key::UpArrow,
+        "ArrowDown" => Key::DownArrow,
+        "Home" => Key::Home,
+        "End" => Key::End,
+        "PageUp" => Key::PageUp,
+        "PageDown" => Key::PageDown,
+        "Space" => Key::Space,
+        "F1" => Key::F1,
+        "F2" => Key::F2,
+        "F3" => Key::F3,
+        "F4" => Key::F4,
+        "F5" => Key::F5,
+        "F6" => Key::F6,
+        "F7" => Key::F7,
+        "F8" => Key::F8,
+        "F9" => Key::F9,
+        "F10" => Key::F10,
+        "F11" => Key::F11,
+        "F12" => Key::F12,
         _ if key.len() == 1 && key.as_bytes()[0].is_ascii_alphanumeric() => {
-            key.as_bytes()[0].to_ascii_uppercase() as u16
+            Key::Other(key.as_bytes()[0].to_ascii_uppercase() as u32)
         }
         _ => {
             return Err(
-                "Unsupported key; use a named navigation key, F1–F12, letter or digit".into(),
+                "Unsupported key; use a named navigation key, F1-F12, letter or digit".into(),
             )
         }
     };
