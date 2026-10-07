@@ -8,6 +8,7 @@ use limo_cad_sketch::{
     AssemblyDocumentDto, AssemblySolutionDto, AssemblyTransformDto, NamedViewConfigurationDto,
     NamedViewsDto, ViewCameraDto, ViewOccurrenceOffsetDto, ViewPartOffsetDto,
 };
+use workspace::DocumentReceipt;
 
 mod panel;
 pub(super) use panel::printer_choices;
@@ -58,14 +59,17 @@ struct State {
     placement: Option<assembly::TransformDraft>,
     placement_dirty: bool,
     previewing: bool,
-    preview_origin: Option<(
-        native_viewport::ViewportCamera,
-        native_viewport::ViewportPresentation,
-    )>,
+    preview_origin: Option<PreviewOrigin>,
     report: Option<Value>,
     error: Option<String>,
     scroll: usize,
     widgets: chrome::Widgets,
+}
+
+struct PreviewOrigin {
+    receipt: DocumentReceipt,
+    camera: native_viewport::ViewportCamera,
+    presentation: native_viewport::ViewportPresentation,
 }
 
 pub(crate) fn active(world: &World) -> bool {
@@ -78,29 +82,38 @@ pub(crate) fn cancel(
     bridge: &SessionBridgeState,
     owner: &DocumentContext,
 ) -> Result<Value, String> {
-    bridge.with_native_document_owner(engine, owner, || Ok(()))?;
-    let mut state = world
-        .get_resource_mut::<State>()
-        .ok_or("Open Named Views")?;
-    if state.owner.as_ref() != Some(owner) {
-        return Err("The named view belongs to a different document".into());
-    }
-    let origin = state.preview_origin.take();
-    state.visible = false;
-    state.previewing = false;
-    state.draft = state.original.clone();
-    state.placement_dirty = false;
-    state.placement = None;
-    state.error = None;
-    if let Some((camera, presentation)) = origin {
-        native_viewport::apply_interface_view(
-            world,
-            &owner.document_id,
-            Some(camera),
-            Some(presentation),
-        )?;
-    }
-    Ok(json!({"cancelled":true}))
+    bridge.with_native_document_receipt(engine, owner, |revision| {
+        let receipt = DocumentReceipt {
+            owner: owner.clone(),
+            revision,
+        };
+        let mut state = world
+            .get_resource_mut::<State>()
+            .ok_or("Open Named Views")?;
+        if state.owner.as_ref() != Some(owner) {
+            return Err("The named view belongs to a different document".into());
+        }
+        let origin = state
+            .preview_origin
+            .take()
+            .filter(|origin| origin.receipt == receipt);
+        state.visible = false;
+        state.previewing = false;
+        state.draft = state.original.clone();
+        state.placement_dirty = false;
+        state.placement = None;
+        state.error = None;
+        let restored = origin.is_some();
+        if let Some(origin) = origin {
+            native_viewport::apply_interface_view(
+                world,
+                &owner.document_id,
+                Some(origin.camera),
+                Some(origin.presentation),
+            )?;
+        }
+        Ok(json!({"cancelled":true,"preview_restored":restored}))
+    })
 }
 
 pub(crate) fn presentation_locked(world: &World) -> bool {
@@ -164,11 +177,20 @@ pub(crate) fn ensure_source_ready(
     Ok(())
 }
 
+/// Retain the preview baseline across print-only edits that preserve its scene.
 pub(crate) fn advance_metadata(world: &mut World, owner: &DocumentContext, revision: u64) {
     if let Some(mut state) = world
         .get_resource_mut::<State>()
         .filter(|s| s.owner.as_ref() == Some(owner))
     {
+        let previous_revision = state.revision;
+        if let Some(origin) = state.preview_origin.as_mut().filter(|origin| {
+            origin.receipt.owner == *owner && Some(origin.receipt.revision) == previous_revision
+        }) {
+            origin.receipt.revision = revision;
+        } else {
+            state.preview_origin = None;
+        }
         state.revision = Some(revision);
     }
 }
@@ -179,6 +201,7 @@ pub(crate) fn after_metadata_history(world: &mut World, owner: &DocumentContext,
             previous.window_id == owner.window_id && previous.document_id == owner.document_id
         }) && !s.previewing
     }) {
+        state.preview_origin = None;
         state.owner = Some(owner.clone());
         state.revision = Some(revision);
         state.generation = state.generation.saturating_add(1);
@@ -367,6 +390,11 @@ pub(crate) fn open(
         }
     }
     let mut state = world.resource_mut::<State>();
+    if state.owner.as_ref() != Some(owner) {
+        state.preview_origin = None;
+        state.previewing = false;
+        state.revision = None;
+    }
     state.owner = Some(owner.clone());
     state.views = views.views;
     state.visible = true;
@@ -478,14 +506,25 @@ fn apply_corrections(view: &mut NamedViewConfigurationDto, report: &Value) -> Re
 fn apply_preview(
     world: &mut World,
     engine: &AppState,
+    receipt: &DocumentReceipt,
     view: &NamedViewConfigurationDto,
     solution: AssemblySolutionDto,
 ) -> Result<(), String> {
     let (document, mut camera, mut presentation, _) =
         native_viewport::interface_view_snapshot(world);
-    if world.resource::<State>().preview_origin.is_none() {
-        world.resource_mut::<State>().preview_origin = Some((camera, presentation.clone()));
+    if document != receipt.owner.document_id {
+        return Err("The viewport is still changing documents".into());
     }
+    let origin = world
+        .resource::<State>()
+        .preview_origin
+        .as_ref()
+        .is_none_or(|origin| &origin.receipt != receipt)
+        .then(|| PreviewOrigin {
+            receipt: receipt.clone(),
+            camera,
+            presentation: presentation.clone(),
+        });
     presentation.body_poses = solution.body_poses.into();
     presentation.instance_body_poses = solution.instance_body_poses.into();
     presentation.hidden_body_ids = engine
@@ -500,7 +539,11 @@ fn apply_preview(
     camera.target = view.camera.target.map(|v| v as f32);
     camera.up = view.camera.up.map(|v| v as f32);
     native_viewport::apply_interface_view(world, &document, Some(camera), Some(presentation))?;
-    world.resource_mut::<State>().previewing = true;
+    let mut state = world.resource_mut::<State>();
+    if let Some(origin) = origin {
+        state.preview_origin = Some(origin);
+    }
+    state.previewing = true;
     Ok(())
 }
 
@@ -731,6 +774,10 @@ pub(crate) fn reduce(
                                     apply_preview(
                                         world,
                                         &services.engine,
+                                        &DocumentReceipt {
+                                            owner: owner.clone(),
+                                            revision: current,
+                                        },
                                         &draft,
                                         serde_json::from_value(value).map_err(|e| e.to_string())?,
                                     )?;
@@ -938,6 +985,7 @@ pub(super) fn synchronize(
             state.visible = false;
             state.draft = None;
             state.previewing = false;
+            state.preview_origin = None;
             state.owner = Some(owner.clone());
             state.revision = None;
         }
@@ -962,6 +1010,7 @@ pub(super) fn synchronize(
             state.views = views.views;
             state.revision = Some(receipt.revision);
             state.previewing = false;
+            state.preview_origin = None;
             state.report = None;
         }
         panel::paint(world, camera, &mut state, &services.engine, width, height)
