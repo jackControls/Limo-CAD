@@ -3629,7 +3629,7 @@
               "take": "last"
             }
           },
-          "name": "picket fillet / Fillet R40 mm"
+          "name": "Back picket / crowned shoulders / R40 mm"
         },
         "group": "document/history",
         "operation": "solid_rename_feature"
@@ -3681,7 +3681,7 @@
               "take": "last"
             }
           },
-          "name": "picket fillet 2 / Fillet R3 mm"
+          "name": "Back picket / comfortable edge roundovers / R3 mm"
         },
         "group": "document/history",
         "operation": "solid_rename_feature"
@@ -3829,7 +3829,7 @@
       "call": {
         "group": "sketch/dimension",
         "operation": "sketch_add_dimension",
-        "arguments": {"entities": [{"$ref": "picket_slot_axis", "pointer": "/id"}], "text_pos": {"x": -30, "y": 0}, "value_text": "100"}
+        "arguments": {"entities": [{"$ref": "picket_slot_axis", "pointer": "/id"}], "text_pos": {"x": 20, "y": 157.5}, "value_text": "100"}
       }
     },
     {

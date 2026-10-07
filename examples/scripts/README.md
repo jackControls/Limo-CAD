@@ -49,6 +49,31 @@ moves. All modes use the same Rust interpreter and construction source.
   for JSONC-aware editors. The Rust interpreter validates references, and the
   shared interface owns each modeling operation’s argument schema.
 
+For hands-on UI and typed MCP work, open the editable
+[garden bench checkpoint](../checkpoints/garden-bench.limo) with **File → Open**.
+It was rebuilt through published UI controls and typed MCP operations on matching
+Bevy GUI and MCP builds at `abf4667d`. This checkpoint has 53 named features,
+25 fully constrained sketches, 18 body definitions and 32 placed occurrences.
+It reaches the continuous arm supports; it is not the complete bench recipe.
+
+Use the saved **Named Views** for a demonstration:
+
+1. Recall **01 / Front frame assembly**, **03 / Seat support frame** and
+   **06 / Seat deck before fastening** to explain the frame and post clearances.
+2. Compare **07 / Back rails before pickets** with **08 / Shared back rails lifted
+   for joinery review**. Both rails use one part definition.
+3. Recall **09 / Crowned back with nine shared pickets**, then **11 / Center picket
+   lifted for slot review**. The 18 mm slot is centered on a real mid-thickness
+   datum; the exploded presentation leaves mechanical placement unchanged.
+4. Return to **10 / Continuous arm supports before armrests** to continue with
+   the handed armrests, fastening, joints and drawing package in the design plan.
+
+Build the next steps through UI controls or literal typed MCP operations.
+[`cad_batch`](../../docs/mcp-harness.md#choose-the-document-owner) groups up to 16 ordered calls; inspect each
+receipt and return to the agent loop for new IDs. Follow `active_session_id` after
+Undo, Redo or document replacement, and inspect `build_pair.status` before
+qualifying a live GUI/MCP pair.
+
 For command-line replay, use the [developer guide](../../docs/DEVELOPMENT.md#replay-a-recipe).
 It covers packaged CAD (`--server-arg --headless`), standalone servers and AppImage arguments.
 MCP lists the same collection with `cad_interface {"action":"recipes"}` and runs
