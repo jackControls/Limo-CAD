@@ -378,7 +378,6 @@ fn update_inner(
         if let Some(polled) = state.polled_control.take() {
             match outcome.value {
                 Ok(value) => {
-                    state.status.clear();
                     let request = &value["control_request"];
                     if request.get("id").is_some() {
                         start_control(world, handle, services, state, &polled.owner, request)?;
@@ -893,10 +892,11 @@ fn start_control(
     owner: &DocumentContext,
     request: &Value,
 ) -> Result<(), String> {
-    let discard_deferred = !matches!(
+    let observation = matches!(
         request["ui"]["action"].as_str(),
         Some("inspect" | "capture")
-    ) && state.deferred_pointer.take().is_some();
+    );
+    let discard_deferred = !observation && state.deferred_pointer.take().is_some();
     let retire_picker = discard_deferred && workbench::cam::geometry_pick::active(world);
     if discard_deferred {
         history::cancel_drag(world);
@@ -919,6 +919,9 @@ fn start_control(
     match outcome {
         Ok(value) => {
             apply_host_result(state, &value);
+            if !observation {
+                state.status = summary(&value);
+            }
             if value["request_exit"] == true {
                 request_close(world, state, &services.bridge, &services.engine)?;
             }
@@ -933,6 +936,7 @@ fn start_control(
         }
         Err(error) => {
             files::dialog_error(world, &error);
+            state.status.clone_from(&error);
             response["status"] = json!("failed");
             response["error"] = json!(error);
         }
@@ -1218,18 +1222,20 @@ fn maintain_busy_window(
         let _ = handle.take_actions()?;
         let _ = handle.take_modal_keys()?;
     }
-    let message = if state.close_after_worker {
-        "Finishing the current modeling operation before closing…"
-    } else {
-        presentation::busy_status(world)
-            .unwrap_or("Building the model… You can still pan, orbit and zoom.")
-    };
-    state.status = message.into();
-    if let Some(entity) = state.decoration.get("status") {
-        if let Some(mut text) = world.get_mut::<Text>(*entity) {
-            if text.0 != message {
-                text.0 = message.into();
-                handle.invalidate_presentation();
+    if !interface_only {
+        let message = if state.close_after_worker {
+            "Finishing the current modeling operation before closing…"
+        } else {
+            presentation::busy_status(world)
+                .unwrap_or("Building the model… You can still pan, orbit and zoom.")
+        };
+        state.status = message.into();
+        if let Some(entity) = state.decoration.get("status") {
+            if let Some(mut text) = world.get_mut::<Text>(*entity) {
+                if text.0 != message {
+                    text.0 = message.into();
+                    handle.invalidate_presentation();
+                }
             }
         }
     }
