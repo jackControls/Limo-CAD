@@ -8,7 +8,7 @@ const MAX_BYTES: usize = 256 * 1024;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Request {
+pub(super) struct Request {
     route: Selectors,
     base_generation: u64,
     calls: Vec<Call>,
@@ -34,19 +34,18 @@ fn include_values() -> bool {
     true
 }
 
-pub(super) fn spec(route: Value) -> ToolSpec {
-    ToolSpec::control(
-        "cad_batch",
-        "Apply an ordered live CAD batch",
-        "Apply 1–16 literal typed modeling operations or live engine queries to one explicit desktop route, in order. Requires base_generation from cad_list_sessions. Validate names and argument envelopes before submitting anything. Await each operation's normal receipt before submitting the next; stop on failure, timeout, owner replacement or intervening edits. One 30-second maximum deadline covers the entire batch. Successful operations remain applied with separate Undo entries; this is not an atomic transaction. Results retain individual cad_route tickets so a pending operation can be polled after reconnecting; never retry the whole batch. include_values:false omits operation values while retaining receipts. The broker does not attach or copy geometry into this MCP process. No scripts, references, loops, files, UI targets or nested batches: return to the agent for new IDs and fresh UI inspection.",
-        object_schema(json!({
+pub(super) fn schema(route: Value) -> Value {
+    object_schema(
+        json!({
+            "action":{"type":"string","enum":["batch"]},
             "route":route,
             "base_generation":{"type":"integer","minimum":0},
             "calls":{"type":"array","minItems":1,"maxItems":MAX_CALLS,
                 "items":object_schema(json!({"name":{"type":"string","minLength":1},"arguments":{"type":"object"}}), &["name"])},
             "timeout_ms":{"type":"integer","minimum":1,"maximum":30_000,"default":30_000},
             "include_values":{"type":"boolean","default":true}
-        }), &["route","base_generation","calls"]),
+        }),
+        &["action", "route", "base_generation", "calls"],
     )
 }
 
@@ -54,26 +53,32 @@ pub(super) fn spec(route: Value) -> ToolSpec {
 /// validation still belongs to the owning engine at each operation.
 fn validate(request: &Request) -> Result<(), String> {
     if request.calls.is_empty() || request.calls.len() > MAX_CALLS {
-        return Err(format!("cad_batch requires 1–{MAX_CALLS} calls"));
+        return Err(format!(
+            "cad_route action=batch requires 1–{MAX_CALLS} calls"
+        ));
     }
     if !(1..=30_000).contains(&request.timeout_ms) {
-        return Err("cad_batch timeout_ms must be from 1 to 30000".into());
+        return Err("cad_route action=batch timeout_ms must be from 1 to 30000".into());
     }
     for (index, call) in request.calls.iter().enumerate() {
         let spec = tool_specs()
             .iter()
             .find(|spec| spec.name == call.name)
-            .ok_or_else(|| format!("cad_batch call {index}: unknown tool {}", call.name))?;
+            .ok_or_else(|| {
+                format!(
+                    "cad_route action=batch call {index}: unknown tool {}",
+                    call.name
+                )
+            })?;
         if !limo_cad_mcp_mutate::lookup_mutate(&call.name)
             .is_some_and(|mapping| !mapping.is_read_only())
             && !limo_cad_mcp_mutate::is_routed_engine_query(spec.engine_method)
         {
-            return Err(format!("cad_batch call {index}: {} is not a native modeling operation or live engine query", call.name));
+            return Err(format!("cad_route action=batch call {index}: {} is not a native modeling operation or live engine query", call.name));
         }
-        let arguments = call
-            .arguments
-            .as_object()
-            .ok_or_else(|| format!("cad_batch call {index}: arguments must be an object"))?;
+        let arguments = call.arguments.as_object().ok_or_else(|| {
+            format!("cad_route action=batch call {index}: arguments must be an object")
+        })?;
         for key in spec.input_schema["required"]
             .as_array()
             .into_iter()
@@ -82,7 +87,7 @@ fn validate(request: &Request) -> Result<(), String> {
         {
             if !arguments.contains_key(key) {
                 return Err(format!(
-                    "cad_batch call {index}: {} requires {key}",
+                    "cad_route action=batch call {index}: {} requires {key}",
                     call.name
                 ));
             }
@@ -91,7 +96,7 @@ fn validate(request: &Request) -> Result<(), String> {
             for key in arguments.keys() {
                 if spec.input_schema["properties"].get(key).is_none() {
                     return Err(format!(
-                        "cad_batch call {index}: {} has no argument {key}",
+                        "cad_route action=batch call {index}: {} has no argument {key}",
                         call.name
                     ));
                 }
@@ -111,18 +116,20 @@ fn selectors(route: &Route) -> Selectors {
     }
 }
 
-/// Publication fences from each applied receipt authorize only this batch's
-/// next call; a different document or intervening edit stops publication.
-pub(crate) fn call(arguments: Value) -> Result<Value, String> {
-    let started = Instant::now();
-    if serde_json::to_vec(&arguments)
+pub(super) fn validate_size(arguments: &Value) -> Result<(), String> {
+    if serde_json::to_vec(arguments)
         .map_err(|error| error.to_string())?
         .len()
         > MAX_BYTES
     {
-        return Err("cad_batch request exceeds 256 KiB".into());
+        return Err("cad_route action=batch request exceeds 256 KiB".into());
     }
-    let request: Request = serde_json::from_value(arguments).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+/// Publication fences from each applied receipt authorize only this batch's
+/// next call; a different document or intervening edit stops publication.
+pub(super) fn call(request: Request, started: Instant) -> Result<Value, String> {
     validate(&request)?;
     let route = resolve(request.route)?;
     let timeout = Duration::from_millis(request.timeout_ms);
@@ -131,7 +138,9 @@ pub(crate) fn call(arguments: Value) -> Result<Value, String> {
     for (index, call) in request.calls.iter().enumerate() {
         let outcome = (|| -> Result<Value, String> {
             if started.elapsed() >= timeout {
-                return Err("cad_batch deadline reached; this call was not submitted".into());
+                return Err(
+                    "cad_route action=batch deadline reached; this call was not submitted".into(),
+                );
             }
             resolve(selectors(&route))?;
             let current = session::read_heartbeat_generation(&route.session_id)?;
@@ -143,7 +152,9 @@ pub(crate) fn call(arguments: Value) -> Result<Value, String> {
                 ));
             }
             if started.elapsed() >= timeout {
-                return Err("cad_batch deadline reached; this call was not submitted".into());
+                return Err(
+                    "cad_route action=batch deadline reached; this call was not submitted".into(),
+                );
             }
             let submitted = submit(
                 route.clone(),

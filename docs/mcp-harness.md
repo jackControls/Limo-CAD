@@ -9,7 +9,10 @@ See [the product interface](interface.md) for the complete contract and
 
 ## Choose the document owner
 
-`cad_route` addresses multiple live desktop documents through one stdio server.
+`cad_route` is the single live broker tool. It addresses multiple desktop
+documents through one stdio server with three actions: `submit` sends one request,
+`status` polls a submitted request's ticket, and `batch` sends a bounded ordered
+group through the same submission and receipt path.
 
 Live `cad_interface` inspection reports `build_pair` with the actual compiled
 desktop and MCP identities. Require `status:matched` before qualifying a paired
@@ -18,15 +21,27 @@ build. `different` means the clean revisions or release identities differ;
 source changes prevent the commit alone from proving equality. Compatible
 desktop control remains available so existing live work can be preserved.
 
-`cad_batch` sends 1–16 literal modeling operations or live engine queries to
-one explicit route, with its current `base_generation`. It validates every
-operation name and argument envelope before publication, then submits and
+`cad_route` with `action: "batch"` sends 1–16 literal modeling operations or live
+engine queries to one explicit route, with its current `base_generation`. It
+validates every operation name and argument envelope before publication, then submits and
 awaits each normal receipt in order. A failure, owner replacement, intervening
 edit or the batch's bounded deadline prevents later submissions. Successful
 operations keep their own Undo entries. Every submitted call retains a
-`cad_route` ticket; poll a pending ticket before deciding whether to retry.
+`cad_route` ticket; poll a pending ticket with `action: "status"` before deciding
+whether to retry. Never repeat the whole batch after partial completion.
 Use `include_values:false` when only application receipts are needed. The
 broker does not attach or recompute geometry in the MCP process.
+
+The batch request takes `route`, `base_generation` and `calls`, where each call
+contains a literal tool `name` and optional `arguments` object. Optional
+`timeout_ms` defaults to 30,000 and ranges from 1 to 30,000; `include_values`
+defaults to `true`. The 256 KiB request limit includes the complete broker
+envelope. Unlike nonblocking `submit`, `batch` waits within its deadline and
+returns each operation's receipt, the next generation and any unsubmitted calls.
+Tickets reach the caller in the final response. If the connection is lost before
+that response, completed operations can remain applied without a known ticket;
+inspect the live document before continuing and never resubmit the whole batch.
+Use `submit` and `status` when each operation needs a separately retained ticket.
 
 This is a normal MCP tool call. The supported `2025-06-18` protocol removed
 JSON-RPC transport batching. There are no scripts, bindings or generated-ID
@@ -151,10 +166,10 @@ an active-sketch-only publication retains the earlier completed-model fence. Rus
 script playback defers reconstruction until a snapshot query or completion; status
 keeps reporting the older loaded generation while that cache remains deferred.
 
-Targeted live windows are supported today. One stdio client still has one active
-binding; concurrent scheduling across several documents remains
-[#12](https://github.com/jackControls/Limo-CAD/issues/12). Do not infer a broker from
-the ability to discover and attach to several windows.
+Ordinary attached tools use one selected document per stdio client. `cad_route`
+addresses other live documents without changing that binding or loading their
+models. Independent `submit`/`status` tickets let documents progress between
+polls; `batch` orders a bounded group within one explicit route.
 
 ## Grouping and disclosure
 

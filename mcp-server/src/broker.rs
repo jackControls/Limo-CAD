@@ -2,7 +2,6 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 mod batch;
-pub(super) use batch::call as call_batch;
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
@@ -17,6 +16,7 @@ enum Request {
     Status {
         ticket: Ticket,
     },
+    Batch(batch::Request),
 }
 
 fn empty_arguments() -> Value {
@@ -63,18 +63,36 @@ pub(super) fn specs() -> Vec<ToolSpec> {
         }),
         &[],
     );
-    let mut specs = vec![ToolSpec::control(
-        "cad_route", "Route a live CAD request",
-        "One broker addresses several desktop documents without changing cad_attach selection or copying their models. Submit a modeling tool, live query, or cad_interface UI action to an explicit route from cad_list_sessions. All selectors are intersected; ambiguous, closed, stale and mismatched owners reject before publication. Mutations and UI actions other than inspect/capture require the current base_generation. Submission is nonblocking. Modeling writes use each document's ordered inbox; queries and UI actions use its separate owner-fenced control queue. Poll action=status with the returned ticket; status never waits or retargets pending work. Independent documents can progress between polls. Submission does not switch tabs; activate an inactive document before submitting UI controls. Modeling writes can remain queued until activation. Receipts survive replacement, close and process exit. Scripts and offline tools retain their existing explicit attachment workflow.",
-        object_schema(json!({
-            "action":{"type":"string","enum":["submit","status"]},"route":route,
+    let submit = object_schema(
+        json!({
+            "action":{"type":"string","enum":["submit"]},"route":route,
             "name":{"type":"string"},"arguments":{"type":"object"},
-            "base_generation":{"type":"integer","minimum":0},
-            "ticket":{"type":"object","description":"The complete ticket returned by submit, including its original route and operation."}
-        }), &["action"]),
-    )];
-    specs.push(batch::spec(route));
-    specs
+            "base_generation":{"type":"integer","minimum":0}
+        }),
+        &["action", "route", "name"],
+    );
+    let status = object_schema(
+        json!({
+            "action":{"type":"string","enum":["status"]},
+            "ticket":{"type":"object","description":"The complete ticket returned by submit or an individual batch receipt, including its original route and operation."}
+        }),
+        &["action", "ticket"],
+    );
+    let variants = [submit, status, batch::schema(route)];
+    let mut properties = json!({});
+    for variant in &variants {
+        for (key, value) in variant["properties"].as_object().unwrap() {
+            properties[key] = value.clone();
+        }
+    }
+    properties["action"] = json!({"type":"string","enum":["submit","status","batch"]});
+    let mut input_schema = object_schema(properties, &["action"]);
+    input_schema["oneOf"] = json!(variants);
+    vec![ToolSpec::control(
+        "cad_route", "Route a live CAD request",
+        "One broker addresses several desktop documents without changing cad_attach selection or copying their models. action=submit sends one modeling tool, live query, or cad_interface UI action to an explicit route from cad_list_sessions and returns immediately. action=status polls its complete ticket without waiting or retargeting. action=batch applies 1–16 literal typed modeling operations or live engine queries in order on one explicit route, using route, base_generation, calls and optional timeout_ms/include_values. The batch validates all names and argument envelopes before publication, awaits each normal receipt and stops on failure, owner replacement, intervening edits or its single deadline (maximum 30 seconds). Successful calls remain applied with separate Undo entries; the batch is not atomic. Each result retains its own ticket: poll pending tickets with action=status before retrying any operation, and never repeat the whole batch. include_values=false omits operation values while retaining receipts. Batch calls do not support scripts, generated-ID references, loops, files, UI targets or nested broker actions. All route selectors are intersected; ambiguous, closed, stale and mismatched owners reject before publication. Mutations, batch requests and UI actions other than inspect/capture require the current base_generation. Modeling writes use each document's ordered inbox; queries and UI actions use its separate owner-fenced control queue. Submission does not switch tabs; activate an inactive document before submitting UI controls. Modeling writes can remain queued until activation. Receipts survive replacement, close and process exit. Scripts and offline tools retain their existing explicit attachment workflow.",
+        input_schema,
+    )]
 }
 
 fn resolve(selectors: Selectors) -> Result<Route, String> {
@@ -163,6 +181,10 @@ fn resolve(selectors: Selectors) -> Result<Route, String> {
 }
 
 pub(super) fn call(arguments: Value) -> Result<Value, String> {
+    let started = std::time::Instant::now();
+    if arguments["action"] == "batch" {
+        batch::validate_size(&arguments)?;
+    }
     match serde_json::from_value::<Request>(arguments).map_err(|error| error.to_string())? {
         Request::Submit {
             route,
@@ -171,6 +193,7 @@ pub(super) fn call(arguments: Value) -> Result<Value, String> {
             base_generation,
         } => submit(resolve(route)?, &name, arguments, base_generation),
         Request::Status { ticket } => status(ticket),
+        Request::Batch(request) => batch::call(request, started),
     }
 }
 
