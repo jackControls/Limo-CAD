@@ -238,6 +238,7 @@ impl ComputerControl {
                 "client_screen_bounds":screen_bounds,
                 "coordinate_space":"physical_client_pixels","dpi":unsafe { GetDpiForWindow(hwnd) },
                 "interface_to_physical_scale":scale,
+                "text_support":if target.native_dialog {"printable_unicode"} else {"printable_bmp"},
                 "foreground":unsafe { GetForegroundWindow() == hwnd },"editable_focus":editable_focus,"inspection":inspection,"image":image,
                 "hint":if target.native_dialog {"The attached image shows the owned native dialog. Subtract image.client_to_image_offset from image pixel points to obtain physical client coordinates. Focus if needed, observe again, send one input and observe its visible result."} else {"Use cad_interface capture for the actual rendered image. Focus if needed, observe again, then send one input and observe its visible result."}}),
             );
@@ -1080,6 +1081,17 @@ fn plan<'a>(
             let text = request.text.as_deref().ok_or("Text input requires text")?;
             if text.is_empty() || text.chars().count() > 512 || text.chars().any(char::is_control) {
                 return Err("Text must contain 1-512 printable Unicode characters".into());
+            }
+            if !observed.native_dialog {
+                if let Some(character) = text.chars().find(|character| *character as u32 > 0xffff) {
+                    return Err(json!({
+                        "code":"computer_control_unsupported_bevy_text",
+                        "message":format!("Bevy field input does not support U+{:X}: pinned Winit 0.30.13 cannot assemble Enigo 0.6.1 surrogate packet text. No input was sent. Use printable BMP characters for this Bevy field; native dialog text supports non-BMP Unicode.", character as u32),
+                        "target_kind":"bevy_window",
+                        "input_sent":false,
+                        "observation_consumed":true,
+                    }).to_string());
+                }
             }
             steps.push(Step::Text(text));
         }

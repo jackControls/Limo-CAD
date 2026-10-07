@@ -73,6 +73,23 @@ CAD-owned Windows modal dialogs are observed through `windows-capture` 2.0.1,
 with PNG images encoded by the existing Rust PNG codec. The image includes the
 window frame; `client_to_image_offset` maps physical client points to image pixels.
 Native editable controls provide the focus check for Unicode text input.
+
+The `text` action currently supports printable Basic Multilingual Plane (BMP)
+characters in Bevy fields, and printable Unicode including non-BMP characters
+in native dialogs. An entire Bevy text request containing a character above
+U+FFFF is rejected before sending any input, with its unsupported code point;
+the tool never silently deletes or substitutes characters. Observation and tool
+availability report `printable_bmp` or `printable_unicode` for these targets.
+Manual UI comparison preserved `Rust control ✓ 🦌` in the Windows Open filename
+field but lost the final non-BMP character in a Bevy field before this guard.
+The pinned [Enigo 0.6.1 Windows text implementation](https://github.com/enigo-rs/enigo/blob/b297a14e807abdf818b7809a70b445ade4fc5897/src/win/win_impl.rs#L475-L505)
+sends each UTF-16 surrogate as a separate packet keypress. The pinned
+[Winit 0.30.13 Windows keyboard adapter](https://github.com/rust-windowing/winit/blob/v0.30.13/src/platform_impl/windows/keyboard.rs#L179-L226)
+finalizes text when the next keyboard message is not a character message;
+its [text conversion](https://github.com/rust-windowing/winit/blob/v0.30.13/src/platform_impl/windows/keyboard.rs#L587-L610)
+cannot form valid Unicode from the separated surrogates. The guard remains
+necessary until the input dependency path preserves non-BMP committed text.
+
 Capture uses a scoped `--headless` child of the same installed CAD executable,
 without creating a document or a second installed binary. The parent imposes a
 three-second capture deadline and terminates only that child if Windows capture

@@ -39,7 +39,7 @@ pub(super) fn description() -> &'static str {
     if !cfg!(windows) {
         return "Native computer control is unavailable on this platform. The native-computer-control Cargo feature currently supports Windows only; no actions are available here.";
     }
-    "Windows computer control implemented in Rust with real OS mouse and keyboard input. action=observe returns the presented interface, exact active desktop owner, physical client bounds and a short-lived one-shot observation token. A CAD-owned native modal dialog becomes the observed target and includes a real PNG capture, native control geometry and focused editable child. Its client_to_image_offset maps physical client points to the attached window image. A minimized or unpresented main window returns focus_only=true without qualified controls/coordinates. All other actions require that token; focus restores/activates only that window, then observe again before input. click/double_click/drag/wheel take physical client-pixel points from capture; key accepts Ctrl/Shift chords and named keys; text types Unicode into the currently focused editable text control. Input rejects changed documents, geometry, layouts, replaced processes, held keys, foreign foreground windows and occluded pointer targets. GUI and MCP must run the same clean build and executable path. An input_sent receipt confirms OS insertion only: observe/capture afterward to verify the visible result. No external helper, scripts, arbitrary applications or direct model commands."
+    "Windows computer control implemented in Rust with real OS mouse and keyboard input. action=observe returns the presented interface, exact active desktop owner, physical client bounds and a short-lived one-shot observation token. A CAD-owned native modal dialog becomes the observed target and includes a real PNG capture, native control geometry and focused editable child. Its client_to_image_offset maps physical client points to the attached window image. A minimized or unpresented main window returns focus_only=true without qualified controls/coordinates. All other actions require that token; focus restores/activates only that window, then observe again before input. click/double_click/drag/wheel take physical client-pixel points from capture; key accepts Ctrl/Shift chords and named keys; text types printable BMP Unicode into focused Bevy fields, or printable Unicode including non-BMP into focused native-dialog controls. Unsupported Bevy text is rejected in full before input. Input rejects changed documents, geometry, layouts, replaced processes, held keys, foreign foreground windows and occluded pointer targets. GUI and MCP must run the same clean build and executable path. An input_sent receipt confirms OS insertion only: observe/capture afterward to verify the visible result. No external helper, scripts, arbitrary applications or direct model commands."
 }
 
 pub(super) fn schema() -> Value {
@@ -50,6 +50,11 @@ pub(super) fn schema() -> Value {
             "feature_enabled":cfg!(feature = "native-computer-control"),
             "platform_supported":cfg!(windows),
             "available":cfg!(all(windows, feature = "native-computer-control")),
+            "text_support":{
+                "bevy_window":"printable_bmp",
+                "native_dialog":"printable_unicode",
+                "unsupported_bevy_text":"rejected_before_input",
+            },
         },
         "additionalProperties":false,"required":["action"],"properties":{
         "action":{"type":"string","enum":["observe","focus","click","double_click","drag","wheel","key","text"]},
@@ -59,6 +64,6 @@ pub(super) fn schema() -> Value {
         "button":{"type":"string","enum":["left","middle","right"],"default":"left"},
         "delta":{"type":"integer","minimum":-1200,"maximum":1200,"multipleOf":120,"description":"Wheel delta in whole Windows mouse notches: multiples of 120, positive scrolls up."},
         "key":{"type":"string","description":"Enter, Escape, Tab, Backspace, Delete, arrows, Home/End/PageUp/PageDown, F1–F12 or an ASCII letter/digit, optionally prefixed Ctrl+ or Shift+."},
-        "text":{"type":"string","maxLength":512,"description":"Unicode text for the observed focused editable text control; no control characters."}
+        "text":{"type":"string","maxLength":512,"description":"1-512 printable Unicode characters for the observed focused editable text control. Bevy fields support BMP characters (U+0000-U+FFFF, excluding controls); any non-BMP character rejects the complete request before input. Native dialogs also support non-BMP Unicode."}
     }})
 }
