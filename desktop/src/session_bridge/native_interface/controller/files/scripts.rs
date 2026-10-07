@@ -369,7 +369,7 @@ pub(super) fn run(
                 (services, &owner),
                 &loaded.name,
                 loaded.source().to_owned(),
-                ("Script", options.mode(), options.speed()),
+                (options.mode(), options.speed()),
             ) {
                 Ok(()) => {
                     output["script_started"] = json!({"name":loaded.name,"path":loaded.path});

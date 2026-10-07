@@ -5,7 +5,6 @@ use super::*;
 pub(super) struct Running {
     owner: DocumentContext,
     source_generation: u64,
-    kind: &'static str,
     result: Mutex<mpsc::Receiver<Result<Value, String>>>,
 }
 
@@ -15,7 +14,7 @@ pub(super) fn start_source_with_options(
     (services, owner): (&NativeServices, &DocumentContext),
     name: &str,
     source: String,
-    (kind, mode, speed): (&'static str, &'static str, f64),
+    (mode, speed): (&'static str, f64),
 ) -> Result<(), String> {
     if world.resource::<Files>().script.preview.building() {
         return Err("Wait for the isolated lesson preview to finish preparing".into());
@@ -81,7 +80,6 @@ pub(super) fn start_source_with_options(
     files.lesson = Some(Running {
         owner: owner.clone(),
         source_generation,
-        kind,
         result: Mutex::new(receive),
     });
     files.script.status = Some(format!("Running {name}"));
@@ -118,10 +116,10 @@ pub(super) fn poll(world: &mut World, services: &NativeServices) {
             "Script finished in a document that has since closed or changed; inspect retained work before running again".into()
         }
         Ok(report) => format!(
-            "{} complete: {} steps, {} checks",
-            running.kind, report["steps_completed"], report["checks_completed"]
+            "Script complete: {} steps, {} checks",
+            report["steps_completed"], report["checks_completed"]
         ),
-        Err(error) => format!("{} stopped: {error}", running.kind),
+        Err(error) => format!("Script stopped: {error}"),
     };
     world.resource_mut::<Files>().script.status = Some(status);
 }
@@ -161,7 +159,7 @@ mod tests {
             (&services, &owner),
             "Blank-document guard",
             String::new(),
-            ("Script", "present", 1.),
+            ("present", 1.),
         )
         .unwrap_err();
         assert!(error.contains("blank"));
