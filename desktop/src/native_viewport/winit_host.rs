@@ -460,7 +460,11 @@ pub(crate) fn prepare_native_input(
         if !input.consumed {
             input.consumed = route_one(handle, &mut state, &input.event)?;
         }
-        super::interface_shell::fields::after_window_input(world, handle)?;
+        if matches!(&input.event, WindowEvent::WindowFocused(event) if event.focused) {
+            super::interface_shell::fields::after_window_focus(world, handle)?;
+        } else {
+            super::interface_shell::fields::after_window_input(world, handle)?;
+        }
         super::interface_shell::fields::after_pointer_input(
             world,
             handle,
@@ -581,7 +585,7 @@ fn route_one(
             state.pressed.clear();
             state.model_drag.clear();
             state.cursor = None;
-            handle.blur();
+            handle.suspend_window_focus();
             Ok(false)
         }
         WindowEvent::KeyboardFocusLost(_) => {
@@ -589,7 +593,11 @@ fn route_one(
             state.last_click = None;
             state.pressed.clear();
             state.model_drag.clear();
-            handle.blur();
+            handle.suspend_window_focus();
+            Ok(false)
+        }
+        WindowEvent::WindowFocused(event) if event.focused => {
+            handle.resume_window_focus();
             Ok(false)
         }
         _ => Ok(false),

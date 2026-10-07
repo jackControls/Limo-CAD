@@ -1,6 +1,8 @@
 use super::*;
 use crate::native_viewport::interface_shell::tests::fixture;
 
+mod window_focus;
+
 fn drawing_field(app: &mut App, entity: Entity, index: usize) {
     app.world_mut().entity_mut(entity).insert(DrawingDimension {
         generation: 7,

@@ -26,6 +26,7 @@ mod geometry;
 mod ime_diagnostics;
 pub(crate) mod ranges;
 pub(crate) mod ribbon;
+mod window_focus;
 
 use geometry::HitArea;
 
@@ -285,6 +286,7 @@ struct Shared {
     modal_focus: Vec<(String, Option<ControlKey>)>,
     hovered: Option<ControlKey>,
     focused: Option<ControlKey>,
+    window_focus_return: Option<window_focus::ReturnTarget>,
     tab_excluded: std::collections::HashSet<ControlKey>,
     capture: Option<Capture>,
     actions: VecDeque<NativeInterfaceAction>,
@@ -308,6 +310,7 @@ impl Default for Shared {
             modal_focus: Vec::new(),
             hovered: None,
             focused: None,
+            window_focus_return: None,
             tab_excluded: Default::default(),
             capture: None,
             actions: VecDeque::new(),
@@ -354,6 +357,7 @@ impl NativeInterfaceHandle {
         if shared.desired_frame.as_ref().map(|f| &f.context) != Some(&frame.context) {
             shared.capture = None;
             shared.focused = None;
+            shared.window_focus_return = None;
             shared.hovered = None;
             shared.actions.clear();
             shared.modal_keys.clear();
@@ -1055,6 +1059,7 @@ impl NativeInterfaceHandle {
 
     pub fn blur(&self) {
         if let Ok(mut shared) = self.shared.lock() {
+            shared.window_focus_return = None;
             shared.capture = None;
             let _ = set_focus(&mut shared, None);
             shared.hovered = None;
