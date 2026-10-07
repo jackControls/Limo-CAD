@@ -751,6 +751,7 @@ impl CadServer {
             }
             "cad_list_sessions" => session::sessions_list_json(),
             "cad_route" => broker::call(arguments)?,
+            "cad_batch" => broker::call_batch(arguments)?,
             "cad_interface" => {
                 if arguments["action"].is_null() || arguments["action"] == "catalog" {
                     json!({"groups":interface::groups(),"operations":full_tool_catalog()})
@@ -2271,6 +2272,7 @@ fn is_read_safe_while_attached(name: &str) -> bool {
             | "cad_cancel_recompute"
             | "cad_list_sessions"
             | "cad_route"
+            | "cad_batch"
             | "cad_interface"
             | "cad_attach"
             | "cad_refresh"
@@ -5063,7 +5065,7 @@ fn build_tool_specs() -> Vec<ToolSpec> {
 }
 
 fn records_in_script(name: &str) -> bool {
-    if name == "cad_route" {
+    if matches!(name, "cad_route" | "cad_batch") {
         return false;
     }
     if matches!(

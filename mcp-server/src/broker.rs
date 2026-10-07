@@ -1,6 +1,8 @@
 //! Stateless routing through the desktop's existing document-owned queues.
 use super::*;
 use serde::{Deserialize, Serialize};
+mod batch;
+pub(super) use batch::call as call_batch;
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
@@ -39,14 +41,14 @@ struct Route {
     process_instance_id: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Ticket {
     route: Route,
     operation: Pending,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Pending {
     Inbox { seq: u64 },
@@ -61,7 +63,7 @@ pub(super) fn specs() -> Vec<ToolSpec> {
         }),
         &[],
     );
-    vec![ToolSpec::control(
+    let mut specs = vec![ToolSpec::control(
         "cad_route", "Route a live CAD request",
         "One broker addresses several desktop documents without changing cad_attach selection or copying their models. Submit a modeling tool, live query, or cad_interface UI action to an explicit route from cad_list_sessions. All selectors are intersected; ambiguous, closed, stale and mismatched owners reject before publication. Mutations and UI actions other than inspect/capture require the current base_generation. Submission is nonblocking. Modeling writes use each document's ordered inbox; queries and UI actions use its separate owner-fenced control queue. Poll action=status with the returned ticket; status never waits or retargets pending work. Independent documents can progress between polls. Submission does not switch tabs; activate an inactive document before submitting UI controls. Modeling writes can remain queued until activation. Receipts survive replacement, close and process exit. Scripts and offline tools retain their existing explicit attachment workflow.",
         object_schema(json!({
@@ -70,7 +72,9 @@ pub(super) fn specs() -> Vec<ToolSpec> {
             "base_generation":{"type":"integer","minimum":0},
             "ticket":{"type":"object","description":"The complete ticket returned by submit, including its original route and operation."}
         }), &["action"]),
-    )]
+    )];
+    specs.push(batch::spec(route));
+    specs
 }
 
 fn resolve(selectors: Selectors) -> Result<Route, String> {

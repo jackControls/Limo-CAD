@@ -10,6 +10,22 @@ See [the product interface](interface.md) for the complete contract and
 ## Choose the document owner
 
 `cad_route` addresses multiple live desktop documents through one stdio server.
+
+`cad_batch` sends 1–16 literal modeling operations or live engine queries to
+one explicit route, with its current `base_generation`. It validates every
+operation name and argument envelope before publication, then submits and
+awaits each normal receipt in order. A failure, owner replacement, intervening
+edit or the batch's bounded deadline prevents later submissions. Successful
+operations keep their own Undo entries. Every submitted call retains a
+`cad_route` ticket; poll a pending ticket before deciding whether to retry.
+Use `include_values:false` when only application receipts are needed. The
+broker does not attach or recompute geometry in the MCP process.
+
+This is a normal MCP tool call. The supported `2025-06-18` protocol removed
+JSON-RPC transport batching. There are no scripts, bindings or generated-ID
+references in a CAD batch. Return to the agent to inspect results and plan the
+next group. UI controls require fresh rendered targets and remain individual
+`cad_interface` interactions.
 Take the process instance, window, document and session identities from
 `cad_list_sessions`. Submit an operation with `action: "submit"`, an explicit
 `route`, the tool `name` and its `arguments`. Submission returns a `ticket`
