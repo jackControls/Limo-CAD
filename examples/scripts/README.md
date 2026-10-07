@@ -60,9 +60,9 @@ Bevy GUI and MCP builds at `abf4667d`. This checkpoint has 53 named features,
 It reaches the continuous arm supports; it is not the complete bench recipe.
 
 The separate [human-operated checkpoint](../checkpoints/garden-bench-human-ui.limo)
-records the Windows UI walkthrough through `dfb76683` on 7 October 2026.
-It contains thirteen named features, four separately defined and placed posts,
-two shared long-apron occurrences, two left-front apron pilots,
+records the Windows UI walkthrough through `4f437207` on 7 October 2026.
+It contains fifteen named features, four separately defined and placed posts,
+two shared long-apron occurrences, two shared upper side rails, two left-front apron pilots,
 six right-front rail/arm pilots, six shared apron clearance positions and four
 presentation views. The three-model walkthrough is still in progress.
 Every modeling change used real mouse/keyboard input through
@@ -130,8 +130,17 @@ geometry and references.
     `(552.5, 35)`. Set simple style, 5.5 mm diameter, 28 mm distance, flat
     bottom and no flip. Both shared apron occurrences update. Undo removes
     this feature without changing their IDs or poses; Redo restores the six
-    positions and name. Save the document. Other post pilots, rail clearance
-    bores, side rails, joints, drawing sheets and print layouts remain unfinished.
+    positions and name. Save the document.
+17. Create an origin-anchored XY rectangle, 28 × 415 mm, with driving dimensions
+    and zero remaining degrees of freedom. Name it **Upper side rail / stock
+    from A-B-C** and create **Upper side rail / Stock 90 mm**, a separate body
+    extruded 90 mm along +Z with zero taper. Apply the same painted-timber
+    appearance. Make one reusable **Upper side rail** definition; name its two
+    instances **Left upper side rail** and **Right upper side rail**, placed at
+    `[37, 30, 325]` and `[1135, 30, 325]` with identity rotations. Hide the source
+    sketch and save. The assembly now has six definitions and eight occurrences.
+    Other post pilots, rail clearance bores, lower side rails, joints, drawing
+    sheets and print layouts remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 
