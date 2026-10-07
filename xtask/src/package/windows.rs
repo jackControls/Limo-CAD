@@ -200,7 +200,8 @@ mod tests {
     #[test]
     fn windows_package_requires_runtime_and_license_closure() {
         let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
+        let resolved = temp.path().canonicalize().unwrap();
+        let root = resolved.as_path();
         fs::write(root.join("LICENSE"), "license").unwrap();
         fs::write(root.join("THIRD_PARTY_NOTICES.md"), "notices").unwrap();
         let sdk = root.join("sdk");
