@@ -1029,8 +1029,12 @@ fn synchronize_fields(
             editor.queue_edit(
                 if focused == Some(ControlKey(entity.to_bits())) && dimension.is_some() {
                     TextEdit::SelectAll
-                } else {
+                } else if focused == Some(ControlKey(entity.to_bits())) {
                     TextEdit::TextEnd(false)
+                } else {
+                    // External updates to an unfocused number must reveal its
+                    // sign and leading digits, rather than scrolling to its tail.
+                    TextEdit::TextStart(false)
                 },
             );
             field.baseline.clone_from(value);

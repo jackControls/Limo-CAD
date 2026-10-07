@@ -123,6 +123,36 @@ fn key(key: Key, text: Option<&str>) -> WindowEvent {
 }
 
 #[test]
+fn external_field_updates_reveal_leading_digits_without_changing_precision() {
+    for focused in [false, true] {
+        let (mut app, handle, entity) = editor_fixture();
+        if !focused {
+            handle.blur();
+            after_window_input(app.world_mut(), &handle).unwrap();
+        }
+        let value = "-5.00001335144043";
+        app.world_mut()
+            .get_mut::<InterfaceControl>(entity)
+            .unwrap()
+            .field = Field::Text {
+            value: value.into(),
+            read_only: false,
+            selection: None,
+        };
+        app.world_mut()
+            .run_system_cached(synchronize_fields)
+            .unwrap();
+        flush_edits(app.world_mut()).unwrap();
+        let editor = app.world().get::<EditableText>(entity).unwrap();
+        assert_eq!(editor.value(), value);
+        let cursor = if focused { value.len() } else { 0 };
+        assert_eq!(editor.editor.raw_selection().text_range(), cursor..cursor);
+        assert!(!has_uncommitted_edit(app.world(), entity));
+        assert!(handle.take_actions().unwrap().is_empty());
+    }
+}
+
+#[test]
 fn requested_measurement_focus_selects_the_value_once_without_replacing_typed_edits() {
     let (mut app, handle, entity) = editor_fixture();
     handle.blur();
