@@ -84,7 +84,7 @@ pub(super) fn run(s: &mut Scenario) -> Result<()> {
             "Portable script contains desktop transport"
         );
         let mut replay = Client::start_command(
-            Command::new(&s.options["--server"]),
+            Client::worker_command(&s.options["--server"]),
             Some(Duration::from_secs(60)),
         )?;
         for step in array(&script, "calls")? {

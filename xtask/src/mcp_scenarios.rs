@@ -13,7 +13,6 @@ use std::{
     collections::HashMap,
     fs,
     path::PathBuf,
-    process::Command,
     time::{Duration, Instant},
 };
 
@@ -44,7 +43,10 @@ pub fn run(suite: &str, args: impl Iterator<Item = String>) -> Result<()> {
             "Choose a new save path; existing projects are preserved"
         );
     }
-    let client = Client::start_command(Command::new(server), Some(Duration::from_secs(60)))?;
+    let client = Client::start_command(
+        Client::worker_command(server),
+        Some(Duration::from_secs(60)),
+    )?;
     let session = options.get("--session").cloned();
     let mut scenario = Scenario {
         client,

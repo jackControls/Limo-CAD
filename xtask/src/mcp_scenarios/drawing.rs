@@ -183,7 +183,7 @@ pub(super) fn run(s: &mut Scenario) -> Result<()> {
     }
     let persisted = s.call("cad_project_model", json!({}))?;
     let mut restored = Client::start_command(
-        Command::new(&s.options["--server"]),
+        Client::worker_command(&s.options["--server"]),
         Some(Duration::from_secs(60)),
     )?;
     restored.call("cad_load_project_model", json!({"model_json":persisted}))?;

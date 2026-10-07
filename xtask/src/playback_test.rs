@@ -254,7 +254,7 @@ fn workspace_inner(args: &[String]) -> Result<()> {
     let source_path = out.join(format!("workspace-{stamp}.limo.jsonc"));
     fs::write(&source_path, &source)?;
 
-    let mut client = Client::start(server)?;
+    let mut client = Client::start_worker(server)?;
     client.call("cad_attach", json!({"session_id":original_session}))?;
     let initial_ui = ui(&mut client, json!({"action":"inspect"}))?;
     ensure!(
@@ -538,7 +538,7 @@ fn run_inner(args: &[String]) -> Result<()> {
             .to_string(),
     );
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
-    let mut client = Client::start(&server)?;
+    let mut client = Client::start_worker(&server)?;
     client.call("cad_attach", json!({"session_id":original_session}))?;
     let original_model = model(&mut client)?;
     let original_active = active_sketch(&mut client)?;
@@ -568,7 +568,7 @@ fn run_inner(args: &[String]) -> Result<()> {
     let (send, receive) = mpsc::channel();
     let worker = thread::spawn(move || {
         let result = (|| {
-            let mut worker = Client::start(&worker_server)?;
+            let mut worker = Client::start_worker(&worker_server)?;
             worker.call("cad_attach", json!({"session_id":worker_session}))?;
             worker.call("cad_interface", json!({"action":"script","source":source,"mode":"present","speed":1,"validate":true}))
         })();

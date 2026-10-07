@@ -21,8 +21,13 @@ pub(crate) struct Client {
     initialization: Value,
 }
 impl Client {
-    pub(crate) fn start(executable: &str) -> Result<Self> {
-        Self::start_with_arguments(executable, &[], DEFAULT_INITIALIZATION_TIMEOUT)
+    pub(crate) fn worker_command(executable: impl AsRef<std::ffi::OsStr>) -> Command {
+        let mut command = Command::new(executable);
+        command.arg("--headless");
+        command
+    }
+    pub(crate) fn start_worker(executable: &str) -> Result<Self> {
+        Self::start_command(Self::worker_command(executable), None)
     }
     fn start_with_arguments(
         executable: &str,
