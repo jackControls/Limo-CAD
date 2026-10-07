@@ -217,14 +217,19 @@ pub(super) fn choose(
         .and_then(|loaded| loaded.path.as_ref())
         .and_then(|path| path.parent())
         .map(std::path::Path::to_path_buf);
+    let (dialog, parent) = parented_dialog(
+        world,
+        rfd::FileDialog::new()
+            .set_title("Open Limo CAD script")
+            .add_filter("Limo CAD command script (.limo.jsonc)", &["jsonc"]),
+    )?;
     let (send, receive) = mpsc::channel();
     let wake = handle.clone();
     std::thread::Builder::new()
         .name("cad-script-picker".into())
         .spawn(move || {
-            let mut dialog = rfd::FileDialog::new()
-                .set_title("Open Limo CAD script")
-                .add_filter("Limo CAD command script (.limo.jsonc)", &["jsonc"]);
+            let _parent = parent;
+            let mut dialog = dialog;
             if let Some(directory) = directory {
                 dialog = dialog.set_directory(directory);
             }

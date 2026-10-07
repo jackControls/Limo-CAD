@@ -38,13 +38,17 @@ pub(super) fn choose(
     let wake = handle.clone();
     let file_name = prepared.file_name.clone();
     let extension = prepared.extension.clone();
+    let (dialog, parent) = files::parented_dialog(
+        world,
+        rfd::FileDialog::new()
+            .add_filter("CAM output", &[extension.as_str()])
+            .set_file_name(file_name),
+    )?;
     std::thread::Builder::new()
         .name("cad-nc-save-picker".into())
         .spawn(move || {
-            let path = rfd::FileDialog::new()
-                .add_filter("CAM output", &[extension.as_str()])
-                .set_file_name(file_name)
-                .save_file();
+            let _parent = parent;
+            let path = dialog.save_file();
             let _ = send.send(path);
             wake.request_redraw();
         })

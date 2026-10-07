@@ -117,14 +117,19 @@ pub(super) fn choose(
         u64::from(intent.profile_index) + 1
     )
     .replace(['<', '>', ':', '"', '/', '\\', '|', '?', '*'], "_");
+    let (dialog, parent) = parented_dialog(
+        world,
+        rfd::FileDialog::new()
+            .add_filter("Manufacturing profile DXF", &["dxf"])
+            .set_file_name(filename),
+    )?;
     let (send, receive) = mpsc::channel();
     let wake = handle.clone();
     std::thread::Builder::new()
         .name("cad-profile-picker".into())
         .spawn(move || {
-            let mut dialog = rfd::FileDialog::new()
-                .add_filter("Manufacturing profile DXF", &["dxf"])
-                .set_file_name(filename);
+            let _parent = parent;
+            let mut dialog = dialog;
             if let Some(parent) = active.path.as_ref().and_then(|p| p.parent()) {
                 dialog = dialog.set_directory(parent);
             }

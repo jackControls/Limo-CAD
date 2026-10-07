@@ -90,12 +90,17 @@ pub(super) fn choose(
     )
     .replace(['<', '>', ':', '"', '/', '\\', '|', '?', '*'], "_");
     let extension = intent.format.extension();
+    let (dialog, parent) = parented_dialog(
+        world,
+        rfd::FileDialog::new()
+            .add_filter("Drawing sheet", &[extension])
+            .set_file_name(filename),
+    )?;
     std::thread::Builder::new()
         .name("cad-drawing-picker".into())
         .spawn(move || {
-            let mut dialog = rfd::FileDialog::new()
-                .add_filter("Drawing sheet", &[extension])
-                .set_file_name(filename);
+            let _parent = parent;
+            let mut dialog = dialog;
             if let Some(parent) = active.path.as_ref().and_then(|path| path.parent()) {
                 dialog = dialog.set_directory(parent);
             }

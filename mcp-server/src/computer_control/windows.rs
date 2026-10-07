@@ -2,6 +2,7 @@ use std::mem::size_of;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use base64::Engine;
 use enigo::{Axis, Button, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -20,6 +21,7 @@ use windows_sys::Win32::UI::HiDpi::{
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, IsWindowEnabled};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
+use super::capture;
 use crate::{build_pair, session};
 
 const OBSERVATION_MS: u64 = 60_000;
@@ -42,7 +44,9 @@ struct Observation {
     token: String,
     expires_ms: u64,
     owner: Value,
+    main_hwnd: usize,
     hwnd: usize,
+    native_dialog: bool,
     bounds: Option<[i32; 4]>,
     layout: Option<Value>,
     editable_focus: bool,
@@ -107,19 +111,43 @@ impl ComputerControl {
                     "Computer control needs an explicit or attached active desktop session",
                 )?;
             let owner = session::computer_control_owner(session_id)?;
-            let process = DesktopProcess::open(
-                owner["pid"]
-                    .as_u64()
-                    .and_then(|pid| u32::try_from(pid).ok())
-                    .ok_or("Owner has no PID")?,
-            )?;
-            let hwnd = native_window(&owner)?;
-            let inspect = inspect(session_id, false)?;
+            let pid = owner["pid"]
+                .as_u64()
+                .and_then(|pid| u32::try_from(pid).ok())
+                .ok_or("Owner has no PID")?;
+            let process = DesktopProcess::open(pid)?;
+            let inspect = inspect_desktop(session_id, false)?;
+            let main = main_from_inspection(&owner, &inspect)?;
+            let target = target_window(&owner, main)?;
+            let hwnd = target.window;
+            let native = target
+                .native_dialog
+                .then(|| native_layout(hwnd))
+                .transpose()?;
+            let captured = target
+                .native_dialog
+                .then(|| capture::png(hwnd as usize))
+                .transpose()?;
             process.verify()?;
-            if session::computer_control_owner(session_id)? != owner {
-                return Err("Desktop owner changed during observation; observe again".into());
+            if target.native_dialog
+                && main_from_inspection(&owner, &inspect_desktop(session_id, false)?)? != main
+            {
+                return Err(
+                    "Bevy primary window changed during native capture; observe again".into(),
+                );
             }
-            let presented = inspect["presented"] == true && unsafe { IsIconic(hwnd) } == 0;
+            if session::computer_control_owner(session_id)? != owner
+                || target_window(&owner, main)? != target
+                || native
+                    .as_ref()
+                    .is_some_and(|expected| native_layout(hwnd).as_ref() != Ok(expected))
+            {
+                return Err(
+                    "CAD owner or native dialog changed during observation; observe again".into(),
+                );
+            }
+            let presented = (target.native_dialog || inspect["presented"] == true)
+                && unsafe { IsIconic(hwnd) } == 0;
             let bounds = if presented {
                 Some(client_bounds(hwnd)?)
             } else {
@@ -135,34 +163,40 @@ impl ComputerControl {
             let expires_ms = session::now_ms().saturating_add(OBSERVATION_MS);
             let focused = &inspect["ui"]["focused_control"];
             let editable_focus = presented
-                && inspect["ui"]["surfaces"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .flat_map(|surface| surface["controls"].as_array().into_iter().flatten())
-                    .any(|control| {
-                        control["id"] == *focused
-                            && matches!(
-                                control["role"].as_str(),
-                                Some("textbox" | "multiline_textbox")
-                            )
-                            && control["read_only"] != true
-                            && control["disabled"] != true
-                    });
+                && if let Some(native) = &native {
+                    native["focused_editable"] == true
+                } else {
+                    inspect["ui"]["surfaces"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .flat_map(|surface| surface["controls"].as_array().into_iter().flatten())
+                        .any(|control| {
+                            control["id"] == *focused
+                                && matches!(
+                                    control["role"].as_str(),
+                                    Some("textbox" | "multiline_textbox")
+                                )
+                                && control["read_only"] != true
+                                && control["disabled"] != true
+                        })
+                };
             self.observation = Some(Observation {
                 token: token.clone(),
                 expires_ms,
                 owner: owner.clone(),
+                main_hwnd: target.main as usize,
                 hwnd: hwnd as usize,
+                native_dialog: target.native_dialog,
                 bounds,
-                layout: presented.then(|| layout(&inspect)),
+                layout: presented.then(|| native.clone().unwrap_or_else(|| layout(&inspect))),
                 editable_focus,
                 process,
             });
             let screen_bounds = bounds.map(
                 |bounds| json!({"x":bounds[0],"y":bounds[1],"width":bounds[2],"height":bounds[3]}),
             );
-            let scale = bounds.map(|bounds| {
+            let scale = bounds.filter(|_| !target.native_dialog).map(|bounds| {
                 [
                     bounds[2] as f64
                         / inspect["ui"]["client"]["width"]
@@ -174,21 +208,37 @@ impl ComputerControl {
                             .unwrap_or(bounds[3] as f64),
                 ]
             });
-            let inspection = if presented {
+            let inspection = if target.native_dialog {
+                json!({"status":inspect["status"],"presented":true,"build_pair":inspect["build_pair"],
+                    "native_dialog":native,"host_render_status":inspect["render_status"]})
+            } else if presented {
                 inspect
             } else {
                 json!({"status":inspect["status"],"presented":false,"build_pair":inspect["build_pair"],
                     "render_status":inspect["render_status"],"hint":"Owner-only focus observation; no rendered controls or pointer coordinates are qualified."})
             };
+            let image = captured.map(|captured| {
+                let offset = bounds.map(|bounds| {
+                    [
+                        bounds[0] - captured.screen_bounds[0],
+                        bounds[1] - captured.screen_bounds[1],
+                    ]
+                });
+                json!({"png_base64":base64::engine::general_purpose::STANDARD.encode(captured.png),
+                    "width":captured.width,"height":captured.height,
+                    "screen_bounds":captured.screen_bounds,"client_to_image_offset":offset})
+            });
             return Ok(
                 json!({"status":"observed","observation":token,"expires_ms":expires_ms,
                 "owner":owner,"window_handle":hwnd as usize,"executable":std::env::current_exe().map_err(|e|e.to_string())?,
+                "main_window_handle":target.main as usize,"target_kind":if target.native_dialog {"native_dialog"} else {"bevy_window"},
+                "native_window_diagnostics":window_diagnostics(pid),
                 "presented":presented,"focus_only":!presented,"minimized":unsafe { IsIconic(hwnd) } != 0,
                 "client_screen_bounds":screen_bounds,
                 "coordinate_space":"physical_client_pixels","dpi":unsafe { GetDpiForWindow(hwnd) },
                 "interface_to_physical_scale":scale,
-                "foreground":unsafe { GetForegroundWindow() == hwnd },"editable_focus":editable_focus,"inspection":inspection,
-                "hint":"Use cad_interface capture for the actual rendered image. Focus if needed, observe again, then send one input and observe its visible result."}),
+                "foreground":unsafe { GetForegroundWindow() == hwnd },"editable_focus":editable_focus,"inspection":inspection,"image":image,
+                "hint":if target.native_dialog {"The attached image shows the owned native dialog. Subtract image.client_to_image_offset from image pixel points to obtain physical client coordinates. Focus if needed, observe again, send one input and observe its visible result."} else {"Use cad_interface capture for the actual rendered image. Focus if needed, observe again, then send one input and observe its visible result."}}),
             );
         }
         let observed = self
@@ -215,11 +265,17 @@ impl ComputerControl {
         {
             return Err("Active desktop document changed; observe again before input".into());
         }
-        let hwnd = native_window(&observed.owner)?;
-        if hwnd as usize != observed.hwnd {
+        let focus = request.action == "focus";
+        let current = inspect_desktop(session_id, !focus && !observed.native_dialog)?;
+        let main = main_from_inspection(&observed.owner, &current)?;
+        let target = target_window(&observed.owner, main)?;
+        let hwnd = target.window;
+        if hwnd as usize != observed.hwnd
+            || target.main as usize != observed.main_hwnd
+            || target.native_dialog != observed.native_dialog
+        {
             return Err("CAD window was replaced, moved or resized; observe again".into());
         }
-        let focus = request.action == "focus";
         if !focus && observed.bounds.is_none() {
             return Err("This observation qualifies focus only; restore/focus CAD and observe a presented frame before input".into());
         }
@@ -228,9 +284,13 @@ impl ComputerControl {
                 return Err("CAD window moved or resized; observe again".into());
             }
         }
-        let current = inspect(session_id, !focus)?;
         if let Some(expected) = &observed.layout {
-            if layout(&current) != *expected {
+            let current_layout = if observed.native_dialog {
+                native_layout(hwnd)?
+            } else {
+                layout(&current)
+            };
+            if current_layout != *expected {
                 return Err(
                     "Rendered controls or camera changed; observe again before input".into(),
                 );
@@ -254,10 +314,10 @@ impl ComputerControl {
                 "hint":"Observe again before sending mouse or keyboard input."}),
             );
         }
-        guard_foreground(hwnd, false)?;
+        guard_foreground(hwnd, false, observed.native_dialog)?;
         guard_held_input()?;
         let plan = plan(&request, &observed, hwnd)?;
-        guard_foreground(hwnd, false)?;
+        guard_foreground(hwnd, false, observed.native_dialog)?;
         if Some(client_bounds(hwnd)?) != observed.bounds
             || session::computer_control_owner(session_id)? != observed.owner
             || session::now_ms() > observed.expires_ms
@@ -310,7 +370,7 @@ impl ComputerControl {
     }
 }
 
-fn inspect(session_id: &str, require_presented: bool) -> Result<Value, String> {
+fn inspect_desktop(session_id: &str, require_presented: bool) -> Result<Value, String> {
     let mut result =
         session::request_ui(&json!({"action":"inspect","session_id":session_id}), None)?;
     build_pair::decorate(&mut result);
@@ -348,43 +408,150 @@ fn layout(inspect: &Value) -> Value {
     json!({"ui":ui,"view_state":inspect["view_state"]})
 }
 
-fn native_window(owner: &Value) -> Result<HWND, String> {
+#[derive(Clone, Copy, PartialEq)]
+struct Target {
+    main: HWND,
+    window: HWND,
+    native_dialog: bool,
+}
+
+fn target_window(owner: &Value, published_main: usize) -> Result<Target, String> {
+    let main = main_window(owner, published_main)?;
+    let foreground = unsafe { GetAncestor(GetForegroundWindow(), GA_ROOT) };
+    let mut popup = unsafe { GetLastActivePopup(main) };
+    for _ in 0..16 {
+        let next = unsafe { GetLastActivePopup(popup) };
+        if next == popup || next.is_null() {
+            break;
+        }
+        popup = next;
+    }
+    for window in [foreground, popup] {
+        if owned_dialog(main, window)
+            && unsafe { IsWindowVisible(window) } != 0
+            && unsafe { IsWindowEnabled(window) } != 0
+            && unsafe { IsIconic(window) } == 0
+            && window_class(window)? == "#32770"
+        {
+            return Ok(Target {
+                main,
+                window,
+                native_dialog: true,
+            });
+        }
+    }
+    if unsafe { IsWindowEnabled(main) } == 0 {
+        return Err(
+            "CAD is blocked by a modal window without a qualified same-process owner chain".into(),
+        );
+    }
+    Ok(Target {
+        main,
+        window: main,
+        native_dialog: false,
+    })
+}
+
+fn owned_dialog(main: HWND, window: HWND) -> bool {
+    if window.is_null() || window == main {
+        return false;
+    }
+    let mut main_pid = 0;
+    unsafe {
+        GetWindowThreadProcessId(main, &mut main_pid);
+    }
+    let mut cursor = window;
+    for _ in 0..16 {
+        let mut pid = 0;
+        unsafe {
+            GetWindowThreadProcessId(cursor, &mut pid);
+        }
+        if pid != main_pid || pid == 0 {
+            return false;
+        }
+        let owner = unsafe { GetWindow(cursor, GW_OWNER) };
+        if owner == main {
+            return true;
+        }
+        if owner.is_null() || owner == cursor {
+            return false;
+        }
+        cursor = owner;
+    }
+    false
+}
+
+fn window_diagnostics(pid: u32) -> Value {
+    let _dpi = match DpiGuard::enter() {
+        Ok(guard) => guard,
+        Err(error) => return json!({"error":error,"diagnostics_only":true}),
+    };
     struct Search {
         pid: u32,
-        windows: Vec<usize>,
+        windows: Vec<Value>,
     }
     unsafe extern "system" fn visit(hwnd: HWND, pointer: LPARAM) -> i32 {
         let search = &mut *(pointer as *mut Search);
         let mut pid = 0;
         GetWindowThreadProcessId(hwnd, &mut pid);
-        if pid == search.pid && IsWindowVisible(hwnd) != 0 && GetWindow(hwnd, GW_OWNER).is_null() {
-            search.windows.push(hwnd as usize);
+        if pid == search.pid {
+            let mut caption = [0u16; 512];
+            let length = GetWindowTextW(hwnd, caption.as_mut_ptr(), caption.len() as i32);
+            let mut rect = RECT::default();
+            let rect = (GetWindowRect(hwnd, &mut rect) != 0).then_some([
+                rect.left,
+                rect.top,
+                rect.right,
+                rect.bottom,
+            ]);
+            search.windows.push(json!({"hwnd":hwnd as usize,"pid":pid,
+                "class":window_class(hwnd).unwrap_or_else(|error| error),
+                "caption":String::from_utf16_lossy(&caption[..length.max(0) as usize]),
+                "visible":IsWindowVisible(hwnd) != 0,"enabled":IsWindowEnabled(hwnd) != 0,
+                "owner_hwnd":GetWindow(hwnd, GW_OWNER) as usize,"physical_screen_rect":rect}));
         }
         1
     }
-    let pid = owner["pid"]
-        .as_u64()
-        .and_then(|pid| u32::try_from(pid).ok())
-        .ok_or("Owner has no PID")?;
     let mut search = Search {
         pid,
         windows: Vec::new(),
     };
     if unsafe { EnumWindows(Some(visit), &mut search as *mut Search as LPARAM) } == 0 {
-        return Err(format!(
-            "Could not enumerate CAD windows: {}",
-            std::io::Error::last_os_error()
-        ));
+        return json!({"error":format!("Could not enumerate CAD windows: {}",std::io::Error::last_os_error()),
+            "diagnostics_only":true,"windows":search.windows});
     }
-    let [window] = search.windows.as_slice() else {
-        return Err(
-            "CAD process must own exactly one visible main window; no input was sent".into(),
-        );
-    };
-    let hwnd = *window as HWND;
-    if unsafe { IsWindowEnabled(hwnd) } == 0 {
-        return Err("CAD window is blocked by a native modal dialog; no input was sent".into());
+    json!({"diagnostics_only":true,"windows":search.windows})
+}
+
+fn main_from_inspection(owner: &Value, inspect: &Value) -> Result<usize, String> {
+    let published = &inspect["native_window"];
+    let pid = owner["pid"]
+        .as_u64()
+        .and_then(|pid| u32::try_from(pid).ok())
+        .ok_or("Owner has no PID")?;
+    if published["pid"] != owner["pid"] || published["window_id"] != owner["window_id"] {
+        return Err(json!({"code":"computer_control_main_window_not_published",
+            "message":"The active CAD inspection must publish its exact Bevy primary HWND and owner",
+            "expected_owner":owner,"native_window":published,
+            "diagnostics":window_diagnostics(pid)}).to_string());
     }
+    published["hwnd"]
+        .as_u64()
+        .and_then(|hwnd| usize::try_from(hwnd).ok())
+        .filter(|hwnd| *hwnd != 0)
+        .ok_or_else(|| {
+            json!({"code":"computer_control_main_window_not_published",
+            "message":"CAD inspection did not publish a valid primary HWND",
+            "native_window":published,"diagnostics":window_diagnostics(pid)})
+            .to_string()
+        })
+}
+
+fn main_window(owner: &Value, published: usize) -> Result<HWND, String> {
+    let pid = owner["pid"]
+        .as_u64()
+        .and_then(|pid| u32::try_from(pid).ok())
+        .ok_or("Owner has no PID")?;
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
     if !same_path(&process_image(pid)?, &current)? {
         return Err(
@@ -392,7 +559,108 @@ fn native_window(owner: &Value) -> Result<HWND, String> {
                 .into(),
         );
     }
+    let hwnd = published as HWND;
+    let mut actual_pid = 0;
+    unsafe {
+        GetWindowThreadProcessId(hwnd, &mut actual_pid);
+    }
+    if unsafe { IsWindow(hwnd) } == 0
+        || actual_pid != pid
+        || unsafe { GetAncestor(hwnd, GA_ROOT) } != hwnd
+        || unsafe { IsWindowVisible(hwnd) } == 0
+    {
+        return Err(json!({"code":"computer_control_main_window_mismatch",
+            "message":"Published Bevy primary HWND is no longer an owned visible top-level CAD window",
+            "published_hwnd":published,"expected_pid":pid,"actual_pid":actual_pid,
+            "diagnostics":window_diagnostics(pid)}).to_string());
+    }
     Ok(hwnd)
+}
+
+fn window_class(hwnd: HWND) -> Result<String, String> {
+    let mut class = [0u16; 256];
+    let length = unsafe { GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32) };
+    if length <= 0 {
+        return Err("Cannot identify the native CAD control class".into());
+    }
+    String::from_utf16(&class[..length as usize]).map_err(|error| error.to_string())
+}
+
+fn native_layout(hwnd: HWND) -> Result<Value, String> {
+    struct Children {
+        controls: Vec<Value>,
+        error: Option<String>,
+    }
+    unsafe extern "system" fn visit(child: HWND, pointer: LPARAM) -> i32 {
+        let children = &mut *(pointer as *mut Children);
+        if children.controls.len() >= 1024 {
+            children.error = Some("Native CAD dialog has too many controls to qualify".into());
+            return 0;
+        }
+        if IsWindowVisible(child) == 0 {
+            return 1;
+        }
+        let mut rect = RECT::default();
+        if GetWindowRect(child, &mut rect) == 0 {
+            children.error = Some("Native CAD dialog changed during control observation".into());
+            return 0;
+        }
+        let Ok(class) = window_class(child) else {
+            children.error = Some("Native CAD dialog changed during control observation".into());
+            return 0;
+        };
+        let mut caption = [0u16; 512];
+        let length = GetWindowTextW(child, caption.as_mut_ptr(), caption.len() as i32);
+        children
+            .controls
+            .push(json!({"window_handle":child as usize,"class":class,
+            "caption":String::from_utf16_lossy(&caption[..length.max(0) as usize]),
+            "screen_bounds":[rect.left,rect.top,rect.right-rect.left,rect.bottom-rect.top],
+            "enabled":IsWindowEnabled(child) != 0,
+            "style":GetWindowLongPtrW(child, GWL_STYLE)}));
+        1
+    }
+    let _dpi = DpiGuard::enter()?;
+    let mut children = Children {
+        controls: Vec::new(),
+        error: None,
+    };
+    unsafe {
+        EnumChildWindows(hwnd, Some(visit), &mut children as *mut Children as LPARAM);
+    }
+    if let Some(error) = children.error {
+        return Err(error);
+    }
+    children
+        .controls
+        .sort_by_key(|control| control["window_handle"].as_u64());
+    let mut pid = 0;
+    let thread = unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+    let mut info = GUITHREADINFO {
+        cbSize: size_of::<GUITHREADINFO>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GetGUIThreadInfo(thread, &mut info) } == 0 {
+        return Err("Cannot observe native CAD dialog focus".into());
+    }
+    let focus = info.hwndFocus;
+    let mut focus_pid = 0;
+    unsafe {
+        GetWindowThreadProcessId(focus, &mut focus_pid);
+    }
+    let editable = !focus.is_null()
+        && focus_pid == pid
+        && unsafe { GetAncestor(focus, GA_ROOT) } == hwnd
+        && unsafe { IsWindowEnabled(focus) } != 0
+        && unsafe { IsWindowVisible(focus) } != 0
+        && (unsafe { GetWindowLongPtrW(focus, GWL_STYLE) } & ES_READONLY as isize) == 0
+        && window_class(focus).is_ok_and(|class| {
+            class.eq_ignore_ascii_case("Edit") || class.to_ascii_uppercase().starts_with("RICHEDIT")
+        });
+    Ok(
+        json!({"class":window_class(hwnd)?,"controls":children.controls,
+        "focused_control":focus as usize,"focused_editable":editable}),
+    )
 }
 
 fn process_image(pid: u32) -> Result<PathBuf, String> {
@@ -468,7 +736,7 @@ fn client_bounds(hwnd: HWND) -> Result<[i32; 4], String> {
     Ok(bounds)
 }
 
-fn guard_foreground(hwnd: HWND, owns_capture: bool) -> Result<(), String> {
+fn guard_foreground(hwnd: HWND, owns_capture: bool, native_dialog: bool) -> Result<(), String> {
     if unsafe { GetForegroundWindow() } != hwnd {
         return Err("CAD is not the foreground window; focus it and observe again".into());
     }
@@ -480,9 +748,15 @@ fn guard_foreground(hwnd: HWND, owns_capture: bool) -> Result<(), String> {
     };
     if unsafe { GetGUIThreadInfo(thread, &mut info) } == 0
         || (!info.hwndCapture.is_null()
-            && (!owns_capture || unsafe { GetAncestor(info.hwndCapture, GA_ROOT) } != hwnd))
-        || !info.hwndMenuOwner.is_null()
-        || (!info.hwndFocus.is_null() && unsafe { GetAncestor(info.hwndFocus, GA_ROOT) } != hwnd)
+            && (!(owns_capture || native_dialog) || !target_contains(hwnd, info.hwndCapture)))
+        || (!info.hwndMenuOwner.is_null()
+            && (!native_dialog || !target_contains(hwnd, info.hwndMenuOwner)))
+        || (!info.hwndFocus.is_null()
+            && if native_dialog {
+                !target_contains(hwnd, info.hwndFocus)
+            } else {
+                (unsafe { GetAncestor(info.hwndFocus, GA_ROOT) }) != hwnd
+            })
     {
         return Err("CAD input is captured by an existing gesture or native menu".into());
     }
@@ -505,6 +779,8 @@ fn guard_action(
         || unsafe { IsWindowVisible(hwnd) } == 0
         || unsafe { IsIconic(hwnd) } != 0
         || observed.owner["pid"].as_u64() != Some(pid as u64)
+        || (observed.native_dialog && !owned_dialog(observed.main_hwnd as HWND, hwnd))
+        || (!observed.native_dialog && observed.main_hwnd != hwnd as usize)
         || session::now_ms() > observed.expires_ms
         || Some(client_bounds(hwnd)?) != observed.bounds
     {
@@ -527,7 +803,7 @@ fn guard_action(
     {
         return Err("Active CAD document or window owner changed during input".into());
     }
-    guard_foreground(hwnd, owns_capture)
+    guard_foreground(hwnd, owns_capture, observed.native_dialog)
 }
 
 fn guard_held_input() -> Result<(), String> {
@@ -568,10 +844,37 @@ fn guard_pointer(screen: [i32; 2], hwnd: HWND) -> Result<(), String> {
             y: screen[1],
         })
     };
-    if target.is_null() || unsafe { GetAncestor(target, GA_ROOT) } != hwnd {
+    if !target_contains(hwnd, target) {
         return Err("Pointer target is occluded by another window".into());
     }
     Ok(())
+}
+
+fn target_contains(target: HWND, window: HWND) -> bool {
+    let mut target_pid = 0;
+    unsafe {
+        GetWindowThreadProcessId(target, &mut target_pid);
+    }
+    let mut cursor = unsafe { GetAncestor(window, GA_ROOT) };
+    for _ in 0..16 {
+        let mut pid = 0;
+        unsafe {
+            GetWindowThreadProcessId(cursor, &mut pid);
+        }
+        if cursor.is_null() || pid == 0 || pid != target_pid {
+            return false;
+        }
+        if cursor == target {
+            return true;
+        }
+        let owner = unsafe { GetWindow(cursor, GW_OWNER) };
+        let root = unsafe { GetAncestor(owner, GA_ROOT) };
+        if root == cursor {
+            return false;
+        }
+        cursor = root;
+    }
+    false
 }
 
 fn guard_cursor(expected: [i32; 2], hwnd: HWND) -> Result<(), String> {

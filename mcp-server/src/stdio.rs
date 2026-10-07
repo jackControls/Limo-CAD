@@ -49,6 +49,10 @@ impl Drop for ClearDesktopMcpPresence {
 }
 
 pub fn run_stdio() -> Result<(), String> {
+    #[cfg(all(windows, feature = "native-computer-control"))]
+    if let Some(result) = crate::computer_control::run_worker_if_requested() {
+        return result;
+    }
     run(CadServer::new, None)
 }
 

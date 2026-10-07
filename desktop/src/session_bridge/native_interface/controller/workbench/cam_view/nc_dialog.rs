@@ -224,14 +224,19 @@ pub(crate) fn reduce(
                 if files::awaiting(world) || editor.picker.is_some() {
                     return Err("Finish the current file chooser first".into());
                 }
+                let (dialog, parent) = files::parented_dialog(
+                    world,
+                    rfd::FileDialog::new()
+                        .set_title("Open NC source")
+                        .add_filter("NC source", &["mpf", "spf", "nc", "ngc", "tap", "txt"]),
+                )?;
                 let (send, receive) = mpsc::channel();
                 let wake = world.get_resource::<NativeInterfaceHandle>().cloned();
                 std::thread::Builder::new()
                     .name("cad-nc-source-file".into())
                     .spawn(move || {
-                        let result = rfd::FileDialog::new()
-                            .set_title("Open NC source")
-                            .add_filter("NC source", &["mpf", "spf", "nc", "ngc", "tap", "txt"])
+                        let _parent = parent;
+                        let result = dialog
                             .pick_file()
                             .map(|path| nc_input::read(&path))
                             .transpose();

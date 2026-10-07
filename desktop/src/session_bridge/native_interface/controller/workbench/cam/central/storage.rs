@@ -164,14 +164,17 @@ pub(super) fn execute(
             if storage.picker.is_some() {
                 return Err("A folder chooser is already open".into());
             }
+            let (chooser, parent) = files::parented_dialog(
+                world,
+                rfd::FileDialog::new().set_title("Choose the CAM tool library folder"),
+            )?;
             let (send, receive) = mpsc::channel();
             let wake = world.get_resource::<NativeInterfaceHandle>().cloned();
             let path = storage.path.clone();
             std::thread::Builder::new()
                 .name("cad-tool-library-folder".into())
                 .spawn(move || {
-                    let chooser =
-                        rfd::FileDialog::new().set_title("Choose the CAM tool library folder");
+                    let _parent = parent;
                     let chooser = if PathBuf::from(&path).is_dir() {
                         chooser.set_directory(path)
                     } else {

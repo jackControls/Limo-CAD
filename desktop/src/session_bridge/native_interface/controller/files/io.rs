@@ -275,12 +275,14 @@ fn picker(
     let keep_options = exporting
         .as_ref()
         .is_some_and(|intent| intent.bambu.enabled);
+    let (dialog, parent) = parented_dialog(world, rfd::FileDialog::new())?;
     let (send, receive) = mpsc::channel();
     let wake = handle.clone();
     std::thread::Builder::new()
         .name("cad-exchange-picker".into())
         .spawn(move || {
-            let mut dialog = rfd::FileDialog::new();
+            let _parent = parent;
+            let mut dialog = dialog;
             if let Some(parent) = active.path.as_ref().and_then(|p| p.parent()) {
                 dialog = dialog.set_directory(parent);
             }

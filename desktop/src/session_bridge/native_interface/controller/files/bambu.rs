@@ -770,14 +770,17 @@ fn browse(
     if world.resource::<Files>().picker.is_some() {
         return Err("A file chooser is already open".into());
     }
+    let (dialog, parent) = parented_dialog(
+        world,
+        rfd::FileDialog::new().add_filter("Saved Bambu 3MF project", &["3mf"]),
+    )?;
     let (send, receive) = mpsc::channel();
     let wake = handle.clone();
     std::thread::Builder::new()
         .name("cad-bambu-template-picker".into())
         .spawn(move || {
-            let path = rfd::FileDialog::new()
-                .add_filter("Saved Bambu 3MF project", &["3mf"])
-                .pick_file();
+            let _parent = parent;
+            let path = dialog.pick_file();
             let _ = send.send(path);
             wake.request_redraw();
         })

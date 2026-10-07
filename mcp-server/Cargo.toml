@@ -15,6 +15,9 @@ name = "limo_cad_mcp"
 default = []
 native-computer-control = [
     "dep:enigo",
+    "dep:png",
+    "dep:windows-capture",
+    "windows-sys/Win32_Graphics_Dwm",
     "windows-sys/Win32_Graphics_Gdi",
     "windows-sys/Win32_UI_HiDpi",
     "windows-sys/Win32_UI_Input_KeyboardAndMouse",
@@ -44,6 +47,8 @@ libc = "0.2.189"
 
 [target.'cfg(windows)'.dependencies]
 enigo = { version = "=0.6.1", default-features = false, optional = true }
+png = { version = "=0.18.1", optional = true }
+windows-capture = { version = "=2.0.1", optional = true }
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Threading"] }
 
 [target.'cfg(windows)'.dev-dependencies]

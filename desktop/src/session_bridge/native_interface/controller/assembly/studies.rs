@@ -493,15 +493,19 @@ pub(super) fn reduce(
                     .name
                     .replace(['<', '>', ':', '"', '/', '\\', '|', '?', '*'], "_")
             );
+            let (dialog, parent) = super::super::files::parented_dialog(
+                world,
+                rfd::FileDialog::new()
+                    .add_filter("Motion path CSV", &["csv"])
+                    .set_file_name(name),
+            )?;
             let (tx, rx) = std::sync::mpsc::channel();
             let wake = handle.clone();
             std::thread::Builder::new()
                 .name("cad-motion-path-picker".into())
                 .spawn(move || {
-                    let path = rfd::FileDialog::new()
-                        .add_filter("Motion path CSV", &["csv"])
-                        .set_file_name(name)
-                        .save_file();
+                    let _parent = parent;
+                    let path = dialog.save_file();
                     let _ = tx.send(path);
                     wake.request_redraw();
                 })
