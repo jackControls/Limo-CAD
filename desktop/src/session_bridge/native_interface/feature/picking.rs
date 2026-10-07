@@ -17,7 +17,13 @@ pub(crate) fn hover_references(
             matches!(
                 e.pick_target,
                 Some(
-                    SolidField::Edges
+                    SolidField::Source
+                        | SolidField::StopFace
+                        | SolidField::Targets
+                        | SolidField::Path
+                        | SolidField::Guide
+                        | SolidField::AxisLine
+                        | SolidField::Edges
                         | SolidField::FromPoint
                         | SolidField::ToPoint
                         | SolidField::PivotPoint
@@ -40,6 +46,32 @@ pub(crate) fn hover_references(
         };
         with_receipt(&services.bridge, &services.engine, owner, |receipt| {
             check_revision(editor, &receipt)?;
+            if matches!(
+                editor.pick_target,
+                Some(SolidField::Path | SolidField::Guide | SolidField::AxisLine)
+            ) {
+                let candidate = point
+                    .map(|p| {
+                        if editor.pick_target == Some(SolidField::AxisLine) {
+                            axis_line(world, editor, owner, p)
+                        } else {
+                            sketch_curve(world, editor, owner, p)
+                        }
+                    })
+                    .transpose()?
+                    .flatten();
+                let next = candidate.map(|(sketch_name, entity_id)| PathRefDto {
+                    sketch_name,
+                    entity_ids: vec![entity_id],
+                });
+                if editor.hovered_path != next
+                    || native_viewport::interface_preview_revision(world) != editor.preview_revision
+                {
+                    editor.hovered_path = next;
+                    update_preview(editor, world)?;
+                }
+                return Ok(true);
+            }
             if editor.pick_target.is_some_and(SolidField::is_move_point) {
                 let next = point.and_then(|p| move_point(world, editor, owner, p));
                 if next != editor.hovered_point {
@@ -49,7 +81,9 @@ pub(crate) fn hover_references(
                 return Ok(true);
             }
             if editor.pick_target == Some(SolidField::HolePositions) {
-                let next = point.and_then(|p| hole_point(world, editor, owner, p).map(|(_, p)| p));
+                let next = point.and_then(|p| {
+                    hole_point(world, editor, owner, p, editor.form.hole_support()).map(|(_, p)| p)
+                });
                 if next != editor.hovered_point
                     || native_viewport::interface_preview_revision(world) != editor.preview_revision
                 {
@@ -92,9 +126,45 @@ pub(crate) fn hover_references(
                 })
                 .transpose()?
                 .flatten();
+            if editor.pick_target == Some(SolidField::Source) {
+                let profile = point
+                    .map(|p| source_profile(world, editor, owner, p, hit.as_ref()))
+                    .transpose()?
+                    .flatten();
+                let face = hit
+                    .as_ref()
+                    .filter(|hit| {
+                        profile.is_none()
+                            && editor.form.kind() == SolidFormKind::Extrude
+                            && editor.snapshot.source_local(hit.body_id, hit.occurrence_id)
+                            && planar_face(
+                                editor,
+                                PlanarFaceSourceDto {
+                                    body_id: BodyId(hit.body_id),
+                                    face_id: FaceId(hit.face_id),
+                                },
+                            )
+                            .is_some()
+                    })
+                    .map(|hit| (BodyId(hit.body_id), FaceId(hit.face_id)));
+                if profile != editor.hovered_profile
+                    || face != editor.hovered_face
+                    || native_viewport::interface_preview_revision(world) != editor.preview_revision
+                {
+                    editor.hovered_profile = profile;
+                    editor.hovered_face = face;
+                    update_preview(editor, world)?;
+                }
+                return Ok(true);
+            }
             if matches!(
                 editor.pick_target,
-                Some(SolidField::TargetBody | SolidField::ToolBodies | SolidField::Bodies)
+                Some(
+                    SolidField::TargetBody
+                        | SolidField::ToolBodies
+                        | SolidField::Bodies
+                        | SolidField::Targets
+                )
             ) {
                 let hit = hit.filter(|hit| {
                     editor.form.move_is_component()
@@ -115,15 +185,49 @@ pub(crate) fn hover_references(
             }
             if matches!(
                 editor.pick_target,
-                Some(SolidField::Faces | SolidField::Cylinder | SolidField::HoleSupport)
+                Some(
+                    SolidField::Faces
+                        | SolidField::Cylinder
+                        | SolidField::HoleSupport
+                        | SolidField::StopFace
+                )
             ) {
                 let next = hit
-                    .filter(|hit| editor.snapshot.source_local(hit.body_id, hit.occurrence_id))
+                    .filter(|hit| {
+                        editor.snapshot.source_local(hit.body_id, hit.occurrence_id)
+                            && (!matches!(
+                                editor.pick_target,
+                                Some(SolidField::HoleSupport | SolidField::StopFace)
+                            ) || planar_face(
+                                editor,
+                                PlanarFaceSourceDto {
+                                    body_id: BodyId(hit.body_id),
+                                    face_id: FaceId(hit.face_id),
+                                },
+                            )
+                            .is_some())
+                    })
                     .map(|hit| (BodyId(hit.body_id), FaceId(hit.face_id)));
+                let snap = if editor.pick_target == Some(SolidField::HoleSupport) {
+                    point.zip(next).and_then(|(p, (body_id, face_id))| {
+                        hole_point(
+                            world,
+                            editor,
+                            owner,
+                            p,
+                            Some(PlanarFaceSourceDto { body_id, face_id }),
+                        )
+                        .map(|(_, point)| point)
+                    })
+                } else {
+                    None
+                };
                 if next != editor.hovered_face
+                    || snap != editor.hovered_point
                     || native_viewport::interface_preview_revision(world) != editor.preview_revision
                 {
                     editor.hovered_face = next;
+                    editor.hovered_point = snap;
                     update_preview(editor, world)?;
                 }
                 return Ok(true);
@@ -185,6 +289,21 @@ fn inside(point: limo_cad_sketch::Vec2, polygon: &[Point2Dto]) -> bool {
     inside
 }
 
+fn planar_face(editor: &Editor, source: PlanarFaceSourceDto) -> Option<limo_cad_core::PlaneBasis> {
+    editor
+        .snapshot
+        .viewport
+        .document
+        .scene
+        .bodies
+        .iter()
+        .find(|body| body.id == source.body_id)?
+        .faces
+        .iter()
+        .find(|face| face.id == source.face_id)?
+        .plane
+}
+
 pub(crate) fn handle_canvas_pick(
     world: &mut World,
     services: &NativeServices,
@@ -243,7 +362,9 @@ pub(crate) fn handle_canvas_pick(
                         });
                 }
                 if target == SolidField::HolePositions {
-                    if let Some((reference, point)) = hole_point(world, editor, owner, point) {
+                    if let Some((reference, point)) =
+                        hole_point(world, editor, owner, point, editor.form.hole_support())
+                    {
                         return Ok(FeaturePick::HolePosition {
                             point,
                             reference: Some(reference),
@@ -304,72 +425,9 @@ pub(crate) fn handle_canvas_pick(
                         edges,
                     });
                 }
-                let (_, camera, presentation, _) = native_viewport::interface_view(world);
-                let camera = bevy::math::DVec3::from_array(camera.position.map(f64::from));
-                let mut nearest = hit
-                    .as_ref()
-                    .map(|hit| hit.distance)
-                    .unwrap_or(f64::INFINITY);
                 if matches!(target, SolidField::Path | SolidField::Guide) {
-                    let mut candidate = None;
-                    let mut distance = f64::INFINITY;
-                    for sketch in &editor.snapshot.viewport.document.finished_sketches {
-                        if presentation.hidden_sketch_names.contains(&sketch.name) {
-                            continue;
-                        }
-                        let Some(catalog) = editor
-                            .snapshot
-                            .viewport
-                            .document
-                            .profile_catalog
-                            .iter()
-                            .find(|s| s.sketch_name == sketch.name)
-                        else {
-                            continue;
-                        };
-                        let entities: Vec<_> = sketch
-                            .entities
-                            .iter()
-                            .filter(|entity| {
-                                catalog
-                                    .path_curves
-                                    .iter()
-                                    .any(|c| c.entity_id() == entity.id().0)
-                            })
-                            .cloned()
-                            .collect();
-                        let Some(id) =
-                            crate::native_editor::selection::hit(&entities, point, false, |p| {
-                                native_viewport::interface_world_point(
-                                    world,
-                                    &owner.document_id,
-                                    sketch.basis.to_3d([p.x, p.y]),
-                                )
-                                .ok()
-                                .flatten()
-                            })
-                        else {
-                            continue;
-                        };
-                        let Some(local) = native_viewport::interface_sketch_point(
-                            world,
-                            &owner.document_id,
-                            point,
-                            sketch.basis,
-                        )?
-                        else {
-                            continue;
-                        };
-                        let depth = camera.distance(bevy::math::DVec3::from_array(
-                            sketch.basis.to_3d([local.x, local.y]),
-                        ));
-                        if depth < distance {
-                            distance = depth;
-                            candidate = Some((sketch.name.clone(), id.0));
-                        }
-                    }
-                    let (name, id) =
-                        candidate.ok_or("Pick a visible sketch curve for this path")?;
+                    let (name, id) = sketch_curve(world, editor, owner, point)?
+                        .ok_or("Pick a visible sketch curve for this path")?;
                     let mut path = editor
                         .form
                         .path(target)
@@ -387,108 +445,18 @@ pub(crate) fn handle_canvas_pick(
                     return Ok(FeaturePick::Path(path));
                 }
                 if target == SolidField::AxisLine {
-                    let model = editor.snapshot.model(editor.form.parameter_sketch());
-                    let cursor = bevy::math::Vec2::from_array(point);
-                    let mut candidate = None;
-                    for sketch in &editor.snapshot.viewport.document.profile_catalog {
-                        if presentation
-                            .hidden_sketch_names
-                            .contains(&sketch.sketch_name)
-                        {
-                            continue;
-                        }
-                        for line in &sketch.lines {
-                            if !editor.form.accepts_axis(
-                                &sketch.sketch_name,
-                                line.entity_id,
-                                &model,
-                            ) {
-                                continue;
-                            }
-                            let Some(a) = native_viewport::interface_world_point(
-                                world,
-                                &owner.document_id,
-                                sketch.basis.to_3d([line.start.x, line.start.y]),
-                            )?
-                            else {
-                                continue;
-                            };
-                            let Some(b) = native_viewport::interface_world_point(
-                                world,
-                                &owner.document_id,
-                                sketch.basis.to_3d([line.end.x, line.end.y]),
-                            )?
-                            else {
-                                continue;
-                            };
-                            let a = bevy::math::Vec2::from_array(a);
-                            let b = bevy::math::Vec2::from_array(b);
-                            let delta = b - a;
-                            let t = if delta.length_squared() > 1e-10 {
-                                ((cursor - a).dot(delta) / delta.length_squared()).clamp(0., 1.)
-                            } else {
-                                0.
-                            };
-                            let distance = cursor.distance(a + delta * t);
-                            if distance <= 7.
-                                && candidate
-                                    .as_ref()
-                                    .is_none_or(|(best, _, _)| distance < *best)
-                            {
-                                candidate =
-                                    Some((distance, sketch.sketch_name.clone(), line.entity_id));
-                            }
-                        }
-                    }
-                    return candidate
-                        .map(|(_, sketch_name, entity_id)| FeaturePick::AxisLine {
+                    return axis_line(world, editor, owner, point)?
+                        .map(|(sketch_name, entity_id)| FeaturePick::AxisLine {
                             sketch_name,
                             entity_id,
                         })
                         .ok_or_else(|| "Pick a straight line on the profile's plane".into());
                 }
-                let mut profile = None;
-                if target == SolidField::Source {
-                    for sketch in &editor.snapshot.viewport.document.profile_catalog {
-                        if presentation
-                            .hidden_sketch_names
-                            .contains(&sketch.sketch_name)
-                        {
-                            continue;
-                        }
-                        let Some(local) = native_viewport::interface_sketch_point(
-                            world,
-                            &owner.document_id,
-                            point,
-                            sketch.basis,
-                        )?
-                        else {
-                            continue;
-                        };
-                        let distance = camera.distance(bevy::math::DVec3::from_array(
-                            sketch.basis.to_3d([local.x, local.y]),
-                        ));
-                        if distance > nearest + 1e-5 {
-                            continue;
-                        }
-                        for region in &sketch.profiles {
-                            if region.nesting_depth % 2 != 0 || !inside(local, &region.points) {
-                                continue;
-                            }
-                            if sketch.profiles.iter().any(|hole| {
-                                hole.parent_index == Some(region.index)
-                                    && inside(local, &hole.points)
-                            }) {
-                                continue;
-                            }
-                            nearest = distance;
-                            profile = Some(ProfileRefDto {
-                                sketch_name: sketch.sketch_name.clone(),
-                                profile_index: region.index,
-                            });
-                        }
-                    }
-                }
+                let profile = if target == SolidField::Source {
+                    source_profile(world, editor, owner, point, hit.as_ref())?
+                } else {
+                    None
+                };
                 if let Some(profile) = profile {
                     let mut profiles = editor.form.selected_profiles();
                     if editor.form.kind() != SolidFormKind::Loft {
@@ -517,13 +485,26 @@ pub(crate) fn handle_canvas_pick(
                     return Err("Open the component before selecting its references".into());
                 }
                 match target {
-                    SolidField::HoleSupport => Ok(FeaturePick::HoleSupport {
-                        face: PlanarFaceSourceDto {
+                    SolidField::HoleSupport => {
+                        let face = PlanarFaceSourceDto {
                             body_id: BodyId(hit.body_id),
                             face_id: FaceId(hit.face_id),
-                        },
-                        point: Some(hit.point.map(f64::from)),
-                    }),
+                        };
+                        if let Some((reference, position)) =
+                            hole_point(world, editor, owner, point, Some(face))
+                        {
+                            Ok(FeaturePick::HoleSupportPoint {
+                                face,
+                                point: position,
+                                reference: Some(reference),
+                            })
+                        } else {
+                            Ok(FeaturePick::HoleSupport {
+                                face,
+                                point: Some(hit.point.map(f64::from)),
+                            })
+                        }
+                    }
                     SolidField::HolePositions => {
                         if editor.form.hole_support()
                             != Some(PlanarFaceSourceDto {
@@ -622,6 +603,7 @@ fn hole_point(
     editor: &Editor,
     owner: &DocumentContext,
     cursor: [f32; 2],
+    support: Option<PlanarFaceSourceDto>,
 ) -> Option<(limo_cad_solid::SketchPointRefDto, [f64; 3])> {
     let (_, _, view, _) = native_viewport::interface_view(world);
     let mut best: Option<(f32, limo_cad_solid::SketchPointRefDto, [f64; 3])> = None;
@@ -630,7 +612,16 @@ fn hole_point(
             continue;
         }
         for p in &sketch.reference_points {
-            let point = sketch.basis.to_3d([p.position.x, p.position.y]);
+            let world_point = sketch.basis.to_3d([p.position.x, p.position.y]);
+            // Hole references are projected onto the support plane, just as
+            // the kernel resolves their associative positions. This also
+            // snaps retained sketch points on the stock's base plane.
+            let point = if let Some(face) = support {
+                let basis = planar_face(editor, face)?;
+                basis.to_3d(basis.to_2d(world_point))
+            } else {
+                world_point
+            };
             let Some(pixel) =
                 native_viewport::interface_world_point(world, &owner.document_id, point)
                     .ok()
@@ -661,7 +652,7 @@ fn move_point(
     owner: &DocumentContext,
     cursor: [f32; 2],
 ) -> Option<[f64; 3]> {
-    if let Some((_, point)) = hole_point(world, editor, owner, cursor) {
+    if let Some((_, point)) = hole_point(world, editor, owner, cursor, None) {
         return Some(point);
     }
     let hit = native_viewport::interface_pick(
@@ -729,6 +720,187 @@ fn move_point(
         best.map(|(_, p)| p)
             .unwrap_or_else(|| hit.point.map(f64::from)),
     )
+}
+
+fn source_profile(
+    world: &World,
+    editor: &Editor,
+    owner: &DocumentContext,
+    point: [f32; 2],
+    hit: Option<&native_viewport::NativePick>,
+) -> Result<Option<ProfileRefDto>, String> {
+    let (_, camera, presentation, _) = native_viewport::interface_view(world);
+    let camera = bevy::math::DVec3::from_array(camera.position.map(f64::from));
+    let mut nearest = hit.map(|hit| hit.distance).unwrap_or(f64::INFINITY);
+    let mut profile = None;
+    for sketch in &editor.snapshot.viewport.document.profile_catalog {
+        if presentation
+            .hidden_sketch_names
+            .contains(&sketch.sketch_name)
+        {
+            continue;
+        }
+        let Some(local) = native_viewport::interface_sketch_point(
+            world,
+            &owner.document_id,
+            point,
+            sketch.basis,
+        )?
+        else {
+            continue;
+        };
+        let distance = camera.distance(bevy::math::DVec3::from_array(
+            sketch.basis.to_3d([local.x, local.y]),
+        ));
+        if distance > nearest + 1e-5 {
+            continue;
+        }
+        for region in &sketch.profiles {
+            if region.nesting_depth % 2 != 0 || !inside(local, &region.points) {
+                continue;
+            }
+            if sketch
+                .profiles
+                .iter()
+                .any(|hole| hole.parent_index == Some(region.index) && inside(local, &hole.points))
+            {
+                continue;
+            }
+            nearest = distance;
+            profile = Some(ProfileRefDto {
+                sketch_name: sketch.sketch_name.clone(),
+                profile_index: region.index,
+            });
+        }
+    }
+    Ok(profile)
+}
+
+fn sketch_curve(
+    world: &World,
+    editor: &Editor,
+    owner: &DocumentContext,
+    point: [f32; 2],
+) -> Result<Option<(String, u64)>, String> {
+    let (_, camera, presentation, _) = native_viewport::interface_view(world);
+    let camera = bevy::math::DVec3::from_array(camera.position.map(f64::from));
+    let mut candidate = None;
+    let mut distance = f64::INFINITY;
+    for sketch in &editor.snapshot.viewport.document.finished_sketches {
+        if presentation.hidden_sketch_names.contains(&sketch.name) {
+            continue;
+        }
+        let Some(catalog) = editor
+            .snapshot
+            .viewport
+            .document
+            .profile_catalog
+            .iter()
+            .find(|s| s.sketch_name == sketch.name)
+        else {
+            continue;
+        };
+        let entities: Vec<_> = sketch
+            .entities
+            .iter()
+            .filter(|entity| {
+                catalog
+                    .path_curves
+                    .iter()
+                    .any(|c| c.entity_id() == entity.id().0)
+            })
+            .cloned()
+            .collect();
+        let Some(id) = crate::native_editor::selection::hit(&entities, point, false, |p| {
+            native_viewport::interface_world_point(
+                world,
+                &owner.document_id,
+                sketch.basis.to_3d([p.x, p.y]),
+            )
+            .ok()
+            .flatten()
+        }) else {
+            continue;
+        };
+        let Some(local) = native_viewport::interface_sketch_point(
+            world,
+            &owner.document_id,
+            point,
+            sketch.basis,
+        )?
+        else {
+            continue;
+        };
+        let depth = camera.distance(bevy::math::DVec3::from_array(
+            sketch.basis.to_3d([local.x, local.y]),
+        ));
+        if depth < distance {
+            distance = depth;
+            candidate = Some((sketch.name.clone(), id.0));
+        }
+    }
+    Ok(candidate)
+}
+
+fn axis_line(
+    world: &World,
+    editor: &Editor,
+    owner: &DocumentContext,
+    point: [f32; 2],
+) -> Result<Option<(String, u64)>, String> {
+    let presentation = native_viewport::interface_view(world).2;
+    let model = editor.snapshot.model(editor.form.parameter_sketch());
+    let cursor = bevy::math::Vec2::from_array(point);
+    let mut candidate = None;
+    for sketch in &editor.snapshot.viewport.document.profile_catalog {
+        if presentation
+            .hidden_sketch_names
+            .contains(&sketch.sketch_name)
+        {
+            continue;
+        }
+        for line in &sketch.lines {
+            if !editor
+                .form
+                .accepts_axis(&sketch.sketch_name, line.entity_id, &model)
+            {
+                continue;
+            }
+            let Some(a) = native_viewport::interface_world_point(
+                world,
+                &owner.document_id,
+                sketch.basis.to_3d([line.start.x, line.start.y]),
+            )?
+            else {
+                continue;
+            };
+            let Some(b) = native_viewport::interface_world_point(
+                world,
+                &owner.document_id,
+                sketch.basis.to_3d([line.end.x, line.end.y]),
+            )?
+            else {
+                continue;
+            };
+            let a = bevy::math::Vec2::from_array(a);
+            let b = bevy::math::Vec2::from_array(b);
+            let delta = b - a;
+            let t = if delta.length_squared() > 1e-10 {
+                ((cursor - a).dot(delta) / delta.length_squared()).clamp(0., 1.)
+            } else {
+                0.
+            };
+            let distance = cursor.distance(a + delta * t);
+            if distance <= 7.
+                && candidate
+                    .as_ref()
+                    .is_none_or(|(best, _, _)| distance < *best)
+            {
+                candidate = Some((distance, sketch.sketch_name.clone(), line.entity_id));
+            }
+        }
+    }
+    Ok(candidate.map(|(_, name, id)| (name, id)))
 }
 
 #[cfg(test)]

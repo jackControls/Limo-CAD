@@ -340,15 +340,22 @@ pub(crate) fn spawn_viewport_hud(
             ZIndex(1_000),
         ));
     }
+    if let Some(selection) = &hud.selection {
+        spawn_selection_hud(
+            commands,
+            camera,
+            selection,
+            theme,
+            assets,
+            if hud.render_native_chrome { 48. } else { 108. },
+        );
+    }
     if !hud.render_native_chrome {
         return;
     }
 
     spawn_orientation_dial(commands, camera, hud, palette, theme, assets, locale);
     spawn_navigation_bar(commands, camera, hud, theme, assets);
-    if let Some(selection) = &hud.selection {
-        spawn_selection_hud(commands, camera, selection, theme, assets);
-    }
     if let Some(prompt) = hud.prompt.as_ref().filter(|text| !text.is_empty()) {
         spawn_prompt(commands, camera, prompt, theme, assets);
     }
@@ -1394,6 +1401,7 @@ fn spawn_selection_hud(
     selection: &ViewportHudSelection,
     theme: ViewportUiTheme,
     assets: &ViewportUiAssets,
+    bottom: f32,
 ) {
     commands
         .spawn((
@@ -1403,7 +1411,7 @@ fn spawn_selection_hud(
             Node {
                 position_type: PositionType::Absolute,
                 right: px(12.0),
-                bottom: px(48.0),
+                bottom: px(bottom),
                 min_width: px(208.0),
                 max_width: px(280.0),
                 padding: UiRect::all(px(10.0)),

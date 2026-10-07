@@ -4,7 +4,9 @@ use limo_cad_solid::{ExtrudeExtent, ExtrudeOperation, ExtrudeRequest};
 
 fn area(points: &[f32]) -> f64 {
     points
-        .chunks_exact(9)
+        .as_chunks::<9>()
+        .0
+        .iter()
         .map(|p| {
             f64::from(((p[3] - p[0]) * (p[7] - p[1]) - (p[6] - p[0]) * (p[4] - p[1])).abs()) * 0.5
         })
@@ -66,17 +68,23 @@ fn shaded_extrusion_preserves_concavity_holes_and_each_signed_extent() {
         assert!((area(&preview.triangles[1].positions) - 6.64).abs() < 1e-5);
         let volume = &preview.triangles[0].positions;
         let min = volume
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| p[2])
             .fold(f32::INFINITY, f32::min);
         let max = volume
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|p| p[2])
             .fold(f32::NEG_INFINITY, f32::max);
         assert_eq!([min, max], range);
         for z in range {
             let cap: Vec<_> = volume
-                .chunks_exact(9)
+                .as_chunks::<9>()
+                .0
+                .iter()
                 .filter(|p| [p[2], p[5], p[8]] == [z; 3])
                 .flatten()
                 .copied()

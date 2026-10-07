@@ -1538,3 +1538,59 @@ fn dpi_change_recomputes_the_candidate_popup_without_dropping_composition() {
     );
     assert!(app.world().get::<Window>(window).unwrap().ime_enabled);
 }
+
+#[test]
+fn live_feature_numbers_publish_each_keyboard_edit_and_wait_for_ime_commit() {
+    let (mut app, handle, entity) = editor_fixture_with_submit(true);
+    app.world_mut().entity_mut(entity).insert(LiveValue);
+    apply_edit(app.world_mut(), entity, TextEdit::SelectAll).unwrap();
+    for (input, expected) in [("2", "2"), ("5", "25")] {
+        assert!(before_window_input(
+            app.world_mut(),
+            &handle,
+            &key(Key::Character(input.into()), Some(input)),
+            None,
+            default()
+        )
+        .unwrap());
+        let actions = handle.take_actions().unwrap();
+        assert_eq!(actions.len(), 1);
+        assert_eq!(
+            actions[0].control.input,
+            ControlInput::SetValue(expected.into())
+        );
+        acknowledge_control_input(app.world_mut(), &actions[0], true);
+    }
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &WindowEvent::Ime(Ime::Preedit {
+            window: Entity::PLACEHOLDER,
+            value: "8".into(),
+            cursor: Some((1, 1))
+        }),
+        None,
+        default()
+    )
+    .unwrap());
+    assert!(
+        handle.take_actions().unwrap().is_empty(),
+        "Composition is not an accepted numeric draft"
+    );
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &WindowEvent::Ime(Ime::Commit {
+            window: Entity::PLACEHOLDER,
+            value: "8".into()
+        }),
+        None,
+        default()
+    )
+    .unwrap());
+    let actions = handle.take_actions().unwrap();
+    assert_eq!(actions.len(), 1);
+    assert!(
+        matches!(&actions[0].control.input, ControlInput::SetValue(value) if value.contains('8'))
+    );
+}

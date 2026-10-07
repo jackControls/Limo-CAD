@@ -957,6 +957,7 @@ fn widget(
     if matches!(control.field, Field::Text { .. }) {
         control.text_editing = true;
         control.role = "textbox".into();
+        world.entity_mut(entity).insert(fields::LiveValue);
     }
     if matches!(control.field, Field::Range { .. }) {
         control.role = "slider".into();
@@ -1346,7 +1347,7 @@ fn content_height(panel: &super::FeaturePanel, inner: f32) -> f32 {
             height += overlays::copy_height(panel, inner);
             continue;
         }
-        if let Some((title, index, columns)) = compact_row(row.field, &panel) {
+        if let Some((title, index, columns)) = compact_row(row.field, panel) {
             if panel.choice_field == Some(row.field) {
                 if let Field::Choice { options, .. } = &row.value {
                     height += options.len() as f32 * 30.;

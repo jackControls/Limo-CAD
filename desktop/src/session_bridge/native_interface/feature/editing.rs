@@ -287,6 +287,8 @@ fn install(
         hovered_occurrence: None,
         hovered_plane: None,
         hovered_point: None,
+        hovered_profile: None,
+        hovered_path: None,
         move_view: None,
         move_hover: None,
         move_drag: None,

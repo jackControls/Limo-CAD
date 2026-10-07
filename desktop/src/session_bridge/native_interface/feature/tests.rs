@@ -916,7 +916,7 @@ fn actual_preview_and_invalid_fields_never_mutate_the_model_and_cancel_restores_
         invalid
             .triangles
             .iter()
-            .flat_map(|t| t.positions.chunks_exact(3))
+            .flat_map(|t| t.positions.as_chunks::<3>().0.iter())
             .all(|p| p[2] == 0.),
         "Only the accepted source region remains highlighted while a number is invalid"
     );

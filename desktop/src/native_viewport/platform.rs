@@ -1311,8 +1311,7 @@ fn resize_reference_planes(
 #[allow(clippy::type_complexity)]
 fn apply_native_presentation_styles(
     (model, section): (Res<ModelResource>, Option<Res<section_view::State>>),
-    presentation: Res<PresentationResource>,
-    palette: Res<PaletteResource>,
+    (presentation, palette): (Res<PresentationResource>, Res<PaletteResource>),
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut plane_materials: ResMut<Assets<ReferencePlaneMaterial>>,
     mut bodies: Query<
@@ -1375,14 +1374,16 @@ fn apply_native_presentation_styles(
         let occurrence_is_selected = state
             .selected_occurrence_id
             .is_none_or(|occurrence_id| body.occurrence_id == Some(occurrence_id));
-        let selected_body_index = occurrence_is_selected
-            .then(|| {
-                state
-                    .selected_body_ids
-                    .iter()
-                    .position(|body_id| *body_id == body.body_id)
-            })
-            .flatten();
+        let selected_body_index = (occurrence_is_selected
+            && state.selected_face_ids.is_empty()
+            && state.selected_edge_ids.is_empty())
+        .then(|| {
+            state
+                .selected_body_ids
+                .iter()
+                .position(|body_id| *body_id == body.body_id)
+        })
+        .flatten();
         let color = if selected_body_index == Some(0) {
             rgb(palette.0.body_selected)
         } else if selected_body_index.is_some() {
@@ -2865,15 +2866,19 @@ fn draw_cad_gizmos(
             let occurrence_is_selected = state
                 .selected_occurrence_id
                 .is_none_or(|selected| occurrence_id == Some(selected));
-            let selected_body_index = occurrence_is_selected
-                .then(|| {
-                    state
-                        .selected_body_ids
-                        .iter()
-                        .position(|body_id| *body_id == body.id.0)
-                })
-                .flatten();
+            let selected_body_index = (occurrence_is_selected
+                && state.selected_face_ids.is_empty()
+                && state.selected_edge_ids.is_empty())
+            .then(|| {
+                state
+                    .selected_body_ids
+                    .iter()
+                    .position(|body_id| *body_id == body.id.0)
+            })
+            .flatten();
             let hovered_body = state.hovered_body_id == Some(body.id.0)
+                && state.hovered_edge_id.is_none()
+                && state.hovered_face_id.is_none()
                 && state
                     .hovered_occurrence_id
                     .is_none_or(|hovered| occurrence_id == Some(hovered));
@@ -4908,6 +4913,17 @@ pub(crate) fn apply_interface_palette(world: &mut World, palette: ViewportPalett
 
     let mut hud = world.resource_mut::<HudResource>();
     hud.revision = hud.revision.wrapping_add(1);
+}
+
+pub(crate) fn apply_interface_selection_readout(
+    world: &mut World,
+    selection: Option<super::ViewportHudSelection>,
+) {
+    let mut hud = world.resource_mut::<HudResource>();
+    if hud.hud.selection != selection {
+        hud.hud.selection = selection;
+        hud.revision = hud.revision.wrapping_add(1);
+    }
 }
 
 /// Borrow presentation state for read-only controls and view calculations.

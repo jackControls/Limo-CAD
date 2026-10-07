@@ -136,6 +136,7 @@ pub(super) fn paint(
         } else if label == "Part print settings" {
             caption = Some(value);
         } else {
+            control.owned_keys = vec![KeyChord::plain("Enter"), KeyChord::plain("Escape")];
             control.field = ControlField::Text {
                 value,
                 read_only: information.is_some(),

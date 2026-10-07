@@ -2,6 +2,7 @@
 //! are scoped to one document incarnation, engine revision and active sketch.
 
 mod annotations;
+mod measurement;
 pub(crate) mod mechanism;
 mod solid;
 use crate::session_bridge::native_interface::controller::assembly::joint;
@@ -158,12 +159,24 @@ pub(crate) fn status(world: &World) -> Option<String> {
     }
 }
 
+pub(crate) fn synchronize_selection_readout(world: &mut World, visible: bool) {
+    measurement::synchronize(world, visible);
+}
+pub(crate) fn selection_caption(world: &World) -> Option<String> {
+    measurement::caption(world)
+}
+
 fn clear_preview(
     world: &mut World,
     engine: &AppState,
     bridge: &SessionBridgeState,
     owner: &DocumentContext,
 ) -> Result<(), String> {
+    // A sketch cursor/focus transition does not own a solid feature's draft.
+    // The feature picker removes its own hover while retaining its preview.
+    if crate::session_bridge::native_interface::feature::panel(world).is_some() {
+        return Ok(());
+    }
     bridge.with_native_document_owner(engine, owner, || {
         native_viewport::apply_interface_preview(
             world,
@@ -410,6 +423,13 @@ pub(crate) fn execute(
             EditorCommand::Cancel => {
                 bridge.with_native_document_owner(engine, owner, validate)?;
                 editor.draft.escape();
+                if editor
+                    .stamp
+                    .as_ref()
+                    .is_none_or(|stamp| stamp.sketch.is_none())
+                {
+                    solid::clear(world, owner)?;
+                }
                 editor.error.clear();
                 editor.press = None;
                 editor.support = Default::default();
@@ -573,6 +593,9 @@ fn queue_mutation(
                     support::present(world, &owner, &editor.support)?;
                     if matches!(kind, Completion::Begin) {
                         look_at_sketch(world, engine, bridge, &owner)?;
+                    } else if matches!(kind, Completion::Finish) {
+                        let receipt = bridge.native_document_receipt(engine, &owner)?;
+                        crate::session_bridge::native_interface::restore_model_view(world, &owner, receipt.revision)?;
                     }
                     clear_preview(world, engine, bridge, &owner)
                 })();
@@ -584,7 +607,10 @@ fn queue_mutation(
                     let pending = worker::enqueue_operation(world, receipt.owner, receipt.revision, "solid_recompute".into(), json!({}), |world, services, result| {
                         match result {
                             Ok(result) => {
+                                let owner = result.context.clone();
                                 let mut value = finish_mutation(&services.engine, &services.bridge, world, "solid_recompute", result);
+                                let receipt = services.bridge.native_document_receipt(&services.engine, &owner)?;
+                                crate::session_bridge::native_interface::restore_model_view(world, &owner, receipt.revision)?;
                                 value["committed"] = json!(true);
                                 Ok(value)
                             }
@@ -646,6 +672,45 @@ pub(crate) fn process_one(
         return Ok(json!({"handled":true,"mechanism_drag":true}));
     }
     if frame.modal_stack.is_empty() && event.context.as_ref() == Some(&frame.context) {
+        if matches!(&event.event, WindowEvent::KeyboardInput(key)
+            if key.state == ButtonState::Pressed && key.logical_key == bevy::input::keyboard::Key::Escape)
+            && !event.modifiers.ctrl
+            && !event.modifiers.meta
+            && !event.modifiers.alt
+        {
+            if let Some(panel) = crate::session_bridge::native_interface::feature::panel(world) {
+                return crate::session_bridge::native_interface::feature::reduce(
+                    &services.engine,
+                    &services.bridge,
+                    world,
+                    &frame.context,
+                    &crate::session_bridge::native_interface::feature::FeatureCommand::Control {
+                        form_id: panel.form_id,
+                        action:
+                            crate::session_bridge::native_interface::feature::FeatureControl::Cancel,
+                    },
+                    &limo_cad_interface::ControlInput::Click,
+                    || Ok(()),
+                );
+            }
+            use crate::session_bridge::native_interface::controller::{named_views, print_intent};
+            if print_intent::active(world) {
+                return print_intent::cancel(
+                    world,
+                    &services.engine,
+                    &services.bridge,
+                    &frame.context,
+                );
+            }
+            if named_views::active(world) {
+                return named_views::cancel(
+                    world,
+                    &services.engine,
+                    &services.bridge,
+                    &frame.context,
+                );
+            }
+        }
         use crate::session_bridge::native_interface::feature::manipulator::{self, Pointer};
         let phase = match &event.event {
             WindowEvent::CursorMoved(_) => Some(Pointer::Move),
@@ -795,6 +860,9 @@ pub(crate) fn process_one(
                 match key.key_code {
                     KeyCode::Escape => {
                         editor.draft.escape();
+                        if editor.stamp.as_ref().is_none_or(|stamp| stamp.sketch.is_none()) {
+                            solid::clear(world, &frame.context)?;
+                        }
                         editor.interaction=Default::default();
                         interaction::present(world,&frame.context,&editor.interaction)?;
                         editor.error.clear();
@@ -1111,7 +1179,7 @@ pub(crate) fn synchronize_controls(
                 || (matches!(command, EditorCommand::Support(_) | EditorCommand::Begin(_))
                     && build_open);
         }
-        panel::synchronize(world, camera, &mut editor, area)?;
+        panel::synchronize(world, camera, &mut editor, area, canvas)?;
         support::synchronize(world, camera, &editor, canvas)?;
         dynamic::synchronize(world, camera, &services.engine, owner, &editor, canvas)?;
         palette::synchronize(world, camera, services, owner, &editor, canvas)?;

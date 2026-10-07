@@ -390,6 +390,7 @@ pub(super) fn paint(
             .into();
             control.field = ControlField::Choice { value, options };
         } else if let Some(field) = field {
+            control.owned_keys = vec![KeyChord::plain("Enter"), KeyChord::plain("Escape")];
             control.field = ControlField::Text {
                 value: field_text(state, field),
                 read_only: false,

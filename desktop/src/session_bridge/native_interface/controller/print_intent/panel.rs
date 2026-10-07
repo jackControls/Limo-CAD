@@ -355,6 +355,7 @@ pub(super) fn paint(
                 .into();
                 control.field = ControlField::Choice { value, options };
             } else {
+                control.owned_keys = vec![KeyChord::plain("Enter"), KeyChord::plain("Escape")];
                 control.field = ControlField::Text {
                     value,
                     read_only: false,

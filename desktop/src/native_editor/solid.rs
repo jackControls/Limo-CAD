@@ -59,6 +59,12 @@ fn toggle(ids: &mut Vec<u64>, id: u64, additive: bool) {
         ids.push(id);
     }
 }
+
+pub(super) fn clear(world: &mut World, owner: &DocumentContext) -> Result<(), String> {
+    let (_, _, mut view, _) = native_viewport::interface_view_snapshot(world);
+    clear_selection(&mut view);
+    native_viewport::apply_interface_view(world, &owner.document_id, None, Some(view))
+}
 fn selection(
     view: &mut ViewportPresentation,
     hit: Option<&NativePick>,

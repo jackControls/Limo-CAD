@@ -1313,12 +1313,6 @@ pub(crate) fn reduce_control_input(
     action: &NativeInterfaceAction,
 ) -> Result<Value, String> {
     use crate::native_viewport::interface_shell::fields;
-    for preceding in fields::prepare_control_input(world, handle, action)? {
-        let result = reduce_action(engine, bridge, world, handle, &preceding);
-        fields::acknowledge_control_input(world, &preceding, result.is_ok());
-        result?;
-    }
-    fields::prepare_activation(world, handle, action)?;
     if let ControlInput::Key(key) = &action.control.input {
         bridge.with_native_document_owner(engine, &action.context, || {
             handle.validate_action(action)
@@ -1363,11 +1357,37 @@ pub(crate) fn reduce_control_input(
                 section_review::escape(world);
                 return Ok(json!({"cancelled":true}));
             }
+            if let Some(panel) = feature::panel(world) {
+                return feature::reduce(
+                    engine,
+                    bridge,
+                    world,
+                    &action.context,
+                    &feature::FeatureCommand::Control {
+                        form_id: panel.form_id,
+                        action: feature::FeatureControl::Cancel,
+                    },
+                    &ControlInput::Click,
+                    || handle.validate_action(action),
+                );
+            }
+            if assembly::joint::active(world) {
+                handle.validate_action(action)?;
+                return assembly::joint::cancel(world, engine, bridge, &action.context);
+            }
+            if print_intent::active(world) {
+                handle.validate_action(action)?;
+                return print_intent::cancel(world, engine, bridge, &action.context);
+            }
+            if named_views::active(world) {
+                handle.validate_action(action)?;
+                return named_views::cancel(world, engine, bridge, &action.context);
+            }
             if matches!(
                 world
                     .get::<NativeCommandBinding>(Entity::from_bits(action.control.key.0))
                     .map(|b| &b.command),
-                Some(NativeCommand::Sketch(_))
+                Some(NativeCommand::Sketch(_) | NativeCommand::BodyAppearance(..))
             ) {
                 return crate::native_editor::execute(
                     world,
@@ -1380,14 +1400,12 @@ pub(crate) fn reduce_control_input(
             }
         }
     }
-    if matches!(&action.control.input, ControlInput::Key(k) if k.key=="Escape"&&!k.ctrl&&!k.meta&&!k.alt&&!k.shift)
-        && assembly::joint::active(world)
-    {
-        bridge.with_native_document_owner(engine, &action.context, || {
-            handle.validate_action(action)
-        })?;
-        return assembly::joint::cancel(world, engine, bridge, &action.context);
+    for preceding in fields::prepare_control_input(world, handle, action)? {
+        let result = reduce_action(engine, bridge, world, handle, &preceding);
+        fields::acknowledge_control_input(world, &preceding, result.is_ok());
+        result?;
     }
+    fields::prepare_activation(world, handle, action)?;
     fields::after_window_input(world, handle)?;
     let Some(adapted) = fields::adapt_control_input(world, handle, action)? else {
         return Ok(json!({"handled":true,"field_navigation":true}));
@@ -2345,6 +2363,7 @@ fn synchronize(
         height,
         body_appearance_visible,
     )?;
+    crate::native_editor::synchronize_selection_readout(world, body_appearance_visible);
     named_views::synchronize(world, camera, services, &owner, width, height)?;
     print_intent::synchronize(world, camera, services, &owner, width, height)?;
     section_review::synchronize(world, camera, services, &owner, width, height)?;
@@ -2421,7 +2440,7 @@ fn synchronize(
             },
             Surface {
                 name: "solid/selection".into(),
-                text: None,
+                text: crate::native_editor::selection_caption(world),
             },
             Surface {
                 name: "document/appearance".into(),

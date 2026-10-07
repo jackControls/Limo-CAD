@@ -34,6 +34,19 @@ use prepared::{
 };
 pub(crate) use view::ViewDirection;
 
+pub(crate) fn restore_model_view(
+    world: &mut World,
+    owner: &DocumentContext,
+    revision: u64,
+) -> Result<Value, String> {
+    view::request(
+        world,
+        owner,
+        revision,
+        &json!({"view":"isometric","fit":true,"duration_ms":300,"expires_ms":crate::session_bridge::now_ms()+5000}),
+    )
+}
+
 #[derive(Debug)]
 pub(crate) struct NativeMutationResult {
     pub context: DocumentContext,
@@ -606,6 +619,22 @@ pub(crate) fn reduce_action(
                         handle.validate_action(action)?;
                         Ok(json!({"focused":true}))
                     });
+                }
+                ControlInput::Key(key) if key == &limo_cad_interface::KeyChord::plain("Enter") => {
+                    let command = match command {
+                        InteractionCommand::FormValue { id, .. } => {
+                            InteractionCommand::ApplyForm { id: *id }
+                        }
+                        _ => InteractionCommand::ApplyDimension,
+                    };
+                    return crate::native_editor::execute(
+                        world,
+                        engine,
+                        bridge,
+                        &action.context,
+                        EditorCommand::Interaction(command),
+                        || handle.validate_action(action),
+                    );
                 }
                 _ => return Err("Use the expression field to enter a value".into()),
             };

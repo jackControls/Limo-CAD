@@ -90,6 +90,11 @@ pub(crate) enum FeaturePick {
         face: PlanarFaceSourceDto,
         point: Option<[f64; 3]>,
     },
+    HoleSupportPoint {
+        face: PlanarFaceSourceDto,
+        point: [f64; 3],
+        reference: Option<limo_cad_solid::SketchPointRefDto>,
+    },
     HolePosition {
         point: [f64; 3],
         reference: Option<limo_cad_solid::SketchPointRefDto>,
@@ -250,6 +255,8 @@ struct Editor {
     hovered_occurrence: Option<u64>,
     hovered_plane: Option<limo_cad_core::PlaneRef>,
     hovered_point: Option<[f64; 3]>,
+    hovered_profile: Option<ProfileRefDto>,
+    hovered_path: Option<PathRefDto>,
     move_view: Option<move_copy::View>,
     move_hover: Option<move_copy::Handle>,
     move_drag: Option<move_copy::Drag>,
@@ -482,6 +489,22 @@ fn update_preview(editor: &mut Editor, world: &mut World) -> Result<(), String> 
             }
         }
     }
+    if let Some(profile) = &editor.hovered_profile {
+        if !editor.form.selected_profiles().contains(profile) {
+            match preview::profile_hover(profile, &editor.snapshot.viewport) {
+                Ok(hover) => {
+                    next.triangles.extend(hover.triangles);
+                    next.lines.extend(hover.lines);
+                }
+                Err(error) => notice = Some(error),
+            }
+        }
+    }
+    if let Some(path) = &editor.hovered_path {
+        if let Ok(hover) = preview::path_hover(path, &editor.snapshot.viewport) {
+            next.lines.extend(hover.lines);
+        }
+    }
     if let Some((body, face)) = editor.hovered_face {
         if !editor
             .form
@@ -511,10 +534,12 @@ fn update_preview(editor: &mut Editor, world: &mut World) -> Result<(), String> 
             }
         }
     }
-    if let Some(point) = editor
-        .hovered_point
-        .filter(|_| editor.pick_target == Some(SolidField::HolePositions))
-    {
+    if let Some(point) = editor.hovered_point.filter(|_| {
+        matches!(
+            editor.pick_target,
+            Some(SolidField::HoleSupport | SolidField::HolePositions)
+        )
+    }) {
         let (_, camera, _, _) = native_viewport::interface_view(world);
         let distance = (0..3)
             .map(|i| (camera.position[i] as f64 - point[i]).powi(2))
@@ -633,6 +658,21 @@ fn apply_pick(editor: &mut Editor, pick: FeaturePick) -> Result<(), String> {
         }
         (Some(SolidField::HoleSupport), FeaturePick::HoleSupport { face, point }) => {
             editor.form.set_hole_support(Some(face), point, &model)?;
+            editor.pick_target = Some(SolidField::HolePositions);
+            Ok(())
+        }
+        (
+            Some(SolidField::HoleSupport),
+            FeaturePick::HoleSupportPoint {
+                face,
+                point,
+                reference,
+            },
+        ) => {
+            editor
+                .form
+                .set_hole_support(Some(face), Some(point), &model)?;
+            editor.form.set_hole_position(point, reference, &model)?;
             editor.pick_target = Some(SolidField::HolePositions);
             Ok(())
         }
@@ -959,6 +999,8 @@ fn reduce_owned(
                 hovered_occurrence: None,
                 hovered_plane: None,
                 hovered_point: None,
+                hovered_profile: None,
+                hovered_path: None,
                 move_view: None,
                 move_hover: None,
                 move_drag: None,
@@ -1186,7 +1228,9 @@ fn reduce_owned(
             | editor.hovered_face.take().is_some()
             | editor.hovered_body.take().is_some()
             | editor.hovered_occurrence.take().is_some()
-            | editor.hovered_plane.take().is_some();
+            | editor.hovered_plane.take().is_some()
+            | editor.hovered_profile.take().is_some()
+            | editor.hovered_path.take().is_some();
         if had_hover {
             update_preview(editor, world)?;
         }

@@ -26,8 +26,9 @@ pub(crate) mod localization;
 pub(crate) mod system_locale;
 pub(crate) use platform::{
     apply_interface_cam_stock, apply_interface_gpu_stock_preference, apply_interface_palette,
-    apply_interface_sketch_lines, apply_interface_viewport, interface_cam_stock_snapshot,
-    interface_navigation_source, interface_support_pick, retire_interface_model_session,
+    apply_interface_selection_readout, apply_interface_sketch_lines, apply_interface_viewport,
+    interface_cam_stock_snapshot, interface_navigation_source, interface_support_pick,
+    retire_interface_model_session,
 };
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub(crate) use platform::{
