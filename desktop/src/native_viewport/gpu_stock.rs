@@ -45,7 +45,7 @@ use bevy::{
         },
         renderer::{RenderContext, RenderDevice, RenderGraph, RenderQueue},
         texture::GpuImage,
-        RenderApp, RenderStartup,
+        Render, RenderApp, RenderSystems,
     },
     shader::{Shader, ShaderRef},
 };
@@ -183,7 +183,10 @@ impl Plugin for GpuStockPlugin {
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .init_resource::<StampProgress>()
-                .add_systems(RenderStartup, init_stamp_pipeline)
+                .add_systems(
+                    Render,
+                    init_stamp_pipeline.in_set(RenderSystems::PrepareResources),
+                )
                 .add_systems(RenderGraph, stamp_field.before(camera_driver));
         }
     }
@@ -895,7 +898,17 @@ struct StampProgress {
     field: Option<AssetId<Image>>,
 }
 
-fn init_stamp_pipeline(mut commands: Commands, pipeline_cache: Res<PipelineCache>) {
+fn init_stamp_pipeline(
+    mut commands: Commands,
+    pipeline_cache: Res<PipelineCache>,
+    pipeline: Option<Res<StampPipeline>>,
+    stamp: Option<Res<GpuStockStamp>>,
+) {
+    // Empty CAD startup does not use stock removal. Queue its compute shaders
+    // only when playback supplies a field, before this frame's pipeline queue.
+    if pipeline.is_some() || stamp.is_none_or(|stamp| stamp.field.is_none()) {
+        return;
+    }
     let layout = BindGroupLayoutDescriptor::new(
         "limo-cad GPU stock stamp",
         &BindGroupLayoutEntries::sequential(
