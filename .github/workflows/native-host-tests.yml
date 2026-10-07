@@ -615,7 +615,7 @@ jobs:
         run: cargo test --locked --manifest-path desktop/Cargo.toml --lib
       - name: Build the live native host
         if: inputs.desktop-input
-        run: cargo build --locked --manifest-path desktop/Cargo.toml --bin limo-cad
+        run: cargo build --locked --manifest-path desktop/Cargo.toml --features native-computer-control --bin limo-cad
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input && inputs.input-family != 'windows-print'
         run: cargo test --locked --manifest-path desktop/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture

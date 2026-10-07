@@ -55,6 +55,8 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
             "Open script did not start the OS chooser: {opened}"
         );
         os_input::complete_dialog(
+            c,
+            out,
             "Open Limo CAD script",
             source_path.to_str().context("Fixture path Unicode")?,
         )?;
@@ -138,6 +140,8 @@ pub(super) fn exercise(c: &mut Client, out: &Path) -> Result<Value> {
             "Save script as did not start the OS chooser: {saving}"
         );
         os_input::complete_dialog(
+            c,
+            out,
             "Save Limo CAD script",
             saved_path.to_str().context("Save path Unicode")?,
         )?;

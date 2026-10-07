@@ -241,7 +241,7 @@ pub(super) fn exercise(
         "Paper navigation changed document or drawing intent"
     );
     Ok(
-        json!({"actual_input":if cfg!(target_os="linux"){"X11 XTEST wheel/middle button and pointer movement into real Winit"}else{"Windows SendInput wheel/middle button and OS cursor movement into real Winit"},
+        json!({"actual_input":if cfg!(target_os="linux"){"X11 XTEST wheel/middle button and pointer movement into real Winit"}else{"Rust/Enigo MCP wheel/middle button and OS cursor movement into real Winit"},
         "initial_session":session,"active_session":active_session,"dense_view_count":20,"visible_segments":segments,"model_exactly_preserved":true,"pan_inverse_pixels_exact":true,"input_evidence":input_evidence,"wheel_intent":wheel_intent,
         "captures":["dense-fit.png","dense-button-zoom.png","dense-button-out.png","dense-os-wheel.png","dense-os-pan.png","dense-os-pan-back.png","dense-fit-restored.png"],
         "not_proven":["Other OS paper gestures","monitor DPI transition","touchpad hardware","Wayland"]}),

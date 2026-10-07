@@ -324,7 +324,7 @@ pub(super) fn exercise(c: &mut Client, out: &Path, driver: &Driver) -> Result<Va
         &operation_label(&incoming.cam, 0, 0)?,
         None,
     )?;
-    let report = json!({"status":"passed","actual_input":if cfg!(target_os="windows") {"Windows SendInput"}else{"X11 XTEST in owned Xvfb"},
+    let report = json!({"status":"passed","actual_input":if cfg!(target_os="windows") {"Rust/Enigo MCP OS input"}else{"X11 XTEST in owned Xvfb"},
         "operation_across_three_row_page":true,"setup_drag":true,"below_threshold_click":true,"same_slot_noop":true,
         "escape_cancel":true,"outside_list_cancel":true,"cross_setup_rejected":true,"single_commit_exact_undo_redo":true,
         "exact_model_and_cam_permutations":true,"saved_archive_equal":true,"incoming_model_restored":true,

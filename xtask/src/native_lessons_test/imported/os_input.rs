@@ -1,9 +1,13 @@
 //! Desktop-input lessons drive the real script chooser. The default harness
 //! keeps the typed path so a headless run never opens a modal.
-use anyhow::{bail, ensure, Context, Result};
+use crate::replay::Client;
+#[cfg(not(windows))]
+use anyhow::bail;
+use anyhow::{ensure, Context, Result};
+use std::path::Path;
+#[cfg(not(windows))]
 use std::{
     io::Write,
-    path::Path,
     process::{Command, Stdio},
     thread,
     time::{Duration, Instant},
@@ -13,11 +17,41 @@ pub(super) fn enabled() -> bool {
     std::env::var("LIMO_CAD_NATIVE_SCRIPT_INPUT").as_deref() == Ok("1")
 }
 
-pub(super) fn complete_dialog(title: &str, path: &str) -> Result<()> {
-    std::env::set_var("LIMO_CAD_SCRIPT_DIALOG_TITLE", title);
-    invoke("script-dialog", Some(path), Duration::from_secs(30))
+pub(super) fn complete_dialog(
+    client: &mut Client,
+    out: &Path,
+    title: &str,
+    path: &str,
+) -> Result<()> {
+    #[cfg(windows)]
+    {
+        let inspected = client.call("cad_interface", serde_json::json!({"action":"inspect"}))?;
+        let pid = u32::try_from(
+            inspected["native_window"]["pid"]
+                .as_u64()
+                .context("The current build does not publish its native CAD owner; enable native-computer-control")?,
+        )?;
+        if let Some(expected) = std::env::var_os("LIMO_CAD_NATIVE_OWNED_PID") {
+            ensure!(
+                expected
+                    .to_str()
+                    .context("LIMO_CAD_NATIVE_OWNED_PID")?
+                    .parse::<u32>()?
+                    == pid,
+                "Script dialog inspection belongs to a different native host"
+            );
+        }
+        crate::native_platform_test::Driver::new(pid, out)?.complete_dialog(title, path)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (client, out);
+        std::env::set_var("LIMO_CAD_SCRIPT_DIALOG_TITLE", title);
+        invoke("script-dialog", Some(path), Duration::from_secs(30))
+    }
 }
 
+#[cfg(not(windows))]
 fn invoke(operation: &str, input: Option<&str>, timeout: Duration) -> Result<()> {
     let pid = std::env::var("LIMO_CAD_NATIVE_OWNED_PID")
         .context("LIMO_CAD_NATIVE_OWNED_PID")?
@@ -56,24 +90,9 @@ fn invoke(operation: &str, input: Option<&str>, timeout: Duration) -> Result<()>
     Ok(())
 }
 
+#[cfg(not(windows))]
 fn helper(pid: u32, operation: &str) -> Result<Command> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("platform");
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        let mut command = Command::new("powershell.exe");
-        command.creation_flags(0x08000000);
-        command.args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-        ]);
-        command.arg(root.join("native-input-windows.ps1"));
-        command.arg(pid.to_string()).arg(operation);
-        Ok(command)
-    }
     #[cfg(target_os = "linux")]
     {
         let mut command = Command::new("bash");
@@ -83,7 +102,7 @@ fn helper(pid: u32, operation: &str) -> Result<Command> {
             .arg(operation);
         Ok(command)
     }
-    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    #[cfg(not(target_os = "linux"))]
     {
         let _ = (root, pid, operation);
         bail!("Script OS chooser input is not built for this OS");

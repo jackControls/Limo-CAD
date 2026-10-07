@@ -1,5 +1,5 @@
-//! Optional physical pointer proof, using the same owned PID and Windows
-//! SendInput/private Linux XTEST transport as the desktop paper fixtures.
+//! Optional physical pointer proof with the desktop paper fixtures' owned PID,
+//! guarded Rust MCP on Windows, or private Linux XTEST transport.
 use super::*;
 use crate::native_platform_test::Driver;
 use std::{
@@ -57,11 +57,7 @@ pub(super) fn click(driver: &Driver, c: &mut Client, point: [f64; 2]) -> Result<
             .to_string(),
         ),
     )?;
-    if raw.trim().is_empty() {
-        Ok(json!({"transport":"owned Windows SendInput","logical_point":point}))
-    } else {
-        Ok(serde_json::from_str(&raw)?)
-    }
+    serde_json::from_str(&raw).context("OS picking omitted a valid input receipt")
 }
 pub(super) fn exercise(c: &mut Client, out: &Path, server: &str, kind: &str) -> Result<Value> {
     ensure!(

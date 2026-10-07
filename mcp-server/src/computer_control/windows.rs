@@ -38,6 +38,17 @@ struct Request {
     delta: Option<i32>,
     key: Option<String>,
     text: Option<String>,
+    modifiers: Option<Vec<String>>,
+    path: Option<Vec<Waypoint>>,
+    cancel: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Waypoint {
+    point: [i32; 2],
+    #[serde(default)]
+    hold_ms: u32,
 }
 
 struct Observation {
@@ -330,11 +341,17 @@ impl ComputerControl {
         let mut driver = InputDriver::new()?;
         let mut completed = 0;
         let mut pointer = None;
+        let mut pointer_start = None;
+        let planned = plan.iter().filter(|step| step.is_input()).count();
         for step in &plan {
             let guard = guard_action(&observed, hwnd, driver.holds_button(), completed == 0)
                 .and_then(|()| match *step {
                     Step::Move(point) => guard_pointer(point, hwnd),
-                    Step::Button(_, _) | Step::Scroll(_) => guard_cursor(
+                    Step::Button(_, _) | Step::Scroll(_) | Step::Pause(_) => guard_cursor(
+                        pointer.ok_or("Pointer input has no planned position")?,
+                        hwnd,
+                    ),
+                    Step::Key(_, _) if driver.holds_button() => guard_cursor(
                         pointer.ok_or("Pointer input has no planned position")?,
                         hwnd,
                     ),
@@ -346,7 +363,7 @@ impl ComputerControl {
                 }
                 let cleanup_errors = driver.release_all();
                 return Ok(json!({"status":"input_incomplete","action":request.action,
-                    "backend":"enigo","completed_primitives":completed,"planned_primitives":plan.len(),
+                    "backend":"enigo","completed_primitives":completed,"planned_primitives":planned,
                     "failed_primitive":step.kind(),"error":error,"cleanup_errors":cleanup_errors,
                     "input_may_have_been_inserted":true,"owner":observed.owner,
                     "observation_consumed":true,"hint":"Input stopped when an ownership, focus or visibility guard changed. Observe and capture the result; do not blindly retry."}));
@@ -354,19 +371,28 @@ impl ComputerControl {
             if let Err(error) = driver.apply(*step) {
                 let cleanup_errors = driver.release_all();
                 return Ok(json!({"status":"input_incomplete","action":request.action,
-                    "backend":"enigo","completed_primitives":completed,"planned_primitives":plan.len(),
+                    "backend":"enigo","completed_primitives":completed,"planned_primitives":planned,
                     "failed_primitive":step.kind(),"error":error,"cleanup_errors":cleanup_errors,
                     "input_may_have_been_inserted":true,"owner":observed.owner,
                     "observation_consumed":true,"hint":"The input backend cannot report how many events a failed primitive inserted. Owned held keys/buttons received one release attempt. Observe and capture the result; do not blindly retry."}));
             }
             if let Step::Move(point) = *step {
                 pointer = Some(point);
+                pointer_start.get_or_insert(point);
             }
-            completed += 1;
+            completed += usize::from(step.is_input());
         }
+        let client_point = |point: [i32; 2]| {
+            observed
+                .bounds
+                .map(|bounds| [point[0] - bounds[0], point[1] - bounds[1]])
+        };
         Ok(
             json!({"status":"input_sent","action":request.action,"backend":"enigo",
             "completed_primitives":completed,"owner":observed.owner,
+            "pointer_start_physical_client":pointer_start.and_then(client_point),
+            "pointer_end_physical_client":pointer.and_then(client_point),
+            "pointer_verification":"Cursor checked after movement and before pointer primitives; coordinates describe input, not the resulting product state.",
             "observation_consumed":true,"hint":"OS insertion does not confirm product behavior. Observe and capture before the next action; do not blindly retry."}),
         )
     }
@@ -909,6 +935,7 @@ enum Step<'a> {
     Key(Key, Direction),
     Scroll(i32),
     Text(&'a str),
+    Pause(u64),
 }
 
 impl Step<'_> {
@@ -921,7 +948,12 @@ impl Step<'_> {
             Self::Key(_, _) => "key_release",
             Self::Scroll(_) => "wheel",
             Self::Text(_) => "text",
+            Self::Pause(_) => "gesture_dwell",
         }
+    }
+
+    fn is_input(&self) -> bool {
+        !matches!(self, Self::Pause(_))
     }
 }
 
@@ -977,6 +1009,7 @@ impl InputDriver {
                 .scroll(notches, Axis::Vertical)
                 .map_err(|error| error.to_string())?,
             Step::Text(text) => self.enigo.text(text).map_err(|error| error.to_string())?,
+            Step::Pause(ms) => std::thread::sleep(std::time::Duration::from_millis(ms)),
         }
         if let Some((held, Direction::Release)) = held {
             self.held.retain(|candidate| *candidate != held);
@@ -1011,12 +1044,47 @@ fn plan<'a>(
     hwnd: HWND,
 ) -> Result<Vec<Step<'a>>, String> {
     let mut steps = Vec::new();
+    if request.action != "drag"
+        && (request.path.is_some() || request.to.is_some() || request.cancel.is_some())
+    {
+        return Err("Only drag accepts path, to or cancel".into());
+    }
+    if request.modifiers.is_some()
+        && !matches!(
+            request.action.as_str(),
+            "click" | "double_click" | "drag" | "wheel"
+        )
+    {
+        return Err("Pointer modifiers require click, double_click, drag or wheel".into());
+    }
     match request.action.as_str() {
         "click" | "double_click" | "drag" | "wheel" => {
             let point = request
                 .point
                 .ok_or("Pointer input needs point in physical client pixels")?;
             steps.push(Step::Move(screen_point(point, observed, hwnd)?));
+            let modifiers = request
+                .modifiers
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .map(|modifier| match modifier.as_str() {
+                    "Ctrl" => Ok(Key::Control),
+                    "Shift" => Ok(Key::Shift),
+                    _ => Err("Pointer modifiers must be Ctrl or Shift"),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            if modifiers.len() > 2
+                || modifiers
+                    .iter()
+                    .enumerate()
+                    .any(|(index, key)| modifiers[..index].contains(key))
+            {
+                return Err("Pointer modifiers must be unique Ctrl or Shift keys".into());
+            }
+            for modifier in &modifiers {
+                steps.push(Step::Key(*modifier, Direction::Press));
+            }
             if request.action == "wheel" {
                 let delta = request
                     .delta
@@ -1034,20 +1102,57 @@ fn plan<'a>(
                 };
                 steps.push(Step::Button(button, Direction::Press));
                 if request.action == "drag" {
-                    let to = request.to.ok_or("Drag requires an endpoint to")?;
-                    screen_point(to, observed, hwnd)?;
-                    for step in 1..=16 {
-                        let at = [
-                            point[0] + ((to[0] as i64 - point[0] as i64) * step / 16) as i32,
-                            point[1] + ((to[1] as i64 - point[1] as i64) * step / 16) as i32,
-                        ];
-                        steps.push(Step::Move(screen_point(at, observed, hwnd)?));
+                    let path: Vec<([i32; 2], u32)> =
+                        match (&request.path, request.to) {
+                            (Some(path), None) => path
+                                .iter()
+                                .map(|waypoint| (waypoint.point, waypoint.hold_ms))
+                                .collect(),
+                            (None, Some(to)) => vec![(to, 0)],
+                            _ => return Err(
+                                "Drag requires exactly one endpoint to or bounded waypoint path"
+                                    .into(),
+                            ),
+                        };
+                    if path.is_empty()
+                        || path.len() > 8
+                        || path.iter().any(|(_, hold)| *hold > 800)
+                        || path.iter().map(|(_, hold)| *hold).sum::<u32>() > 1600
+                    {
+                        return Err("Drag accepts 1-8 waypoints, each holding 0-800ms, at most 1600ms total dwell".into());
+                    }
+                    let mut from = point;
+                    for (to, hold) in path {
+                        screen_point(to, observed, hwnd)?;
+                        for step in 1..=6 {
+                            let at = [
+                                from[0] + ((to[0] as i64 - from[0] as i64) * step / 6) as i32,
+                                from[1] + ((to[1] as i64 - from[1] as i64) * step / 6) as i32,
+                            ];
+                            steps.push(Step::Move(screen_point(at, observed, hwnd)?));
+                            pause(&mut steps, 35);
+                        }
+                        pause(&mut steps, u64::from(hold));
+                        from = to;
+                    }
+                    if request.cancel == Some(true) {
+                        for modifier in modifiers.iter().rev() {
+                            steps.push(Step::Key(*modifier, Direction::Release));
+                        }
+                        steps.push(Step::Key(Key::Escape, Direction::Press));
+                        steps.push(Step::Key(Key::Escape, Direction::Release));
+                        pause(&mut steps, 100);
                     }
                 }
                 steps.push(Step::Button(button, Direction::Release));
                 if request.action == "double_click" {
                     steps.push(Step::Button(button, Direction::Press));
                     steps.push(Step::Button(button, Direction::Release));
+                }
+            }
+            if request.cancel != Some(true) {
+                for modifier in modifiers.into_iter().rev() {
+                    steps.push(Step::Key(modifier, Direction::Release));
                 }
             }
         }
@@ -1098,6 +1203,14 @@ fn plan<'a>(
         _ => return Err("Unknown computer control action".into()),
     }
     Ok(steps)
+}
+
+fn pause(steps: &mut Vec<Step<'_>>, mut ms: u64) {
+    while ms > 0 {
+        let part = ms.min(20);
+        steps.push(Step::Pause(part));
+        ms -= part;
+    }
 }
 
 fn key_code(key: &str) -> Result<Key, String> {

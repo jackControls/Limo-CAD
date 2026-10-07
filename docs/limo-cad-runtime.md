@@ -79,6 +79,14 @@ input. Window ownership, focus and verified cursor placement use the existing
 Windows bindings; direct cursor placement retains multi-monitor support that
 Enigo's Windows absolute-move implementation does not currently provide.
 Wheel deltas are multiples of 120, matching Enigo's whole-notch Windows API.
+Pointer actions may hold Ctrl or Shift for one gesture. A drag takes either one
+endpoint or one bounded path of at most eight waypoints, with up to 800 ms dwell
+per waypoint and 1600 ms total dwell. Optional cancellation releases modifiers,
+sends Escape while the button is held, then releases it. The complete path is
+qualified before input; ownership, cursor and foreground checks continue during
+movement and dwell. Error receipts report partial input and cleanup failures.
+Verified start and end pointer coordinates describe OS input, not the resulting
+model or UI state.
 CAD-owned Windows modal dialogs are observed through `windows-capture` 2.0.1,
 with PNG images encoded by the existing Rust PNG codec. The image includes the
 window frame; `client_to_image_offset` maps physical client points to image pixels.
@@ -106,6 +114,17 @@ three-second capture deadline and terminates only that child if Windows capture
 startup or shutdown stalls. Capture rejects changed owners, process lifetimes or
 window geometry, and dimensions that cannot be mapped to verified screen bounds.
 No external computer-control helper or named pipe is required for this CAD surface.
+
+Windows native-input fixtures use this same MCP path, launching its worker from
+the exact owned GUI executable and observing before each gesture. Clipboard-only
+fixture operations use `arboard` 3.6.1; they restore text, not arbitrary clipboard
+formats. The obsolete generic PowerShell/C# mouse and keyboard driver and its CAM
+and script-dialog input helpers have been removed. Specialized PowerShell/C# IME,
+UI Automation and print-dialog probes still inspect Windows-specific behavior;
+the IME probe retains its qualified keyboard-layout/preedit input and restoration.
+Linux XTest and macOS CoreGraphics fixture drivers remain platform-specific.
+Windows fixture builds must enable `native-computer-control`; it stays disabled
+by default for ordinary product builds.
 
 Recipe and knowledge links use `limo-cad://`; old `nbcad://` links remain accepted
 at the same restricted parsing boundaries. MCP build metadata is `limo-cad/build`.

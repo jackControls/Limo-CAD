@@ -1,4 +1,4 @@
-//! Real Windows SendInput / private Linux XTEST proof of the existing WCS form.
+//! Real guarded Rust MCP / private Linux XTEST proof of the existing WCS form.
 use super::*;
 use crate::native_platform_test::Driver;
 use std::{
@@ -137,11 +137,7 @@ fn gesture(driver: &Driver, state: &Value, point: [f64; 2], cancel: bool) -> Res
         "WCS handle is covered by a control"
     );
     let response=driver.invoke("cam-row-drag",Some(&json!({"client":state["ui"]["client"],"x":point[0],"y":point[1],"points":[{"x":point[0],"y":point[1],"hold_ms":0}],"cancel":cancel}).to_string()))?;
-    if response.trim().is_empty() {
-        Ok(json!({"transport":"owned Windows SendInput","logical_point":point,"cancel":cancel}))
-    } else {
-        Ok(serde_json::from_str(&response)?)
-    }
+    serde_json::from_str(&response).context("OS WCS picking omitted a valid input receipt")
 }
 pub(super) fn exercise(
     c: &mut Client,

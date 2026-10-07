@@ -1,5 +1,5 @@
 //! Desktop events reach the owned application's OS window and real Winit loop.
-//! MCP only opens/focuses controls, observes results, and captures that window.
+//! Windows input uses the production MCP's guarded Rust OS-input path.
 use crate::{
     native_fixture::{capture, control, controls, ui},
     replay::Client,
@@ -9,19 +9,24 @@ use serde_json::{json, Value};
 use std::{
     collections::BTreeSet,
     fs,
-    io::{Read, Seek, SeekFrom, Write},
+    io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
     thread,
     time::{Duration, Instant},
 };
+#[cfg(not(windows))]
+use std::{io::Write, process::Stdio};
 
-mod helper_deadline;
 mod hosted;
 mod japanese_ime;
 mod print_cancel;
+#[cfg(windows)]
+mod windows;
 mod windows_accessibility;
 mod windows_ime;
+#[cfg(windows)]
+pub(crate) use windows::Driver;
 
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     let mut server = None;
@@ -448,11 +453,13 @@ pub(super) fn wait_for_interface(client: &mut Client, session: &str) -> Result<(
     }
 }
 
+#[cfg(not(windows))]
 pub(super) struct Driver {
     pid: u32,
     helper: PathBuf,
     diagnostics: PathBuf,
 }
+#[cfg(not(windows))]
 impl Driver {
     pub(super) fn new(pid: u32, out: &Path) -> Result<Self> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("platform");
@@ -470,8 +477,6 @@ impl Driver {
             );
             helper
         };
-        #[cfg(target_os = "windows")]
-        let helper = root.join("native-input-windows.ps1");
         #[cfg(target_os = "linux")]
         let helper = root.join("native-input-linux.sh");
         Ok(Self {
@@ -483,29 +488,11 @@ impl Driver {
     fn source(&self) -> &'static str {
         if cfg!(target_os = "macos") {
             "CoreGraphics OS keyboard events"
-        } else if cfg!(target_os = "windows") {
-            "Windows SendInput"
         } else {
             "X11 XTEST through xdotool"
         }
     }
-    fn command(&self, operation: &str) -> Command {
-        #[cfg(target_os = "windows")]
-        let mut command = {
-            use std::os::windows::process::CommandExt;
-
-            let mut c = Command::new("powershell.exe");
-            c.creation_flags(0x08000000);
-            c.args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-            ])
-            .arg(&self.helper);
-            c
-        };
+    fn command(&self, operation: &str) -> Result<Command> {
         #[cfg(target_os = "linux")]
         let mut command = {
             let mut c = Command::new("bash");
@@ -518,14 +505,11 @@ impl Driver {
             .arg(self.pid.to_string())
             .arg(operation)
             .env("LIMO_CAD_INPUT_HELPER_EVIDENCE", &self.diagnostics);
-        command
+        Ok(command)
     }
-    /// Bound helper startup separately from input. The readiness path has no
-    /// open file handle so PowerShell can write it under Windows sharing rules.
+    /// Bound the platform helper without buffering its output in a pipe.
     pub(super) fn invoke(&self, operation: &str, input: Option<&str>) -> Result<String> {
-        let mut command = self.command(operation);
-        let ready = tempfile::NamedTempFile::new()?.into_temp_path();
-        command.env("LIMO_CAD_INPUT_HELPER_READY", ready.as_os_str());
+        let mut command = self.command(operation)?;
         let mut stdout = tempfile::tempfile()?;
         let mut stderr = tempfile::tempfile()?;
         let stdin = match input {
@@ -542,20 +526,16 @@ impl Driver {
             .stdout(Stdio::from(stdout.try_clone()?))
             .stderr(Stdio::from(stderr.try_clone()?));
         let mut child = command.spawn().context("Start OS input helper")?;
-        let mut deadline = helper_deadline::HelperDeadline::new(Instant::now(), cfg!(windows));
+        let deadline = Instant::now() + Duration::from_secs(20);
         while child.try_wait()?.is_none() {
-            let now = Instant::now();
-            if let Some(phase) = deadline.expired(now) {
+            if Instant::now() >= deadline {
                 let _ = child.kill();
                 let _ = child.wait();
                 let stderr = helper_output(&mut stderr)?;
                 bail!(
-                    "OS input helper {operation} exceeded {phase}: {}",
+                    "OS input helper {operation} exceeded 20 seconds: {}",
                     String::from_utf8_lossy(&stderr)
                 );
-            }
-            if fs::metadata(&ready)?.len() > 0 {
-                deadline.ready(now);
             }
             thread::sleep(Duration::from_millis(25));
         }
@@ -604,21 +584,4 @@ fn helper_output(file: &mut fs::File) -> Result<Vec<u8>> {
         "OS helper output exceeds 1 MiB"
     );
     Ok(bytes)
-}
-
-#[cfg(windows)]
-#[test]
-fn native_driver_drains_large_receipts_without_pipe_backpressure() {
-    let staging = tempfile::tempdir().unwrap();
-    let helper = staging.path().join("emit.ps1");
-    fs::write(&helper, "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n[IO.File]::WriteAllText($env:LIMO_CAD_INPUT_HELPER_READY, 'ready')\nif ([Console]::In.ReadToEnd().Length -ne 131072) { throw 'missing helper input' }\n[Console]::Write(('a' * 131072))\n[Console]::Error.Write(('b' * 131072))\n").unwrap();
-    let driver = Driver {
-        pid: std::process::id(),
-        helper,
-        diagnostics: staging.path().join("stages.jsonl"),
-    };
-    let input = "c".repeat(131072);
-    let output = driver.invoke("focus", Some(&input)).unwrap();
-    assert_eq!(output.len(), 131072);
-    assert!(output.bytes().all(|byte| byte == b'a'));
 }

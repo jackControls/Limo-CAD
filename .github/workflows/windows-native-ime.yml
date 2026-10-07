@@ -45,7 +45,7 @@ jobs:
           "OCCT_ROOT=$env:OCCT_SDK" >> $env:GITHUB_ENV
           "$env:OCCT_SDK\bin" >> $env:GITHUB_PATH
       - name: Build the actual feature-enabled native host
-        run: cargo build --locked --manifest-path desktop/Cargo.toml --bin limo-cad
+        run: cargo build --locked --manifest-path desktop/Cargo.toml --features native-computer-control --bin limo-cad
       - name: Exercise the owned Winit field through Windows SendInput
         shell: pwsh
         env:
