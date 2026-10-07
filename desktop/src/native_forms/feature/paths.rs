@@ -550,10 +550,10 @@ impl SolidForm {
                 choice(
                     json!(self.operation),
                     &[
-                        ("new_body", "New body"),
-                        ("join", "Join"),
-                        ("cut", "Cut"),
-                        ("intersect", "Intersect"),
+                        ("new_body", "Create Body"),
+                        ("join", "Add"),
+                        ("cut", "Subtract"),
+                        ("intersect", "Common"),
                     ],
                 ),
                 true,

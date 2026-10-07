@@ -190,6 +190,15 @@ impl SolidField {
     }
 }
 impl SolidForm {
+    pub(super) fn has_move_reference(&self, field: SolidField) -> bool {
+        self.move_copy.as_ref().is_some_and(|fields| {
+            if field.is_move_point() {
+                true // Coordinates define a point even without a viewport pick.
+            } else {
+                fields.edges[usize::from(field == SolidField::AxisEdge)].is_some()
+            }
+        })
+    }
     pub(crate) fn move_mode(&self) -> Option<MoveMode> {
         self.move_copy.as_ref().map(|f| f.mode)
     }

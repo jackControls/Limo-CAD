@@ -202,14 +202,18 @@ impl SolidForm {
                 "Operation".into(),
                 Field::Choice {
                     value: operation.into(),
-                    options: [("join", "Add"), ("cut", "Cut"), ("intersect", "Intersect")]
-                        .into_iter()
-                        .map(|(value, label)| ChoiceOption {
-                            value: value.into(),
-                            label: label.into(),
-                            disabled: false,
-                        })
-                        .collect(),
+                    options: [
+                        ("join", "Add"),
+                        ("cut", "Subtract"),
+                        ("intersect", "Common"),
+                    ]
+                    .into_iter()
+                    .map(|(value, label)| ChoiceOption {
+                        value: value.into(),
+                        label: label.into(),
+                        disabled: false,
+                    })
+                    .collect(),
                 },
             ),
             (

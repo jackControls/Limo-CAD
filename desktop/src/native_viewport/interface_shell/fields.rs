@@ -151,9 +151,15 @@ fn apply_requested_focus(world: &mut World) {
     {
         return;
     }
-    if let Err(error) = after_window_input(world, &handle) {
-        eprintln!("Drawing field focus failed: {error}");
+    if let Err(error) = after_window_input(world, &handle)
+        .and_then(|()| apply_edit(world, entity, TextEdit::SelectAll))
+    {
+        eprintln!("Native field focus failed: {error}");
+        return;
     }
+    // Programmatic focus invites a replacement value, just as the reference
+    // number editors do. Pointer focus still places the caret at the click.
+    handle.invalidate_presentation();
     if let Some(mut focus) = world.get_resource_mut::<bevy::input_focus::InputFocus>() {
         focus.set(entity, bevy::input_focus::FocusCause::Navigated);
     }

@@ -48,6 +48,7 @@ limo-cad-occt = { path = "../crates/occt", features = ["native-occt"] }
 limo-cad-native-engine = { path = "../crates/native-engine", features = ["native-occt"] }
 limo-cad-mcp-mutate = { path = "../crates/mcp-mutate" }
 limo-cad-mcp = { package = "limo-cad-mcp", path = "../mcp-server" }
+earcutr = "=0.4.3"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 bevy = { version = "=0.20.0-rc.2", default-features = false, features = [
