@@ -697,15 +697,16 @@ fn execute(
         world.resource_mut::<Files>().menu = false;
         return Ok(json!({"request_exit":true}));
     }
-    let closing = matches!(command, FileCommand::Close | FileCommand::CloseTab(_))
-        || (matches!(
-            command,
-            FileCommand::Discard(_) | FileCommand::SaveContinue(_)
-        ) && world
+    let closing = match &command {
+        FileCommand::Close => true,
+        FileCommand::CloseTab(target) => target == owner,
+        FileCommand::Discard(_) | FileCommand::SaveContinue(_) => world
             .resource::<Files>()
             .dialog
             .as_ref()
-            .is_some_and(|dialog| matches!(dialog.kind, DialogKind::Confirm(Intent::Close))));
+            .is_some_and(|dialog| matches!(dialog.kind, DialogKind::Confirm(Intent::Close))),
+        _ => false,
+    };
     require_file_ready(world, closing)?;
     world.resource_mut::<Files>().menu = false;
     let receipt = current(world, services, owner)?;

@@ -715,21 +715,36 @@ pub(crate) fn reduce(
     {
         if let FeatureCommand::Control {
             form_id,
-            action: FeatureControl::Field(_),
+            action: FeatureControl::Field(field),
         } = command
         {
-            return reduce(
-                engine,
-                bridge,
-                world,
-                owner,
-                &FeatureCommand::Control {
-                    form_id: *form_id,
-                    action: FeatureControl::Apply,
-                },
-                &ControlInput::Click,
-                validate_control,
-            );
+            let text_field = world
+                .get_resource::<NativeFeature>()
+                .and_then(|state| state.editor.as_ref())
+                .filter(|editor| editor.id == *form_id)
+                .is_some_and(|editor| {
+                    let model = editor.snapshot.model(editor.form.parameter_sketch());
+                    editor.form.fields(&model).into_iter().any(|row| {
+                        row.field == *field
+                            && row.visible
+                            && row.enabled
+                            && matches!(row.value, limo_cad_interface::Field::Text { .. })
+                    })
+                });
+            if text_field {
+                return reduce(
+                    engine,
+                    bridge,
+                    world,
+                    owner,
+                    &FeatureCommand::Control {
+                        form_id: *form_id,
+                        action: FeatureControl::Apply,
+                    },
+                    &ControlInput::Click,
+                    validate_control,
+                );
+            }
         }
     }
     if matches!(input, ControlInput::Key(key) if key.key == "Escape" && !key.ctrl && !key.meta && !key.alt && !key.shift)
