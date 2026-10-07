@@ -1,8 +1,16 @@
 # Native platform input checks
 
+On Windows:
+
+`cargo run --quiet --locked -p xtask --features native-control-harness -- test-mcp native-platform --desktop-input --server ABSOLUTE_NATIVE_BINARY --out EMPTY_ABSOLUTE_DIRECTORY`
+
+On Linux and macOS:
+
 `cargo xtask test-mcp native-platform --desktop-input --server ABSOLUTE_NATIVE_BINARY --out EMPTY_ABSOLUTE_DIRECTORY`
 
 Build the native binary; on Windows include `--features native-computer-control`.
+The xtask input backend and clipboard dependency require `native-control-harness`;
+default xtask builds return an explicit disabled-feature error for Windows input.
 Use a disposable desktop: the
 fixture focuses its own newly spawned window and uses the system clipboard. It
 restores prior text clipboard contents in memory, but not other clipboard formats.

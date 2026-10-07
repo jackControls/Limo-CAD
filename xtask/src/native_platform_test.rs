@@ -21,7 +21,10 @@ use std::{io::Write, process::Stdio};
 mod hosted;
 mod japanese_ime;
 mod print_cancel;
-#[cfg(windows)]
+#[cfg(all(windows, feature = "native-control-harness"))]
+mod windows;
+#[cfg(all(windows, not(feature = "native-control-harness")))]
+#[path = "native_platform_test/disabled.rs"]
 mod windows;
 mod windows_accessibility;
 mod windows_ime;
@@ -29,6 +32,7 @@ mod windows_ime;
 pub(crate) use windows::Driver;
 
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
+    require_windows_harness()?;
     let mut server = None;
     let mut out = None;
     let mut desktop_input = false;
@@ -118,6 +122,13 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     };
     fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
     result.map(|_| ())
+}
+
+pub(crate) fn require_windows_harness() -> Result<()> {
+    #[cfg(all(windows, not(feature = "native-control-harness")))]
+    return windows::unavailable();
+    #[cfg(not(all(windows, not(feature = "native-control-harness"))))]
+    Ok(())
 }
 
 fn exercise(

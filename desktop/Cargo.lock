@@ -3708,7 +3708,6 @@ dependencies = [
  "limo-cad-session-storage",
  "limo-cad-sketch",
  "limo-cad-solid",
- "png 0.18.1",
  "serde",
  "serde_json",
  "windows-capture",

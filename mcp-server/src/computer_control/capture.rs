@@ -13,6 +13,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use windows_capture::capture::{Context, GraphicsCaptureApiHandler};
+use windows_capture::encoder::{ImageEncoder, ImageEncoderPixelFormat, ImageFormat};
 use windows_capture::frame::Frame;
 use windows_capture::graphics_capture_api::InternalCaptureControl;
 use windows_capture::settings::{
@@ -373,18 +374,9 @@ fn encode_frame(frame: &mut Frame<'_>) -> EncodedFrame {
     if rgba.len() as u64 != u64::from(width) * u64::from(height) * 4 {
         return Err("Native capture returned an incomplete pixel buffer".into());
     }
-    let mut bytes = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut bytes, width, height);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        encoder.set_compression(png::Compression::Fast);
-        let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
-        writer
-            .write_image_data(rgba)
-            .map_err(|error| error.to_string())?;
-        writer.finish().map_err(|error| error.to_string())?;
-    }
+    let bytes = ImageEncoder::new(ImageFormat::Png, ImageEncoderPixelFormat::Rgba8)
+        .and_then(|encoder| encoder.encode(rgba, width, height))
+        .map_err(|error| format!("Could not encode native capture PNG: {error}"))?;
     Ok((bytes, width, height))
 }
 

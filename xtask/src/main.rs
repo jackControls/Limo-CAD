@@ -194,6 +194,7 @@ Commands:
                 --desktop also checks default stdio in one owned GUI, save, disconnect and guarded exit.
   test-mcp      Run Rust native scenarios: live, controls, native-lifecycle, native-sketch, native-support, native-build, native-refine, native-body, native-pattern, native-view, native-print-layout, native-print-intent, native-print-modifier, native-print-height, native-bambu-project, native-bambu-repeated, native-thread, native-planes, playback, scripts-workspace, exit, bench, garden-bench, or drawing. Additional
                 arguments pass directly to the selected MCP test/demo driver.
+                Windows OS-input fixtures require xtask's native-control-harness Cargo feature.
                 Example: cargo xtask test-mcp live --server PATH --desktop PATH
                 Native sketch: test-mcp native-sketch --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH
                 Native solid: test-mcp native-build --server CAD_BINARY --session BLANK_DOCUMENT_UUID --out ABSOLUTE_PATH

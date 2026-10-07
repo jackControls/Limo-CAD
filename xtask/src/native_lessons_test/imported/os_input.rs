@@ -25,6 +25,7 @@ pub(super) fn complete_dialog(
 ) -> Result<()> {
     #[cfg(windows)]
     {
+        crate::native_platform_test::require_windows_harness()?;
         let inspected = client.call("cad_interface", serde_json::json!({"action":"inspect"}))?;
         let pid = u32::try_from(
             inspected["native_window"]["pid"]

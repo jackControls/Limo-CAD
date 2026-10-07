@@ -623,14 +623,14 @@ jobs:
         if: inputs.desktop-input && inputs.input-family != 'windows-print'
         shell: pwsh
         run: |
-          cargo xtask test-mcp native-platform --desktop-input `
+          cargo run --quiet --locked -p xtask --features native-control-harness -- test-mcp native-platform --desktop-input `
             --server "$env:GITHUB_WORKSPACE\desktop\target\debug\limo-cad.exe" `
             --out "$env:RUNNER_TEMP\native-input-windows"
       - name: Exercise production Windows UI Automation without foreground input
         if: inputs.desktop-input && inputs.input-family != 'windows-print'
         shell: pwsh
         run: |
-          cargo xtask test-mcp native-platform --desktop-input --accessibility `
+          cargo run --quiet --locked -p xtask --features native-control-harness -- test-mcp native-platform --desktop-input --accessibility `
             --server "$env:GITHUB_WORKSPACE\desktop\target\debug\limo-cad.exe" `
             --out "$env:RUNNER_TEMP\native-accessibility-windows"
       - name: Retain Windows input snapshots and native captures
@@ -649,7 +649,7 @@ jobs:
         env:
           LIMO_CAD_NATIVE_PRINT_TEST: windows-cancel
         run: |
-          cargo xtask test-mcp native-platform --desktop-input --print-cancel `
+          cargo run --quiet --locked -p xtask --features native-control-harness -- test-mcp native-platform --desktop-input --print-cancel `
             --server "$env:GITHUB_WORKSPACE\desktop\target\debug\limo-cad.exe" `
             --out "$env:RUNNER_TEMP\native-print-windows"
       - name: Retain Windows print dialog cancellation evidence

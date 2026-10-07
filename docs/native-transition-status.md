@@ -41,8 +41,9 @@ recipe replay were run for this pass; read-only MCP inspection verifies the resu
 
 Native computer control is opt-in through `native-computer-control`, with empty
 default features. The Windows backend reuses Enigo for input, Windows Capture for
-owned native dialogs and PNG for encoding. The generic Windows qualification driver
-now uses Rust and this same control path; specialized IME/print probes and Linux/macOS
+owned native dialogs and that crate's in-memory PNG encoder. The generic Windows
+qualification driver uses Rust and this same control path behind xtask's opt-in
+`native-control-harness` feature; specialized IME/print probes and Linux/macOS
 drivers still include platform scripting. These source changes do not establish
 cross-platform input qualification.
 

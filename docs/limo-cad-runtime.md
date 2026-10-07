@@ -88,8 +88,8 @@ movement and dwell. Error receipts report partial input and cleanup failures.
 Verified start and end pointer coordinates describe OS input, not the resulting
 model or UI state.
 CAD-owned Windows modal dialogs are observed through `windows-capture` 2.0.1,
-with PNG images encoded by the existing Rust PNG codec. The image includes the
-window frame; `client_to_image_offset` maps physical client points to image pixels.
+with PNG images encoded by that crate's public in-memory image encoder. The image
+includes the window frame; `client_to_image_offset` maps physical client points to image pixels.
 Native editable controls provide the focus check for Unicode text input.
 
 The `text` action currently supports printable Basic Multilingual Plane (BMP)
@@ -123,8 +123,19 @@ and script-dialog input helpers have been removed. Specialized PowerShell/C# IME
 UI Automation and print-dialog probes still inspect Windows-specific behavior;
 the IME probe retains its qualified keyboard-layout/preedit input and restoration.
 Linux XTest and macOS CoreGraphics fixture drivers remain platform-specific.
-Windows fixture builds must enable `native-computer-control`; it stays disabled
-by default for ordinary product builds.
+Windows fixture builds must enable the product's `native-computer-control` and
+xtask's separate `native-control-harness` features. Both default to disabled.
+The xtask feature compiles its Windows input backend and clipboard dependency;
+disabled input requests fail explicitly. Other xtask commands remain available.
+Build or run the operator with the feature explicitly:
+
+```text
+cargo build --locked -p xtask --features native-control-harness
+cargo run --quiet --locked -p xtask --features native-control-harness -- cad-call --interactive
+```
+
+The product deployment flag `deploy-native --computer-control` is independent
+of the xtask feature and still preserves the installed mode on later rebuilds.
 
 Recipe and knowledge links use `limo-cad://`; old `nbcad://` links remain accepted
 at the same restricted parsing boundaries. MCP build metadata is `limo-cad/build`.
