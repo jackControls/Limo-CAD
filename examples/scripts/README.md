@@ -60,10 +60,10 @@ Bevy GUI and MCP builds at `abf4667d`. This checkpoint has 53 named features,
 It reaches the continuous arm supports; it is not the complete bench recipe.
 
 The separate [human-operated checkpoint](../checkpoints/garden-bench-human-ui.limo)
-records the Windows UI walkthrough through `69e66631` on 7 October 2026.
-It contains twelve named features, four separately defined and placed posts,
+records the Windows UI walkthrough through `dfb76683` on 7 October 2026.
+It contains thirteen named features, four separately defined and placed posts,
 two shared long-apron occurrences, two left-front apron pilots,
-six right-front rail/arm pilots and four
+six right-front rail/arm pilots, six shared apron clearance positions and four
 presentation views. The three-model walkthrough is still in progress.
 Every modeling change used real mouse/keyboard input through
 the optional Rust `native-computer-control` feature, with no recipe replay or
@@ -123,9 +123,15 @@ geometry and references.
     same painted-timber metadata, make one reusable definition and place its
     front/rear occurrences at `[65, 2, 260]` and `[65, 445, 260]`, with identity
     rotations. Their tops are at Z = 415 mm. Save **04 / Front and rear face-lap
-    aprons** with all five bodies visible, then save the document. Other post
-    pilots, apron/rail clearance bores, side rails, joints, drawing sheets and
-    print layouts remain unfinished.
+    aprons** with all five bodies visible, then save the document.
+16. Pick the front apron's outward −Y face. Create **Long apron / Post and
+    bearer clearances Ø5.5 x 28 / Six positions** with U/V pairs `(32.5, 90)`,
+    `(32.5, 130)`, `(1037.5, 90)`, `(1037.5, 130)`, `(517.5, 35)` and
+    `(552.5, 35)`. Set simple style, 5.5 mm diameter, 28 mm distance, flat
+    bottom and no flip. Both shared apron occurrences update. Undo removes
+    this feature without changing their IDs or poses; Redo restores the six
+    positions and name. Save the document. Other post pilots, rail clearance
+    bores, side rails, joints, drawing sheets and print layouts remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 
