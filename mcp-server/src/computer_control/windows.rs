@@ -338,6 +338,11 @@ impl ComputerControl {
             return Err("Desktop moved or changed immediately before input; observe again".into());
         }
         observed.process.verify()?;
+        let backend = if request.action == "move" {
+            "verified_win32_cursor"
+        } else {
+            "enigo"
+        };
         let mut driver = InputDriver::new()?;
         let mut completed = 0;
         let mut pointer = None;
@@ -363,7 +368,7 @@ impl ComputerControl {
                 }
                 let cleanup_errors = driver.release_all();
                 return Ok(json!({"status":"input_incomplete","action":request.action,
-                    "backend":"enigo","completed_primitives":completed,"planned_primitives":planned,
+                    "backend":backend,"completed_primitives":completed,"planned_primitives":planned,
                     "failed_primitive":step.kind(),"error":error,"cleanup_errors":cleanup_errors,
                     "input_may_have_been_inserted":true,"owner":observed.owner,
                     "observation_consumed":true,"hint":"Input stopped when an ownership, focus or visibility guard changed. Observe and capture the result; do not blindly retry."}));
@@ -371,7 +376,7 @@ impl ComputerControl {
             if let Err(error) = driver.apply(*step) {
                 let cleanup_errors = driver.release_all();
                 return Ok(json!({"status":"input_incomplete","action":request.action,
-                    "backend":"enigo","completed_primitives":completed,"planned_primitives":planned,
+                    "backend":backend,"completed_primitives":completed,"planned_primitives":planned,
                     "failed_primitive":step.kind(),"error":error,"cleanup_errors":cleanup_errors,
                     "input_may_have_been_inserted":true,"owner":observed.owner,
                     "observation_consumed":true,"hint":"The input backend cannot report how many events a failed primitive inserted. Owned held keys/buttons received one release attempt. Observe and capture the result; do not blindly retry."}));
@@ -388,8 +393,10 @@ impl ComputerControl {
                 .map(|bounds| [point[0] - bounds[0], point[1] - bounds[1]])
         };
         Ok(
-            json!({"status":"input_sent","action":request.action,"backend":"enigo",
+            json!({"status":"input_sent","action":request.action,"backend":backend,
             "completed_primitives":completed,"owner":observed.owner,
+            "mouse_button_primitives":plan.iter().filter(|step| matches!(step, Step::Button(_, _))).count(),
+            "keyboard_primitives":plan.iter().filter(|step| matches!(step, Step::Key(_, _) | Step::Text(_))).count(),
             "pointer_start_physical_client":pointer_start.and_then(client_point),
             "pointer_end_physical_client":pointer.and_then(client_point),
             "pointer_verification":"Cursor checked after movement and before pointer primitives; coordinates describe input, not the resulting product state.",
@@ -1058,6 +1065,21 @@ fn plan<'a>(
         return Err("Pointer modifiers require click, double_click, drag or wheel".into());
     }
     match request.action.as_str() {
+        "move" => {
+            if request.button.is_some()
+                || request.delta.is_some()
+                || request.key.is_some()
+                || request.text.is_some()
+            {
+                return Err(
+                    "Pointer-only move accepts point, without button, delta, key or text".into(),
+                );
+            }
+            let point = request
+                .point
+                .ok_or("Pointer input needs point in physical client pixels")?;
+            steps.push(Step::Move(screen_point(point, observed, hwnd)?));
+        }
         "click" | "double_click" | "drag" | "wheel" => {
             let point = request
                 .point

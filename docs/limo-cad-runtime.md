@@ -78,6 +78,10 @@ product action. Enigo supplies keyboard, Unicode text, mouse buttons and wheel
 input. Window ownership, focus and verified cursor placement use the existing
 Windows bindings; direct cursor placement retains multi-monitor support that
 Enigo's Windows absolute-move implementation does not currently provide.
+`action=move` positions only the pointer at the qualified physical client point;
+it sends no mouse-button or keyboard primitives. Its receipt includes the verified
+position. Observe again before a subsequent wheel or other gesture; movement
+does not claim that a tooltip or any other UI response has appeared.
 Wheel deltas are multiples of 120, matching Enigo's whole-notch Windows API.
 Pointer actions may hold Ctrl or Shift for one gesture. A drag takes either one
 endpoint or one bounded path of at most eight waypoints, with up to 800 ms dwell
