@@ -1291,7 +1291,7 @@ fn process_modal_keys(
                 "file-menu" | "file-dialog" | "app-settings" => files::escape(world),
                 "history-menu" | "delete-feature" => history::escape(world),
                 "rename-feature" => {
-                    if let Some(key) = handle.frame().and_then(|frame| frame.focused) {
+                    if let Some(key) = handle.focused_key() {
                         if world
                             .get::<NativeCommandBinding>(Entity::from_bits(key.0))
                             .is_some_and(|binding| {
