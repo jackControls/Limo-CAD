@@ -78,6 +78,7 @@ fn check_owner(
 
 /// Prepare a copy of the shared edit history while the publisher owner fence
 /// is held. The caller commits it only after the engine mutation succeeds.
+/// Presentation changes retain existing snapshots without exporting geometry.
 pub(super) fn prepare_edit_history(
     engine: &AppState,
     project: &ProjectPublisher,
@@ -127,11 +128,14 @@ pub(super) fn prepare_edit_history(
                 | "assembly_update_contact_set"
                 | "assembly_delete_contact_set"
         );
-    let visibility = matches!(
+    let presentation = matches!(
         operation,
-        "project_set_visibility" | "construction_set_visibility"
+        "project_set_visibility"
+            | "construction_set_visibility"
+            | "recall_named_view"
+            | "clear_named_view"
     );
-    if !snapshot_edit && !visibility {
+    if !snapshot_edit && !presentation {
         return Ok(None);
     }
     let before = super::native_history::HistoryState {
@@ -143,7 +147,7 @@ pub(super) fn prepare_edit_history(
         context: owner.clone(),
         engine_revision: next_revision,
     };
-    if visibility {
+    if presentation {
         history.advance_visibility(&before, after)?;
     } else {
         let model = super::parse_engine_envelope(engine.engine_call("project_export_model", ""))?;

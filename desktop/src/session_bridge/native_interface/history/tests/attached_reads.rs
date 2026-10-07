@@ -29,6 +29,57 @@ fn enqueue(fixture: &Fixture, seq: u64, name: &str, arguments: Value, base: u64)
     request
 }
 
+#[test]
+fn attached_construction_visibility_preserves_edit_undo_and_redo() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = part(&fixture);
+    let original = model(&fixture);
+    edit(
+        &fixture,
+        &owner,
+        "solid_edit_extrude",
+        json!({"feature_id":original["extrudes"][0]["feature_id"],"extrude":{
+            "sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body",
+            "extent":{"type":"distance","distance":25.},"taper_angle_deg":0.,
+            "flip":false,"target_body_ids":[]}}),
+    );
+    enqueue(
+        &fixture,
+        1,
+        "construction_set_visibility",
+        json!({"visible":false,"sketch_names":["Sketch1"]}),
+        revision(&fixture),
+    );
+    let receipt = apply_one_inbox_op(&fixture.bridge, "main", &fixture.engine).unwrap();
+    assert_eq!(receipt["applied"], true, "{receipt}");
+    let undone = fixture
+        .bridge
+        .apply_native_history(&fixture.engine, &owner, false, || Ok(()))
+        .unwrap();
+    assert_eq!(model(&fixture)["extrudes"], original["extrudes"]);
+    assert_eq!(
+        model(&fixture)["visibility"]["hidden_sketch_names"],
+        json!(["Sketch1"])
+    );
+    enqueue(
+        &fixture,
+        2,
+        "construction_set_visibility",
+        json!({"visible":true,"sketch_names":["Sketch1"]}),
+        revision(&fixture),
+    );
+    let receipt = apply_one_inbox_op(&fixture.bridge, "main", &fixture.engine).unwrap();
+    assert_eq!(receipt["applied"], true, "{receipt}");
+    fixture
+        .bridge
+        .apply_native_history(&fixture.engine, &undone.context, true, || Ok(()))
+        .unwrap();
+    let restored = model(&fixture);
+    assert_eq!(restored["extrudes"][0]["extent"]["distance"], 25.0);
+    assert_eq!(restored["visibility"]["hidden_sketch_names"], json!([]));
+}
+
 fn generated_job(fixture: &Fixture, owner: &DocumentContext) -> (Value, Value) {
     let mut cam: limo_cad_cam::CamDocumentDto = serde_json::from_value(json!({
         "setups":[{"id":1,"name":"Face test","stock":{"min":{"x":0.,"y":0.,"z":-4.},"max":{"x":12.,"y":8.,"z":0.}},
