@@ -1,6 +1,8 @@
-param([int]$ImeOwnedPid, [IntPtr]$ImeWindow)
+param([int]$ImeOwnedPid, [long]$ImeWindow)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 function Resolve-OwnedImePaths([string]$RunnerRoot, [string]$OutputRoot, [string]$HostPath, [string]$OwnedPath) {
     $canonicalRoot = [NativePlatformInput]::CanonicalPath($RunnerRoot).TrimEnd('\') + '\'
     $canonicalOutput = [NativePlatformInput]::CanonicalPath($OutputRoot).TrimEnd('\')
@@ -22,11 +24,53 @@ if ($env:LIMO_CAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS
     throw 'Explicit disposable GitHub Windows IME opt-in is required'
 }
 if (-not $env:LIMO_CAD_IME_SESSION -or -not $env:LIMO_CAD_IME_FIELD_TOKEN) { throw 'Missing document/field receipt' }
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class NativePlatformInput {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandleW(Microsoft.Win32.SafeHandles.SafeFileHandle file, StringBuilder path, uint size, uint flags);
+    public static string CanonicalPath(string path) {
+        using (var file = CreateFileW(System.IO.Path.GetFullPath(path), 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero)) {
+            if (file.IsInvalid) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Cannot open owned path: " + path);
+            var result = new StringBuilder(1024);
+            uint length = GetFinalPathNameByHandleW(file, result, (uint)result.Capacity, 0);
+            if (length == 0) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Cannot resolve owned path: " + path);
+            if (length >= result.Capacity) {
+                if (length > 32768) throw new System.IO.PathTooLongException(path);
+                result = new StringBuilder((int)length + 1);
+                length = GetFinalPathNameByHandleW(file, result, (uint)result.Capacity, 0);
+                if (length == 0) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Cannot resolve owned path: " + path);
+                if (length >= result.Capacity) throw new System.IO.IOException("Owned path changed during resolution: " + path);
+            }
+            return result.ToString();
+        }
+    }
+    [StructLayout(LayoutKind.Sequential)] private struct KEYBDINPUT { public ushort key, scan; public uint flags, time; public UIntPtr extra; }
+    [StructLayout(LayoutKind.Explicit, Size = 32)] private struct UNION { [FieldOffset(0)] public KEYBDINPUT keyboard; }
+    [StructLayout(LayoutKind.Sequential)] private struct INPUT { public uint type; public UNION data; }
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern IntPtr GetKeyboardLayout(uint thread);
+    [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam, uint flags, uint timeout, out UIntPtr result);
+    [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, INPUT[] input, int size);
+    public static void Key(ushort key, bool up) {
+        var input = new INPUT { type = 1, data = new UNION { keyboard = new KEYBDINPUT { key = key, flags = up ? 2u : 0u } } };
+        if (SendInput(1, new[] { input }, Marshal.SizeOf(typeof(INPUT))) != 1) throw new InvalidOperationException("SendInput failed: " + Marshal.GetLastWin32Error());
+        System.Threading.Thread.Sleep(25);
+    }
+}
+'@
+$ImeWindowHandle = [IntPtr]::new($ImeWindow)
 $owned = Get-Process -Id $ImeOwnedPid -ErrorAction Stop
 $ownedStart = $owned.StartTime
 $outputRoot = Resolve-OwnedImePaths $env:RUNNER_TEMP $env:LIMO_CAD_IME_OUT $env:LIMO_CAD_IME_HOST_PATH $owned.MainModule.FileName
 [uint32]$windowOwner = 0
-$windowThread = [NativePlatformInput]::GetWindowThreadProcessId($ImeWindow, [ref]$windowOwner)
+$windowThread = [NativePlatformInput]::GetWindowThreadProcessId($ImeWindowHandle, [ref]$windowOwner)
 if ($windowOwner -ne $ImeOwnedPid -or $windowThread -eq 0) { throw 'Owned window thread is absent' }
 $previousLayout = [NativePlatformInput]::GetKeyboardLayout($windowThread)
 if ($previousLayout -eq [IntPtr]::Zero) { throw 'Cannot record previous host input layout' }
@@ -40,10 +84,10 @@ $finishRequested = $false
 function Require-Owned([bool]$Foreground = $true) {
     $current = Get-Process -Id $ImeOwnedPid -ErrorAction Stop
     [uint32]$ownerNow = 0
-    $threadNow = [NativePlatformInput]::GetWindowThreadProcessId($ImeWindow, [ref]$ownerNow)
+    $threadNow = [NativePlatformInput]::GetWindowThreadProcessId($ImeWindowHandle, [ref]$ownerNow)
     if ($current.StartTime -ne $ownedStart -or $ownerNow -ne $ImeOwnedPid -or $threadNow -ne $windowThread -or
-        -not [NativePlatformInput]::IsWindowVisible($ImeWindow)) { throw 'Owned host/window identity changed' }
-    if ($Foreground -and [NativePlatformInput]::GetForegroundWindow() -ne $ImeWindow) { throw 'Owned native window lost focus; no further key input sent' }
+        -not [NativePlatformInput]::IsWindowVisible($ImeWindowHandle)) { throw 'Owned host/window identity changed' }
+    if ($Foreground -and [NativePlatformInput]::GetForegroundWindow() -ne $ImeWindowHandle) { throw 'Owned native window lost focus; no further key input sent' }
 }
 function Language { return ([NativePlatformInput]::GetKeyboardLayout($windowThread).ToInt64() -band 0xffff) }
 function Reply($Value) { [Console]::WriteLine(($Value | ConvertTo-Json -Depth 12 -Compress)) }
@@ -58,7 +102,7 @@ function Chord([uint16]$Modifier, [uint16]$Key) {
 }
 try {
     Require-Owned
-    Reply @{ status = 'ready'; source_id = $source; window_number = $ImeWindow.ToInt64(); owned_pid = $ImeOwnedPid; previous_layout = $previousLayout.ToInt64() }
+    Reply @{ status = 'ready'; source_id = $source; window_number = $ImeWindowHandle.ToInt64(); owned_pid = $ImeOwnedPid; previous_layout = $previousLayout.ToInt64() }
     while ($null -ne ($line = [Console]::ReadLine())) {
         if ($line.Length -gt 65536) { throw 'IME request exceeds byte budget' }
         $request = $line | ConvertFrom-Json
@@ -87,7 +131,7 @@ try {
             default { throw "Unknown IME operation $($request.operation)" }
         }
         Require-Owned
-        $reply = @{ status = 'applied'; sequence = $sequence; operation = $request.operation; language = (Language); window_number = $ImeWindow.ToInt64() }
+        $reply = @{ status = 'applied'; sequence = $sequence; operation = $request.operation; language = (Language); window_number = $ImeWindowHandle.ToInt64() }
         $operations.Add($reply)
         Reply $reply
     }
@@ -99,7 +143,7 @@ try {
         Require-Owned $false
         if ([NativePlatformInput]::GetKeyboardLayout($windowThread) -ne $previousLayout) {
             [UIntPtr]$messageResult = [UIntPtr]::Zero
-            $sent = [NativePlatformInput]::SendMessageTimeout($ImeWindow, 0x50, [UIntPtr]::Zero, $previousLayout, 2, 1000, [ref]$messageResult)
+            $sent = [NativePlatformInput]::SendMessageTimeout($ImeWindowHandle, 0x50, [UIntPtr]::Zero, $previousLayout, 2, 1000, [ref]$messageResult)
             if ($sent -eq [IntPtr]::Zero) { throw 'Owned host layout restoration message failed' }
         }
         $deadline = [DateTime]::UtcNow.AddSeconds(2)
@@ -108,7 +152,7 @@ try {
         if (-not $cleanup.layout_restored) { throw 'Owned host layout restoration was not observed' }
     } catch { $errors.Add($_.Exception.Message) }
     if ($errors.Count) { $result = 'failed' }
-    $report = @{ status = 'finished'; result = $result; cleanup = $cleanup; operations = $operations; owned_pid = $ImeOwnedPid; window_number = $ImeWindow.ToInt64() }
+    $report = @{ status = 'finished'; result = $result; cleanup = $cleanup; operations = $operations; owned_pid = $ImeOwnedPid; window_number = $ImeWindowHandle.ToInt64() }
     [IO.File]::WriteAllText([IO.Path]::Combine($outputRoot, 'windows-ime-cleanup.json'), ($report | ConvertTo-Json -Depth 12), [Text.UTF8Encoding]::new($false))
     Reply $report
 }

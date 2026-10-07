@@ -38,7 +38,6 @@ fn hosted_desktop_guards_and_the_arm_fixture_use_the_owned_repository() {
         "scripts/ci/arm-runner-preflight.test.ps1",
         "xtask/platform/native-print-cancel-windows.ps1",
         "xtask/platform/native-windows-ime-session.ps1",
-        "xtask/platform/native-input-windows.ps1",
         "xtask/platform/native-input-macos.swift",
         "xtask/platform/macos-ime-probe.swift",
         "xtask/platform/run-macos-ime-probe.sh",

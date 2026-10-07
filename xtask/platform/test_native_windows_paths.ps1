@@ -10,14 +10,13 @@ function Parse-Script([string]$Name) {
     if ($errors.Count) { throw ($errors | Out-String) }
     return $ast
 }
-$driver = Parse-Script 'native-input-windows.ps1'
-$typeSource = $driver.FindAll({ param($node)
+$session = Parse-Script 'native-windows-ime-session.ps1'
+$typeSource = $session.FindAll({ param($node)
     $node -is [Management.Automation.Language.StringConstantExpressionAst] -and
         $node.Value.Contains('public static class NativePlatformInput')
 }, $true)
-if ($typeSource.Count -ne 1) { throw 'Expected the production Windows helper type' }
+if ($typeSource.Count -ne 1) { throw 'Expected the specialized Windows IME helper type' }
 Add-Type -TypeDefinition $typeSource[0].Value
-$session = Parse-Script 'native-windows-ime-session.ps1'
 $resolver = $session.FindAll({ param($node)
     $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Resolve-OwnedImePaths'
 }, $true)

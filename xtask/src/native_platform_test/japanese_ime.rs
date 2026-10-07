@@ -119,7 +119,7 @@ impl Session {
         let log = fs::File::create(out.join("japanese-ime-driver.stderr.log"))?;
         let field_token = format!("{}:{}", field["control_key"], field["binding"]);
         let mut child = driver
-            .command("ime-session")
+            .command("ime-session")?
             .env("LIMO_CAD_IME_HOST_PATH", server)
             .env("LIMO_CAD_IME_OUT", out.canonicalize()?)
             .env("LIMO_CAD_IME_SESSION", session)
@@ -680,9 +680,11 @@ pub(super) fn exercise(
     );
     let report = json!({"engine":if cfg!(target_os = "windows") { "Microsoft Japanese Romaji/Hiragana" } else { "Apple Japanese Romaji/Hiragana" }, "source_id":selected_source(),
         "event_source":driver.source(),
-        "stock_prerequisite":stock, "host_sha256":hash(server)?, "driver_sha256":hash(&driver.helper)?,
+        "stock_prerequisite":stock, "host_sha256":hash(server)?, "driver_sha256":if cfg!(target_os = "windows") {
+            hash(&std::env::current_exe()?)?
+        } else { hash(&driver.helper)? },
         "windows_session_helper_sha256":if cfg!(target_os = "windows") {
-            Some(hash(&driver.helper.parent().context("Windows driver parent")?.join("native-windows-ime-session.ps1"))?)
+            Some(hash(&driver.helper)?)
         } else { None },
         "preedit":preedit, "committed":committed, "second_preedit":second, "cancelled":cancelled,
         "escape_count":escape_count, "selected_cancellation":selected_cancellation,
