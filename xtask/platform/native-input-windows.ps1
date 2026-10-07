@@ -8,7 +8,16 @@ function Write-InputStage([string]$stage) {
         [IO.File]::AppendAllText($env:LIMO_CAD_INPUT_HELPER_EVIDENCE, $row + "`n", [Text.UTF8Encoding]::new($false))
     }
 }
+function Write-InputReady {
+    Write-InputStage 'input-ready'
+    if (-not [string]::IsNullOrEmpty($env:LIMO_CAD_INPUT_HELPER_READY)) {
+        [IO.File]::WriteAllText($env:LIMO_CAD_INPUT_HELPER_READY, 'ready')
+    }
+}
 Write-InputStage 'start'
+if ($Operation -in @('accessibility', 'print-cancel', 'script-dialog', 'clipboard-read', 'clipboard-write')) {
+    Write-InputReady
+}
 if ($Operation -eq 'accessibility') {
     & (Join-Path $PSScriptRoot 'native-accessibility-windows.ps1') -OwnedPid $OwnedPid
     exit $LASTEXITCODE
@@ -176,6 +185,7 @@ if ($Operation -eq 'focus' -and -not [string]::IsNullOrEmpty($env:LIMO_CAD_HOSTE
     & (Join-Path $PSScriptRoot '../../scripts/prepare-hosted-arm-desktop.ps1') -EvidencePath $env:LIMO_CAD_HOSTED_ARM_ACCOUNT_EVIDENCE
     Write-InputStage 'runner-preflight-complete'
 }
+Write-InputReady
 [void][NativePlatformInput]::ShowWindowAsync($windows[0], 9)
 Write-InputStage 'restore-requested'
 [void][NativePlatformInput]::SetForegroundWindow($windows[0])

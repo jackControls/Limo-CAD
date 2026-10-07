@@ -16,6 +16,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod helper_deadline;
 mod hosted;
 mod japanese_ime;
 mod print_cancel;
@@ -149,11 +150,7 @@ fn exercise(
             }))?,
         )?;
     }
-    let mut client = if trace {
-        Client::start_command_logged(command, Some(Duration::from_secs(45)), out)?
-    } else {
-        Client::start_command(command, Some(Duration::from_secs(45)))?
-    };
+    let mut client = Client::start_command_logged(command, Some(Duration::from_secs(45)), out)?;
     let session = wait_for_owned_window(&mut client, &sessions)?;
     client.call("cad_attach", json!({"session_id":session}))?;
     wait_for_interface(&mut client, &session)?;
@@ -525,6 +522,10 @@ impl Driver {
     }
     pub(super) fn invoke(&self, operation: &str, input: Option<&str>) -> Result<String> {
         let mut command = self.command(operation);
+        // Close the file before PowerShell opens it: Windows sharing rules
+        // otherwise reject WriteAllText while our writable handle is alive.
+        let ready = tempfile::NamedTempFile::new()?.into_temp_path();
+        command.env("LIMO_CAD_INPUT_HELPER_READY", ready.as_os_str());
         let mut stdout = tempfile::tempfile()?;
         let mut stderr = tempfile::tempfile()?;
         let stdin = match input {
@@ -541,12 +542,20 @@ impl Driver {
             .stdout(Stdio::from(stdout.try_clone()?))
             .stderr(Stdio::from(stderr.try_clone()?));
         let mut child = command.spawn().context("Start OS input helper")?;
-        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut deadline = helper_deadline::HelperDeadline::new(Instant::now(), cfg!(windows));
         while child.try_wait()?.is_none() {
-            if Instant::now() >= deadline {
+            let now = Instant::now();
+            if let Some(phase) = deadline.expired(now) {
                 let _ = child.kill();
                 let _ = child.wait();
-                bail!("OS input helper {operation} exceeded 20 seconds");
+                let stderr = helper_output(&mut stderr)?;
+                bail!(
+                    "OS input helper {operation} exceeded {phase}: {}",
+                    String::from_utf8_lossy(&stderr)
+                );
+            }
+            if fs::metadata(&ready)?.len() > 0 {
+                deadline.ready(now);
             }
             thread::sleep(Duration::from_millis(25));
         }
@@ -602,7 +611,7 @@ fn helper_output(file: &mut fs::File) -> Result<Vec<u8>> {
 fn native_driver_drains_large_receipts_without_pipe_backpressure() {
     let staging = tempfile::tempdir().unwrap();
     let helper = staging.path().join("emit.ps1");
-    fs::write(&helper, "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\nif ([Console]::In.ReadToEnd().Length -ne 131072) { throw 'missing helper input' }\n[Console]::Write(('a' * 131072))\n[Console]::Error.Write(('b' * 131072))\n").unwrap();
+    fs::write(&helper, "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)\n[IO.File]::WriteAllText($env:LIMO_CAD_INPUT_HELPER_READY, 'ready')\nif ([Console]::In.ReadToEnd().Length -ne 131072) { throw 'missing helper input' }\n[Console]::Write(('a' * 131072))\n[Console]::Error.Write(('b' * 131072))\n").unwrap();
     let driver = Driver {
         pid: std::process::id(),
         helper,

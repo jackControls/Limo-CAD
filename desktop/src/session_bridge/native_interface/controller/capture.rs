@@ -3,17 +3,27 @@
 //! the image. Encoding runs off the presentation thread.
 
 use super::*;
-use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
+use bevy::render::view::screenshot::{Capturing, Screenshot, ScreenshotCaptured};
 use std::{fs::OpenOptions, io::BufWriter, path::PathBuf, time::Instant};
 mod paper_diagnostics;
 
 type Outcome = Arc<Mutex<Option<Result<Value, String>>>>;
 
+#[derive(Clone, Copy)]
+enum CaptureStage {
+    WaitingForImage,
+    CheckingDocument,
+    EncodingPng,
+    WritingFile,
+}
+
 #[derive(Resource)]
 struct Capture {
     entity: Entity,
     started: Instant,
+    polls: u32,
     outcome: Outcome,
+    stage: Arc<Mutex<CaptureStage>>,
     diagnostic_capture_path: Option<PathBuf>,
 }
 
@@ -69,8 +79,12 @@ pub(super) fn begin(
     let handle = handle.clone();
     let outcome: Outcome = Arc::new(Mutex::new(None));
     let completed = outcome.clone();
+    let stage = Arc::new(Mutex::new(CaptureStage::WaitingForImage));
+    let progress = stage.clone();
     let entity = world.spawn(Screenshot::primary_window()).observe(
         move |event: On<ScreenshotCaptured>| {
+            *progress.lock().unwrap_or_else(|e| e.into_inner()) = CaptureStage::CheckingDocument;
+            let progress = progress.clone();
             let image = event.image.clone();
             let path = path.clone();
             let services = services.clone();
@@ -86,7 +100,9 @@ pub(super) fn begin(
                     let result = (|| {
                         services.bridge.with_native_document_owner(&services.engine, &owner, || Ok(()))?;
                         let size = image.texture_descriptor.size;
+                        *progress.lock().unwrap_or_else(|e| e.into_inner()) = CaptureStage::EncodingPng;
                         let bytes = crate::native_viewport::screenshot::png_bytes(&image)?;
+                        *progress.lock().unwrap_or_else(|e| e.into_inner()) = CaptureStage::WritingFile;
                         let file = OpenOptions::new().write(true).create(overwrite)
                             .truncate(overwrite).create_new(!overwrite).open(&path)
                             .map_err(|e| format!("Capture output: {e}"))?;
@@ -122,23 +138,40 @@ pub(super) fn begin(
     world.insert_resource(Capture {
         entity,
         started: Instant::now(),
+        polls: 0,
         outcome,
+        stage,
         diagnostic_capture_path,
     });
     Ok(json!({"capture_pending":true}))
 }
 
 pub(super) fn poll(world: &mut World) -> Option<Result<Value, String>> {
-    let capture = world.get_resource::<Capture>()?;
+    let polls = {
+        let mut capture = world.get_resource_mut::<Capture>()?;
+        capture.polls += 1;
+        capture.polls
+    };
+    let capture = world.resource::<Capture>();
     let result = capture
         .outcome
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .take();
-    if result.is_none() && capture.started.elapsed() < Duration::from_secs(15) {
+    let elapsed = capture.started.elapsed();
+    if result.is_none() && elapsed < Duration::from_secs(15) {
         return None;
     }
     let entity = capture.entity;
+    let stage = match *capture.stage.lock().unwrap_or_else(|e| e.into_inner()) {
+        CaptureStage::WaitingForImage if world.get::<Capturing>(entity).is_none() => {
+            "waiting for render extraction"
+        }
+        CaptureStage::WaitingForImage => "waiting for GPU readback",
+        CaptureStage::CheckingDocument => "checking document ownership",
+        CaptureStage::EncodingPng => "encoding PNG",
+        CaptureStage::WritingFile => "writing capture output",
+    };
     if let Some(path) = capture.diagnostic_capture_path.as_ref() {
         eprintln!(
             "LIMO_CAD_PAPER_DIAGNOSTICS {}",
@@ -149,13 +182,58 @@ pub(super) fn poll(world: &mut World) -> Option<Result<Value, String>> {
     world.despawn(entity);
     world.remove_resource::<Capture>();
     Some(result.unwrap_or_else(|| {
-        Err("The renderer did not complete the capture within 15 seconds".into())
+        Err(format!(
+            "Window capture exceeded 15 seconds ({} ms, {polls} polls) while {stage}",
+            elapsed.as_millis()
+        ))
     }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capture_timeout_identifies_the_unfinished_stage_and_cleans_up() {
+        for (stage, extracted, expected) in [
+            (
+                CaptureStage::WaitingForImage,
+                false,
+                "waiting for render extraction",
+            ),
+            (
+                CaptureStage::WaitingForImage,
+                true,
+                "waiting for GPU readback",
+            ),
+            (
+                CaptureStage::CheckingDocument,
+                true,
+                "checking document ownership",
+            ),
+            (CaptureStage::EncodingPng, true, "encoding PNG"),
+            (CaptureStage::WritingFile, true, "writing capture output"),
+        ] {
+            let mut world = World::new();
+            let entity = world.spawn(Screenshot::primary_window()).id();
+            if extracted {
+                world.entity_mut(entity).insert(Capturing);
+            }
+            world.insert_resource(Capture {
+                entity,
+                started: Instant::now() - Duration::from_secs(16),
+                polls: 0,
+                outcome: Arc::new(Mutex::new(None)),
+                stage: Arc::new(Mutex::new(stage)),
+                diagnostic_capture_path: None,
+            });
+            let error = poll(&mut world).unwrap().unwrap_err();
+            assert!(error.ends_with(expected), "{error}");
+            assert!(!world.contains_resource::<Capture>());
+            assert!(world.get_entity(entity).is_err());
+            assert!(poll(&mut world).is_none());
+        }
+    }
 
     #[test]
     fn capture_never_overwrites_without_explicit_permission() {
