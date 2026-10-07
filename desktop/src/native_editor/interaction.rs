@@ -43,6 +43,7 @@ pub(crate) enum InteractionCommand {
     DimensionText(String),
     ApplyDimension,
     CancelDimension,
+    DimensionActions,
     Menu(Option<&'static str>),
     Form(super::forms::FormKind),
     FormValue { id: u64, index: usize, text: String },
@@ -59,6 +60,7 @@ pub(super) struct Interaction {
     pub dimension_position: Option<SketchPoint>,
     pub dimension_id: Option<ConstraintId>,
     pub dimension_reference: bool,
+    pub dimension_actions: bool,
     pub reposition_dimension: Option<ConstraintId>,
     pub constraint: Option<limo_cad_sketch::ConstraintDto>,
     pub menu: Option<&'static str>,
@@ -269,12 +271,20 @@ pub(super) fn execute(
             editor.interaction.relation = Some(relation);
         }
         InteractionCommand::Dimension => {
+            editor.form_serial = editor
+                .form_serial
+                .checked_add(1)
+                .ok_or("Editor generation exhausted")?;
             editor.interaction.retain_selection();
             editor.interaction.dimension = Some(String::new());
             editor.interaction.dimension_position = None;
             editor.interaction.dimension_id = None;
         }
         InteractionCommand::EditDimension(id) => {
+            editor.form_serial = editor
+                .form_serial
+                .checked_add(1)
+                .ok_or("Editor generation exhausted")?;
             let dim = sketch
                 .dimensions
                 .iter()
@@ -388,8 +398,16 @@ pub(super) fn execute(
             editor.interaction.dimension = None;
             editor.interaction.dimension_position = None;
             editor.interaction.dimension_id = None;
+            editor.interaction.dimension_actions = false;
+        }
+        InteractionCommand::DimensionActions => {
+            editor.interaction.dimension_actions = !editor.interaction.dimension_actions;
         }
         InteractionCommand::ApplyDimension => {
+            if editor.interaction.dimension_reference {
+                editor.interaction.retain_selection();
+                return Ok(json!({"closed":true}));
+            }
             if editor.interaction.selection.is_empty() {
                 return Err("Select one or two entities to dimension".into());
             }

@@ -957,6 +957,7 @@ fn widget(
     if matches!(control.field, Field::Text { .. }) {
         control.text_editing = true;
         control.role = "textbox".into();
+        world.entity_mut(entity).insert(fields::LiveValue);
     }
     if matches!(control.field, Field::Range { .. }) {
         control.role = "slider".into();

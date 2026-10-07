@@ -9,6 +9,8 @@ use limo_cad_interface::{Field, KeyChord};
 struct Panel {
     widgets: Widgets,
     field: Option<Entity>,
+    dimension_generation: Option<u64>,
+    dimension_focused: bool,
     form_fields: HashMap<usize, (Entity, u64)>,
     form_id: Option<u64>,
     scroll: f32,
@@ -135,6 +137,7 @@ pub(super) fn synchronize(
     camera: Entity,
     editor: &mut Editor,
     area: InterfaceRect,
+    canvas: InterfaceRect,
 ) -> Result<(), String> {
     let mut panel = world.remove_resource::<Panel>().unwrap_or_default();
     let result = (|| {
@@ -428,59 +431,91 @@ pub(super) fn synchronize(
         let dimension = active && editor.interaction.dimension.is_some();
         if dimension {
             let theme = crate::native_viewport::ui::theme(world);
-            let left = ((area.x + area.width) as f32 - 280.).max(240.);
-            let top = area.y as f32 + 94.;
-            panel.widgets.panel(
-                world,
-                camera,
-                "dimension",
-                rect(
-                    left,
-                    top,
-                    272.,
-                    if editor.interaction.dimension_id.is_some() {
-                        252.
-                    } else {
-                        184.
-                    },
-                ),
-                theme.panel.with_alpha(1.),
-                30,
-            );
-            panel.widgets.text(
-                world,
-                camera,
-                "dim-title",
-                rect(left + 12., top + 8., 248., 24.),
-                "Sketch Dimension",
-                13.,
-                31,
-            );
-            let label = if editor.interaction.dimension_reference {
-                "Reference measurement (read only)"
-            } else if editor.interaction.dimension_position.is_some() {
-                "Value / expression (blank measures)"
+            let inline = editor.interaction.dimension_id.is_some();
+            let (left, top) = if inline {
+                let stamp = editor.stamp.as_ref().ok_or("Dimension has no owner")?;
+                let position = editor
+                    .interaction
+                    .dimension_position
+                    .ok_or("Dimension has no label position")?;
+                let pixel = native_viewport::interface_world_point(
+                    world,
+                    &stamp.owner.document_id,
+                    stamp
+                        .basis
+                        .ok_or("Dimension has no sketch plane")?
+                        .to_3d([position.x, position.y]),
+                )?
+                .unwrap_or([canvas.width as f32 * 0.5, canvas.height as f32 * 0.5]);
+                (
+                    (canvas.x as f32 + pixel[0] + 10.).clamp(
+                        canvas.x as f32 + 4.,
+                        (canvas.x + canvas.width) as f32 - 172.,
+                    ),
+                    (canvas.y as f32 + pixel[1] - 14.).clamp(
+                        canvas.y as f32 + 4.,
+                        (canvas.y + canvas.height) as f32 - 32.,
+                    ),
+                )
             } else {
-                "Select geometry, then click to place"
+                (
+                    ((area.x + area.width) as f32 - 280.).max(240.),
+                    area.y as f32 + 94.,
+                )
             };
-            panel.widgets.text(
-                world,
-                camera,
-                "dim-help",
-                rect(left + 12., top + 38., 248., 24.),
-                label,
-                11.,
-                31,
-            );
-            let mut c = InterfaceControl::button("sketch/dimension", "Dimension value");
-            c.field = Field::Text {
+            if !inline {
+                panel.widgets.panel(
+                    world,
+                    camera,
+                    "dimension",
+                    rect(left, top, 272., 160.),
+                    theme.panel.with_alpha(1.),
+                    30,
+                );
+                panel.widgets.text(
+                    world,
+                    camera,
+                    "dim-title",
+                    rect(left + 12., top + 8., 248., 24.),
+                    "Sketch Dimension",
+                    13.,
+                    31,
+                );
+                panel.widgets.text(
+                    world,
+                    camera,
+                    "dim-help",
+                    rect(left + 12., top + 38., 248., 24.),
+                    if editor.interaction.dimension_position.is_some() {
+                        "Value / expression (blank measures)"
+                    } else {
+                        "Select geometry, then click to place"
+                    },
+                    11.,
+                    31,
+                );
+            }
+            let mut control = InterfaceControl::button("sketch/dimension", "Dimension value");
+            control.owned_keys = vec![KeyChord::plain("Enter"), KeyChord::plain("Escape")];
+            control.field = Field::Text {
                 value: editor.interaction.dimension.clone().unwrap(),
                 read_only: editor.interaction.dimension_reference,
                 selection: None,
             };
-            let mut node = rect(left + 12., top + 68., 248., 30.);
-            node.border = UiRect::all(px(1.));
-            node.padding = UiRect::horizontal(px(6.));
+            let mut bounds = if inline {
+                rect(left, top, 128., 28.)
+            } else {
+                rect(left + 12., top + 68., 248., 30.)
+            };
+            bounds.border = UiRect::all(px(1.));
+            bounds.padding = UiRect::horizontal(px(6.));
+            if panel.dimension_generation != Some(editor.form_serial) {
+                if let Some(field) = panel.field.take() {
+                    world.despawn(field);
+                }
+                panel.dimension_generation = Some(editor.form_serial);
+                panel.dimension_focused = false;
+            }
             let field = if let Some(field) = panel.field {
                 field
             } else {
@@ -488,8 +523,8 @@ pub(super) fn synchronize(
                 let field = fields::spawn_text_field(
                     &mut world.commands(),
                     camera,
-                    node.clone(),
-                    c.clone(),
+                    bounds.clone(),
+                    control.clone(),
                     theme,
                     &assets,
                 )?;
@@ -505,95 +540,114 @@ pub(super) fn synchronize(
                 field
             };
             let mut previous = world.get::<InterfaceControl>(field).unwrap().clone();
-            previous.field = c.field;
+            previous.field = control.field;
             if world.get::<InterfaceControl>(field) != Some(&previous) {
                 world.entity_mut(field).insert(previous);
             }
-            if world.get::<Node>(field) != Some(&node) {
-                world.entity_mut(field).insert(node);
+            if world.get::<Node>(field) != Some(&bounds) {
+                world.entity_mut(field).insert(bounds);
             }
-            world.entity_mut(field).insert(ZIndex(31));
-            for (key, label, command, offset) in [
-                (
-                    "dim-cancel",
-                    "Cancel Dimension",
-                    InteractionCommand::CancelDimension,
-                    0.,
-                ),
-                (
-                    "dim-apply",
-                    "Apply Dimension",
-                    InteractionCommand::ApplyDimension,
-                    128.,
-                ),
-            ] {
-                let mut c = InterfaceControl::button("sketch/dimension", label);
-                c.disabled = matches!(command, InteractionCommand::ApplyDimension)
-                    && (editor.interaction.dimension_reference
-                        || editor.interaction.dimension_position.is_none()
-                        || editor.interaction.selection.is_empty());
-                c.selected = Some(offset != 0.);
-                let mut bounds = rect(left + 12. + offset, top + 116., 120., 30.);
-                bounds.border = UiRect::all(px(1.));
-                bounds.justify_content = JustifyContent::Center;
+            world.entity_mut(field).insert(ZIndex(41));
+            if !panel.dimension_focused && editor.interaction.dimension_position.is_some() {
+                fields::request_focus(world, field, &editor.stamp.as_ref().unwrap().owner);
+                panel.dimension_focused = true;
+            }
+            if inline {
                 panel.widgets.button(
                     world,
                     camera,
-                    key,
-                    c,
-                    Some(if offset == 0. { "Cancel" } else { "Apply" }),
-                    NativeCommand::Sketch(EditorCommand::Interaction(command)),
-                    bounds,
+                    &format!("dim-options-{}", editor.form_serial),
+                    InterfaceControl::button("sketch/dimension", "Dimension actions"),
+                    Some("⋯"),
+                    NativeCommand::Sketch(EditorCommand::Interaction(
+                        InteractionCommand::DimensionActions,
+                    )),
+                    rect(left + 132., top, 28., 28.),
                     None,
-                    31,
+                    41,
                 )?;
-                if offset != 0. {
-                    interface_shell::primary_button(world, panel.widgets.entity(key).unwrap());
+                if editor.interaction.dimension_actions {
+                    panel.widgets.panel(
+                        world,
+                        camera,
+                        "dim-menu",
+                        rect(left, top + 32., 220., 100.),
+                        theme.header.with_alpha(1.),
+                        42,
+                    );
+                    for (index, (label, command)) in [
+                        ("Delete Dimension", InteractionCommand::DeleteDimension),
+                        (
+                            "Toggle Driving / Reference",
+                            InteractionCommand::DimensionReference,
+                        ),
+                        (
+                            "Reposition Dimension",
+                            InteractionCommand::RepositionDimension,
+                        ),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    {
+                        panel.widgets.button(
+                            world,
+                            camera,
+                            &format!("dim-action-{}-{index}", editor.form_serial),
+                            InterfaceControl::button("sketch/dimension", label),
+                            None,
+                            NativeCommand::Sketch(EditorCommand::Interaction(command)),
+                            rect(left + 4., top + 36. + index as f32 * 30., 212., 28.),
+                            None,
+                            43,
+                        )?;
+                    }
+                }
+            } else {
+                for (key, label, command, offset) in [
+                    (
+                        "dim-cancel",
+                        "Cancel Dimension",
+                        InteractionCommand::CancelDimension,
+                        0.,
+                    ),
+                    (
+                        "dim-apply",
+                        "Apply Dimension",
+                        InteractionCommand::ApplyDimension,
+                        128.,
+                    ),
+                ] {
+                    let mut control = InterfaceControl::button("sketch/dimension", label);
+                    control.disabled = matches!(command, InteractionCommand::ApplyDimension)
+                        && (editor.interaction.dimension_reference
+                            || editor.interaction.dimension_position.is_none()
+                            || editor.interaction.selection.is_empty());
+                    control.selected = Some(offset != 0.);
+                    let mut bounds = rect(left + 12. + offset, top + 116., 120., 30.);
+                    bounds.border = UiRect::all(px(1.));
+                    bounds.justify_content = JustifyContent::Center;
+                    panel.widgets.button(
+                        world,
+                        camera,
+                        key,
+                        control,
+                        Some(if offset == 0. { "Cancel" } else { "Apply" }),
+                        NativeCommand::Sketch(EditorCommand::Interaction(command)),
+                        bounds,
+                        None,
+                        31,
+                    )?;
+                    if offset != 0. {
+                        interface_shell::primary_button(world, panel.widgets.entity(key).unwrap());
+                    }
                 }
             }
-            if editor.interaction.dimension_id.is_some() {
-                panel.widgets.button(
-                    world,
-                    camera,
-                    "dim-delete",
-                    InterfaceControl::button("sketch/dimension", "Delete Dimension"),
-                    None,
-                    NativeCommand::Sketch(EditorCommand::Interaction(
-                        InteractionCommand::DeleteDimension,
-                    )),
-                    rect(left + 12., top + 150., 248., 26.),
-                    None,
-                    31,
-                )?;
-                panel.widgets.button(
-                    world,
-                    camera,
-                    "dim-reference",
-                    InterfaceControl::button("sketch/dimension", "Toggle Driving / Reference"),
-                    None,
-                    NativeCommand::Sketch(EditorCommand::Interaction(
-                        InteractionCommand::DimensionReference,
-                    )),
-                    rect(left + 12., top + 182., 248., 26.),
-                    None,
-                    31,
-                )?;
-                panel.widgets.button(
-                    world,
-                    camera,
-                    "dim-reposition",
-                    InterfaceControl::button("sketch/dimension", "Reposition Dimension"),
-                    None,
-                    NativeCommand::Sketch(EditorCommand::Interaction(
-                        InteractionCommand::RepositionDimension,
-                    )),
-                    rect(left + 12., top + 214., 248., 26.),
-                    None,
-                    31,
-                )?;
+        } else {
+            if let Some(field) = panel.field.take() {
+                world.despawn(field);
             }
-        } else if let Some(field) = panel.field.take() {
-            world.despawn(field);
+            panel.dimension_generation = None;
+            panel.dimension_focused = false;
         }
         let form = editor.interaction.form.as_ref().filter(|_| active);
         if panel.form_id != form.map(|f| f.id) {
@@ -753,6 +807,7 @@ pub(super) fn synchronize(
                     .widgets
                     .parent(world, &format!("form-label-{index}"), content);
                 let mut control = InterfaceControl::button(form.kind.group(), *label);
+                control.owned_keys = vec![KeyChord::plain("Enter"), KeyChord::plain("Escape")];
                 control.field = Field::Text {
                     value: value.clone(),
                     read_only: false,
@@ -966,6 +1021,12 @@ mod scaled_tests {
                     y: 34.,
                     width: f64::from(width - 76.),
                     height: 72.,
+                },
+                InterfaceRect {
+                    x: 64.,
+                    y: 120.,
+                    width: f64::from(width - 64.),
+                    height: f64::from(height - 168.),
                 },
             )
             .unwrap();

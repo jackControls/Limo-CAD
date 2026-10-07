@@ -170,3 +170,127 @@ fn face_sketch_profiles_remain_selectable_at_bench_scale_without_picking_through
         }
     }
 }
+
+#[test]
+fn initial_profile_hover_fills_only_the_closed_region_and_retires_on_cursor_leave() {
+    let _lock = super::super::super::super::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = sketch(&fixture);
+    fixture
+        .bridge
+        .apply_native_mutation(
+            &fixture.engine,
+            &owner,
+            "sketch_edit",
+            &json!({"name":"Sketch1"}),
+            || Ok(()),
+        )
+        .unwrap();
+    fixture
+        .bridge
+        .apply_native_mutation(
+            &fixture.engine,
+            &owner,
+            "sketch_add_circle",
+            &json!({"mode":"center_diameter","p1":{"x":10.,"y":6.},"p2":{"x":12.,"y":6.},"ctrl_held":true}),
+            || Ok(()),
+        )
+        .unwrap();
+    fixture
+        .bridge
+        .apply_native_mutation(&fixture.engine, &owner, "sketch_finish", &json!({}), || {
+            Ok(())
+        })
+        .unwrap();
+    let before = exported(&fixture);
+    let mut app = scene(&fixture, &owner);
+    native_viewport::apply_interface_viewport(
+        app.world_mut(),
+        limo_cad_interface::Rect {
+            x: 0.,
+            y: 0.,
+            width: 1000.,
+            height: 700.,
+        },
+        1.,
+    )
+    .unwrap();
+    native_viewport::apply_interface_view(
+        app.world_mut(),
+        &owner.document_id,
+        Some(ViewportCamera {
+            position: [10., 6., 100.],
+            target: [10., 6., 0.],
+            up: [0., 1., 0.],
+            ..Default::default()
+        }),
+        Some(ViewportPresentation::default()),
+    )
+    .unwrap();
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+    let id = open(&fixture, app.world_mut(), &owner, None);
+    let project = |app: &bevy::app::App, p| {
+        native_viewport::interface_world_point(app.world(), &owner.document_id, p)
+            .unwrap()
+            .unwrap()
+    };
+    let cursor = project(&app, [4., 4., 0.]);
+    assert!(hover_references(app.world_mut(), &services, &owner, Some(cursor)).unwrap());
+    assert_eq!(
+        app.world()
+            .resource::<NativeFeature>()
+            .editor
+            .as_ref()
+            .unwrap()
+            .hovered_profile
+            .as_ref()
+            .unwrap()
+            .profile_index,
+        0
+    );
+    assert!(!native_viewport::interface_preview_snapshot(app.world())
+        .triangles
+        .is_empty());
+    assert!(
+        !panel(app.world()).unwrap().can_apply,
+        "Hover must not accept a profile"
+    );
+    let cursor = project(&app, [10., 6., 0.]);
+    hover_references(app.world_mut(), &services, &owner, Some(cursor)).unwrap();
+    assert!(
+        app.world()
+            .resource::<NativeFeature>()
+            .editor
+            .as_ref()
+            .unwrap()
+            .hovered_profile
+            .is_none(),
+        "A hole is not a selectable filled profile"
+    );
+    assert!(native_viewport::interface_preview_snapshot(app.world())
+        .triangles
+        .is_empty());
+    let cursor = project(&app, [4., 4., 0.]);
+    handle_canvas_pick(app.world_mut(), &services, &owner, cursor).unwrap();
+    let accepted = native_viewport::interface_preview_snapshot(app.world());
+    assert!(accepted.triangles.len() >= 2);
+    hover_references(app.world_mut(), &services, &owner, None).unwrap();
+    assert_eq!(
+        native_viewport::interface_preview_snapshot(app.world()).triangles,
+        accepted.triangles,
+        "Cursor leave must keep the accepted extrusion volume"
+    );
+    assert_eq!(exported(&fixture), before);
+    action(
+        &fixture,
+        app.world_mut(),
+        &owner,
+        id,
+        FeatureControl::Cancel,
+        ControlInput::Click,
+    )
+    .unwrap();
+}

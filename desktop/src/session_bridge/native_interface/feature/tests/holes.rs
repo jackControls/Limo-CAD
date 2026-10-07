@@ -303,3 +303,125 @@ fn holes_keep_associative_positions_validate_styles_and_edit_original_input_atom
         assert_eq!(exported(&fixture), edited);
     }
 }
+
+#[test]
+fn hole_snap_is_visible_and_associative_on_the_first_support_click() {
+    use crate::native_viewport::ViewportCamera;
+    use crate::session_bridge::native_interface::controller::NativeServices;
+    let _lock = super::super::super::super::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = sketch(&fixture);
+    for (op, args) in [
+        ("sketch_edit", json!({"name":"Sketch1"})),
+        (
+            "sketch_add_point",
+            json!({"position":{"x":4.,"y":4.},"ctrl_held":true}),
+        ),
+        ("sketch_finish", json!({})),
+        (
+            "solid_extrude",
+            json!({"sketch_name":"Sketch1","profile_indices":[0],"extent":{"type":"distance","distance":10.}}),
+        ),
+    ] {
+        fixture
+            .bridge
+            .apply_native_mutation(&fixture.engine, &owner, op, &args, || Ok(()))
+            .unwrap();
+    }
+    let before = exported(&fixture);
+    let mut app = scene(&fixture, &owner);
+    native_viewport::apply_interface_viewport(
+        app.world_mut(),
+        limo_cad_interface::Rect {
+            x: 0.,
+            y: 0.,
+            width: 1000.,
+            height: 700.,
+        },
+        1.,
+    )
+    .unwrap();
+    native_viewport::apply_interface_view(
+        app.world_mut(),
+        &owner.document_id,
+        Some(ViewportCamera {
+            position: [10., 6., 100.],
+            target: [10., 6., 0.],
+            up: [0., 1., 0.],
+            ..Default::default()
+        }),
+        Some(ViewportPresentation::default()),
+    )
+    .unwrap();
+    let id = reduce(
+        &fixture.engine,
+        &fixture.bridge,
+        app.world_mut(),
+        &owner,
+        &FeatureCommand::Open {
+            kind: SolidFormKind::Hole,
+            feature_id: None,
+        },
+        &ControlInput::Click,
+        || Ok(()),
+    )
+    .unwrap()["form_id"]
+        .as_u64()
+        .unwrap();
+    let cursor =
+        native_viewport::interface_world_point(app.world(), &owner.document_id, [4., 4., 10.])
+            .unwrap()
+            .unwrap();
+    let services = NativeServices {
+        engine: fixture.engine.clone(),
+        bridge: fixture.bridge.clone(),
+    };
+    hover_references(app.world_mut(), &services, &owner, Some(cursor)).unwrap();
+    let editor = app
+        .world()
+        .resource::<NativeFeature>()
+        .editor
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        editor.hovered_point,
+        Some([4., 4., 10.]),
+        "The base sketch's point projects onto the support face before acceptance"
+    );
+    assert!(editor.form.hole_support().is_none());
+    assert!(!native_viewport::interface_preview_snapshot(app.world())
+        .points
+        .is_empty());
+    handle_canvas_pick(app.world_mut(), &services, &owner, cursor).unwrap();
+    let editor = app
+        .world()
+        .resource::<NativeFeature>()
+        .editor
+        .as_ref()
+        .unwrap();
+    assert_eq!(editor.pick_target, Some(SolidField::HolePositions));
+    let model = editor.snapshot.model(editor.form.parameter_sketch());
+    let (request, _, _) = editor.form.hole_guide(&model).unwrap();
+    assert!(
+        request.positions.iter().any(|position| position
+            .position_reference
+            .as_ref()
+            .is_some_and(|reference| reference.sketch_name == "Sketch1")),
+        "The very first snap must retain its sketch association"
+    );
+    assert!(panel(app.world()).unwrap().can_apply);
+    assert_eq!(
+        exported(&fixture),
+        before,
+        "Hover and selection do not mutate the model"
+    );
+    action(
+        &fixture,
+        app.world_mut(),
+        &owner,
+        id,
+        FeatureControl::Cancel,
+        ControlInput::Click,
+    )
+    .unwrap();
+}

@@ -101,6 +101,11 @@ pub(crate) struct DrawingDimension {
     pub index: usize,
 }
 
+/// Draft values with a live preview or a second editor publish each completed
+/// edit through the same owner-checked SetValue reducer. IME preedit stays local.
+#[derive(Component)]
+pub(crate) struct LiveValue;
+
 #[derive(Resource, Default)]
 struct RequestedFocus(Option<FocusRequest>);
 
@@ -706,6 +711,7 @@ pub(crate) fn before_window_input(
                             return Ok(false);
                         }
                         history_edit(world, entity, redo)?;
+                        publish_live_value(world, handle, entity)?;
                         handle.invalidate_presentation();
                         return Ok(true);
                     }
@@ -756,11 +762,29 @@ pub(crate) fn before_window_input(
     };
     if let Some(edit) = edit {
         apply_edit(world, entity, edit)?;
+        publish_live_value(world, handle, entity)?;
         super::ime_diagnostics::received(world, handle, &action, event);
         handle.invalidate_presentation();
         return Ok(true);
     }
     Ok(false)
+}
+
+fn publish_live_value(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    entity: Entity,
+) -> Result<(), String> {
+    if world.get::<LiveValue>(entity).is_some()
+        && world
+            .get::<EditableText>(entity)
+            .is_some_and(|editor| !editor.is_composing())
+    {
+        if let Some(commit) = commit_active(world, handle)? {
+            handle.enqueue_action(commit)?;
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn after_window_input(

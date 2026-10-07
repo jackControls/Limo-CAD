@@ -223,7 +223,7 @@ pub(crate) fn save_as(
             )
         });
     let generation = state.generation;
-    let (dialog, parent) = parented_dialog(
+    let (dialog, parent) = super::dialog::parented(
         world,
         rfd::FileDialog::new()
             .set_title("Save Limo CAD script")

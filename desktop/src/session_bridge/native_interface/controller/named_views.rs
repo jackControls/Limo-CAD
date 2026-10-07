@@ -58,6 +58,10 @@ struct State {
     placement: Option<assembly::TransformDraft>,
     placement_dirty: bool,
     previewing: bool,
+    preview_origin: Option<(
+        native_viewport::ViewportCamera,
+        native_viewport::ViewportPresentation,
+    )>,
     report: Option<Value>,
     error: Option<String>,
     scroll: usize,
@@ -66,6 +70,37 @@ struct State {
 
 pub(crate) fn active(world: &World) -> bool {
     world.get_resource::<State>().is_some_and(|s| s.visible)
+}
+
+pub(crate) fn cancel(
+    world: &mut World,
+    engine: &AppState,
+    bridge: &SessionBridgeState,
+    owner: &DocumentContext,
+) -> Result<Value, String> {
+    bridge.with_native_document_owner(engine, owner, || Ok(()))?;
+    let mut state = world
+        .get_resource_mut::<State>()
+        .ok_or("Open Named Views")?;
+    if state.owner.as_ref() != Some(owner) {
+        return Err("The named view belongs to a different document".into());
+    }
+    let origin = state.preview_origin.take();
+    state.visible = false;
+    state.previewing = false;
+    state.draft = state.original.clone();
+    state.placement_dirty = false;
+    state.placement = None;
+    state.error = None;
+    if let Some((camera, presentation)) = origin {
+        native_viewport::apply_interface_view(
+            world,
+            &owner.document_id,
+            Some(camera),
+            Some(presentation),
+        )?;
+    }
+    Ok(json!({"cancelled":true}))
 }
 
 pub(crate) fn presentation_locked(world: &World) -> bool {
@@ -448,6 +483,9 @@ fn apply_preview(
 ) -> Result<(), String> {
     let (document, mut camera, mut presentation, _) =
         native_viewport::interface_view_snapshot(world);
+    if world.resource::<State>().preview_origin.is_none() {
+        world.resource_mut::<State>().preview_origin = Some((camera, presentation.clone()));
+    }
     presentation.body_poses = solution.body_poses.into();
     presentation.instance_body_poses = solution.instance_body_poses.into();
     presentation.hidden_body_ids = engine
@@ -482,6 +520,7 @@ pub(crate) fn after_mutation(
     let was_previewing = world.get_resource::<State>().is_some_and(|s| s.previewing);
     if let Some(mut state) = world.get_resource_mut::<State>() {
         state.previewing = false;
+        state.preview_origin = None;
     }
     let (document, mut camera, mut presentation, _) =
         native_viewport::interface_view_snapshot(world);
@@ -546,6 +585,19 @@ pub(crate) fn reduce(
     }
     let units = engine.document_units();
     if let Command::Field(field) = command {
+        if matches!(&action.control.input, ControlInput::Key(k) if k == &limo_cad_interface::KeyChord::plain("Enter"))
+            && panel::choices(state, engine, *field)?.is_none()
+        {
+            return reduce(
+                world,
+                handle,
+                engine,
+                bridge,
+                action,
+                generation,
+                &Command::Save,
+            );
+        }
         let value = if let ControlInput::SetValue(value) = &action.control.input {
             value.clone()
         } else if let Some(options) = panel::choices(state, engine, *field)? {

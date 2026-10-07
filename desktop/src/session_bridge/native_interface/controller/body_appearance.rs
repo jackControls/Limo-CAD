@@ -60,7 +60,10 @@ impl State {
 
 fn selected(world: &World) -> Option<u64> {
     let presentation = native_viewport::interface_view(world).2;
-    (presentation.selected_body_ids.len() == 1).then(|| presentation.selected_body_ids[0])
+    (presentation.selected_body_ids.len() == 1
+        && presentation.selected_face_ids.is_empty()
+        && presentation.selected_edge_ids.is_empty())
+    .then(|| presentation.selected_body_ids[0])
 }
 
 fn choices(draft: &Draft, field: Field) -> Option<Vec<ChoiceOption>> {
@@ -143,6 +146,19 @@ pub(crate) fn reduce(
     let receipt = bridge.native_document_receipt(engine, &action.context)?;
     bridge
         .with_native_document_owner(engine, &action.context, || handle.validate_action(action))?;
+    if matches!(command, Command::Field(_))
+        && matches!(&action.control.input, ControlInput::Key(k) if k == &KeyChord::plain("Enter"))
+    {
+        return reduce(
+            world,
+            handle,
+            engine,
+            bridge,
+            action,
+            generation,
+            &Command::Apply,
+        );
+    }
     let body = selected(world).ok_or("Select one solid body to edit its appearance")?;
     let key = Key {
         owner: receipt.owner.clone(),

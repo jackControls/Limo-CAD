@@ -30,6 +30,27 @@ buttons remain clickable but do not interrupt Tab traversal. Enter from either
 number editor confirms the feature after validation; an invalid value keeps the
 form open.
 
+Profile, planar-face, path, and axis candidates highlight before their first
+selection. Hole projects retained sketch snap points onto the candidate support
+face; its first click accepts both the face and the snapped position. A cursor or
+window-focus change removes the hover candidate without discarding the accepted
+feature preview. Ordinary keyboard entry and paste update linked number editors
+while the field remains focused.
+
+Double-clicking an existing sketch dimension opens a compact value editor beside
+its label, with the number selected. Enter applies the value and Escape cancels
+the edit; the adjacent actions menu retains Delete, Driving/Reference, and
+Reposition. Escape cancels active drawing tools and edit forms without finishing
+the sketch. Finish Sketch returns to an overall isometric view, including after
+dependent geometry is recomputed.
+
+Single face and edge selections no longer highlight their entire owning body or
+automatically open Body appearance. The lower-right measurement card reports
+edge length and radius, two-edge angle, and face measurements. Mesh-derived
+measurements are explicitly marked approximate. Escape closes appearance,
+Named Views, and Print Settings edits; Enter in their text fields applies or
+saves a valid draft.
+
 ## Panel coverage
 
 Every row below was rendered and captured from the native app, supplied with
@@ -45,14 +66,22 @@ references until Apply was available, and canceled with the project model unchan
 
 ## Validation
 
-- Desktop Rust suite: 940 passed, zero failed, 10 optional GPU/display tests ignored.
-- Native app: GPU captures and reference-selection/Cancel checks for all 19 panels.
+- Desktop Rust suite: 943 passed, zero failed, 10 optional GPU/display tests ignored;
+  strict Clippy passed for all targets and features.
+- Native app: light and dark GPU captures, accepted reference selections, and
+  Escape cancellation with the model unchanged for all 19 panels.
 - Alternate modes: five Extrude extent layouts, operation buttons, source Clear and
   reselection, custom Revolve axis, Sweep guide, Loft centerline/guide, Rib dimensions,
   Hole counterbore/countersink, and the scrolled Move/Copy checkbox.
 - Native Extrude: selected suggested text, shared floating/panel values, both spinner
   locations, invalid Enter, Enter confirmation from the floating editor, and exact
-  geometry restoration through Undo/Redo.
+  geometry restoration through Undo/Redo. Physical keyboard typing and paste keep
+  both values synchronized; its preview survives window focus and cursor changes.
+- Interaction checks: inline dimension replacement/Cancel, initial profile hover,
+  initial Hole snap/first-click placement, independent edge highlight and length,
+  ordinary face selection, invalid feature cancellation, and physical Cmd+Z/Redo.
+- Additional editors: Named Views Enter/Cancel, Body appearance Enter/Cancel, and
+  Print Settings Enter/invalid-draft Cancel and Undo.
 - Combined workflow: snapped rectangle and dimensioned circle, extrusion with a hole,
   fillet, Undo/Redo, history edit, save/close/reopen, sketch dimension edit, and workspace
   round trip.

@@ -153,6 +153,33 @@ pub(crate) fn active(world: &World) -> bool {
     world.get_resource::<State>().is_some_and(|s| s.visible)
 }
 
+pub(crate) fn cancel(
+    world: &mut World,
+    engine: &AppState,
+    bridge: &SessionBridgeState,
+    owner: &DocumentContext,
+) -> Result<Value, String> {
+    bridge.with_native_document_owner(engine, owner, || Ok(()))?;
+    let mut state = world
+        .get_resource_mut::<State>()
+        .ok_or("Open Print Settings")?;
+    if state.owner.as_ref() != Some(owner) {
+        return Err("The print settings belong to a different document".into());
+    }
+    state.draft = state.original.clone();
+    if let Some(document) = state.document.clone() {
+        let canonical = modifiers::canonical(&mut state, &document);
+        modifiers::accept(&mut state, canonical);
+        let canonical = heights::canonical(&mut state, &document);
+        heights::accept(&mut state, canonical);
+    }
+    state.errors.clear();
+    state.error = None;
+    state.visible = false;
+    modifiers::clear_overlay(world)?;
+    Ok(json!({"cancelled":true}))
+}
+
 pub(crate) fn after_history(world: &mut World, owner: &DocumentContext) {
     if let Some(mut state) = world.get_resource_mut::<State>().filter(|s| {
         s.owner.as_ref().is_some_and(|previous| {
@@ -405,6 +432,19 @@ pub(crate) fn reduce(
         return Err("The print settings controls changed".into());
     }
     if let Command::Field(field) = command {
+        if matches!(&action.control.input, ControlInput::Key(k) if k == &KeyChord::plain("Enter"))
+            && choices(world, state, *field).is_none()
+        {
+            return reduce(
+                world,
+                handle,
+                engine,
+                bridge,
+                action,
+                generation,
+                &Command::Apply,
+            );
+        }
         let value = if let Some(options) = choices(world, state, *field) {
             workbench::cam::choose(&options, &text(state, *field), &action.control.input)?
         } else if let ControlInput::SetValue(value) = &action.control.input {

@@ -2,13 +2,117 @@
 //! accepted request still goes to the normal kernel only when Apply runs.
 
 use limo_cad_core::PlaneBasis;
-use limo_cad_solid::{ExtrudeExtent, ExtrudeOperation, ExtrudeRequest};
+use limo_cad_solid::{ExtrudeExtent, ExtrudeOperation, ExtrudeRequest, PathRefDto, ProfileRefDto};
 
 use crate::native_viewport::{ViewportArrow, ViewportLineLayer, ViewportModel, ViewportPreview};
 
 type ProfileSource = Result<(PlaneBasis, Vec<Vec<[f64; 3]>>), String>;
 
 const MAX_SEGMENTS: usize = 100_000;
+
+pub(super) fn profile_hover(
+    profile: &ProfileRefDto,
+    model: &ViewportModel,
+) -> Result<ViewportPreview, String> {
+    let points = extrude::source_triangles(
+        &ExtrudeRequest {
+            sketch_name: profile.sketch_name.clone(),
+            profile_indices: vec![profile.profile_index],
+            source_face: None,
+            operation: ExtrudeOperation::NewBody,
+            extent: ExtrudeExtent::Distance { distance: 1. },
+            taper_angle_deg: 0.,
+            flip: false,
+            target_body_ids: vec![],
+        },
+        model,
+    )?;
+    let positions: Vec<f32> = points.into_iter().flatten().map(|v| v as f32).collect();
+    let sketch = model
+        .document
+        .profile_catalog
+        .iter()
+        .find(|s| s.sketch_name == profile.sketch_name)
+        .ok_or("The hovered sketch is unavailable")?;
+    let mut segments = Vec::new();
+    for region in sketch.profiles.iter().filter(|p| {
+        p.index == profile.profile_index || p.parent_index == Some(profile.profile_index)
+    }) {
+        for (a, b) in region
+            .points
+            .iter()
+            .zip(region.points.iter().cycle().skip(1))
+            .take(region.points.len())
+        {
+            segments.extend(sketch.basis.to_3d([a.x, a.y]).map(|v| v as f32));
+            segments.extend(sketch.basis.to_3d([b.x, b.y]).map(|v| v as f32));
+            if segments.len() / 6 > MAX_SEGMENTS {
+                return Err("The hovered profile is too large to preview".into());
+            }
+        }
+    }
+    if positions
+        .iter()
+        .chain(segments.iter())
+        .any(|v| !v.is_finite())
+    {
+        return Err("The hovered profile exceeds renderer range".into());
+    }
+    Ok(ViewportPreview {
+        triangles: vec![crate::native_viewport::ViewportTriangleLayer {
+            color: [1., 0.65, 0.2, 0.25],
+            positions: positions.into(),
+            xray: true,
+            ..Default::default()
+        }],
+        lines: vec![crate::native_viewport::ViewportLineLayer {
+            color: [1., 0.66, 0.25, 1.],
+            width: 2.,
+            segments: segments.into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    })
+}
+
+pub(super) fn path_hover(
+    path: &PathRefDto,
+    model: &ViewportModel,
+) -> Result<ViewportPreview, String> {
+    let sketch = model
+        .document
+        .finished_sketches
+        .iter()
+        .find(|s| s.name == path.sketch_name)
+        .ok_or("The hovered path is unavailable")?;
+    let mut segments = Vec::new();
+    for entity in sketch
+        .entities
+        .iter()
+        .filter(|e| path.entity_ids.contains(&e.id().0))
+    {
+        for pair in curve_points(entity).windows(2) {
+            for point in pair {
+                segments.extend(sketch.basis.to_3d([point.x, point.y]).map(|v| v as f32));
+            }
+            if segments.len() / 6 > MAX_SEGMENTS {
+                return Err("The hovered path is too large to preview".into());
+            }
+        }
+    }
+    if segments.iter().any(|v| !v.is_finite()) {
+        return Err("The hovered path exceeds renderer range".into());
+    }
+    Ok(ViewportPreview {
+        lines: vec![crate::native_viewport::ViewportLineLayer {
+            color: [1., 0.66, 0.25, 1.],
+            width: 3.,
+            segments: segments.into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    })
+}
 
 pub(super) fn references(
     form: &crate::native_forms::SolidForm,
