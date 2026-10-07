@@ -108,7 +108,12 @@ jobs:
         env:
           OCCT_ROOT: ${{ steps.occt.outputs.root }}
         run: |
-          cargo xtask package --target "${{ matrix.rust_target }}"
+          $dirty = git status --porcelain --untracked-files=normal
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect package source identity' }
+          if (-not [string]::IsNullOrWhiteSpace(($dirty -join "`n"))) {
+            throw "Packaged OS input requires clean build inputs: $dirty"
+          }
+          cargo xtask package --target "${{ matrix.rust_target }}" --computer-control
           if ($LASTEXITCODE -ne 0) { throw "Native portable build failed" }
 
       - name: Verify packaged MCP without an OCCT SDK

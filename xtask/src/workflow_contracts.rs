@@ -316,6 +316,30 @@ fn native_shards_keep_geometry_workshop_and_exact_same_run_artifact_provenance()
 }
 
 #[test]
+fn windows_package_keyboard_checks_enable_both_native_input_features() {
+    let workflow = read(".github/workflows/desktop-packages.yml");
+    let windows = job(&workflow, "build-windows-portable");
+    ordered(
+        &windows,
+        "git status --porcelain --untracked-files=normal",
+        "cargo xtask package --target",
+    );
+    assert!(windows
+        .contains("cargo xtask package --target \"${{ matrix.rust_target }}\" --computer-control"));
+    let verify = read("scripts/verify-windows-viewport.ps1");
+    assert!(verify.contains("cargo run --quiet --locked -p xtask --features native-control-harness -- test-mcp native-platform"));
+    ordered(
+        &verify,
+        "prepare-hosted-arm-desktop.ps1",
+        "cargo run --quiet --locked",
+    );
+    assert!(verify.contains(
+        "if ($LASTEXITCODE -ne 0) { throw 'Packaged native input verification failed' }"
+    ));
+    assert!(!verify.contains("continue-on-error"));
+}
+
+#[test]
 fn appimage_keeps_oldest_glibc_and_minimal_host_input_runtime() {
     let desktop = read(".github/workflows/desktop-packages.yml");
     let build = job(&desktop, "build-linux-appimage");

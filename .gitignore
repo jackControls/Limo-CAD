@@ -6,6 +6,7 @@ desktop/occt-libs
 desktop/linux-licenses
 vcpkg_installed
 .vcpkg
+/.cache/
 *.local
 .DS_Store
 .env
