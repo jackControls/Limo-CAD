@@ -403,6 +403,28 @@ pub(crate) fn prepare_control_input(
     Ok(commit_active(world, handle)?.into_iter().collect())
 }
 
+/// A queued text commit belongs to the field that just lost focus. Applying
+/// its value must not undo the focus transition already made by Tab or blur.
+pub(crate) fn prepare_activation(
+    world: &World,
+    handle: &NativeInterfaceHandle,
+    action: &NativeInterfaceAction,
+) -> Result<(), String> {
+    let queued = match &action.control.input {
+        ControlInput::SetValue(value) => world
+            .get::<NativeTextField>(active_entity(action))
+            .is_some_and(|field| {
+                field.binding == action.control.binding() && field.queued.as_ref() == Some(value)
+            }),
+        _ => false,
+    };
+    if queued {
+        handle.validate_action(action)
+    } else {
+        handle.prepare_activation(action)
+    }
+}
+
 /// Widget keys use the same edit operations regardless of their transport.
 /// Escape belongs to the owning form; arrows merely update caret/selection.
 pub(crate) fn adapt_control_input(
@@ -645,11 +667,19 @@ pub(crate) fn before_window_input(
                     if key.eq_ignore_ascii_case("z")
                         || (!cfg!(target_os = "macos") && key.eq_ignore_ascii_case("y"))
                     {
-                        history_edit(
-                            world,
-                            entity,
-                            modifiers.shift || key.eq_ignore_ascii_case("y"),
-                        )?;
+                        let redo = modifiers.shift || key.eq_ignore_ascii_case("y");
+                        if world.get::<DrawingDimension>(entity).is_some()
+                            && !has_uncommitted_edit(world, entity)
+                            && !(redo
+                                && world
+                                    .get::<NativeTextField>(entity)
+                                    .is_some_and(|field| !field.redo.is_empty()))
+                        {
+                            world.resource_mut::<EditorSession>().active = None;
+                            handle.blur();
+                            return Ok(false);
+                        }
+                        history_edit(world, entity, redo)?;
                         handle.invalidate_presentation();
                         return Ok(true);
                     }
@@ -861,8 +891,9 @@ fn command_modifier(modifiers: Modifiers, mac: bool) -> bool {
 
 /// Preserve Latin keyboard-layout shortcuts; fall back to the physical key
 /// only for non-Latin layouts, matching Bevy's native TextInput adapter.
-fn shortcut_key(input: &KeyboardInput) -> Key {
-    if matches!(&input.logical_key, Key::Character(value) if !value.is_ascii()) {
+pub(crate) fn shortcut_key(input: &KeyboardInput) -> Key {
+    if matches!(&input.logical_key, Key::Character(value) if !value.is_ascii() || value.chars().all(char::is_control))
+    {
         let letter = match input.key_code {
             KeyCode::KeyA => Some("a"),
             KeyCode::KeyC => Some("c"),

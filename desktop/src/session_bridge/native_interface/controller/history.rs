@@ -1,7 +1,7 @@
 //! Parametric history controls use the same replay operations as MCP.
 use super::chrome::{rect, Widgets};
 use super::*;
-use interface_shell::ribbon::Icon;
+use interface_shell::{fields, ribbon::Icon};
 use limo_cad_core::{DocumentDto, Feature, FeatureKind};
 use limo_cad_interface::{ControlInput, KeyChord};
 use workspace::DocumentReceipt;
@@ -11,6 +11,67 @@ mod panel;
 mod tests;
 pub(super) use drag::{cancel_drag, pointer, tick};
 pub(super) use panel::synchronize;
+
+/// Route document shortcuts through the same visible, enabled Undo/Redo
+/// controls as a click. Text editors and modal scopes keep their own keys.
+pub(super) fn shortcut_action(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    event: &NativeHostInput,
+) -> Result<Option<NativeInterfaceAction>, String> {
+    use bevy::input::{keyboard::Key, ButtonState};
+    let WindowEvent::KeyboardInput(key) = &event.event else {
+        return Ok(None);
+    };
+    let command = if cfg!(target_os = "macos") {
+        event.modifiers.meta
+    } else {
+        event.modifiers.ctrl
+    };
+    if event.consumed
+        || !command
+        || event.modifiers.alt
+        || event.modifiers.alt_graph
+        || key.state != ButtonState::Pressed
+        || key.repeat
+    {
+        return Ok(None);
+    }
+    let Key::Character(character) = fields::shortcut_key(key) else {
+        return Ok(None);
+    };
+    let redo = if character.eq_ignore_ascii_case("z") {
+        event.modifiers.shift
+    } else if !cfg!(target_os = "macos") && character.eq_ignore_ascii_case("y") {
+        true
+    } else {
+        return Ok(None);
+    };
+    let Some(frame) = handle.frame().filter(|frame| {
+        frame.modal_stack.is_empty() && event.context.as_ref() == Some(&frame.context)
+    }) else {
+        return Ok(None);
+    };
+    let mut controls = world.query::<(Entity, &NativeCommandBinding)>();
+    Ok(controls.iter(world).find_map(|(entity, binding)| {
+        let matching = if redo {
+            matches!(binding.command, NativeCommand::Redo)
+        } else {
+            matches!(binding.command, NativeCommand::Undo)
+        };
+        matching
+            .then(|| {
+                handle
+                    .resolve_input(
+                        limo_cad_interface::ControlKey(entity.to_bits()),
+                        ControlInput::Click,
+                        &frame.context,
+                    )
+                    .ok()
+            })
+            .flatten()
+    }))
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum HistoryCommand {

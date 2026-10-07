@@ -12,6 +12,105 @@ fn drawing_field(app: &mut App, entity: Entity, index: usize) {
         .insert((Node::default(), BorderColor::default()));
 }
 
+#[test]
+fn drawing_enter_queues_the_visible_value_before_confirming_the_shape() {
+    let (mut app, handle, entity) = editor_fixture_with_submit(true);
+    drawing_field(&mut app, entity, 0);
+    apply_edit(app.world_mut(), entity, TextEdit::SelectAll).unwrap();
+    apply_edit(app.world_mut(), entity, TextEdit::Insert("10".into())).unwrap();
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &key(Key::Enter, None),
+        None,
+        default()
+    )
+    .unwrap());
+    let actions = handle.take_actions().unwrap();
+    assert_eq!(actions.len(), 2);
+    assert_eq!(
+        actions[0].control.input,
+        ControlInput::SetValue("10".into())
+    );
+    assert_eq!(
+        actions[1].control.input,
+        ControlInput::Key(limo_cad_interface::KeyChord::plain("Enter"))
+    );
+    acknowledge_control_input(app.world_mut(), &actions[0], true);
+    assert!(before_window_input(
+        app.world_mut(),
+        &handle,
+        &key(Key::Enter, None),
+        None,
+        default()
+    )
+    .unwrap());
+    let actions = handle.take_actions().unwrap();
+    assert_eq!(
+        actions.len(),
+        1,
+        "An already committed number must still confirm"
+    );
+    assert_eq!(
+        actions[0].control.input,
+        ControlInput::Key(limo_cad_interface::KeyChord::plain("Enter"))
+    );
+}
+
+#[test]
+fn drawing_preview_releases_undo_and_redo_to_document_history() {
+    for redo in [false, true] {
+        let (mut app, handle, entity) = editor_fixture();
+        drawing_field(&mut app, entity, 0);
+        let modifiers = Modifiers {
+            meta: cfg!(target_os = "macos"),
+            ctrl: !cfg!(target_os = "macos"),
+            shift: redo,
+            ..default()
+        };
+        assert!(!before_window_input(
+            app.world_mut(),
+            &handle,
+            &key(Key::Character("z".into()), None),
+            None,
+            modifiers
+        )
+        .unwrap());
+        assert_eq!(handle.focused_key(), None);
+        assert!(app.world().resource::<EditorSession>().active.is_none());
+        assert!(handle.take_actions().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn drawing_number_keeps_local_undo_and_redo_until_the_edit_is_committed() {
+    let (mut app, handle, entity) = editor_fixture();
+    drawing_field(&mut app, entity, 0);
+    apply_edit(app.world_mut(), entity, TextEdit::SelectAll).unwrap();
+    apply_edit(app.world_mut(), entity, TextEdit::Insert("3".into())).unwrap();
+    for (redo, expected) in [(false, "12"), (true, "3")] {
+        assert!(before_window_input(
+            app.world_mut(),
+            &handle,
+            &key(Key::Character("z".into()), None),
+            None,
+            Modifiers {
+                meta: cfg!(target_os = "macos"),
+                ctrl: !cfg!(target_os = "macos"),
+                shift: redo,
+                ..default()
+            }
+        )
+        .unwrap());
+        assert_eq!(
+            app.world().get::<EditableText>(entity).unwrap().value(),
+            expected
+        );
+        assert_eq!(handle.focused_key(), Some(ControlKey(entity.to_bits())));
+        assert!(handle.take_actions().unwrap().is_empty());
+    }
+}
+
 fn key(key: Key, text: Option<&str>) -> WindowEvent {
     WindowEvent::KeyboardInput(KeyboardInput {
         key_code: KeyCode::Unidentified(bevy::input::keyboard::NativeKeyCode::Unidentified),
@@ -198,6 +297,10 @@ fn drawing_tab_commits_then_cycles_dimensions_without_visiting_toolbar_controls(
         commits[0].control.input,
         ControlInput::SetValue("30".into())
     );
+    prepare_activation(app.world(), &handle, &commits[0]).unwrap();
+    acknowledge_control_input(app.world_mut(), &commits[0], true);
+    after_window_input(app.world_mut(), &handle).unwrap();
+    assert_eq!(handle.focused_key(), Some(ControlKey(second.to_bits())));
     assert_eq!(
         app.world()
             .get::<EditableText>(second)
@@ -206,6 +309,24 @@ fn drawing_tab_commits_then_cycles_dimensions_without_visiting_toolbar_controls(
             .raw_selection()
             .text_range(),
         0..6
+    );
+    for digit in ["6", "0"] {
+        assert!(before_window_input(
+            app.world_mut(),
+            &handle,
+            &key(Key::Character(digit.into()), Some(digit)),
+            None,
+            default()
+        )
+        .unwrap());
+    }
+    assert_eq!(
+        app.world().get::<EditableText>(second).unwrap().value(),
+        "60"
+    );
+    assert_eq!(
+        app.world().get::<EditableText>(first).unwrap().value(),
+        "30"
     );
     assert!(before_window_input(
         app.world_mut(),
@@ -219,7 +340,16 @@ fn drawing_tab_commits_then_cycles_dimensions_without_visiting_toolbar_controls(
     )
     .unwrap());
     assert_eq!(handle.focused_key(), Some(ControlKey(first.to_bits())));
-    assert!(handle.take_actions().unwrap().is_empty());
+    let commits = handle.take_actions().unwrap();
+    assert_eq!(commits.len(), 1);
+    assert_eq!(
+        commits[0].control.input,
+        ControlInput::SetValue("60".into())
+    );
+    prepare_activation(app.world(), &handle, &commits[0]).unwrap();
+    acknowledge_control_input(app.world_mut(), &commits[0], true);
+    after_window_input(app.world_mut(), &handle).unwrap();
+    assert_eq!(handle.focused_key(), Some(ControlKey(first.to_bits())));
 }
 
 #[test]

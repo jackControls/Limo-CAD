@@ -6,7 +6,7 @@ use std::fs;
 mod playback_priority;
 
 #[test]
-fn mcp_history_and_inspection_use_the_same_guarded_native_controls() {
+fn mcp_and_keyboard_history_use_the_same_guarded_native_controls() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
     let services = NativeServices {
@@ -82,7 +82,7 @@ fn mcp_history_and_inspection_use_the_same_guarded_native_controls() {
     );
     synchronize(app.world_mut(), &handle, &services, &mut state).unwrap();
     interface_shell::tests::publish_layout_once(app.world_mut(), handle.clone());
-    for (command, expected) in [("undo", json!([])), ("redo", saved)] {
+    for (command, expected) in [("undo", json!([])), ("redo", saved.clone())] {
         apply_control(
             app.world_mut(),
             &handle,
@@ -92,6 +92,58 @@ fn mcp_history_and_inspection_use_the_same_guarded_native_controls() {
             &request(command),
         )
         .unwrap();
+        assert_eq!(
+            parse_engine_envelope(fixture.engine.engine_call("named_views", "")).unwrap()["views"],
+            expected
+        );
+        synchronize(app.world_mut(), &handle, &services, &mut state).unwrap();
+        interface_shell::tests::publish_layout_once(app.world_mut(), handle.clone());
+    }
+    for (redo, expected) in [(false, json!([])), (true, saved.clone())] {
+        use bevy::input::keyboard::{Key, KeyCode, KeyboardInput};
+        let event = NativeHostInput {
+            ui_scale: 1.,
+            context: Some(fixture.owner()),
+            cursor: None,
+            modifiers: crate::native_viewport::winit_host::Modifiers {
+                meta: cfg!(target_os = "macos"),
+                ctrl: !cfg!(target_os = "macos"),
+                shift: redo,
+                ..default()
+            },
+            event: WindowEvent::KeyboardInput(KeyboardInput {
+                key_code: KeyCode::KeyZ,
+                logical_key: Key::Character(if redo { "\u{1a}" } else { "z" }.into()),
+                text: None,
+                state: bevy::input::ButtonState::Pressed,
+                repeat: false,
+                window: Entity::PLACEHOLDER,
+            }),
+            consumed: false,
+            actions: vec![],
+        };
+        let mut blocked = event.clone();
+        blocked.consumed = true;
+        assert!(history::shortcut_action(app.world_mut(), &handle, &blocked)
+            .unwrap()
+            .is_none());
+        blocked = event.clone();
+        blocked.context.as_mut().unwrap().epoch += 1;
+        assert!(history::shortcut_action(app.world_mut(), &handle, &blocked)
+            .unwrap()
+            .is_none());
+        let mut modal = handle.frame().unwrap();
+        modal.modal_stack.push("guarded-editor".into());
+        handle.present(modal).unwrap();
+        assert!(history::shortcut_action(app.world_mut(), &handle, &event)
+            .unwrap()
+            .is_none());
+        synchronize(app.world_mut(), &handle, &services, &mut state).unwrap();
+        interface_shell::tests::publish_layout_once(app.world_mut(), handle.clone());
+        let action = history::shortcut_action(app.world_mut(), &handle, &event)
+            .unwrap()
+            .unwrap();
+        apply_queued_control(app.world_mut(), &handle, &services, &mut state, &action).unwrap();
         assert_eq!(
             parse_engine_envelope(fixture.engine.engine_call("named_views", "")).unwrap()["views"],
             expected

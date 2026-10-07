@@ -581,6 +581,23 @@ fn update_inner(
         if !accepted {
             continue;
         }
+        if !state.close_pending {
+            match history::shortcut_action(world, handle, &event) {
+                Ok(Some(action)) => {
+                    if let Err(error) =
+                        apply_queued_control(world, handle, services, state, &action)
+                    {
+                        state.status = error;
+                    }
+                    continue;
+                }
+                Err(error) => {
+                    state.status = error;
+                    continue;
+                }
+                Ok(None) => {}
+            }
+        }
         match app_settings::shortcut(world, handle, services, &event) {
             Ok(Some(value)) => {
                 state.status = summary(&value);
@@ -1301,7 +1318,7 @@ pub(crate) fn reduce_control_input(
         fields::acknowledge_control_input(world, &preceding, result.is_ok());
         result?;
     }
-    handle.prepare_activation(action)?;
+    fields::prepare_activation(world, handle, action)?;
     if let ControlInput::Key(key) = &action.control.input {
         bridge.with_native_document_owner(engine, &action.context, || {
             handle.validate_action(action)
@@ -1335,7 +1352,7 @@ pub(crate) fn reduce_control_input(
                             &action.context,
                             crate::native_editor::EditorCommand::Cancel,
                             || handle.validate_action(action),
-                        )
+                        );
                     }
                     "close-document" => return Ok(json!({"close_decision":"cancel"})),
                     _ => return Err("This dialog does not handle Escape".into()),

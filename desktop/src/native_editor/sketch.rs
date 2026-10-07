@@ -209,9 +209,17 @@ impl Draft {
         Ok(Some(value))
     }
 
+    /// Prepare a completed shape without changing its anchor or typed sizes
+    /// before the engine accepts the construction.
     pub fn complete(&self) -> Result<Option<Prepared>, String> {
         if self.tool != Some(CreateTool::Spline) {
-            return Ok(None);
+            if !self.sizes.has_locks() {
+                return Ok(None);
+            }
+            let Some(cursor) = self.cursor else {
+                return Ok(None);
+            };
+            return self.clone().prepare(cursor, false);
         }
         if self.points.len() < 2 {
             return Err("Pick at least two fit points before finishing the spline".into());
