@@ -227,6 +227,22 @@ pub(crate) fn reduce(
             state.error = None;
             return Ok(json!({"edited":true}));
         }
+        if matches!(input, ControlInput::Key(key) if key == &KeyChord::plain("Enter")) {
+            drop(state);
+            return reduce(
+                world,
+                handle,
+                engine,
+                bridge,
+                action,
+                &HistoryCommand::ConfirmRename(id),
+            );
+        }
+        if matches!(input, ControlInput::Key(key) if key == &KeyChord::plain("Escape")) {
+            drop(state);
+            escape(world);
+            return Ok(json!({"cancelled":true}));
+        }
         return Ok(json!({"handled":true}));
     }
     if *command == HistoryCommand::RollbackMarker {

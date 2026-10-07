@@ -1290,6 +1290,26 @@ fn process_modal_keys(
                 "close-document" => state.close_pending = false,
                 "file-menu" | "file-dialog" | "app-settings" => files::escape(world),
                 "history-menu" | "delete-feature" => history::escape(world),
+                "rename-feature" => {
+                    if let Some(key) = handle.frame().and_then(|frame| frame.focused) {
+                        if world
+                            .get::<NativeCommandBinding>(Entity::from_bits(key.0))
+                            .is_some_and(|binding| {
+                                matches!(
+                                    binding.command,
+                                    NativeCommand::History(history::HistoryCommand::RenameValue(_))
+                                )
+                            })
+                        {
+                            let action = handle.resolve_input(
+                                key,
+                                ControlInput::Key(request.key.clone()),
+                                &request.context,
+                            )?;
+                            reduce_control_input(engine, bridge, world, handle, &action)?;
+                        }
+                    }
+                }
                 "sketch-menu" => crate::native_editor::panel::escape(world),
                 "section-review" => {
                     section_review::escape(world);
@@ -1332,6 +1352,9 @@ pub(crate) fn reduce_control_input(
                 match scope.as_str() {
                     "file-menu" | "file-dialog" | "app-settings" => files::escape(world),
                     "history-menu" | "delete-feature" => history::escape(world),
+                    "rename-feature" => {
+                        return reduce_action(engine, bridge, world, handle, action);
+                    }
                     "sketch-menu" => crate::native_editor::panel::escape(world),
                     "section-review" => {
                         section_review::escape(world);

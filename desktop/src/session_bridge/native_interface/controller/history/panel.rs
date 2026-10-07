@@ -587,6 +587,7 @@ pub(crate) fn synchronize(
             );
             let mut field = control("Feature name", Some(scope), false);
             field.role = "textbox".into();
+            field.owned_keys = vec![KeyChord::plain("Enter"), KeyChord::plain("Escape")];
             field.field = limo_cad_interface::Field::Text {
                 value: rename.name.clone(),
                 read_only: false,
