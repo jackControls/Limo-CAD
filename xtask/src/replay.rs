@@ -185,6 +185,17 @@ impl Client {
         }
     }
     pub(crate) fn rpc(&mut self, method: &str, params: Value) -> Result<Value> {
+        let response = self.rpc_response(method, params)?;
+        if let Some(error) = response.get("error") {
+            if self.request_timeout.is_some() {
+                self.terminate();
+            }
+            bail!("MCP error: {error}");
+        }
+        Ok(response["result"].clone())
+    }
+    /// Preserve a valid server error response without treating it as a broken pipe.
+    fn rpc_response(&mut self, method: &str, params: Value) -> Result<Value> {
         let deadline = self.request_timeout.map(|timeout| Instant::now() + timeout);
         self.id += 1;
         let id = self.id;
@@ -220,10 +231,17 @@ impl Client {
                     if reply["id"] != id {
                         continue;
                     }
+                    ensure!(
+                        reply.get("result").is_some() != reply.get("error").is_some(),
+                        "Invalid MCP reply: exactly one of result or error is required"
+                    );
                     if let Some(error) = reply.get("error") {
-                        bail!("MCP error: {error}");
+                        ensure!(
+                            error["code"].is_i64() && error["message"].is_string(),
+                            "Invalid MCP error response: {error}"
+                        );
                     }
-                    return Ok(reply["result"].clone());
+                    return Ok(reply);
                 }
                 Ok(Err(error)) => bail!("Invalid MCP reply: {error}"),
                 Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -481,14 +499,19 @@ fn interactive_calls(mut client: Client, output: Option<&Path>) -> Result<()> {
         }
         let result = match serde_json::from_str::<Call>(&line) {
             Ok(call) if !call.tool.trim().is_empty() && call.arguments.is_object() => {
-                let response = client.rpc(
+                let response = client.rpc_response(
                     "tools/call",
                     json!({"name":call.tool,"arguments":call.arguments}),
                 )?;
-                json!({
-                    "status":if response["isError"] == true {"tool_error"} else {"received"},
-                    "result":response
-                })
+                if response.get("error").is_some() {
+                    json!({"status":"tool_error","error":response["error"],"response":response})
+                } else {
+                    let result = &response["result"];
+                    json!({
+                        "status":if result["isError"] == true {"tool_error"} else {"received"},
+                        "result":result
+                    })
+                }
             }
             Ok(_) => {
                 json!({"status":"request_error","error":"tool must be nonempty and arguments must be an object"})
