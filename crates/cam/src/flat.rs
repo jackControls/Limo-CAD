@@ -100,7 +100,8 @@ pub(super) fn plan(
     let mut passes = 0usize;
     for &level in &levels {
         let depth = level + p.axial_stock_to_leave;
-        let (field, walled) = grid.level_field(&triangles, &curvatures, &heights, level, r, keep);
+        let (field, walled, floor) =
+            grid.level_field(&triangles, &curvatures, &heights, level, r, keep);
         let maximum = field.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         if maximum < 0.0 {
             builder.warnings.push(format!(
@@ -110,16 +111,7 @@ pub(super) fn plan(
             continue;
         }
         require_flute_length(tool, part_top.max(builder.incoming_top) - depth, name)?;
-        let rings = passes_for(
-            &grid,
-            &field,
-            &walled,
-            &heights,
-            level,
-            maximum,
-            land,
-            p.step_over,
-        );
+        let rings = passes_for(&grid, &field, &walled, &floor, maximum, land, p.step_over);
         ensure_program_budget(
             builder.commands.len(),
             rings.iter().map(|ring| ring.len() + 8).sum(),
@@ -193,8 +185,7 @@ fn passes_for(
     grid: &Grid,
     field: &[f64],
     walled: &[bool],
-    heights: &[f64],
-    level: f64,
+    floor: &[bool],
     maximum: f64,
     land: f64,
     step: f64,
@@ -267,16 +258,14 @@ fn passes_for(
             ((grid.ny as f64 * grid.h) / c).ceil() as usize,
         );
         let mut need = vec![false; cx * cy];
-        for (i, &z) in heights.iter().enumerate() {
-            if (z - level).abs() <= FLAT_EPS {
-                let p = grid.center((i % grid.nx) as isize, (i / grid.nx) as isize);
-                let (x, y) = (
-                    ((p.x - grid.min.x) / c) as usize,
-                    ((p.y - grid.min.y) / c) as usize,
-                );
-                if x < cx && y < cy {
-                    need[x + cx * y] = true;
-                }
+        for i in (0..floor.len()).filter(|&i| floor[i]) {
+            let p = grid.center((i % grid.nx) as isize, (i / grid.nx) as isize);
+            let (x, y) = (
+                ((p.x - grid.min.x) / c) as usize,
+                ((p.y - grid.min.y) / c) as usize,
+            );
+            if x < cx && y < cy {
+                need[x + cx * y] = true;
             }
         }
         let inner = reach - c * std::f64::consts::FRAC_1_SQRT_2;
@@ -570,9 +559,10 @@ impl Grid {
         level: f64,
         r: f64,
         keep: f64,
-    ) -> (Vec<f64>, Vec<bool>) {
+    ) -> (Vec<f64>, Vec<bool>, Vec<bool>) {
         let blocked = |i: usize| heights[i] > level + FLAT_EPS;
-        let flat = |i: usize| (heights[i] - level).abs() <= FLAT_EPS;
+        let floor = self.floor_mask(heights, level, 4.0 * r);
+        let flat = |i: usize| floor[i];
         // Raster distances undercount by at most half a cell diagonal (a
         // marked cell's material may sit anywhere in it) plus the largest
         // chord sag (the true surface may bulge past the raster).
@@ -587,7 +577,7 @@ impl Grid {
         );
         let exact = WallIndex::new(triangles, curvatures, level + FLAT_EPS, band.1);
         let bulge = exact.bulge;
-        (0..self.nx * self.ny)
+        let (field, walled) = (0..self.nx * self.ny)
             .map(|i| {
                 let point = self.center((i % self.nx) as isize, (i / self.nx) as isize);
                 let approximate = walls[i] - half - bulge;
@@ -607,7 +597,54 @@ impl Grid {
                 let open = into_flat + r * 0.5;
                 (wall.min(open), wall <= open)
             })
-            .unzip()
+            .unzip();
+        (field, walled, floor)
+    }
+
+    /// The flat at `level` plus every lower area it encloses that is no wider
+    /// than `widest` and has no target above the flat (holes, as Fusion
+    /// machines over holes up to 2 D): at the floor Z the cutter only meets
+    /// air or stock there, and stock left over a hole is cut away.
+    fn floor_mask(&self, heights: &[f64], level: f64, widest: f64) -> Vec<bool> {
+        let flat = heights
+            .iter()
+            .map(|&z| (z - level).abs() <= FLAT_EPS)
+            .collect::<Vec<_>>();
+        let mut floor = flat.clone();
+        let mut seen = vec![false; heights.len()];
+        for start in 0..heights.len() {
+            if seen[start] || flat[start] || heights[start] > level + FLAT_EPS {
+                continue;
+            }
+            seen[start] = true;
+            let (mut queue, mut cells) = (vec![start], Vec::new());
+            let (mut lo, mut hi) = ((usize::MAX, usize::MAX), (0usize, 0usize));
+            let mut enclosed = true;
+            while let Some(i) = queue.pop() {
+                cells.push(i);
+                let (x, y) = (i % self.nx, i / self.nx);
+                (lo, hi) = ((lo.0.min(x), lo.1.min(y)), (hi.0.max(x), hi.1.max(y)));
+                if x == 0 || y == 0 || x + 1 == self.nx || y + 1 == self.ny {
+                    enclosed = false;
+                    continue;
+                }
+                for j in [i - 1, i + 1, i - self.nx, i + self.nx] {
+                    if heights[j] > level + FLAT_EPS {
+                        enclosed = false;
+                    } else if !flat[j] && !seen[j] {
+                        seen[j] = true;
+                        queue.push(j);
+                    }
+                }
+            }
+            let width = (hi.0 - lo.0 + 1).max(hi.1 - lo.1 + 1) as f64 * self.h;
+            if enclosed && width <= widest {
+                for i in cells {
+                    floor[i] = true;
+                }
+            }
+        }
+        floor
     }
 
     /// Whether any field sample around `p` is marked.
