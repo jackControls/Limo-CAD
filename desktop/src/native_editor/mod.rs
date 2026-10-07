@@ -667,27 +667,6 @@ pub(crate) fn process_one(
     let Some(frame) = handle.frame() else {
         return Ok(json!({"handled":false}));
     };
-    if frame.modal_stack.last().map(String::as_str) == Some("sketch-origin")
-        && support::modal(world) == Some("sketch-origin")
-        && event.context.as_ref() == Some(&frame.context)
-        && !event.consumed
-        && !event.modifiers.ctrl
-        && !event.modifiers.meta
-        && !event.modifiers.alt
-        && !event.modifiers.alt_graph
-        && !event.modifiers.shift
-        && matches!(&event.event, WindowEvent::KeyboardInput(key)
-            if key.state == ButtonState::Pressed && !key.repeat && key.logical_key == bevy::input::keyboard::Key::Escape)
-    {
-        return execute(
-            world,
-            &services.engine,
-            &services.bridge,
-            &frame.context,
-            EditorCommand::Cancel,
-            || Ok(()),
-        );
-    }
     if mechanism::pointer(world, handle, services, event)? {
         world.resource_mut::<Editor>().press = None;
         return Ok(json!({"handled":true,"mechanism_drag":true}));

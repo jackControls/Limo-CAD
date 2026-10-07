@@ -1311,6 +1311,18 @@ fn process_modal_keys(
                     }
                 }
                 "sketch-menu" => crate::native_editor::panel::escape(world),
+                "sketch-origin" => {
+                    if crate::native_editor::support::modal(world) == Some("sketch-origin") {
+                        crate::native_editor::execute(
+                            world,
+                            engine,
+                            bridge,
+                            &request.context,
+                            crate::native_editor::EditorCommand::Cancel,
+                            || handle.validate_modal_key(&request),
+                        )?;
+                    }
+                }
                 "section-review" => {
                     section_review::escape(world);
                 }
