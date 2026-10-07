@@ -50,6 +50,12 @@ struct RuntimeManifest {
     build: String,
     occt_sdk: PathBuf,
     #[serde(default)]
+    occt_inputs_sha256: Option<String>,
+    #[serde(default)]
+    build_channel: Option<String>,
+    #[serde(default)]
+    reuse_environment_standard: bool,
+    #[serde(default)]
     native_computer_control: bool,
     executable: String,
     executable_sha256: String,
@@ -194,10 +200,51 @@ pub(crate) fn prepare_runtime(repo_root: &Path, options: &BuildOptions) -> Resul
             .is_some_and(|manifest| manifest.native_computer_control)
     });
     let sdk = windows_sdk(&source.checkout, options)?;
-    let (artifact, artifact_sha256) = build(&source, options, &sdk, computer_control)?;
+    let sdk_sha256 = sdk_inputs_sha256(&sdk)?;
+    let build_profile = if options.release {
+        "release"
+    } else {
+        "incremental-local-opt1-third-party-opt3"
+    };
+    let channel = env::var("LIMO_CAD_BUILD_CHANNEL").unwrap_or_else(|_| "development".into());
+    let standard_environment = reuse_environment_standard(&source.checkout)?;
+    if let Some(manifest) = &managed {
+        if manifest.source == source
+            && manifest.occt_sdk == sdk
+            && manifest.occt_inputs_sha256.as_deref() == Some(sdk_sha256.as_str())
+            && manifest.build == build_profile
+            && manifest.build_channel.as_deref() == Some(channel.as_str())
+            && manifest.native_computer_control == computer_control
+            && manifest.reuse_environment_standard
+            && standard_environment
+        {
+            if let Ok(installed) = verify_runtime() {
+                ensure!(
+                    sdk_inputs_sha256(&sdk)? == sdk_sha256,
+                    "OCCT SDK changed while verifying the installed runtime"
+                );
+                ensure!(
+                    snapshot(&source.checkout)? == source,
+                    "Source changed while verifying the installed runtime"
+                );
+                println!(
+                    "Using verified installed {} from {} (sha256 {})",
+                    installed.display(),
+                    source.revision,
+                    manifest.executable_sha256
+                );
+                return Ok(installed);
+            }
+        }
+    }
+    let (artifact, artifact_sha256) = build(&source, options, &sdk, &sdk_sha256, computer_control)?;
     ensure!(
         snapshot(&source.checkout)? == source,
         "Source changed during the build; nothing was installed. Run deploy-native again"
+    );
+    ensure!(
+        sdk_inputs_sha256(&sdk)? == sdk_sha256,
+        "OCCT SDK changed during the build; nothing was installed. Run deploy-native again"
     );
     let executable = installed_executable()?;
     let directory = executable.parent().context("installed executable parent")?;
@@ -221,13 +268,11 @@ pub(crate) fn prepare_runtime(repo_root: &Path, options: &BuildOptions) -> Resul
     let manifest = RuntimeManifest {
         schema: 1,
         source,
-        build: if options.release {
-            "release"
-        } else {
-            "incremental-local-opt1-third-party-opt3"
-        }
-        .into(),
+        build: build_profile.into(),
         occt_sdk: sdk.clone(),
+        occt_inputs_sha256: Some(sdk_sha256),
+        build_channel: Some(channel),
+        reuse_environment_standard: standard_environment,
         native_computer_control: computer_control,
         executable: EXECUTABLE.into(),
         executable_sha256,
@@ -241,6 +286,10 @@ pub(crate) fn prepare_runtime(repo_root: &Path, options: &BuildOptions) -> Resul
     ensure!(
         snapshot(&manifest.source.checkout)? == manifest.source,
         "Source changed while staging; nothing was installed"
+    );
+    ensure!(
+        Some(sdk_inputs_sha256(&sdk)?) == manifest.occt_inputs_sha256,
+        "OCCT SDK changed while staging; nothing was installed"
     );
     create_directory(directory)?;
     require_one_executable(directory)?;
@@ -385,10 +434,121 @@ fn windows_sdk(root: &Path, options: &BuildOptions) -> Result<PathBuf> {
     Ok(sdk)
 }
 
+/// Content identity covers headers, linked import libraries and the packaged SDK payload.
+fn sdk_inputs_sha256(root: &Path) -> Result<String> {
+    let override_lib = env::var_os("LIMO_CAD_OCCT_LIB_DIR").map(PathBuf::from);
+    if let Some(path) = &override_lib {
+        ensure!(
+            path.is_absolute(),
+            "LIMO_CAD_OCCT_LIB_DIR must be absolute for managed runtime builds"
+        );
+    }
+    let sdk = crate::build_tools::sdk::resolve(
+        &[root.to_owned()],
+        "windows",
+        env::consts::ARCH,
+        override_lib.as_deref(),
+    )
+    .map_err(anyhow::Error::msg)?;
+    let mut paths = Vec::new();
+    fn collect(directory: &Path, copyrights_only: bool, paths: &mut Vec<PathBuf>) -> Result<()> {
+        ordinary_directory(directory)?;
+        for entry in fs::read_dir(directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                collect(&path, copyrights_only, paths)?;
+            } else if !copyrights_only || entry.file_name() == "copyright" {
+                ordinary_file(&path)?;
+                paths.push(path.canonicalize()?);
+            }
+        }
+        Ok(())
+    }
+    collect(&sdk.include, false, &mut paths)?;
+    for library in crate::build_tools::sdk::LIBRARIES {
+        let path = sdk.lib.join(format!("{library}.lib"));
+        ordinary_file(&path)?;
+        paths.push(path.canonicalize()?);
+    }
+    let bin = crate::package::runtime_bin(root)?;
+    ordinary_directory(&bin)?;
+    for entry in fs::read_dir(bin)? {
+        let path = entry?.path();
+        if path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("dll"))
+        {
+            ordinary_file(&path)?;
+            paths.push(path.canonicalize()?);
+        }
+    }
+    collect(&root.join("share"), true, &mut paths)?;
+    paths.sort();
+    paths.dedup();
+    let mut digest = Sha256::new();
+    digest.update(b"limo-cad-windows-sdk-v1\0");
+    for path in paths {
+        digest.update(path.as_os_str().as_encoded_bytes());
+        digest.update([0]);
+        digest.update(crate::hash::file(&path)?.as_bytes());
+        digest.update([0]);
+    }
+    Ok(crate::hash::hex(&digest.finalize()))
+}
+
+/// Unrecorded compiler and profile overrides require Cargo rather than runtime reuse.
+fn reuse_environment_standard(checkout: &Path) -> Result<bool> {
+    for (name, _) in env::vars_os() {
+        let name = name.to_string_lossy().to_ascii_uppercase();
+        if matches!(
+            name.as_str(),
+            "RUSTFLAGS"
+                | "CARGO_ENCODED_RUSTFLAGS"
+                | "RUSTC"
+                | "RUSTC_WRAPPER"
+                | "RUSTC_WORKSPACE_WRAPPER"
+                | "RUSTC_BOOTSTRAP"
+                | "CC"
+                | "CXX"
+                | "AR"
+                | "CFLAGS"
+                | "CXXFLAGS"
+                | "ARFLAGS"
+                | "CXXSTDLIB"
+                | "CL"
+                | "_CL_"
+                | "CRATE_CC_NO_DEFAULTS"
+        ) || name.starts_with("CARGO_PROFILE_")
+            || name.starts_with("CARGO_BUILD_RUST")
+            || name.starts_with("CARGO_TARGET_") && name != "CARGO_TARGET_DIR"
+            || ["CC_", "CXX_", "AR_", "CFLAGS_", "CXXFLAGS_", "ARFLAGS_"]
+                .iter()
+                .any(|prefix| name.starts_with(prefix))
+            || ["_CC", "_CXX", "_AR", "_CFLAGS", "_CXXFLAGS", "_ARFLAGS"]
+                .iter()
+                .any(|suffix| name.ends_with(suffix))
+        {
+            return Ok(false);
+        }
+    }
+    if let Some(toolchain) = env::var_os("RUSTUP_TOOLCHAIN") {
+        let manifest = fs::read_to_string(checkout.join("rust-toolchain.toml"))?
+            .parse::<toml_edit::DocumentMut>()?;
+        let channel = manifest["toolchain"]["channel"]
+            .as_str()
+            .context("Managed checkout has no pinned Rust toolchain")?;
+        let host_qualified = format!("{channel}-{}-pc-windows-msvc", env::consts::ARCH);
+        return Ok(toolchain == channel || toolchain == host_qualified.as_str());
+    }
+    Ok(true)
+}
+
 fn build(
     source: &Source,
     options: &BuildOptions,
     sdk: &Path,
+    sdk_sha256: &str,
     computer_control: bool,
 ) -> Result<(PathBuf, String)> {
     let target = match env::consts::ARCH {
@@ -428,6 +588,7 @@ fn build(
     }
     command
         .env("OCCT_ROOT", sdk)
+        .env("LIMO_CAD_OCCT_INPUTS_SHA256", sdk_sha256)
         .env("LIMO_CAD_BUILD_REVISION", &source.revision)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

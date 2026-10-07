@@ -1,4 +1,4 @@
-//! Managed local checks build and promote their sole runtime before starting CAD.
+//! Managed local checks select a verified current runtime, rebuilding stale inputs.
 use anyhow::{ensure, Context, Result};
 
 pub(crate) fn prepare(command: &str, mut arguments: Vec<String>) -> Result<Vec<String>> {
@@ -56,7 +56,7 @@ pub(crate) fn prepare(command: &str, mut arguments: Vec<String>) -> Result<Vec<S
         &source,
         &crate::deploy_native::BuildOptions::default(),
     )
-    .context("Build and promote the current managed CAD runtime before local checks")?;
+    .context("Prepare the current managed CAD runtime before local checks")?;
     let runtime = runtime
         .to_str()
         .context("Managed CAD executable path must be Unicode")?

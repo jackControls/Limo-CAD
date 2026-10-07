@@ -18,6 +18,7 @@ fn native() {
     for name in [
         "OCCT_ROOT",
         "LIMO_CAD_OCCT_LIB_DIR",
+        "LIMO_CAD_OCCT_INPUTS_SHA256",
         "VCPKG_INSTALLED_DIR",
         "VCPKG_TARGET_TRIPLET",
     ] {

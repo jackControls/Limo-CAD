@@ -14,8 +14,9 @@ For local Windows iteration, run:
 cargo xtask deploy-native --computer-control --restart --launch
 ```
 
-The task builds the current checkout, selects the executable reported by Cargo,
-stages its SDK runtime and verifies source and payload hashes before promotion.
+The task reuses a verified current installation or builds the current checkout,
+selects the executable reported by Cargo, stages its SDK runtime and verifies
+source and payload hashes before promotion.
 The default keeps local crates at optimization level 1 and third-party dependencies
 at level 3 with incremental compilation. `--release` selects full optimization.
 `--restart` explicitly terminates the installed GUI/MCP workers without saving;
@@ -23,11 +24,20 @@ without it, a changed build cannot replace a running installation.
 `--jobs N` controls build concurrency and `CARGO_TARGET_DIR` retains the shared cache.
 
 The managed installation's `runtime-manifest.json` binds the executable to its
-checkout, source digest and OCCT SDK. Local `test-mcp`, `verify-package-mcp`,
-`run-script` and `cad-call` commands build and promote from the recorded checkout
-first, then select that canonical executable. Only an explicit `deploy-native`
-changes the source binding. A failed build, changed source or locked promotion stops
-the command instead of falling back to an old artifact. Hosted GitHub package
+checkout, source digest and OCCT SDK. Matching source, build profile, channel and
+native-control mode reuse the installed executable only after checking every
+payload hash and the SDK's headers, linked import libraries, runtime DLLs and
+copyright notices. This reuse avoids relinking or replacing the running
+installation solely because the Git index timestamp changed. Older manifests
+without an SDK content digest rebuild once to establish this provenance.
+The standard pinned Rust toolchain supports reuse. Inherited compiler, compiler
+wrapper, flag or target/profile overrides go through Cargo; builds made with
+those overrides remain ineligible for reuse after the overrides are removed.
+SDK digest changes invalidate the OCCT bridge build as well as the installation.
+Local `test-mcp`, `verify-package-mcp`, `run-script` and `cad-call` commands prepare
+the recorded checkout, then select that canonical executable. Only an explicit
+`deploy-native` changes the source binding. A failed build, changed source or
+locked promotion stops the command instead of falling back to an old artifact. Hosted GitHub package
 checks keep their explicit artifact subjects. Unix local runtime promotion is
 not implemented by this task; existing Unix packaging remains available.
 
