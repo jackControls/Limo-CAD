@@ -4305,7 +4305,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           try { BRep_Builder().UpdateFace(face->GetFace(),mesh); }
           catch (...) { throw std::runtime_error("OCCT could not restore an export boundary triangulation"); }
           if (!choice) first_rejection=why;
-          else why="unused-pole choices: 0 "+first_rejection.substr(0,100)+"; 1 "+why.substr(0,140);
+          else why="unused-pole choices: 0 "+first_rejection.substr(0,180)+"; 1 "+why.substr(0,180);
         } else {
           const auto replacement=BRep_Tool::Triangulation(face->GetFace(),location);
           ++repaired; added+=replacement->NbTriangles()-mesh->NbTriangles();
@@ -4333,7 +4333,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       std::map<int,int> aliases; IMeshData::IEdgePtr pole_edge=nullptr;
       if (!qualify_native_pole(saved,mesh,location,aliases,pole_edge,true,true,pole_choice)) return false;
       const auto canonical=[&](int id) { const auto found=aliases.find(id); return found==aliases.end() ? id : found->second; };
-      const auto wire=face->GetWire(0); std::vector<int> boundary;
+      const auto wire=face->GetWire(0); std::vector<int> boundary;std::map<int,double> boundary_tolerances;
       if (wire->GetStatusMask()!=0) { strip_stop_="whole-face wire status"; return false; }
       for (int ei=0;ei<wire->EdgesNb();++ei) {
         const auto edge=wire->GetEdge(ei); const auto orientation=wire->GetEdgeOrientation(ei);
@@ -4364,6 +4364,14 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               mesh->Node(original).Transformed(location.Transformation()).Distance(curve->GetPoint(j))>Precision::Confusion()) {
             strip_stop_="whole-face source node correspondence"; return false;
           }
+          double tolerance=BRep_Tool::Tolerance(edge->GetEdge())+BRep_Tool::Tolerance(face->GetFace());
+          if (j==0 || j+1==pc->ParametersNb()) {
+            TopoDS_Vertex first,last;TopExp::Vertices(edge->GetEdge(),first,last);
+            const auto vertex=j==0 ? first : last;
+            if (!vertex.IsNull()) tolerance=std::max(tolerance,BRep_Tool::Tolerance(vertex)+BRep_Tool::Tolerance(face->GetFace()));
+          }
+          if (!std::isfinite(tolerance) || tolerance<0.0) { strip_stop_="whole-face invalid boundary tolerance";return false; }
+          boundary_tolerances[id]=std::max(boundary_tolerances[id],tolerance);
           if (i+1==pc->ParametersNb()) continue;
           if (boundary.empty() || boundary.back()!=id) boundary.push_back(id);
           if (boundary.size()>256) { strip_stop_="whole-face boundary cap"; return false; }
@@ -4466,16 +4474,32 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       std::set<std::pair<int,int>> native_boundary_links;
       for (std::size_t i=0;i<boundary.size();++i) native_boundary_links.emplace(
           std::min(boundary[i],boundary[(i+1)%boundary.size()]),std::max(boundary[i],boundary[(i+1)%boundary.size()]));
-      struct Cell { std::array<int,3> ids; int depth; };
-      std::vector<Cell> pending;
-      for (std::size_t i=0;i<boundary.size();++i) pending.push_back({{boundary[i],boundary[(i+1)%boundary.size()],node},0});
-      std::vector<std::array<int,3>> complete;int inspected=0,inserted=1,max_depth=0;
-      // Splitting at a source UV centroid keeps all three existing outer
-      // links intact. Thus refinement introduces no hanging nodes and keeps
-      // exactly the same positive mapped domain, even along shared spokes.
+      using Link=std::pair<int,int>;
+      const auto link=[](int a,int b) { return std::make_pair(std::min(a,b),std::max(a,b)); };
+      struct Cell { std::array<int,3> ids; int depth; bool active=true,qualified=false; };
+      std::vector<Cell> cells;std::vector<int> pending;std::map<Link,std::set<int>> incidence;
+      int active_count=0;
+      const auto add_cell=[&](const std::array<int,3>& ids,int depth) {
+        const int index=static_cast<int>(cells.size());cells.push_back({ids,depth});pending.push_back(index);++active_count;
+        for (int i=0;i<3;++i) incidence[link(ids[i],ids[(i+1)%3])].insert(index);
+      };
+      const auto retire=[&](int index) {
+        auto& cell=cells[index];cell.active=false;cell.qualified=false;--active_count;
+        for (int i=0;i<3;++i) {
+          const auto key=link(cell.ids[i],cell.ids[(i+1)%3]);auto found=incidence.find(key);
+          if (found!=incidence.end()) { found->second.erase(index);if (found->second.empty()) incidence.erase(found); }
+        }
+      };
+      for (std::size_t i=0;i<boundary.size();++i) add_cell({boundary[i],boundary[(i+1)%boundary.size()],node},0);
+      int inspected=0,inserted=1,max_depth=0;
+      // Bisect an unconstrained interior edge in BOTH incident cells. Retire
+      // any prior neighbor certificate, and qualify all new cells again;
+      // native boundary links remain unchanged and no hanging node survives.
       while (!pending.empty()) {
-        const auto cell=pending.back();pending.pop_back();
-        if (++inspected>8192 || complete.size()>4096) { strip_stop_="whole-face refinement cell budget";return false; }
+        const int cell_index=pending.back();pending.pop_back();
+        if (!cells[cell_index].active || cells[cell_index].qualified) continue;
+        const auto cell=cells[cell_index];
+        if (++inspected>8192 || active_count>4096 || cells.size()>16384) { strip_stop_="whole-face refinement cell budget";return false; }
         gp_Pnt2d u[3];gp_Pnt p[3];
         for (int i=0;i<3;++i) {
           u[i]=replacement->UVNode(cell.ids[i]);p[i]=replacement->Node(cell.ids[i]).Transformed(location.Transformation());
@@ -4487,6 +4511,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           strip_stop_="whole-face refinement zero/native or inverted UV cell";return false;
         }
         double max_error=0.0,max_angle=0.0;int failing_sample=-1,index=0;gp_Vec endpoint_normals[3];
+        double endpoint_errors[3]={},midpoint_errors[3]={};
         for (const auto& w : weights) {
           if (++export_boundary_work_>2097152) { strip_stop_="whole-face refinement source budget";return false; }
           const gp_Pnt2d uv(u[0].Coord()*w[0]+u[1].Coord()*w[1]+u[2].Coord()*w[2]);
@@ -4498,29 +4523,57 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (!std::isfinite(error) || !std::isfinite(angular)) { strip_stop_="whole-face refinement nonfinite precision";return false; }
           if (index<3) {
             endpoint_normals[index]=gp_Vec(source_normal)*winding;
+            endpoint_errors[index]=error;
             if (error>d) { strip_stop_="whole-face fixed vertex exceeds source distance "+std::to_string(error);return false; }
           }
+          if (index>=3 && index<6) midpoint_errors[index-3]=error;
           max_error=std::max(max_error,error);max_angle=std::max(max_angle,angular);
           if (error>d || angular>angle) failing_sample=index;++index;
         }
-        if (max_error<=d && max_angle<=angle) { complete.push_back(cell.ids);continue; }
-        // Centroid refinement preserves each current outer edge. If its two
-        // endpoint normal cones do not intersect, no descendant incident to
-        // that edge can satisfy the unchanged angular witnesses.
-        for (int i=0;i<3;++i) if (endpoint_normals[i].Angle(endpoint_normals[(i+1)%3])>2.0*angle) {
+        if (max_error<=d && max_angle<=angle) { cells[cell_index].qualified=true;continue; }
+        int chosen=-1;double best_edge=-1.0,best_length=-1.0;
+        for (int i=0;i<3;++i) {
           const int next=(i+1)%3,a=cell.ids[i],b=cell.ids[next];
-          const auto key=std::make_pair(std::min(a,b),std::max(a,b));
-          strip_stop_="whole-face fixed "+std::string(native_boundary_links.count(key) ? "native-boundary" : "interior")+
-              " edge "+std::to_string(a)+"/"+std::to_string(b)+" source angle "+
-              std::to_string(endpoint_normals[i].Angle(endpoint_normals[next]))+" UV "+std::to_string(u[i].X())+"/"+
-              std::to_string(u[i].Y())+" -> "+std::to_string(u[next].X())+"/"+std::to_string(u[next].Y());return false;
+          const auto key=link(a,b);
+          if (native_boundary_links.count(key)) {
+            const gp_Vec edge(p[i],p[next]);const double length=edge.Magnitude();
+            if (!std::isfinite(length) || length<=0.0) { strip_stop_="whole-face native boundary has zero/nonfinite length";return false; }
+            const gp_Vec unit=edge/length;
+            const double minimum=std::max(std::asin(std::min(1.0,std::abs(unit.Dot(endpoint_normals[i])))),
+                std::asin(std::min(1.0,std::abs(unit.Dot(endpoint_normals[next])))));
+            if (minimum>angle || endpoint_normals[i].Angle(endpoint_normals[next])>2.0*angle) {
+              strip_stop_="native edge "+std::to_string(a)+"/"+std::to_string(b)+" minimum angle "+std::to_string(minimum)+
+                  " endpoint source-gap/tol "+std::to_string(endpoint_errors[i])+"/"+std::to_string(boundary_tolerances[a])+
+                  " "+std::to_string(endpoint_errors[next])+"/"+std::to_string(boundary_tolerances[b])+" UV "+
+                  std::to_string(u[i].X())+"/"+std::to_string(u[i].Y())+" -> "+std::to_string(u[next].X())+"/"+std::to_string(u[next].Y());return false;
+            }
+            continue;
+          }
+          const double score=std::max(midpoint_errors[i]/d,endpoint_normals[i].Angle(endpoint_normals[next])/angle);
+          const double length=p[i].Distance(p[next]);
+          if (!std::isfinite(score) || !std::isfinite(length)) { strip_stop_="whole-face nonfinite interior edge metric";return false; }
+          if (score>best_edge || (score==best_edge && length>best_length)) { chosen=i;best_edge=score;best_length=length; }
         }
-        if (cell.depth>=8 || inserted>=4096 || replacement->NbNodes()>=65536 || pending.size()+complete.size()+3>8192) {
-          strip_stop_="whole-face refinement cap depth/nodes "+std::to_string(cell.depth)+"/"+std::to_string(inserted)+
-              " D/angle "+std::to_string(max_error)+"/"+std::to_string(max_angle)+" sample "+std::to_string(failing_sample)+
-              " cell "+std::to_string(cell.ids[0])+"/"+std::to_string(cell.ids[1])+"/"+std::to_string(cell.ids[2]);return false;
+        std::vector<int> owners={cell_index};int depth=cell.depth;
+        if (chosen>=0) {
+          const auto key=link(cell.ids[chosen],cell.ids[(chosen+1)%3]);const auto found=incidence.find(key);
+          if (found==incidence.end() || found->second.size()!=2) { strip_stop_="whole-face interior split lacks exactly two owners";return false; }
+          owners.assign(found->second.begin(),found->second.end());int balance=0;
+          for (int owner : owners) {
+            depth=std::max(depth,cells[owner].depth);
+            for (int i=0;i<3;++i) if (link(cells[owner].ids[i],cells[owner].ids[(i+1)%3])==key)
+              balance+=cells[owner].ids[i]<cells[owner].ids[(i+1)%3] ? 1 : -1;
+          }
+          if (balance!=0) { strip_stop_="whole-face split owners are not oppositely oriented";return false; }
         }
-        const gp_Pnt2d uv((u[0].Coord()+u[1].Coord()+u[2].Coord())/3.0);
+        if (depth>=8 || inserted>=4096 || replacement->NbNodes()>=65536 || active_count+2>4096 || cells.size()+4>16384) {
+          strip_stop_="cell "+std::to_string(cell.ids[0])+"/"+std::to_string(cell.ids[1])+"/"+std::to_string(cell.ids[2])+
+              " depth/nodes "+std::to_string(depth)+"/"+std::to_string(inserted)+" D/angle "+
+              std::to_string(max_error)+"/"+std::to_string(max_angle)+" sample "+std::to_string(failing_sample)+
+              " split "+(chosen>=0 ? std::to_string(cell.ids[chosen])+"/"+std::to_string(cell.ids[(chosen+1)%3]) : "centroid")+
+              " endpoint source-gaps "+std::to_string(endpoint_errors[0])+"/"+std::to_string(endpoint_errors[1])+"/"+std::to_string(endpoint_errors[2]);return false;
+        }
+        const gp_Pnt2d uv(chosen>=0 ? (u[chosen].Coord()+u[(chosen+1)%3].Coord())*.5 : (u[0].Coord()+u[1].Coord()+u[2].Coord())/3.0);
         if (!strip_finite(uv) || BRepClass_FaceClassifier(face->GetFace(),uv,Precision::PConfusion()).State()!=TopAbs_IN) {
           strip_stop_="whole-face refinement centroid outside source trim";return false;
         }
@@ -4529,8 +4582,22 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         const auto local=source.Transformed(location.Transformation().Inverted());
         if (!strip_finite(source) || !strip_finite(local)) { strip_stop_="whole-face refinement nonfinite source point";return false; }
         const int next=replacement->NbNodes()+1;replacement->ResizeNodes(next,true);
-        replacement->SetUVNode(next,uv);replacement->SetNode(next,local);++inserted;max_depth=std::max(max_depth,cell.depth+1);
-        for (int i=0;i<3;++i) pending.push_back({{cell.ids[i],cell.ids[(i+1)%3],next},cell.depth+1});
+        replacement->SetUVNode(next,uv);replacement->SetNode(next,local);++inserted;max_depth=std::max(max_depth,depth+1);
+        for (int owner : owners) {
+          const auto old=cells[owner];retire(owner);
+          if (chosen<0) { for (int i=0;i<3;++i) add_cell({old.ids[i],old.ids[(i+1)%3],next},depth+1);continue; }
+          const auto key=link(cell.ids[chosen],cell.ids[(chosen+1)%3]);bool found=false;
+          for (int i=0;i<3;++i) if (link(old.ids[i],old.ids[(i+1)%3])==key) {
+            add_cell({old.ids[i],next,old.ids[(i+2)%3]},depth+1);
+            add_cell({next,old.ids[(i+1)%3],old.ids[(i+2)%3]},depth+1);found=true;break;
+          }
+          if (!found) { strip_stop_="whole-face split lost its native owner edge";return false; }
+        }
+      }
+      std::vector<std::array<int,3>> complete;
+      for (const auto& cell : cells) if (cell.active) {
+        if (!cell.qualified) { strip_stop_="whole-face active cell lacks source certificate";return false; }
+        complete.push_back(cell.ids);
       }
       if (complete.empty() || complete.size()>4096) { strip_stop_="whole-face refinement final facet budget";return false; }
       replacement->ResizeTriangles(static_cast<int>(complete.size()),false);
