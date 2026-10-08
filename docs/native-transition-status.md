@@ -116,6 +116,11 @@ accepted boundary. Face tolerance is 0.0000001 mm; both circular edges have
 approximately 0.04823 mm tolerance. This distinguishes the remaining failure
 from the resolved boundary intersections. A bounded alternate triangulation of
 the same shared samples is being investigated; complete import remains open.
+Clean `6cb350e4` built, deployed and was physically retried on a matched GUI/MCP
+pair. The bounded spherical Delabella retry was attempted on two freshly failed
+faces, but neither yielded an accepted triangulation. Face 3779 still failed and
+the import tab remained empty. No failed face was omitted. Retry progress-range
+ownership and more precise trial diagnostics are the next investigation.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
