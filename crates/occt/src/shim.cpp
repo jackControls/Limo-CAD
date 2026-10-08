@@ -3094,6 +3094,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     StripRollbackFailure() : std::runtime_error("OCCT could not restore a spherical boundary trial") {}
   };
  public:
+  void EnableNativeExportRecovery(bool enabled) { native_export_recovery_=enabled; }
+  const std::string& ExportBoundaryRepairStop() const { return export_boundary_stop_; }
+  const std::map<int,std::string>& ExportBoundaryRejections() const { return export_boundary_rejections_; }
   const std::string& BoundaryRepairStop() const { return boundary_repair_stop_; }
   std::string StripRepairStop(int face_index) const {
     const auto found = strip_face_rejections_.find(face_index);
@@ -3106,6 +3109,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     if (model.IsNull()) return false;
     strip_face_rejections_.clear();
     pole_certificate_work_ = 0;
+    export_boundary_work_=0;
+    export_boundary_stop_.clear();
+    export_boundary_rejections_.clear();
     std::set<IMeshData::IFacePtr> eligible;
     for (int fi = 0; fi < model->FacesNb(); ++fi) {
       const auto& face = model->GetFace(fi);
@@ -3183,6 +3189,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         }
       }
     }
+    if (native_export_recovery_) recover_export_boundaries();
     if (!range.More()) {
       for (const auto& trial : strip_trials) restore_spherical_strip(trial);
       return false;
@@ -4154,14 +4161,101 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       catch (const std::exception&) { return reject("exception preparing regularized strip"); }
   }
 
+  void recover_export_boundaries() {
+    int attempts=0,repaired=0,added=0;
+    std::size_t inspected=0;
+    const auto& model=GetModel();
+    for (int fi=0;fi<model->FacesNb();++fi) {
+      const auto& face=model->GetFace(fi);
+      const int original=strip_original_faces_.FindIndex(face->GetFace())-1;
+      if (original<0) throw std::runtime_error("Native export boundary face lacks original topology mapping");
+      auto& why=export_boundary_rejections_[original];
+      if ((face->GetStatusMask() & ~IMeshData_Outdated)!=0) { why="face failure or Reused prevents new polygon ownership"; continue; }
+      TopLoc_Location location;
+      const auto mesh=BRep_Tool::Triangulation(face->GetFace(),location);
+      if (mesh.IsNull() || !mesh->HasUVNodes() || mesh->NbTriangles()<1 || mesh->NbTriangles()>131072 ||
+          mesh->NbNodes()>65536) { why="no bounded UV triangulation"; continue; }
+      if (face->WiresNb()!=1) { why="restoration requires one outer wire"; continue; }
+      const auto wire=face->GetWire(0);
+      if (wire->GetStatusMask()!=0) { why="wire status prevents restoration"; continue; }
+      using Link=std::pair<int,int>;
+      const auto link=[](int a,int b) { return std::make_pair(std::min(a,b),std::max(a,b)); };
+      std::set<Link> expected; std::set<int> boundary_nodes;
+      bool eligible=true;
+      for (int ei=0;ei<wire->EdgesNb();++ei) {
+        const auto edge=wire->GetEdge(ei);
+        const auto orientation=wire->GetEdgeOrientation(ei);
+        const auto pc=edge->GetPCurve(face.get(),orientation);
+        if ((orientation!=TopAbs_FORWARD && orientation!=TopAbs_REVERSED) ||
+            BRep_Tool::Degenerated(edge->GetEdge()) || edge->GetDegenerated() || pc.IsNull() ||
+            pc->ParametersNb()<2 || pc->ParametersNb()>256 || pc->ParametersNb()!=edge->GetCurve()->ParametersNb()) {
+          why="native degenerate/internal edge or unsupported sample correspondence"; eligible=false; break;
+        }
+        if ((inspected+=pc->ParametersNb())>8000000) { why="export boundary inspection budget exhausted"; eligible=false; break; }
+        for (int i=0;i<pc->ParametersNb();++i) {
+          const int id=pc->GetIndex(i);
+          if (id<1 || id>mesh->NbNodes()) { why="native boundary index is unavailable"; eligible=false; break; }
+          boundary_nodes.insert(id);
+          if (i && pc->GetIndex(i-1)!=id) expected.insert(link(pc->GetIndex(i-1),id));
+        }
+        if (!eligible) break;
+      }
+      if (!eligible) continue;
+      if ((inspected+=3*static_cast<std::size_t>(mesh->NbTriangles()))>8000000) {
+        why="export boundary inspection budget exhausted"; break;
+      }
+      std::map<Link,int> actual;
+      for (int ti=1;ti<=mesh->NbTriangles();++ti) {
+        int ids[3]; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+        for (int i=0;i<3;++i) ++actual[link(ids[i],ids[(i+1)%3])];
+      }
+      bool shortcut=false;
+      for (const auto& entry : actual) if (entry.second==1 && !expected.count(entry.first)) {
+        if (boundary_nodes.count(entry.first.first) && boundary_nodes.count(entry.first.second)) shortcut=true;
+        else why="unexpected boundary has a node outside native wire mapping";
+      }
+      if (!shortcut) { if (why.empty()) why="no mapped-native boundary shortcut"; continue; }
+      if (attempts>=128 || export_boundary_work_>=2097152) { why="export restoration attempt/work budget exhausted"; continue; }
+      bool alias=false;
+      for (int oi=1;oi<=strip_original_faces_.Extent();++oi) {
+        const auto& other=strip_original_faces_.FindKey(oi);
+        if (other.IsPartner(face->GetFace()) && !other.IsSame(face->GetFace())) { alias=true; break; }
+      }
+      if (alias) { why="located face alias requires shared polygon ownership"; continue; }
+      ++attempts;
+      StripTrial trial;
+      StripFace saved{face.get(),face->GetStatusMask(),{},mesh,{}};
+      saved.original_orientation=strip_original_faces_.FindKey(original+1).Orientation();
+      trial.faces.push_back(saved);
+      bool accepted=false;
+      try {
+        const bool restored=restore_skipped_strip_nodes(trial,true);
+        accepted=restored && validate_spherical_strip(trial,true);
+        if (!accepted) why=std::string(restored ? "domain: " : "fan: ")+strip_stop_.substr(0,330);
+      } catch (const Standard_Failure&) { why="OCCT exception qualifying restored native boundary"; }
+        catch (const std::exception&) { why="exception qualifying restored native boundary"; }
+      if (!accepted) {
+        try { BRep_Builder().UpdateFace(face->GetFace(),mesh); }
+        catch (...) { throw std::runtime_error("OCCT could not restore an export boundary triangulation"); }
+      } else {
+        const auto replacement=BRep_Tool::Triangulation(face->GetFace(),location);
+        ++repaired; added+=replacement->NbTriangles()-mesh->NbTriangles();
+        why="native boundary restored and full domain certified";
+      }
+    }
+    export_boundary_stop_="export boundary attempts/repaired/added triangles "+std::to_string(attempts)+"/"+
+        std::to_string(repaired)+"/"+std::to_string(added);
+  }
+
   // Some native triangulators omit collinear UV constraint samples even
   // though their mapped nodes and shared 3D curve samples remain available.
   // Reinsert only those existing nodes into the sole incident triangle.
-  bool restore_skipped_strip_nodes(const StripTrial& trial) {
+  bool restore_skipped_strip_nodes(const StripTrial& trial,bool native_export=false) {
     strip_corner_detail_.clear();
     strip_degenerate_details_.clear();
     try {
-      std::size_t work = 0;
+      std::size_t local_work=0;
+      std::size_t& work=native_export ? export_boundary_work_ : local_work;
       for (const auto& saved : trial.faces) {
         TopLoc_Location location;
         const auto mesh = BRep_Tool::Triangulation(saved.face->GetFace(), location);
@@ -4448,6 +4542,25 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           const double signed_area = (uv[1].Coord()-uv[0].Coord()).Crossed(uv[2].Coord()-uv[0].Coord());
           if (!std::isfinite(signed_area) || signed_area <= 0.0) {
             strip_stop_ = "restored trim fan has inverted or degenerate UV child"; return false;
+          }
+          if (native_export) {
+            const auto facet_normal=gp_Vec(point[0],point[1]).Crossed(gp_Vec(point[0],point[2]));
+            if (!std::isfinite(facet_normal.SquareMagnitude()) || facet_normal.SquareMagnitude()<=0.0) {
+              strip_stop_="restored export trim fan has zero/nonfinite native area"; return false;
+            }
+            const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
+            for (const auto& w : weights) {
+              const gp_Pnt2d sample(uv[0].Coord()*w[0]+uv[1].Coord()*w[1]+uv[2].Coord()*w[2]);
+              gp_Pnt on_surface; gp_Dir source_normal;
+              if (!BRepMesh_GeomTool::Normal(saved.face->GetSurface(),sample.X(),sample.Y(),on_surface,source_normal)) {
+                strip_stop_="restored export fan source normal is undefined"; return false;
+              }
+              const double angle=facet_normal.Angle(gp_Vec(source_normal));
+              if (!std::isfinite(angle) || angle>angular) {
+                strip_stop_="restored export fan source facet angle "+std::to_string(angle)+" exceeds "+std::to_string(angular);
+                return false;
+              }
+            }
           }
           for (int i = 0; i < 3; ++i) {
             const int next = (i+1)%3;
@@ -4811,7 +4924,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       catch (const std::exception&) { strip_stop_ = "exception certifying native pole quotient"; return false; }
   }
 
-  bool validate_spherical_strip(const StripTrial& trial) {
+  bool validate_spherical_strip(const StripTrial& trial,bool native_export=false) {
     strip_stop_ = "triangulation status";
     try {
       std::map<IMeshData::IEdgePtr, std::pair<int, int>> shared_incidence;
@@ -4912,16 +5025,16 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             }
             p[i] = mesh->Node(ids[i]).Transformed(location.Transformation()); uv[i] = mesh->UVNode(ids[i]);
             fp[i] = gp_Pnt(static_cast<float>(p[i].X()), static_cast<float>(p[i].Y()), static_cast<float>(p[i].Z()));
-            if (!strip_finite(p[i]) || !strip_finite(fp[i]) || !strip_finite(uv[i])) return false;
+            if (!strip_finite(p[i]) || (!native_export && !strip_finite(fp[i])) || !strip_finite(uv[i])) return false;
             ++links[link(ids[i],ids[(i+1)%3])];
             directions[link(ids[i],ids[(i+1)%3])] += direction(ids[i],ids[(i+1)%3]);
           }
           const auto normal = gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2]));
           const auto float_normal = gp_Vec(fp[0],fp[1]).Crossed(gp_Vec(fp[0],fp[2]));
           const double area = 0.5 * (uv[1].Coord()-uv[0].Coord()).Crossed(uv[2].Coord()-uv[0].Coord());
-          if (!std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude() <= 1e-24 ||
-              !std::isfinite(float_normal.SquareMagnitude()) || float_normal.SquareMagnitude() <= 0.0 ||
-              !std::isfinite(float_normal.Dot(normal)) || float_normal.Dot(normal) <= 0.0 ||
+          if (!std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude() <= (native_export ? 0.0 : 1e-24) ||
+              (!native_export && (!std::isfinite(float_normal.SquareMagnitude()) || float_normal.SquareMagnitude() <= 0.0 ||
+              !std::isfinite(float_normal.Dot(normal)) || float_normal.Dot(normal) <= 0.0)) ||
               !std::isfinite(area) || area == 0.0 || std::signbit(area) != std::signbit(expected_area)) return false;
           gp_Pnt surface_point; gp_Vec du, dv;
           const gp_Pnt2d centroid_uv((uv[0].Coord()+uv[1].Coord()+uv[2].Coord())/3.0);
@@ -5207,6 +5320,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   std::map<int, std::string> strip_face_rejections_;
   std::size_t strip_comparisons_ = 0;
   std::size_t pole_certificate_work_ = 0;
+  bool native_export_recovery_=false;
+  std::size_t export_boundary_work_=0;
+  std::string export_boundary_stop_;
+  std::map<int,std::string> export_boundary_rejections_;
   TopTools_IndexedMapOfShape strip_original_faces_;
 };
 
@@ -5613,8 +5730,9 @@ class NativeExportIndex {
   struct Node { Key key; double tolerance; };
   struct Sample { std::uint32_t index; gp_Pnt point; };
   struct Facet { int face,triangle; std::array<int,3> nodes; };
-  NativeExportIndex(const TopoDS_Shape& shape, const TopTools_IndexedMapOfShape& edges, double deflection)
-      : edges_(edges), deflection_(deflection) {
+  NativeExportIndex(const TopoDS_Shape& shape, const TopTools_IndexedMapOfShape& edges, double deflection,
+                    const std::string& recovery,const std::map<int,std::string>& rejections)
+      : edges_(edges), recovery_(recovery), rejections_(rejections), deflection_(deflection) {
     TopExp::MapShapes(shape,TopAbs_SHELL,shells_);
     TopExp::MapShapes(shape,TopAbs_VERTEX,vertices_);
     TopExp::MapShapesAndUniqueAncestors(shape,TopAbs_FACE,TopAbs_SHELL,face_shells_,false);
@@ -5763,7 +5881,16 @@ class NativeExportIndex {
     if (!invalid) return;
     std::ostringstream details; details.precision(12);
     details << "Native export topology is not a closed oriented mesh: " << invalid <<
-        " invalid links; " << shells_.Extent() << " native shells. Source face/link-use groups";
+        " invalid links; " << shells_.Extent() << " native shells; " << recovery_ << ". Restoration stages";
+    int stages=0;
+    for (const auto& face : face_groups) {
+      const auto rejection=rejections_.find(face.first);
+      if (rejection==rejections_.end() || rejection->second=="no mapped-native boundary shortcut" ||
+          rejection->second=="native boundary restored and full domain certified") continue;
+      details << " [face " << face.first << ' ' << rejection->second.substr(0,140) << ']';
+      if (++stages==10) break;
+    }
+    details << ". Source face/link-use groups";
     const auto groups=[&](const std::map<int,int>& source) {
       std::vector<std::pair<int,int>> ranked;
       for (const auto& entry : source) ranked.emplace_back(entry.second,entry.first);
@@ -5836,6 +5963,8 @@ class NativeExportIndex {
   std::vector<double> skipped_cross2_;
   std::map<int,int> skipped_faces_,positive_skipped_faces_,retained_small_faces_;
   std::map<int,Handle(Poly_Triangulation)> face_meshes_;
+  std::string recovery_;
+  std::map<int,std::string> rejections_;
   double deflection_;
   bool closed_=false;
   std::size_t node_work_=0,parameter_work_=0;
@@ -6026,6 +6155,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   mesher.ChangeParameters().Angle = angular;
   mesher.ChangeParameters().InParallel = true;
   auto* boundary_context = new TangentBoundaryMeshContext();
+  boundary_context->EnableNativeExportRecovery(native_export_precision);
   Handle(IMeshTools_Context) context = boundary_context;
   mesher.Perform(context, range);
   if (budget) budget->progress->check("meshing");
@@ -6109,11 +6239,12 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
       }
     }
   }
+  std::unique_ptr<NativeExportIndex> export_index;
+  if (native_export_precision) export_index=std::make_unique<NativeExportIndex>(shape,edge_map,linear,
+      boundary_context->ExportBoundaryRepairStop(),boundary_context->ExportBoundaryRejections());
   context->ChangeParameters().CleanModel = true;
   context->Clean();
   context.Nullify();
-  std::unique_ptr<NativeExportIndex> export_index;
-  if (native_export_precision) export_index=std::make_unique<NativeExportIndex>(shape,edge_map,linear);
   output.face_edge_offsets.push_back(0);
   for (int face_index = 1; face_index <= face_map.Extent(); ++face_index) {
     if (budget) budget->progress->check("mesh extraction");
