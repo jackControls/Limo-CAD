@@ -8437,8 +8437,55 @@ class NativeExportIndex {
     const auto assign = [&](int id,const Key& key,double tolerance) {
       if (id<1 || id>mesh->NbNodes() || !std::isfinite(tolerance) || tolerance<0.0)
         fail(face_index,"invalid boundary node/tolerance");
-      if (nodes[id].key[1]!=0 && nodes[id].key!=key)
-        fail(face_index,"node "+std::to_string(id)+" has conflicting native vertex/edge identities");
+      if (nodes[id].key[1]!=0 && nodes[id].key!=key) {
+        std::ostringstream detail;detail.precision(12);
+        const auto point=mesh->Node(id).Transformed(location.Transformation());
+        detail << "node " << id << " has conflicting native vertex/edge identities; world " <<
+            point.X() << '/' << point.Y() << '/' << point.Z();
+        if (mesh->HasUVNodes()) detail << " UV " << mesh->UVNode(id).X() << '/' << mesh->UVNode(id).Y();
+        const auto describe=[&](const char* label,const Key& identity,double tol) {
+          detail << "; " << label << " shell/kind/shape/slot " << identity[0] << '/' << identity[1] << '/' <<
+              identity[2]-1 << '/' << identity[3] << " tolerance " << tol;
+          if (identity[1]==1 && identity[2]>=1 && identity[2]<=vertices_.Extent()) {
+            const auto native=BRep_Tool::Pnt(TopoDS::Vertex(vertices_.FindKey(identity[2])));
+            detail << " native vertex XYZ " << native.X() << '/' << native.Y() << '/' << native.Z() <<
+                " node gap " << native.Distance(point);
+          } else if (identity[1]==2 && identity[2]>=1 && identity[2]<=edges_.Extent()) {
+            const auto parameters=edge_parameters_.find({identity[0],identity[2]});
+            if (parameters!=edge_parameters_.end() && identity[3]>=1 &&
+                static_cast<std::size_t>(identity[3])<=parameters->second.size()) {
+              const double parameter=parameters->second[identity[3]-1];
+              const auto native=BRepAdaptor_Curve(TopoDS::Edge(edges_.FindKey(identity[2]))).Value(parameter);
+              detail << " native parameter " << parameter << " curve XYZ " << native.X() << '/' << native.Y() << '/' <<
+                  native.Z() << " node gap " << native.Distance(point);
+            }
+          }
+        };
+        // Optional diagnostics cannot mask the original strict identity error.
+        try {
+          describe("existing",nodes[id].key,nodes[id].tolerance);describe("incoming",key,tolerance);
+          for (const auto& identities : {std::make_pair(nodes[id].key,key),std::make_pair(key,nodes[id].key)}) {
+            const auto& vertex_key=identities.first;const auto& edge_key=identities.second;
+            if (vertex_key[1]!=1 || edge_key[1]!=2 || vertex_key[2]<1 || vertex_key[2]>vertices_.Extent() ||
+                edge_key[2]<1 || edge_key[2]>edges_.Extent()) continue;
+            const auto vertex=TopoDS::Vertex(vertices_.FindKey(vertex_key[2]));
+            const auto edge=TopoDS::Edge(edges_.FindKey(edge_key[2]));int occurrences=0;
+            for (TopExp_Explorer explorer(edge,TopAbs_VERTEX);explorer.More();explorer.Next())
+              if (explorer.Current().IsSame(vertex)) ++occurrences;
+            detail << "; native vertex-in-edge occurrences " << occurrences;
+            const auto parameters=edge_parameters_.find({edge_key[0],edge_key[2]});
+            if (occurrences && parameters!=edge_parameters_.end() && edge_key[3]>=1 &&
+                static_cast<std::size_t>(edge_key[3])<=parameters->second.size()) {
+              const double native=BRep_Tool::Parameter(vertex,edge),sample=parameters->second[edge_key[3]-1];
+              const double roundoff=128.0*std::numeric_limits<double>::epsilon()*std::max({1.0,std::abs(native),std::abs(sample)});
+              detail << " vertex/sample parameters " << native << '/' << sample << " difference/roundoff " << std::abs(native-sample) << '/' << roundoff;
+            }
+          }
+        } catch (const Standard_Failure&) { detail << "; diagnostic OCCT exception"; }
+          catch (const std::exception&) { detail << "; diagnostic native exception"; }
+        std::fprintf(stderr,"Native export identity face %d: %s\n",face_index,detail.str().substr(0,2400).c_str());
+        fail(face_index,detail.str().substr(0,2400));
+      }
       nodes[id]={key,tolerance};
     };
     // Keep oriented occurrences: a seam has two polygons on the same face.
