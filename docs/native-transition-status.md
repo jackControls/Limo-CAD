@@ -94,6 +94,15 @@ share definition 14 and its four clearance bores, separately from upper-rail
 definition 12. Remaining pilots, geometry, joints and drawing/layout work are
 unfinished.
 
+On clean matched `08efc3e7`, physical top-face selection and the Hole dialog
+added the lower rail's two Ø3.5 mm, 32 mm deep, flat-bottom stretcher pilots at
+stock points `(14, 195, 90)` and `(14, 235, 90)` mm. The named feature and Ctrl+S
+produced the [lower-pilot checkpoint](../examples/checkpoints/garden-bench-lower-pilots-human-ui.limo):
+twenty features, seven definitions and ten occurrences, with both lower rails
+sharing the four side clearances and two top pilots. Read-only inspection of
+the saved parameters and exact live/archive comparison passed. Upper-rail top
+pilots and remaining post pilots, geometry, joints and drawings are unfinished.
+
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled
 native control and all installed payload hashes without rebuilding, promoting or

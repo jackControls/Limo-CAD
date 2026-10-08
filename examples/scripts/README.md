@@ -190,6 +190,18 @@ geometry and references.
     Top pilots, remaining post pilots, geometry, joints and drawing/layout work
     remain unfinished.
 
+23. On clean matched `08efc3e7`, select the lower rail's top face through the
+    viewport and add the two stretcher pilots through Hole. The face basis is
+    centred at `(14, 207.5, 90)` mm with U along X and V along Y: enter U/V
+    `(0, -12.5)` and `(0, 27.5)` for stock points `(14, 195, 90)` and
+    `(14, 235, 90)`. Use Ø3.5 mm, Distance 32 mm, Simple, Flat bottom, no flip.
+    Name the feature **Lower side rail / Stretcher top pilots Ø3.5 x 32 / Two positions**
+    and save. The [lower-pilot checkpoint](../checkpoints/garden-bench-lower-pilots-human-ui.limo)
+    has twenty features; both lower occurrences retain their placements and
+    share the new bores. Read-only archive inspection confirms every parameter
+    and an exact live/saved match. Upper-rail top pilots and remaining post
+    pilots, geometry, joints and drawing/layout work remain unfinished.
+
 Use the saved **Named Views** for a demonstration:
 
 1. Recall **01 / Front frame assembly**, **03 / Seat support frame** and
