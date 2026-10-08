@@ -28,6 +28,8 @@
 #include <BRepMesh_FaceChecker.hxx>
 #include <BRepMesh_GeomTool.hxx>
 #include <BRepMesh_SphereRangeSplitter.hxx>
+#include <BRepMesh_DelabellaMeshAlgoFactory.hxx>
+#include <IMeshTools_MeshAlgo.hxx>
 #include <IMeshData_Model.hxx>
 #include <IMeshData_Face.hxx>
 #include <IMeshData_Wire.hxx>
@@ -3046,6 +3048,35 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
  public:
   const std::string& BoundaryRepairStop() const { return boundary_repair_stop_; }
 
+  Standard_Boolean DiscretizeFaces(const Message_ProgressRange& range) override {
+    const auto& model = GetModel();
+    if (model.IsNull()) return false;
+    std::set<IMeshData::IFacePtr> eligible;
+    for (int fi = 0; fi < model->FacesNb(); ++fi) {
+      const auto& face = model->GetFace(fi);
+      if (face->GetSurface()->GetType() != GeomAbs_Sphere ||
+          (face->GetStatusMask() & ~IMeshData_Outdated) != 0) continue;
+      bool clean_wires = true;
+      for (int wi = 0; wi < face->WiresNb(); ++wi)
+        clean_wires &= face->GetWire(wi)->GetStatusMask() == 0;
+      if (clean_wires) eligible.insert(face.get());
+    }
+    if (!BRepMesh_Context::DiscretizeFaces(range)) return false;
+    int attempts = 0, successes = 0;
+    for (int fi = 0; fi < model->FacesNb() && attempts < 16 && range.More(); ++fi) {
+      const auto& face = model->GetFace(fi);
+      if (eligible.count(face.get()) == 0 || !face->IsSet(IMeshData_Failure) ||
+          (face->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Failure)) != 0) continue;
+      ++attempts;
+      if (retry_spherical_face(face, range)) ++successes;
+    }
+    boundary_repair_stop_ += ", spherical retries/successes " +
+        std::to_string(attempts) + '/' + std::to_string(successes);
+    if (attempts != successes)
+      boundary_repair_stop_ += " last rejection " + spherical_retry_stop_;
+    return true;
+  }
+
   Standard_Boolean HealModel() override {
     const auto& model = GetModel();
     if (model.IsNull()) return false;
@@ -3604,7 +3635,197 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   }
 
  private:
+  bool retry_spherical_face(const IMeshData::IFaceHandle& face,
+                            const Message_ProgressRange& range) {
+    spherical_retry_stop_ = "eligibility or boundary check";
+    struct RollbackFailure : std::runtime_error {
+      RollbackFailure() : std::runtime_error("OCCT could not restore a failed spherical mesh retry") {}
+    };
+    try {
+      TopLoc_Location old_location;
+      if (!BRep_Tool::Triangulation(face->GetFace(), old_location).IsNull()) return false;
+      BRepMesh_FaceChecker checker(face, GetParameters());
+      if (!checker.Perform()) return false;
+      struct Boundary {
+        IMeshData::IPCurveHandle pcurve;
+        IMeshData::ICurveHandle curve;
+        std::vector<int> indices;
+      };
+      std::vector<Boundary> boundaries;
+      std::vector<IMeshData::IWireHandle> wires;
+      double expected_uv_area = 0.0;
+      int count = 0;
+      for (int wi = 0; wi < face->WiresNb(); ++wi) {
+        const auto& wire = face->GetWire(wi);
+        if (wire->GetStatusMask() != 0) return false;
+        wires.push_back(wire);
+        std::vector<gp_Pnt2d> polygon;
+        for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
+          const auto& edge = wire->GetEdge(ei);
+          const auto& pc = edge->GetPCurve(face.get(), wire->GetEdgeOrientation(ei));
+          const auto& curve = edge->GetCurve();
+          if (pc.IsNull() || pc->ParametersNb() < 2 ||
+              pc->ParametersNb() != curve->ParametersNb() ||
+              (count += pc->ParametersNb()) > 4096 || boundaries.size() >= 16) return false;
+          Boundary boundary{pc, curve, {}};
+          for (int i = 0; i < pc->ParametersNb(); ++i)
+            boundary.indices.push_back(pc->GetIndex(i));
+          boundaries.push_back(std::move(boundary));
+          for (int i = 0; i < pc->ParametersNb() - 1; ++i)
+            polygon.push_back(pc->GetPoint(wire->GetEdgeOrientation(ei) == TopAbs_REVERSED ?
+                pc->ParametersNb() - 1 - i : i));
+        }
+        if (polygon.size() < 3) return false;
+        const auto origin = polygon.front().Coord();
+        for (std::size_t i = 0; i < polygon.size(); ++i)
+          expected_uv_area += 0.5 * (polygon[i].Coord() - origin).Crossed(
+              polygon[(i + 1) % polygon.size()].Coord() - origin);
+      }
+      if (!std::isfinite(expected_uv_area) || expected_uv_area == 0.0) return false;
+      const int old_status = face->GetStatusMask();
+      const auto rollback = [&]() {
+        face->UnsetStatus(static_cast<IMeshData_Status>(face->GetStatusMask()));
+        face->SetStatus(static_cast<IMeshData_Status>(old_status));
+        for (const auto& wire : wires)
+          wire->UnsetStatus(static_cast<IMeshData_Status>(wire->GetStatusMask()));
+        for (const auto& boundary : boundaries)
+          for (int i = 0; i < static_cast<int>(boundary.indices.size()); ++i)
+            boundary.pcurve->GetIndex(i) = boundary.indices[i];
+        try {
+          BRep_Builder().UpdateFace(face->GetFace(), Handle(Poly_Triangulation)());
+        } catch (const Standard_Failure&) {
+          throw RollbackFailure();
+        } catch (const std::exception&) {
+          throw RollbackFailure();
+        }
+      };
+      try {
+        // Retry only the failed face, before ModelPostProcessor attaches shared
+        // edge polygons. Both factories consume the identical discrete boundary.
+        BRepMesh_DelabellaMeshAlgoFactory factory;
+        const auto algorithm = factory.GetAlgo(GeomAbs_Sphere, GetParameters());
+        if (algorithm.IsNull()) return false;
+        algorithm->Perform(face, GetParameters(), range);
+        TopLoc_Location location;
+        const auto triangulation = BRep_Tool::Triangulation(face->GetFace(), location);
+        bool valid = !triangulation.IsNull() && triangulation->HasUVNodes() &&
+            triangulation->NbNodes() >= 3 && triangulation->NbNodes() <= 8192 &&
+            triangulation->NbTriangles() > 0 && triangulation->NbTriangles() <= 16384 &&
+            std::isfinite(triangulation->Deflection()) && triangulation->Deflection() >= 0.0 &&
+            (face->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Failure)) == 0;
+        spherical_retry_stop_ = "no complete triangulation or unexpected status";
+        const auto finite = [](const gp_Pnt& point) {
+          return std::isfinite(point.X()) && std::isfinite(point.Y()) && std::isfinite(point.Z());
+        };
+        const double deflection = GetParameters().Deflection;
+        const double radius = face->GetSurface()->Sphere().Radius();
+        valid &= std::isfinite(deflection) && deflection > 0.0 &&
+            std::isfinite(radius) && radius > 0.0;
+        std::map<std::pair<int, int>, int> links;
+        std::set<std::pair<int, int>> boundary_links;
+        double actual_uv_area = 0.0, uv_area_scale = 0.0;
+        const auto link = [](int a, int b) { return std::make_pair(std::min(a, b), std::max(a, b)); };
+        if (valid) {
+          for (int i = 1; i <= triangulation->NbNodes() && valid; ++i) {
+            spherical_retry_stop_ = "nonfinite node";
+            const auto uv = triangulation->UVNode(i);
+            valid &= finite(triangulation->Node(i)) && std::isfinite(uv.X()) && std::isfinite(uv.Y());
+          }
+          for (int ti = 1; ti <= triangulation->NbTriangles() && valid; ++ti) {
+            spherical_retry_stop_ = "invalid triangle index";
+            int ids[3]; triangulation->Triangle(ti).Get(ids[0], ids[1], ids[2]);
+            for (int id : ids) valid &= id >= 1 && id <= triangulation->NbNodes();
+            if (!valid || ids[0] == ids[1] || ids[1] == ids[2] || ids[2] == ids[0]) {
+              valid = false; break;
+            }
+            gp_Pnt points[3]; gp_Pnt2d uv[3];
+            double source_error = 0.0, diameter = 0.0;
+            for (int i = 0; i < 3; ++i) {
+              points[i] = triangulation->Node(ids[i]).Transformed(location.Transformation());
+              uv[i] = triangulation->UVNode(ids[i]);
+              const auto source = face->GetSurface()->Value(uv[i].X(), uv[i].Y());
+              if (!finite(points[i]) || !finite(source)) { valid = false; break; }
+              source_error = std::max(source_error, points[i].Distance(source));
+              ++links[link(ids[i], ids[(i + 1) % 3])];
+            }
+            if (!valid) break;
+            const double area_squared = gp_Vec(points[0], points[1]).Crossed(
+                gp_Vec(points[0], points[2])).SquareMagnitude();
+            spherical_retry_stop_ = "zero area or incorrect UV winding";
+            valid &= std::isfinite(area_squared) && area_squared > 0.0;
+            const double triangle_uv_area = 0.5 * (uv[1].Coord() - uv[0].Coord()).Crossed(
+                uv[2].Coord() - uv[0].Coord());
+            valid &= std::isfinite(triangle_uv_area) && triangle_uv_area != 0.0 &&
+                std::signbit(triangle_uv_area) == std::signbit(expected_uv_area);
+            actual_uv_area += std::abs(triangle_uv_area);
+            for (int i = 0; i < 3; ++i)
+              for (int j = i + 1; j < 3; ++j)
+                diameter = std::max(diameter, std::abs(uv[i].X() - uv[j].X()) +
+                    std::abs(uv[i].Y() - uv[j].Y()));
+            uv_area_scale += diameter * diameter;
+            // A sphere's directional second derivative is bounded by
+            // radius*(|du|+|dv|)^2. This bounds interpolation error across the
+            // entire triangle, including its original 3D boundary-node error.
+            const double error_bound = source_error + 0.5 * radius * diameter * diameter;
+            if (valid) spherical_retry_stop_ = "sphere deflection bound";
+            valid &= std::isfinite(error_bound) && error_bound <= deflection;
+          }
+          for (const auto& boundary : boundaries) {
+            for (int i = 0; i < boundary.pcurve->ParametersNb() && valid; ++i) {
+              spherical_retry_stop_ = "shared boundary node mismatch";
+              const int id = boundary.pcurve->GetIndex(i);
+              if (id < 1 || id > triangulation->NbNodes()) { valid = false; break; }
+              const auto point = triangulation->Node(id).Transformed(location.Transformation());
+              const auto& original = boundary.curve->GetPoint(i);
+              // No tolerance-sized replacement of a shared 3D boundary sample.
+              valid &= finite(original) && point.Distance(original) <= Precision::Confusion() &&
+                  triangulation->UVNode(id).Distance(boundary.pcurve->GetPoint(i)) <= Precision::PConfusion();
+              if (i > 0) {
+                const int previous = boundary.pcurve->GetIndex(i - 1);
+                if (previous == id) {
+                  valid &= original.Distance(boundary.curve->GetPoint(i - 1)) <= Precision::Confusion();
+                } else boundary_links.insert(link(previous, id));
+              }
+            }
+          }
+          if (valid) spherical_retry_stop_ = "incomplete or nonmanifold boundary";
+          for (const auto& entry : links)
+            valid &= entry.second == (boundary_links.count(entry.first) ? 1 : 2);
+          for (const auto& entry : boundary_links)
+            valid &= links.count(entry) != 0 && links[entry] == 1;
+          const double area_roundoff = 64.0 * std::numeric_limits<double>::epsilon() * uv_area_scale;
+          if (valid) spherical_retry_stop_ = "UV domain coverage";
+          valid &= std::isfinite(actual_uv_area) && std::isfinite(area_roundoff) &&
+              std::abs(actual_uv_area - std::abs(expected_uv_area)) <= area_roundoff;
+        }
+        if (valid) spherical_retry_stop_ = "wire status or cancelled operation";
+        for (const auto& wire : wires) valid &= wire->GetStatusMask() == 0;
+        if (!valid || !range.More()) { rollback(); return false; }
+        triangulation->Deflection(deflection);
+        // The original generic Failure is cleared only after a complete,
+        // conforming triangulation exists; other failure bits are never cleared.
+        face->UnsetStatus(IMeshData_Failure);
+        return true;
+      } catch (const RollbackFailure&) {
+        throw;
+      } catch (const Standard_Failure&) {
+        spherical_retry_stop_ = "OCCT exception";
+        rollback(); return false;
+      } catch (const std::exception&) {
+        spherical_retry_stop_ = "exception";
+        rollback(); return false;
+      }
+    } catch (const RollbackFailure&) {
+      throw;
+    } catch (const Standard_Failure&) {
+      return false;
+    } catch (const std::exception&) {
+      return false;
+    }
+  }
+
   std::string boundary_repair_stop_ = "not run";
+  std::string spherical_retry_stop_;
 };
 
 // Optional diagnostics of a failed face's actual meshing domain. This does not
