@@ -5225,8 +5225,13 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       // Bisect an unconstrained interior edge in BOTH incident cells. Retire
       // any prior neighbor certificate, and qualify all new cells again;
       // native boundary links remain unchanged and no hanging node survives.
-      while (!pending.empty()) {
-        const int cell_index=pending.back();pending.pop_back();
+      std::size_t pending_cursor=0;
+      while (lookahead ? pending_cursor<pending.size() : !pending.empty()) {
+        // The primary policy retains its qualified LIFO trajectory. Fair
+        // processing in the independent alternate avoids exhausting one
+        // radial lineage before its still-coarse neighboring owners.
+        const int cell_index=lookahead ? pending[pending_cursor++] : pending.back();
+        if (!lookahead) pending.pop_back();
         if (!cells[cell_index].active || cells[cell_index].qualified) continue;
         const auto cell=cells[cell_index];
         if (++inspected>8192 || active_count>4096 || cells.size()>16384) { strip_stop_="whole-face refinement cell budget";return false; }

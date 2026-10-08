@@ -28,15 +28,18 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `64472748` opens the complete
+Current October 8 Medix qualification: clean matched `2cccc3d8` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
-536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused: the `cb464867`
-trial reduced invalid boundary links to 49, while the latest split-strategy
-trial regressed to 72, both with no multiply used links. Connector caps and
+536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 49 invalid
+boundary links and no multiply used links across 33 native shells. Restoring
+the original split policy recovers the 37 repaired faces lost by the earlier
+lookahead regression to 72 links. Connector caps and
 independent pole proposals now qualify. A bounded fallback to the earlier
-split strategy now retains its primary trajectory and defers alternate trials;
-remaining source-angle failures and curved trim crossings are under investigation.
+split strategy retains its primary trajectory and defers alternate trials.
+The next candidate processes only that alternate queue in FIFO order within
+the unchanged budgets; its GUI qualification is pending. Remaining source-angle
+failures and curved trim sampling are under investigation.
 All 70 installed payload hashes match the clean manifest. No successful 3MF or
 native-precision-qualified STL is claimed. The Medix notes below record earlier
 trials; they do not supersede this current qualification.
@@ -84,6 +87,21 @@ wire/face status and boundary-index snapshots within the same cumulative caps.
 Bounded stderr diagnostics include failed triangle coordinates and source
 normals, plus exact trimmed source-PCurve intersection status/counts and quarter
 chord errors; they change no precision or topology acceptance checks.
+
+Actual guarded GUI export on clean matched `2cccc3d8` restores 49 invalid links,
+37 repaired faces and 41 added triangles, with 99 attempts and no multiply used
+links. Its saved model still matches exactly and read-only inspection reports
+zero scene errors and zero display warnings. The failing face 2449 alternate
+repeatedly shrinks a tiny unconstrained interior edge while leaving two long
+interior edges coarse. FIFO processing of that alternate queue is the next
+bounded candidate; the primary LIFO trajectory remains unchanged.
+
+Exact interval diagnostics on faces 8033/8014 report a completed native trimmed
+PCurve intersection calculation with zero points and overlaps for the two
+reported crossing chord pairs. This establishes separation only for those
+specific source intervals. Their sampled chords cross despite native curve
+separation; a shared native edge sampling repair is being designed independently.
+No successful native-precision STL or 3MF is claimed.
 
 The actual guarded GUI export on clean matched `7c235990` still reports 86
 unmatched links. Native curve diagnostics rule out zero-area incidence loss on
