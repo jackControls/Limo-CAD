@@ -157,8 +157,18 @@ geometry and references.
     through the physical Ctrl+S shortcut. The saved project has eighteen features
     and seven bodies; the lower stock is still at its source origin and has no
     bores, appearance or component definition. Its reusable definition must remain
-    separate from the upper rail. Lower-rail clearance bores and placements,
-    other post pilots, joints, drawing sheets and print layouts remain unfinished.
+    separate from the upper rail.
+20. On clean matched `7c235990`, isolate the lower stock, select its outward −X
+    face and create **Lower side rail / Post clearances Ø5.5 x 28 / Four positions**
+    through the Hole dialog. Enter `(32.5, 40)`, `(32.5, 75)`, `(382.5, 40)` and
+    `(382.5, 75)`, committing numeric fields with Tab. Set simple style, 5.5 mm
+    diameter, 28 mm distance, flat bottom and no flip. Physical Undo removes the
+    bores; Redo restores their feature identity, positions and name. Save with
+    Ctrl+S. The new [lower-clearance checkpoint](../checkpoints/garden-bench-lower-clearances-human-ui.limo)
+    has nineteen features, seven bodies, six definitions and eight occurrences;
+    its live model matches the archive. The original stock checkpoint remains
+    preserved. Lower-rail appearance, its separate definition and placements,
+    remaining pilots, joints, drawing sheets and print layouts remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 

@@ -38,6 +38,27 @@ STEP and document. All 70 installed payload hashes match. No successful 3MF or
 native-precision-qualified STL is claimed. The Medix notes below record earlier
 trials chronologically; they do not supersede this current qualification.
 
+The actual guarded GUI export on clean matched `7c235990` still reports 86
+unmatched links. Native curve diagnostics rule out zero-area incidence loss on
+the leading sphere faces: all ten existing facets have positive area, but native
+trim samples are missing from their mesh. Their crossing chords correspond to
+nearly coincident source curves, with approximately 1.407e-7 mm native separation
+and recorded tolerances of approximately 0.0483 mm. This observation alone does
+not prove continuous curves are disjoint. `96b567a7` adds export-only continuous
+intersection qualification and f64 strip witnesses; actual GUI qualification
+of that repair remains pending. Export is still blocked; no mesh guard is waived.
+
+The clean matched `7c235990` bench session now has a separate preserved
+[lower-clearance checkpoint](../examples/checkpoints/garden-bench-lower-clearances-human-ui.limo)
+with nineteen features. Four lower-rail bores were created through the physical
+Hole dialog at U/V `(32.5, 40)`, `(32.5, 75)`, `(382.5, 40)`, `(382.5, 75)`, using
+5.5 mm diameter, 28 mm distance, simple style, flat bottoms and no flip. The
+feature is named; physical Undo/Redo and Ctrl+S restored the same feature and
+positions, and the saved model matches the live document. The original bench
+checkpoint remains unchanged. The lower rail remains unplaced source stock,
+with no appearance or separate component definition yet; upper and lower rail
+definitions must remain separate. This does not complete the bench walkthrough.
+
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled
 native control and all installed payload hashes without rebuilding, promoting or
