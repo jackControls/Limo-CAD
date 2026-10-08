@@ -60,11 +60,11 @@ Bevy GUI and MCP builds at `abf4667d`. This checkpoint has 53 named features,
 It reaches the continuous arm supports; it is not the complete bench recipe.
 
 The separate [human-operated checkpoint](../checkpoints/garden-bench-human-ui.limo)
-records the Windows UI walkthrough through `f055cc02` on 7 October 2026.
-It contains sixteen named features, four separately defined and placed posts,
+records the Windows UI walkthrough through `0db4c009` on 7 October 2026.
+It contains eighteen named features, four separately defined and placed posts,
 two shared long-apron occurrences, two shared upper side rails, two left-front apron pilots,
 six right-front rail/arm pilots, six shared apron clearance positions,
-four shared upper-rail clearance positions and five
+four shared upper-rail clearance positions, a separate lower-rail stock and five
 presentation views. The three-model walkthrough is still in progress.
 Every modeling change used real mouse/keyboard input through
 the optional Rust `native-computer-control` feature, with no recipe replay or
@@ -148,8 +148,17 @@ geometry and references.
     Review from Left and Right, with a close-up. Undo/Redo preserves their IDs
     and poses and restores the feature name and positions. Save **05 / Upper
     side rails and post clearances** with all six bodies visible, then save.
-    Other post pilots, lower-rail clearance bores, lower side rails, joints, drawing
-    sheets and print layouts remain unfinished.
+19. On matched clean GUI/MCP build `0db4c009`, open this checkpoint in a separate
+    tab while preserving other open documents. Create **Lower side rail / stock
+    from A-B-C** on XY, with an origin-coincident 28 × 415 mm rectangle and two
+    driving dimensions. Read-only inspection confirms zero degrees of freedom.
+    Create a separate body with **Lower side rail / Stock 90 mm**, using Create
+    Body, 90 mm distance, zero taper and no flip. Rename both features and save
+    through the physical Ctrl+S shortcut. The saved project has eighteen features
+    and seven bodies; the lower stock is still at its source origin and has no
+    bores, appearance or component definition. Its reusable definition must remain
+    separate from the upper rail. Lower-rail clearance bores and placements,
+    other post pilots, joints, drawing sheets and print layouts remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 

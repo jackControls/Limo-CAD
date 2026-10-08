@@ -30,9 +30,11 @@ qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
-through `f055cc02`. It contains sixteen named features, four separate posts,
+through `0db4c009`. It contains eighteen named features, four separate posts,
 two shared aprons, two shared upper side rails, eight post pilots, six shared apron clearance positions,
-four shared upper-rail clearance positions and five named views. UI checks cover fully
+four shared upper-rail clearance positions, a separate 28 × 415 × 90 mm lower-rail
+stock and five named views. The lower stock is fully constrained but still has no
+bores, component definition, appearance or assembly placement. UI checks cover fully
 constrained stock, translated/rotated shared editing, precise multi-position Hole
 editing, instance removal and Undo/Redo. The [walkthrough](../examples/scripts/README.md)
 states its unfinished geometry, joints, drawings and print layouts. The vise and
