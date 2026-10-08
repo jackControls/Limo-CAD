@@ -38,7 +38,7 @@ mod tests {
             ),
             (
                 "arm-runner-shell-preflight.test.ps1",
-                "PASS: 27 managed shell-preflight cases",
+                "PASS: 40 managed shell-preflight cases",
             ),
         ] {
             let output = std::process::Command::new("powershell.exe")

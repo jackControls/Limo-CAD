@@ -20,12 +20,7 @@ pub(super) fn send_key(
             "Owned CAD activation did not complete; no key was sent: {focused}"
         );
         let activated = observe()?;
-        ensure!(
-            activated["owner"] == observed["owner"]
-                && activated["window_handle"] == observed["window_handle"]
-                && activated["target_kind"] == observed["target_kind"],
-            "CAD document or window changed during activation; no key was sent"
-        );
+        require_same_target(&observed, &activated)?;
         ensure!(
             activated["foreground"] == true,
             "CAD lost foreground after activation; no key was sent"
@@ -40,6 +35,16 @@ pub(super) fn send_key(
         "Key did not complete; do not retry blindly: {receipt}"
     );
     Ok(receipt)
+}
+
+pub(super) fn require_same_target(expected: &Value, actual: &Value) -> Result<()> {
+    ensure!(
+        actual["owner"] == expected["owner"]
+            && actual["window_handle"] == expected["window_handle"]
+            && actual["target_kind"] == expected["target_kind"],
+        "CAD document or window changed during foreground preparation; no key was sent"
+    );
+    Ok(())
 }
 
 #[cfg(test)]

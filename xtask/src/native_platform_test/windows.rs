@@ -3,7 +3,7 @@ use crate::replay::Client;
 use anyhow::{bail, ensure, Context, Result};
 use serde_json::{json, Value};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     fs,
     io::{Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -22,6 +22,7 @@ pub(crate) struct Driver {
     process_instance: String,
     window_id: String,
     diagnostics: PathBuf,
+    preparation_sequence: Cell<u32>,
     client: RefCell<Client>,
 }
 
@@ -59,6 +60,7 @@ impl Driver {
             process_instance: lease.process_instance,
             window_id: lease.window_id,
             diagnostics: out.join("input-helper.jsonl"),
+            preparation_sequence: Cell::new(0),
             client: RefCell::new(client),
         })
     }
@@ -96,6 +98,29 @@ impl Driver {
             "Computer observation did not qualify the owned CAD window: {observed}"
         );
         self.check_process()?;
+        Ok(observed)
+    }
+
+    fn observe_key_target(&self) -> Result<Value> {
+        let observed = self.observe()?;
+        if observed["foreground"] != true && hosted_arm_desktop() {
+            let foreground = foreground_diagnostics();
+            self.record(
+                "prepare-before-key",
+                &json!({"observed_owner":observed["owner"],"foreground_window":foreground}),
+            )?;
+            let sequence = self.preparation_sequence.get() + 1;
+            self.preparation_sequence.set(sequence);
+            let evidence = self
+                .diagnostics
+                .parent()
+                .context("Native input evidence directory")?
+                .join(format!("runner-input-desktop-{sequence}.json"));
+            prepare_hosted_arm_desktop_at(&evidence, foreground["hwnd"].as_u64())?;
+            let prepared = self.observe()?;
+            super::keyboard::require_same_target(&observed, &prepared)?;
+            return Ok(prepared);
+        }
         Ok(observed)
     }
 
@@ -180,7 +205,7 @@ impl Driver {
                 };
                 super::keyboard::send_key(
                     key,
-                    || self.observe(),
+                    || self.observe_key_target(),
                     |observed, request| {
                         if request["action"] == "focus" {
                             self.record(
@@ -536,29 +561,40 @@ fn foreground_diagnostics() -> Value {
         "process":process,"still_foreground":unsafe { GetForegroundWindow() == hwnd }})
 }
 
-// Runner shell windows can become foreground after startup. This preparation
-// only closes individually qualified disposable-runner system windows; real
-// input still goes through the unchanged Rust owner/foreground guards.
+// Runner prompts can take foreground after startup. Prepare only individually
+// qualified disposable-runner windows, then use the unchanged input guards.
 fn prepare_hosted_arm_desktop(out: &Path) -> Result<()> {
-    if std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true")
-        || std::env::var("RUNNER_ENVIRONMENT").as_deref() != Ok("github-hosted")
-        || std::env::var("RUNNER_ARCH").as_deref() != Ok("ARM64")
-    {
+    prepare_hosted_arm_desktop_at(&out.join("runner-ready-desktop.json"), None)
+}
+
+fn hosted_arm_desktop() -> bool {
+    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+        && std::env::var("RUNNER_ENVIRONMENT").as_deref() == Ok("github-hosted")
+        && std::env::var("RUNNER_ARCH").as_deref() == Ok("ARM64")
+}
+
+fn prepare_hosted_arm_desktop_at(evidence: &Path, window: Option<u64>) -> Result<()> {
+    if !hosted_arm_desktop() {
         return Ok(());
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .context("Repository root")?;
     use std::os::windows::process::CommandExt;
-    let output = Command::new("pwsh.exe")
+    let mut command = Command::new("pwsh.exe");
+    command
         .creation_flags(0x08000000)
         .args(["-NoProfile", "-NonInteractive", "-File"])
         .arg(root.join("scripts/prepare-hosted-arm-desktop.ps1"))
         .arg("-EvidencePath")
-        .arg(out.join("runner-ready-desktop.json"))
-        .stdin(Stdio::null())
+        .arg(evidence)
+        .stdin(Stdio::null());
+    if let Some(window) = window {
+        command.arg("-Window").arg(window.to_string());
+    }
+    let output = command
         .output()
-        .context("Prepare the disposable ARM64 desktop after GUI readiness")?;
+        .context("Prepare the disposable ARM64 input desktop")?;
     ensure!(
         output.status.success(),
         "ARM64 ready-desktop preparation failed: {}",
