@@ -60,6 +60,26 @@
     "ordered_vertex_coordinate_mismatches": 0,
     "opposing_stl_normals": 0
   },
+  "fresh_original_import": {
+    "source_revision": "d8b29c3f058726dfdea8cee859e58290b27e25e3",
+    "source_modified": false,
+    "build_pair": "matched",
+    "verified_payload_hashes": 70,
+    "executable_sha256": "d9294a2f687ffbd18f5bde6d28ebfdbff20e2db700218a9d1568a227be4d9f9f",
+    "cad_file": "Medix KW22 v4 - fresh native precision human UI.limo",
+    "live_matches_saved_model": true,
+    "saved_model_matches_prior_import": true,
+    "scene_errors": 0,
+    "display_warnings": 0,
+    "native_export_accepted": true,
+    "three_mf_file": "Medix KW22 v4 - fresh native precision human UI.3mf",
+    "three_mf_matches_prior_package_bytes": true,
+    "three_mf_sha256": "3196c28b2830e5bc0c31ac8e758805305b9181eed1ffab1adeecb6137756354a",
+    "ordered_stl_coordinate_mismatches": 0,
+    "session_storage_override": "LIMO_CAD_SESSION_DIR",
+    "print_cache_override": "LIMO_CAD_PRINT_CACHE",
+    "prior_session_and_recovery_data_preserved": true
+  },
   "limits": {
     "default_bed_layout_issues": ["below_bed", "outside_bed", "arrangement_does_not_fit"],
     "physical_printing_qualified": false,

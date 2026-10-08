@@ -67,6 +67,15 @@ placement. This does not qualify physical printing. These results qualify the
 local Windows GUI path; the complete three-model walkthrough remains unfinished.
 The Medix notes below record earlier trials and do not supersede this result.
 
+A fresh blank-window import of the original Downloads STEP on clean matched
+`d8b29c3f` independently reproduces that result. Its saved model exactly matches
+the prior import, its native export check passes, and its actual GUI 3MF is
+byte-identical to the qualified package above. Read-only inspection again finds
+zero invalid directed-edge links and exact agreement with the qualified STL.
+The managed GUI and operator now both use the supported `LIMO_CAD_SESSION_DIR`
+and `LIMO_CAD_PRINT_CACHE` overrides on D: to reduce pressure on C:. The original
+session, document, settings and recovery files remain preserved.
+
 The subsequent clean matched `35722a50` GUI export still reports 86 unmatched
 links. Three continuous source intersections are now qualified, but the thin
 three-edge strips are refused as nonsimple or unoriented. The next candidate
