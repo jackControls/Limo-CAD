@@ -230,7 +230,7 @@ pub struct BambuVolumeGeometry {
     pub target_uuid: Option<String>,
     pub name: String,
     pub subtype: String,
-    pub positions: Vec<f32>,
+    pub positions: Vec<f64>,
     pub indices: Vec<u32>,
     pub world_transform: [f64; 12],
     pub world_bounds: limo_cad_core::PrintModifierBoundsDto,
@@ -247,7 +247,7 @@ pub fn read_bambu_volume_geometry(bytes: &[u8]) -> Result<Vec<BambuVolumeGeometr
             let component = template.targets[&(object.object_id, part.part_id)].component_transform;
             for instance in 0..object.instance_count {
                 expanded_geometry_bytes = expanded_geometry_bytes
-                    .checked_add((mesh.positions.len() as u64 + mesh.indices.len() as u64) * 4)
+                    .checked_add(mesh.positions.len() as u64 * 8 + mesh.indices.len() as u64 * 4)
                     .ok_or_else(|| err("Native geometry readback size overflow"))?;
                 if geometry.len() >= 4096 || expanded_geometry_bytes > MAX_EXPANDED {
                     return fail("Native geometry readback exceeds 4096 volume instances or 512 MiB; reduce the project before diagnostics");
@@ -263,7 +263,7 @@ pub fn read_bambu_volume_geometry(bytes: &[u8]) -> Result<Vec<BambuVolumeGeometr
                 for point in mesh.positions.as_chunks::<3>().0 {
                     for axis in 0..3 {
                         let coordinate = (0..3)
-                            .map(|index| world.0[axis * 4 + index] * f64::from(point[index]))
+                            .map(|index| world.0[axis * 4 + index] * point[index])
                             .sum::<f64>()
                             + world.0[axis * 4 + 3];
                         if !coordinate.is_finite() {
@@ -2034,8 +2034,8 @@ fn mesh_center(mesh: &TriangleMesh) -> [f64; 3] {
     let mut high = [f64::NEG_INFINITY; 3];
     for point in mesh.positions.as_chunks::<3>().0 {
         for (axis, value) in point.iter().enumerate() {
-            low[axis] = low[axis].min(f64::from(*value));
-            high[axis] = high[axis].max(f64::from(*value));
+            low[axis] = low[axis].min(*value);
+            high[axis] = high[axis].max(*value);
         }
     }
     std::array::from_fn(|axis| (low[axis] + high[axis]) * 0.5)
@@ -2059,9 +2059,9 @@ fn mesh_xml(mesh: &TriangleMesh, offset: [f64; 3]) -> String {
     for [x, y, z] in mesh.positions.as_chunks::<3>().0 {
         out.push_str(&format!(
             "<vertex x=\"{}\" y=\"{}\" z=\"{}\"/>",
-            f64::from(*x) - offset[0],
-            f64::from(*y) - offset[1],
-            f64::from(*z) - offset[2]
+            *x - offset[0],
+            *y - offset[1],
+            *z - offset[2]
         ));
     }
     out.push_str("</vertices><triangles>");
@@ -2598,7 +2598,7 @@ fn verify_readback(
                     .ok_or_else(|| err("Missing readback coordinate"))?
                     .parse::<f64>()
                     .map_err(err)?;
-                if (actual + offset[axis] - f64::from(point[axis])).abs() > 1e-5 {
+                if (actual + offset[axis] - point[axis]).abs() > 1e-5 {
                     return fail("Written mesh geometry differs from canonical source");
                 }
             }

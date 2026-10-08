@@ -70,7 +70,7 @@ fn mesh_from_boxes(body_id: BodyId, name: &str, boxes: &[[f32; 6]]) -> TriangleM
     for &[xmin, xmax, ymin, ymax, zmin, zmax] in boxes {
         let (p, i) = box_solid(xmin, xmax, ymin, ymax, zmin, zmax);
         let base = (positions.len() / 3) as u32;
-        positions.extend(p);
+        positions.extend(p.into_iter().map(f64::from));
         indices.extend(i.into_iter().map(|v| v + base));
     }
     TriangleMesh {
@@ -402,8 +402,8 @@ mod tests {
             .0
             .iter()
             .map(|p| p[2])
-            .fold(f32::MAX, f32::min);
-        assert!(min_z >= 2.5 + CLEAR_MM - 1e-3);
+            .fold(f64::MAX, f64::min);
+        assert!(min_z >= 2.5 + f64::from(CLEAR_MM) - 1e-3);
     }
 
     #[test]
@@ -421,7 +421,7 @@ mod tests {
                 .0
                 .iter()
                 .map(|p| p[2])
-                .fold(f32::MAX, f32::min)
+                .fold(f64::MAX, f64::min)
                 >= -1e-3
         }));
     }

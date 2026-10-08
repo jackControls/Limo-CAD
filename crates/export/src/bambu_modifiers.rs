@@ -65,7 +65,7 @@ pub(super) fn read_mesh(
             if !value.is_finite() || value.abs() > 10_000_000. {
                 return fail("Modifier mesh coordinate is outside supported bounds");
             }
-            mesh.positions.push(value as f32);
+            mesh.positions.push(value);
         }
     }
     for triangle in node
@@ -120,10 +120,10 @@ fn same_geometry(
 }
 
 pub(super) fn same_world_geometry(
-    left_positions: &[f32],
+    left_positions: &[f64],
     left_indices: &[u32],
     left_pose: Matrix,
-    right_positions: &[f32],
+    right_positions: &[f64],
     right_indices: &[u32],
     right_pose: Matrix,
 ) -> Result<bool, ExportError> {
@@ -151,14 +151,12 @@ pub(super) fn same_world_geometry(
             return fail("Native geometry comparison received malformed mesh buffers");
         }
     }
-    let points = |positions: &[f32], indices: &[u32; 3]| {
-        indices.map(|index| {
-            std::array::from_fn(|axis| f64::from(positions[index as usize * 3 + axis]))
-        })
+    let points = |positions: &[f64], indices: &[u32; 3]| {
+        indices.map(|index| std::array::from_fn(|axis| positions[index as usize * 3 + axis]))
     };
     for (positions, pose) in [(left_positions, left_pose), (right_positions, right_pose)] {
         if positions.as_chunks::<3>().0.iter().any(|point| {
-            transform(pose, point.map(f64::from))
+            transform(pose, *point)
                 .iter()
                 .any(|coordinate| !coordinate.is_finite() || coordinate.abs() > 1e12)
         }) {
@@ -536,7 +534,7 @@ pub(super) fn append(
                     .as_chunks::<3>()
                     .0
                     .iter()
-                    .map(|point| transform(local, point.map(f64::from))),
+                    .map(|point| transform(local, *point)),
             );
             let object = template
                 .summary
@@ -559,7 +557,7 @@ pub(super) fn append(
                         .as_chunks::<3>()
                         .0
                         .iter()
-                        .map(|point| transform(sibling_pose, point.map(f64::from))),
+                        .map(|point| transform(sibling_pose, *point)),
                 );
                 if bounds_overlap(zone_bounds, sibling_bounds) {
                     return Err(err(format!(
@@ -624,7 +622,7 @@ pub(super) fn append(
                         .as_chunks::<3>()
                         .0
                         .iter()
-                        .map(|point| transform(world, point.map(f64::from))),
+                        .map(|point| transform(world, *point)),
                 );
                 let mut sources = parent.effective_sources.clone();
                 sources.extend(
@@ -793,9 +791,7 @@ fn primitive_mesh(modifier: &PrintModifierDto) -> Result<TriangleMesh, ExportErr
                 corners
                     .into_iter()
                     .flat_map(|point| {
-                        std::array::from_fn::<_, 3, _>(|axis| {
-                            (point[axis] * size_mm[axis] * 0.5) as f32
-                        })
+                        std::array::from_fn::<_, 3, _>(|axis| point[axis] * size_mm[axis] * 0.5)
                     })
                     .collect(),
                 vec![
@@ -820,21 +816,10 @@ fn primitive_mesh(modifier: &PrintModifierDto) -> Result<TriangleMesh, ExportErr
             for z in [-height_mm * 0.5, height_mm * 0.5] {
                 for index in 0..sides {
                     let angle = index as f64 * std::f64::consts::TAU / sides as f64;
-                    positions.extend([
-                        (radius_mm * angle.cos()) as f32,
-                        (radius_mm * angle.sin()) as f32,
-                        z as f32,
-                    ]);
+                    positions.extend([radius_mm * angle.cos(), radius_mm * angle.sin(), z]);
                 }
             }
-            positions.extend([
-                0.,
-                0.,
-                (-height_mm * 0.5) as f32,
-                0.,
-                0.,
-                (height_mm * 0.5) as f32,
-            ]);
+            positions.extend([0., 0., -height_mm * 0.5, 0., 0., height_mm * 0.5]);
             let mut indices = Vec::with_capacity(sides * 12);
             for index in 0..sides as u32 {
                 let next = (index + 1) % sides as u32;
@@ -884,7 +869,7 @@ fn cross(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
 fn triangle(mesh: &TriangleMesh, indices: &[u32; 3]) -> [[f64; 3]; 3] {
     indices.map(|index| {
         let start = index as usize * 3;
-        std::array::from_fn(|axis| f64::from(mesh.positions[start + axis]))
+        std::array::from_fn(|axis| mesh.positions[start + axis])
     })
 }
 fn ray_triangle(origin: [f64; 3], direction: [f64; 3], triangle: [[f64; 3]; 3]) -> Option<f64> {
@@ -1058,31 +1043,25 @@ fn intersects_parent(
 ) -> Result<bool, ExportError> {
     let pose = modifier_pose(modifier)?;
     let inverse = pose.inverse()?;
-    let parent_bounds = bounds(
-        parent
-            .positions
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .map(|point| point.map(f64::from)),
-    );
+    let parent_bounds = bounds(parent.positions.as_chunks::<3>().0.iter().copied());
     let modifier_bounds = bounds(
         primitive
             .positions
             .as_chunks::<3>()
             .0
             .iter()
-            .map(|point| transform(pose, point.map(f64::from))),
+            .map(|point| transform(pose, *point)),
     );
     if !bounds_overlap(parent_bounds, modifier_bounds) {
         return Ok(false);
     }
-    if parent.positions.as_chunks::<3>().0.iter().any(|point| {
-        inside_primitive(
-            transform(inverse, point.map(f64::from)),
-            &modifier.primitive,
-        )
-    }) {
+    if parent
+        .positions
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .any(|point| inside_primitive(transform(inverse, *point), &modifier.primitive))
+    {
         return Ok(true);
     }
     if point_in_mesh(modifier.local_pose.translation_mm, parent) {
@@ -1102,7 +1081,7 @@ fn intersects_parent(
         .as_chunks::<3>()
         .0
         .iter()
-        .any(|point| point_in_mesh(transform(pose, point.map(f64::from)), parent))
+        .any(|point| point_in_mesh(transform(pose, *point), parent))
     {
         return Ok(true);
     }
@@ -1275,7 +1254,7 @@ mod tests {
                         .as_chunks::<3>()
                         .0
                         .iter()
-                        .map(|point| transform(world, point.map(f64::from))),
+                        .map(|point| transform(world, *point)),
                 );
                 for (actual, expected) in instance
                     .world_bounds

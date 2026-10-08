@@ -67,8 +67,7 @@ pub fn weld_triangle_mesh(mesh: &TriangleMesh, epsilon: f32) -> Result<TriangleM
                         let candidate_base = candidate as usize * 3;
                         let squared_distance = (0..3)
                             .map(|axis| {
-                                let delta = f64::from(point[axis])
-                                    - f64::from(welded_positions[candidate_base + axis]);
+                                let delta = point[axis] - welded_positions[candidate_base + axis];
                                 delta * delta
                             })
                             .sum::<f64>();
@@ -108,7 +107,7 @@ pub fn weld_triangle_mesh(mesh: &TriangleMesh, epsilon: f32) -> Result<TriangleM
 /// Preserve every triangle and coordinate while indexing exact coincidences.
 /// Buffer finiteness and index validity have already been checked by the caller.
 fn weld_exact_coordinates(mesh: &TriangleMesh) -> TriangleMesh {
-    let mut coordinates: HashMap<[u32; 3], u32> = HashMap::new();
+    let mut coordinates: HashMap<[u64; 3], u32> = HashMap::new();
     let mut positions = Vec::with_capacity(mesh.positions.len());
     let mut remap = Vec::with_capacity(mesh.positions.len() / 3);
     for point in mesh.positions.as_chunks::<3>().0 {
@@ -198,9 +197,9 @@ pub fn validate_3mf_model_mesh(mesh: &TriangleMesh) -> Result<(), ExportError> {
         let points = triangle.map(|index| {
             let base = index as usize * 3;
             [
-                f64::from(mesh.positions[base]),
-                f64::from(mesh.positions[base + 1]),
-                f64::from(mesh.positions[base + 2]),
+                mesh.positions[base],
+                mesh.positions[base + 1],
+                mesh.positions[base + 2],
             ]
         });
         let u: [f64; 3] = std::array::from_fn(|axis| points[1][axis] - points[0][axis]);
@@ -280,10 +279,10 @@ fn edge_uses(mesh: &TriangleMesh) -> HashMap<(u32, u32), EdgeUse> {
     uses
 }
 
-fn point_cell(point: [f32; 3], epsilon: f64) -> Result<Cell, ExportError> {
+fn point_cell(point: [f64; 3], epsilon: f64) -> Result<Cell, ExportError> {
     let mut coordinates = [0_i64; 3];
     for axis in 0..3 {
-        let scaled = (f64::from(point[axis]) / epsilon).floor();
+        let scaled = (point[axis] / epsilon).floor();
         if scaled < i64::MIN as f64 || scaled > i64::MAX as f64 {
             return Err(ExportError(
                 "mesh coordinate is too large for the weld tolerance".into(),
@@ -295,11 +294,7 @@ fn point_cell(point: [f32; 3], epsilon: f64) -> Result<Cell, ExportError> {
 }
 
 fn signed_volume_six(mesh: &TriangleMesh) -> f64 {
-    let origin = [
-        f64::from(mesh.positions[0]),
-        f64::from(mesh.positions[1]),
-        f64::from(mesh.positions[2]),
-    ];
+    let origin = [mesh.positions[0], mesh.positions[1], mesh.positions[2]];
     mesh.indices
         .as_chunks::<3>()
         .0
@@ -308,9 +303,9 @@ fn signed_volume_six(mesh: &TriangleMesh) -> f64 {
             let point = |index: u32| {
                 let base = index as usize * 3;
                 [
-                    f64::from(mesh.positions[base]) - origin[0],
-                    f64::from(mesh.positions[base + 1]) - origin[1],
-                    f64::from(mesh.positions[base + 2]) - origin[2],
+                    mesh.positions[base] - origin[0],
+                    mesh.positions[base + 1] - origin[1],
+                    mesh.positions[base + 2] - origin[2],
                 ]
             };
             let a = point(triangle[0]);

@@ -121,6 +121,8 @@ mod ffi {
         display_warning_face_indices: Vec<u32>,
         display_warning_messages: Vec<String>,
         positions: Vec<f32>,
+        /// Native export precision; empty for ordinary display meshes.
+        export_positions: Vec<f64>,
         normals: Vec<f32>,
         indices: Vec<u32>,
         face_first_indices: Vec<u32>,
@@ -644,18 +646,30 @@ impl OcctKernel {
         };
         let mut meshes = Vec::with_capacity(selected.len());
         for body_id in selected {
-            let raw = kernel
+            let mut raw = kernel
                 .mesh_with_deflection(
                     body_id,
                     request.linear_deflection,
                     request.angular_deflection,
                 )
                 .map_err(|error| OcctError(error.to_string()))?;
+            let export_positions = std::mem::take(&mut raw.export_positions);
+            if export_positions.len() != raw.positions.len()
+                || export_positions
+                    .iter()
+                    .any(|coordinate| !coordinate.is_finite())
+            {
+                return Err(OcctError(
+                    "OCCT bridge returned malformed native export positions".into(),
+                ));
+            }
             let body = from_ffi_mesh(raw)?;
-            meshes.push(TriangleMesh::from_kernel_body(
+            let mut mesh = TriangleMesh::from_kernel_body(
                 &body,
                 format!("Body{}", body_id),
-            ));
+            );
+            mesh.positions = export_positions;
+            meshes.push(mesh);
         }
         Ok(meshes)
     }

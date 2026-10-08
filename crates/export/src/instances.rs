@@ -48,21 +48,21 @@ pub fn prepare_export_meshes(
             let mut mesh = source.clone();
             mesh.name = format!("{} (instance {})", source.name, p.occurrence_id);
             for v in mesh.positions.as_chunks_mut::<3>().0 {
-                let a = f64::from(v[0]);
-                let b = f64::from(v[1]);
-                let c = f64::from(v[2]);
-                v[0] = ((1. - 2. * (y * y + z * z)) * a
+                let a = v[0];
+                let b = v[1];
+                let c = v[2];
+                v[0] = (1. - 2. * (y * y + z * z)) * a
                     + 2. * (x * y - z * w) * b
                     + 2. * (x * z + y * w) * c
-                    + p.translation[0]) as f32;
-                v[1] = (2. * (x * y + z * w) * a
+                    + p.translation[0];
+                v[1] = 2. * (x * y + z * w) * a
                     + (1. - 2. * (x * x + z * z)) * b
                     + 2. * (y * z - x * w) * c
-                    + p.translation[1]) as f32;
-                v[2] = (2. * (x * z - y * w) * a
+                    + p.translation[1];
+                v[2] = 2. * (x * z - y * w) * a
                     + 2. * (y * z + x * w) * b
                     + (1. - 2. * (x * x + y * y)) * c
-                    + p.translation[2]) as f32;
+                    + p.translation[2];
             }
             validate_mesh_buffers(&mesh)?;
             output.push(mesh);

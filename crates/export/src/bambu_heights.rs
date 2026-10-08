@@ -1013,7 +1013,7 @@ mod tests {
                 .unwrap();
             for point in mesh.positions.as_chunks::<3>().0 {
                 let z = (0..3)
-                    .map(|axis| matrix.0[8 + axis] * f64::from(point[axis]))
+                    .map(|axis| matrix.0[8 + axis] * point[axis])
                     .sum::<f64>()
                     + matrix.0[11];
                 group.min_z_mm = group.min_z_mm.min(z);

@@ -1,4 +1,4 @@
-//! Manufacturing mesh export: binary STL and 3MF with materials + slicer metadata.
+//! Manufacturing mesh export: precision-preserving STL and 3MF with slicer metadata.
 //!
 //! Tessellation is owned by the OCCT (or browser) kernel. This crate turns
 //! triangle soups + [`BodyAppearance`] into file bytes so UI and MCP share one
@@ -134,7 +134,7 @@ impl MeshExportRequest {
 pub struct TriangleMesh {
     pub body_id: BodyId,
     pub name: String,
-    pub positions: Vec<f32>,
+    pub positions: Vec<f64>,
     pub indices: Vec<u32>,
 }
 
@@ -143,7 +143,7 @@ impl TriangleMesh {
         Self {
             body_id: body.body_id,
             name: name.into(),
-            positions: body.positions.clone(),
+            positions: body.positions.iter().copied().map(f64::from).collect(),
             indices: body.indices.clone(),
         }
     }
@@ -187,7 +187,7 @@ mod tests {
     /// Closed 20 mm cube (watertight). A single quad is rejected by slicers as
     /// zero volume / no geometry.
     fn unit_cube(body_id: u64) -> TriangleMesh {
-        let s = 20.0_f32;
+        let s = 20.0_f64;
         TriangleMesh {
             body_id: BodyId(body_id),
             name: format!("Body{body_id}"),
@@ -206,8 +206,8 @@ mod tests {
 
     /// OCCT-style cube: 12 triangles × 3 unique positions each (36 verts, no shared indices).
     fn unwelded_unit_cube(body_id: u64) -> TriangleMesh {
-        let s = 20.0_f32;
-        let corners: [[f32; 3]; 8] = [
+        let s = 20.0_f64;
+        let corners: [[f64; 3]; 8] = [
             [0.0, 0.0, 0.0],
             [s, 0.0, 0.0],
             [s, s, 0.0],
@@ -278,7 +278,7 @@ mod tests {
         let mesh = unit_cube(1);
         assert_eq!(mesh.positions.len(), 8 * 3);
         assert_eq!(mesh.indices.len(), 12 * 3);
-        let (mut min_z, mut max_z) = (f32::MAX, f32::MIN);
+        let (mut min_z, mut max_z) = (f64::MAX, f64::MIN);
         for chunk in mesh.positions.as_chunks::<3>().0 {
             min_z = min_z.min(chunk[2]);
             max_z = max_z.max(chunk[2]);

@@ -139,11 +139,7 @@ pub fn analyze_print_layout(
         };
         let mut bounds = Bounds::empty();
         for v in mesh.positions.as_chunks::<3>().0.iter() {
-            bounds.add(transform.transform_point([
-                f64::from(v[0]),
-                f64::from(v[1]),
-                f64::from(v[2]),
-            ]));
+            bounds.add(transform.transform_point(*v));
         }
         let group = groups
             .entry(root(pose.occurrence_id))
@@ -309,7 +305,7 @@ mod tests {
         let source = &source[0];
         let mut bounds = Bounds::empty();
         for point in source.positions.as_chunks::<3>().0.iter() {
-            bounds.add(std::array::from_fn(|i| f64::from(point[i])));
+            bounds.add(*point);
         }
         let meshes: Vec<_> = sizes
             .iter()
@@ -324,8 +320,7 @@ mod tests {
                     .iter()
                     .flat_map(|point| {
                         std::array::from_fn::<_, 3, _>(|i| {
-                            ((f64::from(point[i]) - bounds.min[i]) / bounds.size()[i] * size[i])
-                                as f32
+                            (point[i] - bounds.min[i]) / bounds.size()[i] * size[i]
                         })
                     })
                     .collect();

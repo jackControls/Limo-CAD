@@ -372,11 +372,7 @@ mod tests {
                 .iter()
                 .zip(meshes[0].positions.as_chunks::<3>().0.iter())
             {
-                let expected = transform.transform_point([
-                    f64::from(source[0]),
-                    f64::from(source[1]),
-                    f64::from(source[2]),
-                ]);
+                let expected = transform.transform_point(*source);
                 assert!((0..3).all(|i| (point[i] - expected[i]).abs() < 1e-5));
             }
         }

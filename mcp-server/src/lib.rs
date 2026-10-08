@@ -8447,9 +8447,9 @@ mod tests {
             if let Some(rest) = trimmed.strip_prefix("<vertex x=\"") {
                 let parts: Vec<&str> = rest.split('"').collect();
                 if parts.len() >= 6 {
-                    let x: f32 = parts[0].parse().unwrap();
-                    let y: f32 = parts[2].parse().unwrap();
-                    let z: f32 = parts[4].parse().unwrap();
+                    let x: f64 = parts[0].parse().unwrap();
+                    let y: f64 = parts[2].parse().unwrap();
+                    let z: f64 = parts[4].parse().unwrap();
                     positions.extend_from_slice(&[x, y, z]);
                 }
             }

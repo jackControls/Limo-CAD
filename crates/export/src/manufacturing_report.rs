@@ -90,7 +90,7 @@ pub fn manufacturing_preflight_report(
         let appearance = authored_appearance
             .cloned()
             .unwrap_or_else(|| BodyAppearance::default_for(pose.body_id));
-        let mut geometry = Vec::with_capacity(mesh.positions.len() * 4 + mesh.indices.len() * 4);
+        let mut geometry = Vec::with_capacity(mesh.positions.len() * 8 + mesh.indices.len() * 4);
         for position in &mesh.positions {
             geometry.extend_from_slice(&position.to_le_bytes());
         }

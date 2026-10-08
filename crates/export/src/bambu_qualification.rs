@@ -82,9 +82,9 @@ fn write_five_part_four_plate_native_qualification_fixtures() {
         let world = Matrix::parse(build.attribute("transform"))
             .unwrap()
             .compose(target.component_transform);
-        let dimensions: [f32; 3] = std::array::from_fn(|axis| {
+        let dimensions: [f64; 3] = std::array::from_fn(|axis| {
             if world.0[8 + axis].abs() > 0.001 {
-                (hi[axis] - lo[axis]) as f32
+                hi[axis] - lo[axis]
             } else {
                 30.
             }
