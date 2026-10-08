@@ -29,6 +29,7 @@
 #include <BRepMesh_GeomTool.hxx>
 #include <BRepMesh_SphereRangeSplitter.hxx>
 #include <BRepMesh_DelabellaMeshAlgoFactory.hxx>
+#include <BRepMesh_MeshAlgoFactory.hxx>
 #include <IMeshTools_MeshAlgo.hxx>
 #include <IMeshData_Model.hxx>
 #include <IMeshData_Face.hxx>
@@ -90,6 +91,7 @@
 #include <STEPControl_Writer.hxx>
 #include <ShapeFix_Shape.hxx>
 #include <ShapeFix_Solid.hxx>
+#include <ShapeAnalysis_Surface.hxx>
 #include <StepData_StepModel.hxx>
 #include <TCollection_HAsciiString.hxx>
 #include <TopAbs_Orientation.hxx>
@@ -3060,6 +3062,37 @@ static std::string topology_signature(const TopoDS_Shape& shape) {
 
 
 class TangentBoundaryMeshContext : public BRepMesh_Context {
+  struct StripPCurve {
+    IMeshData::IPCurveHandle curve;
+    std::vector<gp_Pnt2d> points;
+    std::vector<double> parameters;
+    std::vector<int> indices;
+  };
+  struct StripEdge {
+    IMeshData::IEdgePtr edge;
+    int status;
+    std::vector<gp_Pnt> points;
+    std::vector<double> parameters;
+    std::vector<StripPCurve> pcurves;
+  };
+  struct StripFace {
+    IMeshData::IFacePtr face;
+    int status;
+    std::vector<int> wire_statuses;
+    Handle(Poly_Triangulation) triangulation;
+    std::vector<std::pair<IMeshData::IPCurveHandle, std::vector<int>>> boundary_indices;
+    TopAbs_Orientation original_orientation = TopAbs_EXTERNAL;
+  };
+  struct StripTrial {
+    IMeshData::IFacePtr target = nullptr;
+    std::vector<StripEdge> edges;
+    std::vector<StripFace> faces;
+    double shift = 0.0, angular = 0.0, coverage = 0.0;
+    bool accepted = false;
+  };
+  struct StripRollbackFailure : std::runtime_error {
+    StripRollbackFailure() : std::runtime_error("OCCT could not restore a spherical boundary trial") {}
+  };
  public:
   const std::string& BoundaryRepairStop() const { return boundary_repair_stop_; }
 
@@ -3076,8 +3109,80 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         clean_wires &= face->GetWire(wi)->GetStatusMask() == 0;
       if (clean_wires) eligible.insert(face.get());
     }
-    Message_ProgressScope stages(range, "Face triangulation and recovery", 17);
-    if (!BRepMesh_Context::DiscretizeFaces(stages.Next())) return false;
+    std::vector<StripTrial> strip_trials;
+    TopExp::MapShapes(model->GetShape(), TopAbs_FACE, strip_original_faces_);
+    std::set<IMeshData::IFacePtr> strip_faces;
+    int strip_attempts = 0;
+    std::string strip_rejections;
+    try {
+    for (int fi = 0; fi < model->FacesNb() && strip_attempts < 16; ++fi) {
+      const auto& face = model->GetFace(fi);
+      if (eligible.count(face.get()) == 0 || face->WiresNb() != 1 ||
+          face->GetWire(0)->EdgesNb() != 2) continue;
+      StripTrial trial;
+      if (!prepare_spherical_strip(face, strip_faces, trial, strip_attempts)) {
+        if (!strip_stop_.empty() && strip_rejections.size() < 600)
+          strip_rejections += " face " + std::to_string(fi) + ": " + strip_stop_.substr(0, 200);
+        continue;
+      }
+      try { strip_trials.push_back(std::move(trial)); }
+      catch (...) { restore_spherical_strip(trial); throw; }
+      for (const auto& saved : strip_trials.back().faces) strip_faces.insert(saved.face);
+    }
+    } catch (...) {
+      for (const auto& trial : strip_trials) restore_spherical_strip(trial);
+      throw;
+    }
+    Message_ProgressScope stages(range, "Face triangulation and recovery", 49);
+    int strip_successes = 0;
+    try {
+    if (!BRepMesh_Context::DiscretizeFaces(stages.Next())) {
+      for (const auto& trial : strip_trials) restore_spherical_strip(trial);
+      return false;
+    }
+    for (auto& trial : strip_trials) {
+      if (trial.target->IsSet(IMeshData_Failure) &&
+          (trial.target->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Failure)) == 0)
+        retry_spherical_face(trial.target, stages.Next());
+      if (validate_spherical_strip(trial)) {
+        ++strip_successes;
+        trial.accepted = true;
+      } else {
+        strip_rejections += " rejected after meshing: " + strip_stop_.substr(0, 200);
+        restore_spherical_strip(trial);
+        // Restore and remesh only this transaction's adjacent faces before
+        // ModelPostProcessor creates their polygon-on-triangulation links.
+        Message_ProgressScope recovery(stages.Next(), "Restore spherical neighbors", trial.faces.size());
+        BRepMesh_MeshAlgoFactory factory;
+        for (const auto& saved : trial.faces) {
+          const auto next = recovery.Next();
+          if ((saved.status & (IMeshData_Failure | IMeshData_Reused)) != 0) continue;
+          const auto algo = factory.GetAlgo(saved.face->GetSurface()->GetType(), GetParameters());
+          if (algo.IsNull()) throw std::runtime_error("OCCT could not remesh restored spherical neighbors");
+          algo->Perform(saved.face, GetParameters(), next);
+        }
+      }
+    }
+    if (!range.More()) {
+      for (const auto& trial : strip_trials) restore_spherical_strip(trial);
+      return false;
+    }
+    } catch (const StripRollbackFailure&) { throw; }
+      catch (...) {
+        for (const auto& trial : strip_trials) restore_spherical_strip(trial);
+        throw;
+      }
+    boundary_repair_stop_ += ", spherical strip attempts/prepared/accepted " +
+        std::to_string(strip_attempts) + '/' + std::to_string(strip_trials.size()) + '/' +
+        std::to_string(strip_successes);
+    for (const auto& trial : strip_trials) {
+      if (!trial.accepted) continue;
+      std::ostringstream certificate;
+      certificate.precision(6);
+      certificate << " shift/angular/band mm,rad,mm " << trial.shift << '/' << trial.angular << '/' << trial.coverage;
+      boundary_repair_stop_ += certificate.str();
+    }
+    if (!strip_rejections.empty()) boundary_repair_stop_ += strip_rejections.substr(0, 800);
     int attempts = 0, successes = 0;
     std::string rejections;
     for (int fi = 0; fi < model->FacesNb() && attempts < 16 && range.More(); ++fi) {
@@ -3654,6 +3759,516 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   }
 
  private:
+  static bool strip_finite(const gp_Pnt& p) {
+    return std::isfinite(p.X()) && std::isfinite(p.Y()) && std::isfinite(p.Z());
+  }
+  static bool strip_finite(const gp_Pnt2d& p) {
+    return std::isfinite(p.X()) && std::isfinite(p.Y());
+  }
+  static void restore_spherical_strip(const StripTrial& trial) {
+    try {
+      for (const auto& saved : trial.edges) {
+        const auto& curve = saved.edge->GetCurve();
+        curve->Clear(false);
+        for (std::size_t i = 0; i < saved.points.size(); ++i)
+          curve->AddPoint(saved.points[i], saved.parameters[i]);
+        saved.edge->UnsetStatus(static_cast<IMeshData_Status>(saved.edge->GetStatusMask()));
+        saved.edge->SetStatus(static_cast<IMeshData_Status>(saved.status));
+        for (const auto& pc : saved.pcurves) {
+          pc.curve->Clear(false);
+          for (std::size_t i = 0; i < pc.points.size(); ++i) {
+            pc.curve->AddPoint(pc.points[i], pc.parameters[i]);
+            pc.curve->GetIndex(static_cast<int>(i)) = pc.indices[i];
+          }
+        }
+      }
+      for (const auto& saved : trial.faces) {
+        BRep_Builder().UpdateFace(saved.face->GetFace(), saved.triangulation);
+        saved.face->UnsetStatus(static_cast<IMeshData_Status>(saved.face->GetStatusMask()));
+        saved.face->SetStatus(static_cast<IMeshData_Status>(saved.status));
+        for (int wi = 0; wi < saved.face->WiresNb(); ++wi) {
+          const auto& wire = saved.face->GetWire(wi);
+          wire->UnsetStatus(static_cast<IMeshData_Status>(wire->GetStatusMask()));
+          wire->SetStatus(static_cast<IMeshData_Status>(saved.wire_statuses[wi]));
+        }
+        for (const auto& pc : saved.boundary_indices)
+          for (std::size_t i = 0; i < pc.second.size(); ++i)
+            pc.first->GetIndex(static_cast<int>(i)) = pc.second[i];
+      }
+    } catch (...) { throw StripRollbackFailure(); }
+  }
+
+  // Certify a simple discrete polygon independently of FaceChecker's small-
+  // angle/loop-area exemptions. Endpoints remain the shared CAD mesh nodes.
+  static bool simple_strip_boundary(IMeshData::IFacePtr face, double& signed_area) {
+    std::vector<gp_Pnt2d> polygon;
+    if (face->WiresNb() != 1) return false;
+    const auto& wire = face->GetWire(0);
+    for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
+      const auto& edge = wire->GetEdge(ei);
+      const auto& pc = edge->GetPCurve(face, wire->GetEdgeOrientation(ei));
+      if (pc.IsNull() || pc->ParametersNb() < 2 || polygon.size() + pc->ParametersNb() > 1024) return false;
+      for (int i = 0; i < pc->ParametersNb() - 1; ++i) {
+        const int index = wire->GetEdgeOrientation(ei) == TopAbs_REVERSED ? pc->ParametersNb() - 1 - i : i;
+        if (!strip_finite(pc->GetPoint(index))) return false;
+        polygon.push_back(pc->GetPoint(index));
+      }
+      const int end = wire->GetEdgeOrientation(ei) == TopAbs_REVERSED ? 0 : pc->ParametersNb() - 1;
+      const auto& next_edge = wire->GetEdge((ei + 1) % wire->EdgesNb());
+      const auto next_orientation = wire->GetEdgeOrientation((ei + 1) % wire->EdgesNb());
+      const auto& next_pc = next_edge->GetPCurve(face, next_orientation);
+      if (next_pc.IsNull() || next_pc->ParametersNb() < 2 || pc->GetPoint(end).Distance(
+              next_pc->GetPoint(next_orientation == TopAbs_REVERSED ? next_pc->ParametersNb() - 1 : 0)) >
+          Precision::PConfusion()) return false;
+    }
+    signed_area = 0.0;
+    if (polygon.size() < 3) return false;
+    const auto origin = polygon.front().Coord();
+    for (std::size_t i = 0; i < polygon.size(); ++i) {
+      const auto& a = polygon[i]; const auto& b = polygon[(i + 1) % polygon.size()];
+      if (a.Distance(b) <= Precision::PConfusion()) return false;
+      signed_area += 0.5 * (a.Coord() - origin).Crossed(b.Coord() - origin);
+      for (std::size_t j = i + 2; j < polygon.size(); ++j) {
+        if (i == 0 && j + 1 == polygon.size()) continue;
+        gp_Pnt2d intersection;
+        if (BRepMesh_GeomTool::IntSegSeg(a.Coord(), b.Coord(), polygon[j].Coord(),
+                polygon[(j + 1) % polygon.size()].Coord(), false, false, intersection) ==
+            BRepMesh_GeomTool::Cross) return false;
+      }
+    }
+    return std::isfinite(signed_area) && signed_area > 0.0;
+  }
+
+  bool prepare_spherical_strip(const IMeshData::IFaceHandle& face,
+                              const std::set<IMeshData::IFacePtr>& occupied,
+                              StripTrial& trial, int& attempts) {
+    strip_stop_.clear();
+    bool mutated = false;
+    const auto reject = [&](const char* reason) {
+      std::ostringstream certificate;
+      certificate.precision(6);
+      certificate << reason << " shift/angular/band " << trial.shift << '/' << trial.angular << '/' << trial.coverage;
+      strip_stop_ = certificate.str();
+      if (mutated) restore_spherical_strip(trial);
+      return false;
+    };
+    try {
+      const auto& wire = face->GetWire(0);
+      const auto& surface = face->GetSurface();
+      const double radius = surface->Sphere().Radius(), deflection = GetParameters().Deflection;
+      const auto e0 = wire->GetEdge(0), e1 = wire->GetEdge(1);
+      if (e0 == e1 || !e0->GetSameParam() || !e1->GetSameParam() ||
+          !e0->GetSameRange() || !e1->GetSameRange()) return false;
+      const auto p0 = e0->GetPCurve(face.get(), wire->GetEdgeOrientation(0));
+      const auto p1 = e1->GetPCurve(face.get(), wire->GetEdgeOrientation(1));
+      BRepAdaptor_Curve native0(e0->GetEdge()), native1(e1->GetEdge());
+      if (p0.IsNull() || p1.IsNull() || native0.GetType() != GeomAbs_Circle ||
+          native1.GetType() != GeomAbs_Circle || p0->ParametersNb() < 3 || p1->ParametersNb() < 3 ||
+          p0->ParametersNb() > 128 || p1->ParametersNb() > 128 || !std::isfinite(radius) || radius <= 0.0 ||
+          !std::isfinite(deflection) || deflection <= 0.0) return false;
+      const double edge_tol = std::min(BRep_Tool::Tolerance(e0->GetEdge()), BRep_Tool::Tolerance(e1->GetEdge()));
+      double u0, u1, v0, v1; BRepTools::UVBounds(face->GetFace(), u0, u1, v0, v1);
+      if (!std::isfinite(edge_tol) || edge_tol <= 0.0 || !std::isfinite(u0) || !std::isfinite(u1) ||
+          !std::isfinite(v0) || !std::isfinite(v1) || u1 <= u0 || v1 < v0 || u1 - u0 >= kPi ||
+          std::max(std::abs(v0), std::abs(v1)) >= kPi / 4.0 ||
+          radius * (v1 - v0) > std::min(deflection, edge_tol) / 16.0) return false;
+      TopoDS_Vertex a0, a1, b0, b1;
+      TopExp::Vertices(e0->GetEdge(), a0, a1); TopExp::Vertices(e1->GetEdge(), b0, b1);
+      if (a0.IsNull() || a1.IsNull() || b0.IsNull() || b1.IsNull() || a0.IsSame(a1) ||
+          !((a0.IsSame(b0) && a1.IsSame(b1)) || (a0.IsSame(b1) && a1.IsSame(b0)))) return false;
+      const double direction0 = p0->GetPoint(p0->ParametersNb()-1).X() - p0->GetPoint(0).X();
+      const double direction1 = p1->GetPoint(p1->ParametersNb()-1).X() - p1->GetPoint(0).X();
+      const double traversal0 = direction0 * (wire->GetEdgeOrientation(0) == TopAbs_REVERSED ? -1.0 : 1.0);
+      const double traversal1 = direction1 * (wire->GetEdgeOrientation(1) == TopAbs_REVERSED ? -1.0 : 1.0);
+      if (!std::isfinite(traversal0) || !std::isfinite(traversal1) || traversal0 * traversal1 >= 0.0) return false;
+      // Require a real coincident native-curve crossing, not an arbitrary thin face.
+      bool crossing = false;
+      for (int i = 1; i < p0->ParametersNb(); ++i) for (int j = 1; j < p1->ParametersNb(); ++j) {
+        if (++strip_comparisons_ > 65536) return reject("spherical crossing comparison budget exhausted");
+        gp_Pnt2d uv;
+        if (BRepMesh_GeomTool::IntSegSeg(p0->GetPoint(i-1).Coord(), p0->GetPoint(i).Coord(),
+                p1->GetPoint(j-1).Coord(), p1->GetPoint(j).Coord(), false, false, uv) !=
+            BRepMesh_GeomTool::Cross) continue;
+        const auto parameter = [&](const IMeshData::IPCurveHandle& pc, int k) {
+          const auto delta = pc->GetPoint(k).Coord() - pc->GetPoint(k-1).Coord();
+          return pc->GetParameter(k-1) + (pc->GetParameter(k) - pc->GetParameter(k-1)) *
+              (uv.Coord() - pc->GetPoint(k-1).Coord()).Dot(delta) / delta.SquareModulus();
+        };
+        const double a = parameter(p0, i), b = parameter(p1, j);
+        if (std::isfinite(a) && std::isfinite(b) && native0.Value(a).Distance(native1.Value(b)) <= Precision::Confusion())
+          crossing = true;
+      }
+      if (!crossing) return false;
+      ++attempts;
+      trial.target = face.get();
+      double errors[2] = {}, width = 0.0;
+      std::set<IMeshData::IFacePtr> neighbors;
+      for (int ei = 0; ei < 2; ++ei) {
+        const auto edge = wire->GetEdge(ei);
+        const auto pc = ei == 0 ? p0 : p1;
+        const auto curve = edge->GetCurve();
+        if (curve->ParametersNb() != pc->ParametersNb() || edge->PCurvesNb() != 2 ||
+            edge->GetPCurve(0)->GetFace() == edge->GetPCurve(1)->GetFace())
+          return reject("inconsistent samples or nonmanifold shared edge");
+        StripEdge saved{edge, edge->GetStatusMask(), {}, {}, {}};
+        BRepAdaptor_Curve native(edge->GetEdge());
+        const double direction = pc->GetPoint(pc->ParametersNb()-1).X() - pc->GetPoint(0).X();
+        if (std::abs(direction) < Precision::PConfusion()) return reject("ambiguous U direction");
+        for (int i = 0; i < curve->ParametersNb(); ++i) {
+          const auto point = curve->GetPoint(i); const auto uv = pc->GetPoint(i);
+          if (!strip_finite(point) || !strip_finite(uv) || (i > 0 &&
+                  (uv.X() - pc->GetPoint(i-1).X()) * direction <= 0.0)) return reject("nonmonotone source U");
+          saved.points.push_back(point); saved.parameters.push_back(curve->GetParameter(i));
+          if (i > 0 && i + 1 < curve->ParametersNb())
+            errors[ei] = std::max(errors[ei], native.Value(curve->GetParameter(i)).Distance(surface->Value(uv.X(), uv.Y())));
+          // Separate the opposing float rounding balls, with one additional
+          // rounding radius for cross-product arithmetic. No fixed CAD offset.
+          double squared_ulp = 0.0;
+          for (double coordinate : {point.X(), point.Y(), point.Z()}) {
+            const float f = static_cast<float>(coordinate);
+            const double ulp = std::abs(static_cast<double>(std::nextafter(f, std::numeric_limits<float>::infinity())) - f);
+            squared_ulp += ulp * ulp;
+          }
+          width = std::max(width, 8.0 * std::sqrt(squared_ulp) / radius);
+        }
+        for (int pi = 0; pi < edge->PCurvesNb(); ++pi) {
+          const auto& adjacent = edge->GetPCurve(pi);
+          if (adjacent->ParametersNb() != curve->ParametersNb()) return reject("noncorresponding adjacent PCurve");
+          StripPCurve saved_pc{adjacent, {}, {}, {}};
+          for (int i = 0; i < adjacent->ParametersNb(); ++i) {
+            saved_pc.points.push_back(adjacent->GetPoint(i));
+            saved_pc.parameters.push_back(adjacent->GetParameter(i));
+            saved_pc.indices.push_back(adjacent->GetIndex(i));
+            if (adjacent->GetParameter(i) != curve->GetParameter(i)) return reject("nonmatching native parameters");
+          }
+          neighbors.insert(adjacent->GetFace()); saved.pcurves.push_back(std::move(saved_pc));
+        }
+        trial.edges.push_back(std::move(saved));
+      }
+      if (!std::isfinite(width) || radius * width >= std::min(edge_tol, deflection) / 4.0 ||
+          neighbors.size() > 8) return reject("float separation exceeds approximation budget");
+      for (const auto neighbor : neighbors) {
+        if (occupied.count(neighbor) || (neighbor->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Reused)) != 0)
+          return reject("neighbor has prior failure or overlapping transaction");
+        for (int fi = 0; fi < GetModel()->FacesNb(); ++fi) {
+          const auto other = GetModel()->GetFace(fi).get();
+          if (other != neighbor && other->GetFace().IsPartner(neighbor->GetFace()))
+            return reject("shared face TShape has an uncertified located alias");
+        }
+        TopLoc_Location location;
+        StripFace saved{neighbor, neighbor->GetStatusMask(), {}, BRep_Tool::Triangulation(neighbor->GetFace(), location), {}};
+        const int original_index = strip_original_faces_.FindIndex(neighbor->GetFace());
+        if (original_index == 0) return reject("missing original face orientation");
+        saved.original_orientation = strip_original_faces_.FindKey(original_index).Orientation();
+        std::size_t index_count = 0;
+        for (int wi = 0; wi < neighbor->WiresNb(); ++wi) {
+          saved.wire_statuses.push_back(neighbor->GetWire(wi)->GetStatusMask());
+          if (saved.wire_statuses.back() != 0) return reject("neighbor wire has prior failure");
+          const auto& adjacent_wire = neighbor->GetWire(wi);
+          for (int ei = 0; ei < adjacent_wire->EdgesNb(); ++ei) {
+            const auto pc = adjacent_wire->GetEdge(ei)->GetPCurve(neighbor, adjacent_wire->GetEdgeOrientation(ei));
+            if (pc.IsNull() || (index_count += pc->ParametersNb()) > 65536) return reject("neighbor index snapshot budget exhausted");
+            std::vector<int> indices;
+            for (int i = 0; i < pc->ParametersNb(); ++i) indices.push_back(pc->GetIndex(i));
+            saved.boundary_indices.push_back({pc, std::move(indices)});
+          }
+        }
+        trial.faces.push_back(std::move(saved));
+      }
+      const int moved = errors[0] >= errors[1] ? 0 : 1;
+      const auto reference = moved == 0 ? p1 : p0;
+      const auto moved_pc = moved == 0 ? p0 : p1;
+      const double traversal = (moved_pc->GetPoint(moved_pc->ParametersNb()-1).X() - moved_pc->GetPoint(0).X()) *
+          (wire->GetEdgeOrientation(moved) == TopAbs_REVERSED ? -1.0 : 1.0);
+      const double side = traversal < 0.0 ? 1.0 : -1.0;
+      const auto interpolate = [](const std::vector<double>& parameters, const std::vector<gp_Pnt2d>& points, double t) {
+        for (std::size_t i = 1; i < parameters.size(); ++i) {
+          if ((t - parameters[i-1]) * (t - parameters[i]) > 0.0) continue;
+          const double a = (t - parameters[i-1]) / (parameters[i] - parameters[i-1]);
+          return gp_Pnt2d(points[i-1].Coord() * (1.0-a) + points[i].Coord() * a);
+        }
+        throw std::runtime_error("Spherical mesh parameter leaves its original range");
+      };
+      const auto reference_v = [&](double u) {
+        for (int i = 1; i < reference->ParametersNb(); ++i) {
+          const auto a = reference->GetPoint(i-1), b = reference->GetPoint(i);
+          if ((u - a.X()) * (u - b.X()) > 0.0) continue;
+          return a.Y() + (b.Y() - a.Y()) * (u - a.X()) / (b.X() - a.X());
+        }
+        throw std::runtime_error("Spherical mesh U leaves the shared strip");
+      };
+      double new_v0 = v0, new_v1 = v1, max_sag = 0.0;
+      std::array<std::vector<gp_Pnt>, 2> points;
+      std::array<std::vector<double>, 2> parameters;
+      std::array<std::vector<gp_Pnt2d>, 2> target_uv;
+      for (int ei = 0; ei < 2; ++ei) {
+        const auto& saved = trial.edges[ei];
+        BRepAdaptor_Curve native(saved.edge->GetEdge());
+        const auto native_pc = saved.edge->GetPCurve(face.get(), wire->GetEdgeOrientation(ei));
+        const auto pc_saved = std::find_if(saved.pcurves.begin(), saved.pcurves.end(),
+            [&](const StripPCurve& pc) { return pc.curve == native_pc; });
+        if (pc_saved == saved.pcurves.end()) return reject("missing target PCurve snapshot");
+        double first, last;
+        const auto source_pc = BRep_Tool::CurveOnSurface(saved.edge->GetEdge(), face->GetFace(), first, last);
+        if (source_pc.IsNull()) return reject("missing exact target PCurve");
+        parameters[ei] = saved.parameters;
+        bool certified = false;
+        for (int pass = 0; pass < 6 && parameters[ei].size() <= 256; ++pass) {
+          points[ei].clear(); target_uv[ei].clear();
+          double local_shift = 0.0;
+          for (std::size_t i = 0; i < parameters[ei].size(); ++i) {
+            const double t = parameters[ei][i];
+            auto uv = source_pc->Value(t); const auto seed = interpolate(saved.parameters, pc_saved->points, t);
+            uv.SetX(uv.X() + std::round((seed.X() - uv.X()) / kTau) * kTau);
+            gp_Pnt point = native.Value(t);
+            if (i == 0 || i + 1 == parameters[ei].size()) {
+              point = i == 0 ? saved.points.front() : saved.points.back();
+              uv = i == 0 ? pc_saved->points.front() : pc_saved->points.back();
+            } else if (ei == moved) {
+              const double boundary = reference_v(uv.X()) + side * width;
+              uv.SetY(side > 0.0 ? std::max(uv.Y(), boundary) : std::min(uv.Y(), boundary));
+              point = surface->Value(uv.X(), uv.Y());
+            }
+            const double shift = point.Distance(native.Value(t));
+            if (!strip_finite(point) || !strip_finite(uv) || !std::isfinite(shift) ||
+                shift > std::min(BRep_Tool::Tolerance(saved.edge->GetEdge()), deflection / 4.0))
+              return reject("shared sample displacement exceeds recorded tolerance");
+            local_shift = std::max(local_shift, shift);
+            points[ei].push_back(point); target_uv[ei].push_back(uv);
+          }
+          certified = true;
+          double local_angle = 0.0, local_sag = 0.0;
+          const double half_angle = 0.5 * std::min(GetParameters().Angle, saved.edge->GetAngularDeflection());
+          if (!std::isfinite(half_angle) || half_angle <= 0.0) return reject("invalid angular request");
+          for (std::size_t i = 1; i < parameters[ei].size(); ++i) {
+            const double step = std::abs(parameters[ei][i] - parameters[ei][i-1]);
+            const double chord = native.Value(parameters[ei][i]).Distance(native.Value(parameters[ei][i-1]));
+            const double error = points[ei][i].Distance(native.Value(parameters[ei][i])) +
+                points[ei][i-1].Distance(native.Value(parameters[ei][i-1]));
+            const double angle = chord > error ? step + 2.0 * std::asin(error / chord) : std::numeric_limits<double>::infinity();
+            const double sag = native.Circle().Radius() * (1.0 - std::cos(step / 2.0)) + local_shift;
+            certified &= std::isfinite(angle) && angle <= half_angle && std::isfinite(sag) && sag <= deflection;
+            local_angle = std::max(local_angle, angle); local_sag = std::max(local_sag, sag);
+          }
+          if (certified) {
+            trial.shift = std::max(trial.shift, local_shift); trial.angular = std::max(trial.angular, local_angle);
+            max_sag = std::max(max_sag, local_sag); break;
+          }
+          if (parameters[ei].size() * 2 - 1 > 256) break;
+          std::vector<double> refined;
+          for (std::size_t i = 1; i < parameters[ei].size(); ++i) {
+            refined.push_back(parameters[ei][i-1]);
+            refined.push_back(0.5 * (parameters[ei][i-1] + parameters[ei][i]));
+          }
+          refined.push_back(parameters[ei].back()); parameters[ei] = std::move(refined);
+        }
+        if (!certified) return reject("half-Angle or circle-chord certificate exhausted");
+        const double direction = target_uv[ei].back().X() - target_uv[ei].front().X();
+        for (std::size_t i = 0; i < target_uv[ei].size(); ++i) {
+          const auto& uv = target_uv[ei][i];
+          if (uv.X() < u0 - Precision::PConfusion() || uv.X() > u1 + Precision::PConfusion() ||
+              (i && (uv.X() - target_uv[ei][i-1].X()) * direction <= 0.0))
+            return reject("new samples leave monotone source U extent");
+        }
+        if (std::abs(std::min(target_uv[ei].front().X(), target_uv[ei].back().X()) - u0) > Precision::PConfusion() ||
+            std::abs(std::max(target_uv[ei].front().X(), target_uv[ei].back().X()) - u1) > Precision::PConfusion())
+          return reject("shared endpoints do not cover exact source U extent");
+        for (const auto& uv : target_uv[ei]) { new_v0 = std::min(new_v0, uv.Y()); new_v1 = std::max(new_v1, uv.Y()); }
+      }
+      // Both regions have the same monotone-U extent in a nonperiodic chart.
+      // Latitude-band distance plus chord interpolation bounds both directions,
+      // including the old crossing's narrow lobe, without assuming equal area.
+      trial.coverage = radius * (new_v1 - new_v0) + max_sag;
+      if (!std::isfinite(trial.coverage) || trial.coverage > deflection) return reject("two-way strip coverage exceeds deflection");
+      mutated = true;
+      for (int ei = 0; ei < 2; ++ei) {
+        const auto& saved = trial.edges[ei]; const auto& curve = saved.edge->GetCurve();
+        curve->Clear(false);
+        for (std::size_t i = 0; i < parameters[ei].size(); ++i) curve->AddPoint(points[ei][i], parameters[ei][i]);
+        saved.edge->SetStatus(IMeshData_Outdated);
+        for (const auto& pc : saved.pcurves) {
+          const auto adjacent = pc.curve->GetFace();
+          const auto type = adjacent->GetSurface()->GetType();
+          // Analytic inverse charts are unambiguous locally after periodic
+          // unwrapping and normal checks. Do not accept a global spline-sheet
+          // jump merely because NextValueOfUV returned a small spatial residual.
+          if (type != GeomAbs_Plane && type != GeomAbs_Cylinder && type != GeomAbs_Cone &&
+              type != GeomAbs_Sphere && type != GeomAbs_Torus)
+            return reject("adjacent inverse chart is not certified analytic");
+          TopLoc_Location location;
+          const auto local_surface = BRep_Tool::Surface(adjacent->GetFace(), location);
+          if (local_surface.IsNull()) return reject("missing adjacent projection surface");
+          ShapeAnalysis_Surface projector(local_surface);
+          const auto inverse = location.Transformation().Inverted();
+          pc.curve->Clear(false);
+          for (std::size_t i = 0; i < parameters[ei].size(); ++i) {
+            auto uv = interpolate(pc.parameters, pc.points, parameters[ei][i]);
+            if (i == 0 || i + 1 == parameters[ei].size()) uv = i == 0 ? pc.points.front() : pc.points.back();
+            else if (adjacent == face.get()) uv = target_uv[ei][i];
+            else {
+              const auto seed = uv;
+              uv = projector.NextValueOfUV(seed, points[ei][i].Transformed(inverse), Precision::Confusion());
+              if (local_surface->IsUPeriodic()) {
+                const double period = local_surface->UPeriod();
+                uv.SetX(uv.X() + std::round((seed.X() - uv.X()) / period) * period);
+                if (std::abs(uv.X() - seed.X()) >= period / 4.0) return reject("ambiguous periodic U projection");
+              }
+              if (local_surface->IsVPeriodic()) {
+                const double period = local_surface->VPeriod();
+                uv.SetY(uv.Y() + std::round((seed.Y() - uv.Y()) / period) * period);
+                if (std::abs(uv.Y() - seed.Y()) >= period / 4.0) return reject("ambiguous periodic V projection");
+              }
+              gp_Pnt before, after; gp_Vec bu, bv, au, av;
+              adjacent->GetSurface()->D1(seed.X(), seed.Y(), before, bu, bv);
+              adjacent->GetSurface()->D1(uv.X(), uv.Y(), after, au, av);
+              const auto bn = bu.Crossed(bv), an = au.Crossed(av);
+              if (!std::isfinite(bn.SquareMagnitude()) || !std::isfinite(an.SquareMagnitude()) ||
+                  bn.SquareMagnitude() <= 0.0 || an.SquareMagnitude() <= 0.0 || bn.Dot(an) <= 0.0)
+                return reject("adjacent projection crosses a singularity or normal branch");
+            }
+            if (!strip_finite(uv)) return reject("nonfinite projected UV");
+            const auto on_surface = adjacent->GetSurface()->Value(uv.X(), uv.Y());
+            const double gap = on_surface.Distance(points[ei][i]);
+            if (!strip_finite(on_surface) || !std::isfinite(gap) || gap > std::min(deflection,
+                    BRep_Tool::Tolerance(saved.edge->GetEdge()) + BRep_Tool::Tolerance(adjacent->GetFace())))
+              return reject("adjacent surface mismatch exceeds recorded tolerance");
+            pc.curve->AddPoint(uv, parameters[ei][i]);
+          }
+        }
+      }
+      for (const auto& saved : trial.faces) {
+        saved.face->UnsetStatus(IMeshData_Reused);
+        saved.face->SetStatus(IMeshData_Outdated);
+        BRepMesh_FaceChecker checker(saved.face, GetParameters());
+        if (!checker.Perform()) return reject("adjacent FaceChecker rejected regularized boundary");
+      }
+      double area;
+      if (!simple_strip_boundary(face.get(), area)) return reject("regularized strip remains nonsimple or unoriented");
+      return true;
+    } catch (const StripRollbackFailure&) { throw; }
+      catch (const Standard_Failure&) { return reject("OCCT exception preparing regularized strip"); }
+      catch (const std::exception&) { return reject("exception preparing regularized strip"); }
+  }
+
+  bool validate_spherical_strip(const StripTrial& trial) {
+    strip_stop_ = "triangulation status";
+    try {
+      std::map<IMeshData::IEdgePtr, std::pair<int, int>> shared_incidence;
+      for (const auto& edge : trial.edges) shared_incidence[edge.edge] = {0,0};
+      for (const auto& saved : trial.faces) {
+        const auto face = saved.face;
+        TopLoc_Location location;
+        const auto mesh = BRep_Tool::Triangulation(face->GetFace(), location);
+        if ((face->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Reused)) != 0 || mesh.IsNull() ||
+            !mesh->HasUVNodes() || mesh->NbNodes() < 3 || mesh->NbNodes() > 65536 ||
+            mesh->NbTriangles() < 1 || mesh->NbTriangles() > 131072) return false;
+        std::map<std::pair<int,int>, int> links;
+        std::map<std::pair<int,int>, int> directions, boundary_directions;
+        std::set<std::pair<int,int>> boundary;
+        const auto link = [](int a, int b) { return std::make_pair(std::min(a,b), std::max(a,b)); };
+        const auto direction = [](int a, int b) { return a < b ? 1 : -1; };
+        double uv_area = 0.0, uv_scale = 0.0, expected_area = 0.0;
+        for (int wi = 0; wi < face->WiresNb(); ++wi) {
+          const auto& wire = face->GetWire(wi);
+          if (wire->GetStatusMask() != 0) return false;
+          std::vector<gp_Pnt2d> polygon;
+          for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
+            const auto edge = wire->GetEdge(ei);
+            const auto pc = edge->GetPCurve(face, wire->GetEdgeOrientation(ei));
+            const auto curve = edge->GetCurve();
+            if (pc.IsNull() || pc->ParametersNb() != curve->ParametersNb()) return false;
+            const int traversal = wire->GetEdgeOrientation(ei) == TopAbs_REVERSED ? -1 : 1;
+            if (shared_incidence.count(edge)) {
+              if (saved.original_orientation != TopAbs_FORWARD && saved.original_orientation != TopAbs_REVERSED) return false;
+              ++shared_incidence[edge].first;
+              shared_incidence[edge].second += traversal * (saved.original_orientation == TopAbs_REVERSED ? -1 : 1);
+            }
+            for (int i = 0; i < pc->ParametersNb(); ++i) {
+              const int id = pc->GetIndex(i);
+              strip_stop_ = "adjacent shared boundary mismatch";
+              if (id < 1 || id > mesh->NbNodes() || mesh->Node(id).Transformed(location.Transformation()).Distance(curve->GetPoint(i)) >
+                    Precision::Confusion() || mesh->UVNode(id).Distance(pc->GetPoint(i)) > Precision::PConfusion()) return false;
+              if (i && id != pc->GetIndex(i-1)) {
+                const int previous = pc->GetIndex(i-1);
+                const auto key = link(previous, id);
+                boundary.insert(key);
+                boundary_directions[key] += traversal * direction(previous, id);
+              }
+              if (i + 1 < pc->ParametersNb()) polygon.push_back(pc->GetPoint(
+                  wire->GetEdgeOrientation(ei) == TopAbs_REVERSED ? pc->ParametersNb()-1-i : i));
+            }
+          }
+          if (polygon.size() < 3) return false;
+          const auto origin = polygon.front().Coord();
+          for (std::size_t i = 0; i < polygon.size(); ++i)
+            expected_area += 0.5 * (polygon[i].Coord()-origin).Crossed(polygon[(i+1)%polygon.size()].Coord()-origin);
+        }
+        for (int ti = 1; ti <= mesh->NbTriangles(); ++ti) {
+          int ids[3]; mesh->Triangle(ti).Get(ids[0], ids[1], ids[2]);
+          gp_Pnt p[3], fp[3]; gp_Pnt2d uv[3];
+          strip_stop_ = "nonfinite or degenerate adjacent triangle";
+          for (int i = 0; i < 3; ++i) {
+            if (ids[i] < 1 || ids[i] > mesh->NbNodes()) return false;
+            p[i] = mesh->Node(ids[i]).Transformed(location.Transformation()); uv[i] = mesh->UVNode(ids[i]);
+            fp[i] = gp_Pnt(static_cast<float>(p[i].X()), static_cast<float>(p[i].Y()), static_cast<float>(p[i].Z()));
+            if (!strip_finite(p[i]) || !strip_finite(fp[i]) || !strip_finite(uv[i])) return false;
+            ++links[link(ids[i],ids[(i+1)%3])];
+            directions[link(ids[i],ids[(i+1)%3])] += direction(ids[i],ids[(i+1)%3]);
+          }
+          const auto normal = gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2]));
+          const auto float_normal = gp_Vec(fp[0],fp[1]).Crossed(gp_Vec(fp[0],fp[2]));
+          const double area = 0.5 * (uv[1].Coord()-uv[0].Coord()).Crossed(uv[2].Coord()-uv[0].Coord());
+          if (!std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude() <= 1e-24 ||
+              !std::isfinite(float_normal.SquareMagnitude()) || float_normal.SquareMagnitude() <= 0.0 ||
+              !std::isfinite(float_normal.Dot(normal)) || float_normal.Dot(normal) <= 0.0 ||
+              !std::isfinite(area) || area == 0.0 || std::signbit(area) != std::signbit(expected_area)) return false;
+          gp_Pnt surface_point; gp_Vec du, dv;
+          const gp_Pnt2d centroid_uv((uv[0].Coord()+uv[1].Coord()+uv[2].Coord())/3.0);
+          face->GetSurface()->D1(centroid_uv.X(), centroid_uv.Y(), surface_point, du, dv);
+          const auto surface_normal = du.Crossed(dv);
+          const double geometric_winding = normal.Dot(surface_normal);
+          strip_stop_ = "adjacent geometric normal winding";
+          if (!std::isfinite(surface_normal.SquareMagnitude()) || surface_normal.SquareMagnitude() <= 0.0 ||
+              !std::isfinite(geometric_winding) || geometric_winding == 0.0 ||
+              std::signbit(geometric_winding) != std::signbit(area)) return false;
+          uv_area += std::abs(area);
+          double diameter = 0.0;
+          for (int i = 0; i < 3; ++i) for (int j = i+1; j < 3; ++j)
+            diameter = std::max(diameter, std::abs(uv[i].X()-uv[j].X()) + std::abs(uv[i].Y()-uv[j].Y()));
+          uv_scale += diameter * diameter;
+          if (face == trial.target) {
+            strip_stop_ = "spherical radial winding or float precision";
+            const auto center = face->GetSurface()->Sphere().Location();
+            const gp_Pnt centroid((p[0].XYZ()+p[1].XYZ()+p[2].XYZ())/3.0);
+            const gp_Pnt fcentroid((fp[0].XYZ()+fp[1].XYZ()+fp[2].XYZ())/3.0);
+            if (normal.Dot(gp_Vec(center,centroid)) <= 0.0 ||
+                !std::isfinite(float_normal.SquareMagnitude()) || float_normal.SquareMagnitude() <= 0.0 ||
+                float_normal.Dot(gp_Vec(center,fcentroid)) <= 0.0) return false;
+            double source_error = 0.0;
+            for (int i = 0; i < 3; ++i) source_error = std::max(source_error,
+                fp[i].Distance(face->GetSurface()->Value(uv[i].X(), uv[i].Y())));
+            strip_stop_ = "spherical triangle plus region deflection";
+            if (source_error + 0.5 * face->GetSurface()->Sphere().Radius() * diameter * diameter +
+                trial.coverage > GetParameters().Deflection) return false;
+          }
+        }
+        strip_stop_ = "adjacent oriented domain or boundary incidence";
+        for (const auto& entry : links) {
+          if (entry.second != (boundary.count(entry.first) ? 1 : 2) ||
+              directions[entry.first] != (boundary.count(entry.first) ? boundary_directions[entry.first] : 0)) return false;
+        }
+        for (const auto& entry : boundary) if (links[entry] != 1) return false;
+        if (!std::isfinite(uv_area) || !std::isfinite(expected_area) ||
+            std::abs(uv_area-std::abs(expected_area)) > 128.0 * std::numeric_limits<double>::epsilon() * uv_scale) return false;
+      }
+      strip_stop_ = "opposite shared-edge face incidence";
+      for (const auto& entry : shared_incidence)
+        if (entry.second.first != 2 || entry.second.second != 0) return false;
+      return true;
+    } catch (const Standard_Failure&) { strip_stop_ = "OCCT exception validating regularized neighbors"; return false; }
+      catch (const std::exception&) { strip_stop_ = "exception validating regularized neighbors"; return false; }
+  }
+
   bool retry_spherical_face(const IMeshData::IFaceHandle& face,
                             const Message_ProgressRange& range) {
     spherical_retry_stop_ = "eligibility or boundary check";
@@ -3851,6 +4466,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
   std::string boundary_repair_stop_ = "not run";
   std::string spherical_retry_stop_;
+  std::string strip_stop_;
+  std::size_t strip_comparisons_ = 0;
+  TopTools_IndexedMapOfShape strip_original_faces_;
 };
 
 static std::string spherical_boundary_failure_detail(const IMeshData::IFaceHandle& face) {
