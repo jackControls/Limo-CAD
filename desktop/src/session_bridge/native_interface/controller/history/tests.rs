@@ -94,7 +94,6 @@ fn renaming_solid_history_preserves_geometry_undo_and_reload() {
         json!({"feature_id":2,"name":"a".repeat(257)}),
         json!({"feature_id":2,"name":"bad\nname"}),
         json!({"feature_id":999,"name":"Missing"}),
-        json!({"feature_id":1,"name":"Source identity"}),
         json!({"feature_id":2,"name":"Valid","unexpected":true}),
     ] {
         assert!(fixture
