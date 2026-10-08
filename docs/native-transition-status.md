@@ -202,6 +202,21 @@ vertices before the format writer. Preserving raw STL placement and trying
 exact-coordinate indexing before 3MF tolerance welding are awaiting UI
 qualification; both formats retain strict geometry checks.
 
+Clean matched `f062b45a` now passes actual UI STL export. The new
+`D:/limo-cad-maintenance/ui-models/Medix KW22 v4 - verified human UI.stl`
+contains all 453,491 facets, with zero nonfinite coordinates, zero-area facets,
+zero normals or opposing normals; its SHA256 is
+`0edc2caa21296b927e18278c12b8084dc47828dfaab44aee48fbfd006fe76a49`.
+Actual tab close and native File > Open reopen the complete checkpoint with
+zero scene errors and display warnings, and the live model still matches the
+saved archive. Actual UI 3MF still refuses a degenerate triangle after tolerance
+welding. Read-only inspection of exact-coordinate STL topology finds 94 edges
+with four incident facets and 113 single-use edges: coincident native solids
+must retain separate identities, while small shared-boundary discrepancies need
+native topology correspondence. Raising a global tolerance would collapse valid
+small facets. Native topology-indexed export remains under development; no
+successful 3MF or physical-print qualification is claimed.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,
