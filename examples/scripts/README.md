@@ -224,6 +224,16 @@ geometry and references.
     has twenty-two features with the previous hole patterns and assembly intact;
     exact live/archive comparison passed. Right-front apron and both rear-post
     pilot patterns, remaining geometry, joints and drawings remain unfinished.
+26. On clean matched `cb464867`, isolate Body2 and select its outward −Y face in
+    Front view. Its basis is origin `(0, 0, 0)`, U `(1, 0, 0)`, V `(0, 0, 1)`.
+    Add two simple Ø3.5 mm, 39 mm deep, flat-bottom pilots with no flip at U 32.5,
+    V 350/390 mm. Name the feature **Right front post / Apron pilots Ø3.5 x 39 /
+    Z350 and Z390**. Restore all seven Browser eyes, use Isometric/Fit and save.
+    The [front pilot checkpoint](../checkpoints/garden-bench-front-pilots-human-ui.limo)
+    has twenty-three features, seven definitions and ten occurrences, with both
+    front-post patterns complete. Saved parameters and exact live/archive
+    comparison passed. Both rear-post patterns, remaining geometry, joints and
+    drawings remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 
