@@ -3104,6 +3104,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     const auto& model = GetModel();
     if (model.IsNull()) return false;
     strip_face_rejections_.clear();
+    pole_certificate_work_ = 0;
     std::set<IMeshData::IFacePtr> eligible;
     for (int fi = 0; fi < model->FacesNb(); ++fi) {
       const auto& face = model->GetFace(fi);
@@ -4493,6 +4494,255 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       catch (const std::exception&) { strip_stop_ = "exception refining shared boundary nodes"; return false; }
   }
 
+  // A native degenerate edge can use distinct UV representatives of one
+  // physical vertex. Certify this particular quotient and its omitted chart
+  // wedge at native sampling precision; never merge merely short edges.
+  bool qualify_native_pole(const StripFace& saved, const Handle(Poly_Triangulation)& mesh,
+                           const TopLoc_Location& location, std::map<int,int>& aliases,
+                           IMeshData::IEdgePtr& pole_edge) {
+    pole_edge = nullptr;
+    try {
+      IMeshData::IPCurveHandle pole_pc;
+      for (int wi = 0; wi < saved.face->WiresNb(); ++wi) {
+        const auto wire = saved.face->GetWire(wi);
+        for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
+          const auto edge = wire->GetEdge(ei);
+          if (!BRep_Tool::Degenerated(edge->GetEdge())) continue;
+          if (pole_edge) { strip_stop_ = "multiple native poles exceed local certificate scope"; return false; }
+          pole_edge = edge; pole_pc = edge->GetPCurve(saved.face,wire->GetEdgeOrientation(ei));
+        }
+      }
+      if (!pole_edge) return true;
+      if (saved.face->WiresNb() != 1 || pole_pc.IsNull() || pole_pc->ParametersNb() != 2 ||
+          pole_edge->GetCurve()->ParametersNb() != 2) {
+        strip_stop_ = "native pole requires one outer wire and two endpoint samples"; return false;
+      }
+      const double deflection = GetParameters().Deflection, budget = deflection/4.0;
+      const double angular = GetParameters().AngleInterior > 0.0 ? GetParameters().AngleInterior : GetParameters().Angle;
+      double tolerance = BRep_Tool::Tolerance(pole_edge->GetEdge());
+      TopoDS_Vertex first,last; TopExp::Vertices(pole_edge->GetEdge(),first,last);
+      if (!first.IsNull()) tolerance = std::max(tolerance,BRep_Tool::Tolerance(first));
+      if (!last.IsNull()) tolerance = std::max(tolerance,BRep_Tool::Tolerance(last));
+      tolerance += BRep_Tool::Tolerance(saved.face->GetFace());
+      if (!std::isfinite(budget) || budget <= 0.0 || !std::isfinite(angular) || angular <= 0.0 ||
+          !std::isfinite(tolerance) || tolerance < 0.0) { strip_stop_ = "native pole has invalid precision/tolerance"; return false; }
+      const int id0 = pole_pc->GetIndex(0), id1 = pole_pc->GetIndex(1);
+      if (id0 < 1 || id1 < 1 || id0 > mesh->NbNodes() || id1 > mesh->NbNodes() || id0 == id1) {
+        strip_stop_ = "native pole mapped endpoints are unsupported"; return false;
+      }
+      const auto native0 = pole_edge->GetCurve()->GetPoint(0), native1 = pole_edge->GetCurve()->GetPoint(1);
+      const auto world = [&](int id) { return mesh->Node(id).Transformed(location.Transformation()); };
+      const auto as_float = [](const gp_Pnt& p) {
+        return gp_Pnt(static_cast<float>(p.X()),static_cast<float>(p.Y()),static_cast<float>(p.Z()));
+      };
+      const auto point0 = world(id0), point1 = world(id1);
+      if (!strip_finite(native0) || !strip_finite(native1) || !strip_finite(point0) || !strip_finite(point1) ||
+          native0.Distance(native1) > Precision::Confusion() || point0.Distance(point1) > Precision::Confusion() ||
+          point0.Distance(native0) > Precision::Confusion() || point1.Distance(native1) > Precision::Confusion() ||
+          as_float(point0).Distance(as_float(point1)) != 0.0) {
+        strip_stop_ = "native pole endpoints do not coincide in double and float geometry"; return false;
+      }
+      std::set<int> used;
+      for (int ti = 1; ti <= mesh->NbTriangles(); ++ti) {
+        int ids[3]; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+        for (int id : ids) {
+          if (id < 1 || id > mesh->NbNodes()) { strip_stop_ = "native pole incident triangle has invalid index"; return false; }
+          used.insert(id);
+        }
+      }
+      if (used.count(id0)+used.count(id1) != 1) {
+        strip_stop_ = "native pole requires exactly one used mesh representative"; return false;
+      }
+      const int representative = used.count(id0) ? id0 : id1, omitted = representative == id0 ? id1 : id0;
+      aliases[omitted] = representative;
+      const auto canonical = [&](int id) { return id == omitted ? representative : id; };
+      std::vector<int> original, quotient;
+      const auto wire = saved.face->GetWire(0);
+      for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
+        const auto orientation = wire->GetEdgeOrientation(ei);
+        const auto pc = wire->GetEdge(ei)->GetPCurve(saved.face,orientation);
+        if ((orientation != TopAbs_FORWARD && orientation != TopAbs_REVERSED) || pc.IsNull() ||
+            pc->ParametersNb() < 2 || original.size()+pc->ParametersNb() > 1024) {
+          strip_stop_ = "native pole boundary exceeds unique oriented chart scope"; return false;
+        }
+        for (int i = 0; i+1 < pc->ParametersNb(); ++i) {
+          const int index = orientation == TopAbs_REVERSED ? pc->ParametersNb()-1-i : i;
+          const int id = pc->GetIndex(index);
+          if (id < 1 || id > mesh->NbNodes() || !strip_finite(pc->GetPoint(index)) || !strip_finite(mesh->UVNode(id)) ||
+              mesh->UVNode(id).Distance(pc->GetPoint(index)) > Precision::PConfusion()) {
+            strip_stop_ = "native pole boundary loses source UV correspondence"; return false;
+          }
+          if (original.empty() || original.back() != id) original.push_back(id);
+          const int mapped = canonical(id);
+          if (quotient.empty() || quotient.back() != mapped) quotient.push_back(mapped);
+        }
+      }
+      if (quotient.size()>1 && quotient.front()==quotient.back()) quotient.pop_back();
+      const auto occurrence = std::find(original.begin(),original.end(),omitted);
+      if (occurrence == original.end() || std::count(original.begin(),original.end(),omitted) != 1) {
+        strip_stop_ = "native pole omitted UV node has ambiguous boundary ownership"; return false;
+      }
+      const int oi = static_cast<int>(occurrence-original.begin()), count = static_cast<int>(original.size());
+      int a = original[(oi+count-1)%count], b = omitted, c = original[(oi+1)%count];
+      if (a != representative && c != representative) {
+        strip_stop_ = "native pole representatives are not consecutive on source boundary"; return false;
+      }
+      // Removing exactly b changes the oriented boundary by triangle (a,b,c).
+      // Both full polygons must be simple; all other chart edges stay unchanged.
+      const auto simple_area = [&](const std::vector<int>& polygon,double& area) {
+        if (polygon.size()<3) return false;
+        area = 0.0; const auto origin = mesh->UVNode(polygon.front()).Coord();
+        for (std::size_t i = 0; i < polygon.size(); ++i) {
+          const auto p = mesh->UVNode(polygon[i]), q = mesh->UVNode(polygon[(i+1)%polygon.size()]);
+          if (!strip_finite(p) || !strip_finite(q) || p.Distance(q)<=Precision::PConfusion()) return false;
+          area += 0.5*(p.Coord()-origin).Crossed(q.Coord()-origin);
+          for (std::size_t j = i+1; j < polygon.size(); ++j) {
+            if (++pole_certificate_work_ > 2097152) return false;
+            gp_Pnt2d intersection;
+            const auto flag = BRepMesh_GeomTool::IntSegSeg(p.Coord(),q.Coord(),mesh->UVNode(polygon[j]).Coord(),
+                mesh->UVNode(polygon[(j+1)%polygon.size()]).Coord(),true,true,intersection);
+            const bool adjacent = j==i+1 || (i==0 && j+1==polygon.size());
+            if (flag!=BRepMesh_GeomTool::NoIntersection && !(adjacent && flag==BRepMesh_GeomTool::EndPointTouch)) return false;
+          }
+        }
+        return std::isfinite(area) && area>0.0;
+      };
+      double source_area,quotient_area;
+      if (!simple_area(original,source_area) || !simple_area(quotient,quotient_area)) {
+        strip_stop_ = "native pole source/quotient chart is not a certified simple outer boundary"; return false;
+      }
+      const auto auv = mesh->UVNode(a), buv = mesh->UVNode(b), cuv = mesh->UVNode(c);
+      const double wedge_area = 0.5*(buv.Coord()-auv.Coord()).Crossed(cuv.Coord()-auv.Coord());
+      // Bound subtraction and polygon accumulation using the stored chart's
+      // coordinate scale, including rounding before the origin subtraction.
+      double area_scale = std::abs(source_area)+std::abs(quotient_area)+std::abs(wedge_area);
+      for (int id : original) {
+        const auto parameter = mesh->UVNode(id);
+        area_scale += std::pow(std::abs(parameter.X())+std::abs(parameter.Y())+
+            std::abs(auv.X())+std::abs(auv.Y()),2);
+      }
+      if (!std::isfinite(wedge_area) || std::abs(source_area-quotient_area-wedge_area) >
+          256.0*std::numeric_limits<double>::epsilon()*area_scale) {
+        strip_stop_ = "native pole chart difference is not exactly the witnessed local wedge"; return false;
+      }
+      // Find the sole oriented physical boundary triangle spanning that wedge.
+      const int ca = canonical(a), cc = canonical(c);
+      int incident = 0, ti_found = 0;
+      for (int ti = 1; ti <= mesh->NbTriangles(); ++ti) {
+        int ids[3]; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+        for (int i = 0; i < 3; ++i) if (ids[i]==ca && ids[(i+1)%3]==cc) { ++incident; ti_found=ti; }
+      }
+      if (incident!=1) { strip_stop_ = "native pole wedge lacks one matching directed incident triangle"; return false; }
+      int ids[3]; mesh->Triangle(ti_found).Get(ids[0],ids[1],ids[2]);
+      gp_Pnt p[3],fp[3]; gp_Pnt2d uv[3];
+      for (int i = 0; i < 3; ++i) {
+        p[i]=world(ids[i]); fp[i]=as_float(p[i]); uv[i]=mesh->UVNode(ids[i]);
+        if (!strip_finite(p[i]) || !strip_finite(fp[i]) || !strip_finite(uv[i])) {
+          strip_stop_ = "native pole incident geometry is nonfinite"; return false;
+        }
+      }
+      const auto normal = gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2]));
+      const auto float_normal = gp_Vec(fp[0],fp[1]).Crossed(gp_Vec(fp[0],fp[2]));
+      if (!std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude()<=0.0 ||
+          !std::isfinite(float_normal.SquareMagnitude()) || float_normal.SquareMagnitude()<=0.0) {
+        strip_stop_ = "native pole incident geometry is degenerate in double or float"; return false;
+      }
+      const auto segment_distance = [](const gp_Pnt& value,const gp_Pnt& x,const gp_Pnt& y) {
+        const gp_Vec edge(x,y); const double length2=edge.SquareMagnitude();
+        if (length2<=0.0) return value.Distance(x);
+        const double t=std::clamp(gp_Vec(x,value).Dot(edge)/length2,0.0,1.0);
+        return value.Distance(gp_Pnt(x.XYZ()+edge.XYZ()*t));
+      };
+      const auto triangle_distance = [&](const gp_Pnt& value,const gp_Pnt* triangle) {
+        const gp_Vec x(triangle[0],triangle[1]), y(triangle[0],triangle[2]), offset(triangle[0],value);
+        const double xx=x.SquareMagnitude(), yy=y.SquareMagnitude(), xy=x.Dot(y), determinant=xx*yy-xy*xy;
+        if (determinant>0.0) {
+          const double u=(offset.Dot(x)*yy-offset.Dot(y)*xy)/determinant;
+          const double v=(offset.Dot(y)*xx-offset.Dot(x)*xy)/determinant;
+          if (u>=0.0 && v>=0.0 && u+v<=1.0) return value.Distance(gp_Pnt(triangle[0].XYZ()+x.XYZ()*u+y.XYZ()*v));
+        }
+        return std::min({segment_distance(value,triangle[0],triangle[1]),segment_distance(value,triangle[1],triangle[2]),
+            segment_distance(value,triangle[2],triangle[0])});
+      };
+      gp_Dir reference_normal; gp_Pnt reference_point;
+      const gp_Pnt2d center((uv[0].Coord()+uv[1].Coord()+uv[2].Coord())/3.0);
+      if (!BRepMesh_GeomTool::Normal(saved.face->GetSurface(),center.X(),center.Y(),reference_point,reference_normal)) {
+        strip_stop_ = "native pole incident source normal is undefined"; return false;
+      }
+      double max_error=0.0,max_angle=0.0,max_pole_gap=0.0,max_affine_error=0.0;
+      std::string sample_stop;
+      const auto rejected_sample = [&](const char* stage) {
+        std::ostringstream detail; detail.precision(7);
+        detail << stage << " " << sample_stop << " error/angle " << max_error << '/' << max_angle <<
+            " budgets " << budget << '/' << angular << " CAD tolerance " << tolerance;
+        detail << " pole/affine error " << max_pole_gap << '/' << max_affine_error;
+        strip_stop_ = detail.str(); return false;
+      };
+      const auto sample = [&](const gp_Pnt2d& parameter,bool collapsed) {
+        sample_stop = "invalid sample or work budget";
+        if (++pole_certificate_work_>2097152 || !strip_finite(parameter)) return false;
+        const auto source=saved.face->GetSurface()->Value(parameter.X(),parameter.Y());
+        if (!strip_finite(source)) return false;
+        const double error=std::max(triangle_distance(source,p),triangle_distance(source,fp));
+        max_error=std::max(max_error,error);
+        sample_stop = "source-to-incident geometry gap";
+        if (!std::isfinite(error) || error>budget) return false;
+        if (collapsed) {
+          max_pole_gap = std::max(max_pole_gap,std::max(source.Distance(native0),source.Distance(as_float(point0))));
+          sample_stop = "source-to-pole gap";
+          if (source.Distance(native0)>std::min(tolerance,budget) || source.Distance(as_float(point0))>budget) return false;
+        }
+        gp_Dir source_normal; gp_Pnt source_point;
+        sample_stop = "undefined source normal";
+        if (!BRepMesh_GeomTool::Normal(saved.face->GetSurface(),parameter.X(),parameter.Y(),source_point,source_normal)) return false;
+        const double angle=std::max({reference_normal.Angle(source_normal),
+            normal.Angle(gp_Vec(source_normal)),float_normal.Angle(gp_Vec(source_normal))});
+        max_angle=std::max(max_angle,angle);
+        sample_stop = "actual facet angular budget";
+        return std::isfinite(angle) && angle<=angular;
+      };
+      // Sample both the accepted discrete trace and the exact native PCurve.
+      double first_parameter,last_parameter;
+      const auto exact_pc=BRep_Tool::CurveOnSurface(pole_edge->GetEdge(),saved.face->GetFace(),first_parameter,last_parameter);
+      if (exact_pc.IsNull() || !std::isfinite(first_parameter) || !std::isfinite(last_parameter)) {
+        strip_stop_ = "native pole source PCurve or parameter range is missing"; return false;
+      }
+      for (int i=0;i<=8;++i) {
+        const double t=i/8.0;
+        const auto trace=gp_Pnt2d(pole_pc->GetPoint(0).Coord()*(1.0-t)+pole_pc->GetPoint(1).Coord()*t);
+        if (!sample(trace,true) || !sample(exact_pc->Value(first_parameter*(1.0-t)+last_parameter*t),true)) {
+          return rejected_sample("native pole trace");
+        }
+      }
+      // Wedge and actual incident triangle are checked directly; the native
+      // estimator intentionally excludes triangles at degenerate boundaries.
+      for (int i=0;i<=4;++i) for (int j=0;j<=4-i;++j) {
+        const double x=i/4.0,y=j/4.0,z=1.0-x-y;
+        if (!sample(gp_Pnt2d(auv.Coord()*x+buv.Coord()*y+cuv.Coord()*z),false)) {
+          return rejected_sample("native pole omitted wedge");
+        }
+        const gp_Pnt2d parameter(uv[0].Coord()*x+uv[1].Coord()*y+uv[2].Coord()*z);
+        const auto source=saved.face->GetSurface()->Value(parameter.X(),parameter.Y());
+        const gp_Pnt affine(p[0].XYZ()*x+p[1].XYZ()*y+p[2].XYZ()*z), f_affine(fp[0].XYZ()*x+fp[1].XYZ()*y+fp[2].XYZ()*z);
+        if (!sample(parameter,false) || !strip_finite(source)) {
+          return rejected_sample("native pole incident triangle");
+        }
+        const double affine_error = std::max(source.Distance(affine),source.Distance(f_affine));
+        max_affine_error = std::max(max_affine_error,affine_error);
+        if (!std::isfinite(affine_error) || affine_error>deflection) {
+          sample_stop = "affine triangle deflection";
+          return rejected_sample("native pole incident triangle");
+        }
+      }
+      std::ostringstream certificate; certificate.precision(7);
+      certificate << "; certified native pole " << omitted << "->" << representative << " D/angle " << deflection << '/' << angular <<
+          " measured error/angle " << max_error << '/' << max_angle << " signed chart wedge " << wedge_area;
+      strip_corner_detail_ += certificate.str();
+      return true;
+    } catch (const Standard_Failure&) { strip_stop_ = "OCCT exception certifying native pole quotient"; return false; }
+      catch (const std::exception&) { strip_stop_ = "exception certifying native pole quotient"; return false; }
+  }
+
   bool validate_spherical_strip(const StripTrial& trial) {
     strip_stop_ = "triangulation status";
     try {
@@ -4505,6 +4755,16 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         if ((face->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Reused)) != 0 || mesh.IsNull() ||
             !mesh->HasUVNodes() || mesh->NbNodes() < 3 || mesh->NbNodes() > 65536 ||
             mesh->NbTriangles() < 1 || mesh->NbTriangles() > 131072) return false;
+        std::map<int,int> pole_aliases;
+        IMeshData::IEdgePtr pole_edge = nullptr;
+        if (!qualify_native_pole(saved,mesh,location,pole_aliases,pole_edge)) {
+          strip_stop_ = "adjacent face " + std::to_string(strip_original_faces_.FindIndex(face->GetFace())-1) +
+              " " + strip_stop_; return false;
+        }
+        const auto canonical = [&](int id) {
+          const auto alias = pole_aliases.find(id);
+          return alias == pole_aliases.end() ? id : alias->second;
+        };
         std::map<std::pair<int,int>, int> links;
         std::map<std::pair<int,int>, int> directions, boundary_directions;
         std::map<std::pair<int,int>, std::vector<int>> boundary_orientations;
@@ -4537,19 +4797,28 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               max_uv_gap = std::max(max_uv_gap, mesh->UVNode(id).Distance(pc->GetPoint(i)));
               if (boundary_owners[id].size() < 2) boundary_owners[id].push_back({wi,ei,i});
               if (i && id != pc->GetIndex(i-1)) {
-                const int previous = pc->GetIndex(i-1);
-                const auto key = link(previous, id);
-                boundary.insert(key);
-                boundary_directions[key] += traversal * direction(previous, id);
-                if (boundary_orientations[key].size() < 4)
-                  boundary_orientations[key].push_back(static_cast<int>(wire->GetEdgeOrientation(ei)));
+                const int previous = canonical(pc->GetIndex(i-1)), current = canonical(id);
+                if (previous == current) {
+                  // Only a certified native degenerate edge may disappear in
+                  // the physical boundary quotient. Other shared edges retain
+                  // every original nondegenerate segment.
+                  if (edge != pole_edge || !BRep_Tool::Degenerated(edge->GetEdge())) {
+                    strip_stop_ = "native pole alias collapses a nondegenerate boundary edge"; return false;
+                  }
+                } else {
+                  const auto key = link(previous, current);
+                  boundary.insert(key);
+                  boundary_directions[key] += traversal * direction(previous, current);
+                  if (boundary_orientations[key].size() < 4)
+                    boundary_orientations[key].push_back(static_cast<int>(wire->GetEdgeOrientation(ei)));
+                }
               }
               if (i + 1 < pc->ParametersNb()) {
                 const int index = wire->GetEdgeOrientation(ei) == TopAbs_REVERSED ? pc->ParametersNb()-1-i : i;
                 polygon.push_back(pc->GetPoint(index));
                 const int mapped_index = pc->GetIndex(index);
                 if (mapped_index < 1 || mapped_index > mesh->NbNodes()) return false;
-                mapped_polygon.push_back(mesh->UVNode(mapped_index));
+                mapped_polygon.push_back(mesh->UVNode(canonical(mapped_index)));
               }
             }
           }
@@ -4568,6 +4837,11 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           strip_stop_ = "nonfinite or degenerate adjacent triangle";
           for (int i = 0; i < 3; ++i) {
             if (ids[i] < 1 || ids[i] > mesh->NbNodes()) return false;
+            // The omitted UV representative was proved unused. Never
+            // canonicalize an actual triangle or collapse its physical edge.
+            if (canonical(ids[i]) != ids[i]) {
+              strip_stop_ = "native pole alias changes an actual triangle node"; return false;
+            }
             p[i] = mesh->Node(ids[i]).Transformed(location.Transformation()); uv[i] = mesh->UVNode(ids[i]);
             fp[i] = gp_Pnt(static_cast<float>(p[i].X()), static_cast<float>(p[i].Y()), static_cast<float>(p[i].Z()));
             if (!strip_finite(p[i]) || !strip_finite(fp[i]) || !strip_finite(uv[i])) return false;
@@ -4864,6 +5138,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   std::string strip_repair_stop_ = "strip repair not run";
   std::map<int, std::string> strip_face_rejections_;
   std::size_t strip_comparisons_ = 0;
+  std::size_t pole_certificate_work_ = 0;
   TopTools_IndexedMapOfShape strip_original_faces_;
 };
 
