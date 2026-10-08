@@ -5826,7 +5826,7 @@ class NativeExportIndex {
   struct Facet { int face,triangle; std::array<int,3> nodes; };
   NativeExportIndex(const TopoDS_Shape& shape, const TopTools_IndexedMapOfShape& edges, double deflection,
                     const std::string& recovery,const std::map<int,std::string>& rejections)
-      : edges_(edges), recovery_(recovery), rejections_(rejections), deflection_(deflection) {
+      : shape_(shape), edges_(edges), recovery_(recovery), rejections_(rejections), deflection_(deflection) {
     TopExp::MapShapes(shape,TopAbs_SHELL,shells_);
     TopExp::MapShapes(shape,TopAbs_VERTEX,vertices_);
     TopExp::MapShapesAndUniqueAncestors(shape,TopAbs_FACE,TopAbs_SHELL,face_shells_,false);
@@ -5962,30 +5962,89 @@ class NativeExportIndex {
     }
     std::size_t invalid=0;
     std::map<int,int> face_groups,edge_groups;
+    std::map<std::pair<int,int>,int> invalid_types;
     std::vector<std::pair<std::pair<std::uint32_t,std::uint32_t>,Use>> failures;
-    std::set<int> example_faces;
+    std::map<int,std::pair<std::pair<std::uint32_t,std::uint32_t>,Use>> examples_by_face;
     for (const auto& use : uses) if (use.second.count!=2 || use.second.balance!=0) {
       ++invalid;
-      const int first_face=facets_.at(use.second.incidents[0].first).face;
-      if (failures.size()<64 && example_faces.insert(first_face).second) failures.push_back(use);
-      for (int i=0;i<std::min(2,use.second.count);++i) ++face_groups[facets_.at(use.second.incidents[i].first).face];
+      ++invalid_types[{use.second.count,use.second.balance}];
+      for (int i=0;i<std::min(2,use.second.count);++i) {
+        const int face=facets_.at(use.second.incidents[i].first).face;
+        ++face_groups[face]; examples_by_face.emplace(face,use);
+      }
       for (const auto id : {use.first.first,use.first.second}) if (vertex_keys_.at(id)[1]==2)
         ++edge_groups[vertex_keys_[id][2]-1];
     }
     if (!invalid) return;
     std::ostringstream details; details.precision(12);
     details << "Native export topology is not a closed oriented mesh: " << invalid <<
-        " invalid links; " << shells_.Extent() << " native shells; " << recovery_ << ". Restoration stages";
+        " invalid links; " << shells_.Extent() << " native shells; " << recovery_ << ". Invalid uses/balance:count";
+    int types=0;
+    for (const auto& type : invalid_types) {
+      details << ' ' << type.first.first << '/' << type.first.second << ':' << type.second;
+      if (++types==8) { if (invalid_types.size()>8) details << " [further types]"; break; }
+    }
+    // Source incidence counts oriented OCCURRENCES in the same native shell,
+    // including both occurrences of a seam. Unique ancestor counts alone
+    // cannot distinguish a seam, omitted mesh owner, or nonmanifold edge.
+    try {
+      std::vector<std::pair<int,int>> worst_edges;
+      for (const auto& edge : edge_groups) worst_edges.emplace_back(edge.second,edge.first);
+      std::sort(worst_edges.begin(),worst_edges.end(),[](const auto& a,const auto& b) { return a>b; });
+      std::set<int> selected_edges;
+      for (std::size_t i=0;i<std::min<std::size_t>(3,worst_edges.size());++i) selected_edges.insert(worst_edges[i].second+1);
+      struct NativeUse { int count=0,balance=0; std::set<int> faces; std::vector<std::array<int,3>> owners; };
+      std::map<std::pair<int,int>,NativeUse> native_uses;
+      TopTools_IndexedMapOfShape native_faces; TopExp::MapShapes(shape_,TopAbs_FACE,native_faces);
+      std::size_t native_work=0;
+      for (int si=1;si<=shells_.Extent();++si) for (TopExp_Explorer fe(shells_.FindKey(si),TopAbs_FACE);fe.More();fe.Next()) {
+        const auto face=TopoDS::Face(fe.Current());
+        const int face_index=native_faces.FindIndex(face)-1;
+        for (TopExp_Explorer ee(face,TopAbs_EDGE);ee.More();ee.Next()) {
+          if (++native_work>200000) throw std::runtime_error("native incidence diagnostic budget");
+          const auto edge=TopoDS::Edge(ee.Current()); const int ei=edges_.FindIndex(edge);
+          if (!selected_edges.count(ei)) continue;
+          auto& use=native_uses[{si,ei}]; ++use.count; use.faces.insert(face_index);
+          const auto orientation=edge.Orientation();
+          use.balance+=orientation==TopAbs_FORWARD ? 1 : orientation==TopAbs_REVERSED ? -1 : 0;
+          if (use.owners.size()<6) {
+            TopLoc_Location location;
+            const auto mesh=BRep_Tool::Triangulation(face,location);
+            const auto polygon=mesh.IsNull() ? Handle(Poly_PolygonOnTriangulation)() :
+                BRep_Tool::PolygonOnTriangulation(edge,mesh,location);
+            use.owners.push_back({face_index,static_cast<int>(orientation),polygon.IsNull() ? 0 : polygon->NbNodes()});
+          }
+        }
+      }
+      details << ". Worst native edge ownership";
+      for (const auto& edge : worst_edges) {
+        if (!selected_edges.count(edge.second+1)) continue;
+        for (const auto& entry : native_uses) if (entry.first.second==edge.second+1) {
+          const auto& use=entry.second;
+          details << " [edge " << edge.second << " shell " << entry.first.first-1 << " native-deg " <<
+              BRep_Tool::Degenerated(TopoDS::Edge(edges_.FindKey(edge.second+1))) << " occurrences/balance/unique-faces " <<
+              use.count << '/' << use.balance << '/' << use.faces.size() << " face/orient/POT-nodes";
+          for (const auto& owner : use.owners) details << ' ' << owner[0] << '/' << owner[1] << '/' << owner[2];
+          details << ']';
+        }
+      }
+    } catch (const Standard_Failure&) { details << ". Native incidence unavailable (OCCT)"; }
+      catch (const std::exception&) { details << ". Native incidence unavailable (budget/native)"; }
+    details << ". Restoration stages";
     int stages=0;
     std::vector<std::pair<int,int>> stage_faces;
     for (const auto& face : face_groups) stage_faces.emplace_back(face.second,face.first);
     std::sort(stage_faces.begin(),stage_faces.end(),[](const auto& a,const auto& b) { return a>b; });
     for (const auto& face : stage_faces) {
+      const auto example=examples_by_face.find(face.second);
+      if (example!=examples_by_face.end()) failures.push_back(example->second);
+    }
+    for (const auto& face : stage_faces) {
       const auto rejection=rejections_.find(face.second);
       if (rejection==rejections_.end() || rejection->second=="no mapped-native boundary shortcut" ||
           rejection->second=="native boundary restored and full domain certified") continue;
       details << " [face " << face.second << " bad uses " << face.first << ' ' << rejection->second.substr(0,220) << ']';
-      if (++stages==10) break;
+      if (++stages==4) break;
     }
     details << ". Source face/link-use groups";
     const auto groups=[&](const std::map<int,int>& source) {
@@ -6049,6 +6108,7 @@ class NativeExportIndex {
     throw std::runtime_error("Native export topology face "+std::to_string(face_index-1)+": "+message+
         "; native shells "+std::to_string(shells_.Extent()));
   }
+  TopoDS_Shape shape_;
   const TopTools_IndexedMapOfShape& edges_;
   TopTools_IndexedMapOfShape shells_,vertices_;
   TopTools_IndexedDataMapOfShapeListOfShape face_shells_;
