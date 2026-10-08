@@ -4424,6 +4424,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       int worst_child=-1,worst_sample=-1;gp_Pnt2d selected,worst_uv;gp_Pnt selected_local;
       for (const auto& candidate : candidates) {
         if (!strip_finite(candidate) || BRepClass_FaceClassifier(face->GetFace(),candidate,Precision::PConfusion()).State()!=TopAbs_IN) continue;
+        if (++export_boundary_work_>2097152) { strip_stop_="whole-face centre evaluation budget";return false; }
         const auto source_point=face->GetSurface()->Value(candidate.X(),candidate.Y());
         if (!strip_finite(source_point)) continue;
         const auto local_point=source_point.Transformed(location.Transformation().Inverted());
@@ -4451,21 +4452,93 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         }
         if (!valid) continue;
         if (max_angle<rejected) { rejected=max_angle;error_at_rejected=max_error;worst_child=ci;worst_sample=si;worst_uv=failing_uv; }
-        if (max_angle<=angle && max_error<=d && max_angle<best) { best=max_angle;selected=candidate;selected_local=local_point; }
+        const double score=std::max(max_angle/angle,max_error/d);
+        if (std::isfinite(score) && score<best) { best=score;selected=candidate;selected_local=local_point; }
       }
       if (!std::isfinite(best)) {
-        strip_stop_="whole-face no precise star D/angle "+std::to_string(error_at_rejected)+"/"+std::to_string(rejected)+
+        strip_stop_="whole-face no finite source star D/angle "+std::to_string(error_at_rejected)+"/"+std::to_string(rejected)+
             " child/sample "+std::to_string(worst_child)+"/"+std::to_string(worst_sample)+" UV "+
             std::to_string(worst_uv.X())+"/"+std::to_string(worst_uv.Y());return false;
       }
       const auto replacement=mesh->Copy();const int node=mesh->NbNodes()+1;
       replacement->ResizeNodes(node,true);replacement->SetUVNode(node,selected);
       replacement->SetNode(node,selected_local);
-      replacement->ResizeTriangles(static_cast<int>(boundary.size()),false);
-      for (std::size_t i=0;i<boundary.size();++i) replacement->SetTriangle(static_cast<int>(i)+1,
-          Poly_Triangle(boundary[i],boundary[(i+1)%boundary.size()],node));
+      std::set<std::pair<int,int>> native_boundary_links;
+      for (std::size_t i=0;i<boundary.size();++i) native_boundary_links.emplace(
+          std::min(boundary[i],boundary[(i+1)%boundary.size()]),std::max(boundary[i],boundary[(i+1)%boundary.size()]));
+      struct Cell { std::array<int,3> ids; int depth; };
+      std::vector<Cell> pending;
+      for (std::size_t i=0;i<boundary.size();++i) pending.push_back({{boundary[i],boundary[(i+1)%boundary.size()],node},0});
+      std::vector<std::array<int,3>> complete;int inspected=0,inserted=1,max_depth=0;
+      // Splitting at a source UV centroid keeps all three existing outer
+      // links intact. Thus refinement introduces no hanging nodes and keeps
+      // exactly the same positive mapped domain, even along shared spokes.
+      while (!pending.empty()) {
+        const auto cell=pending.back();pending.pop_back();
+        if (++inspected>8192 || complete.size()>4096) { strip_stop_="whole-face refinement cell budget";return false; }
+        gp_Pnt2d u[3];gp_Pnt p[3];
+        for (int i=0;i<3;++i) {
+          u[i]=replacement->UVNode(cell.ids[i]);p[i]=replacement->Node(cell.ids[i]).Transformed(location.Transformation());
+          if (!strip_finite(u[i]) || !strip_finite(p[i])) { strip_stop_="whole-face refinement nonfinite node";return false; }
+        }
+        const auto normal=gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2]));
+        const double child_area=winding*(u[1].Coord()-u[0].Coord()).Crossed(u[2].Coord()-u[0].Coord());
+        if (!std::isfinite(child_area) || child_area<=0.0 || !std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude()<=0.0) {
+          strip_stop_="whole-face refinement zero/native or inverted UV cell";return false;
+        }
+        double max_error=0.0,max_angle=0.0;int failing_sample=-1,index=0;gp_Vec endpoint_normals[3];
+        for (const auto& w : weights) {
+          if (++export_boundary_work_>2097152) { strip_stop_="whole-face refinement source budget";return false; }
+          const gp_Pnt2d uv(u[0].Coord()*w[0]+u[1].Coord()*w[1]+u[2].Coord()*w[2]);
+          const gp_Pnt affine(p[0].XYZ()*w[0]+p[1].XYZ()*w[1]+p[2].XYZ()*w[2]);gp_Pnt source;gp_Dir source_normal;
+          if (!BRepMesh_GeomTool::Normal(face->GetSurface(),uv.X(),uv.Y(),source,source_normal) || !strip_finite(source)) {
+            strip_stop_="whole-face refinement undefined source normal";return false;
+          }
+          const double error=affine.Distance(source),angular=normal.Angle(gp_Vec(source_normal)*winding);
+          if (!std::isfinite(error) || !std::isfinite(angular)) { strip_stop_="whole-face refinement nonfinite precision";return false; }
+          if (index<3) {
+            endpoint_normals[index]=gp_Vec(source_normal)*winding;
+            if (error>d) { strip_stop_="whole-face fixed vertex exceeds source distance "+std::to_string(error);return false; }
+          }
+          max_error=std::max(max_error,error);max_angle=std::max(max_angle,angular);
+          if (error>d || angular>angle) failing_sample=index;++index;
+        }
+        if (max_error<=d && max_angle<=angle) { complete.push_back(cell.ids);continue; }
+        // Centroid refinement preserves each current outer edge. If its two
+        // endpoint normal cones do not intersect, no descendant incident to
+        // that edge can satisfy the unchanged angular witnesses.
+        for (int i=0;i<3;++i) if (endpoint_normals[i].Angle(endpoint_normals[(i+1)%3])>2.0*angle) {
+          const int next=(i+1)%3,a=cell.ids[i],b=cell.ids[next];
+          const auto key=std::make_pair(std::min(a,b),std::max(a,b));
+          strip_stop_="whole-face fixed "+std::string(native_boundary_links.count(key) ? "native-boundary" : "interior")+
+              " edge "+std::to_string(a)+"/"+std::to_string(b)+" source angle "+
+              std::to_string(endpoint_normals[i].Angle(endpoint_normals[next]))+" UV "+std::to_string(u[i].X())+"/"+
+              std::to_string(u[i].Y())+" -> "+std::to_string(u[next].X())+"/"+std::to_string(u[next].Y());return false;
+        }
+        if (cell.depth>=8 || inserted>=4096 || replacement->NbNodes()>=65536 || pending.size()+complete.size()+3>8192) {
+          strip_stop_="whole-face refinement cap depth/nodes "+std::to_string(cell.depth)+"/"+std::to_string(inserted)+
+              " D/angle "+std::to_string(max_error)+"/"+std::to_string(max_angle)+" sample "+std::to_string(failing_sample)+
+              " cell "+std::to_string(cell.ids[0])+"/"+std::to_string(cell.ids[1])+"/"+std::to_string(cell.ids[2]);return false;
+        }
+        const gp_Pnt2d uv((u[0].Coord()+u[1].Coord()+u[2].Coord())/3.0);
+        if (!strip_finite(uv) || BRepClass_FaceClassifier(face->GetFace(),uv,Precision::PConfusion()).State()!=TopAbs_IN) {
+          strip_stop_="whole-face refinement centroid outside source trim";return false;
+        }
+        if (++export_boundary_work_>2097152) { strip_stop_="whole-face refinement centre budget";return false; }
+        const auto source=face->GetSurface()->Value(uv.X(),uv.Y());
+        const auto local=source.Transformed(location.Transformation().Inverted());
+        if (!strip_finite(source) || !strip_finite(local)) { strip_stop_="whole-face refinement nonfinite source point";return false; }
+        const int next=replacement->NbNodes()+1;replacement->ResizeNodes(next,true);
+        replacement->SetUVNode(next,uv);replacement->SetNode(next,local);++inserted;max_depth=std::max(max_depth,cell.depth+1);
+        for (int i=0;i<3;++i) pending.push_back({{cell.ids[i],cell.ids[(i+1)%3],next},cell.depth+1});
+      }
+      if (complete.empty() || complete.size()>4096) { strip_stop_="whole-face refinement final facet budget";return false; }
+      replacement->ResizeTriangles(static_cast<int>(complete.size()),false);
+      for (std::size_t i=0;i<complete.size();++i) replacement->SetTriangle(static_cast<int>(i)+1,
+          Poly_Triangle(complete[i][0],complete[i][1],complete[i][2]));
       replacement->RemoveNormals();replacement->ComputeNormals();BRep_Builder().UpdateFace(face->GetFace(),replacement);
-      strip_stop_="whole-face native star installed for full source certificate";return true;
+      strip_stop_="whole-face refined star installed facets/nodes/depth "+std::to_string(complete.size())+"/"+
+          std::to_string(inserted)+"/"+std::to_string(max_depth)+" for full source certificate";return true;
     } catch (const Standard_Failure&) { strip_stop_="OCCT exception proposing whole-face star";return false; }
       catch (const std::exception&) { strip_stop_="exception proposing whole-face star";return false; }
   }
