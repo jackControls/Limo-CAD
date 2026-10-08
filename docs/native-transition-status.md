@@ -107,6 +107,15 @@ a spherical face with signed area -0.000015055593139196334 mm², status 4 and no
 reported boundary intersections. That nonzero face was rejected rather than
 omitted; the import tab stayed empty. Its meshing failure is the next unresolved
 issue, and successful Medix import is still not established.
+Clean `dee3319c` built, deployed and was physically retried with additional
+read-only failure diagnostics. Face 3779 is a radius-1.2 mm spherical strip with
+U span 1.560393444807 radians and V span 0.00001503703578442 radians. Its sampled
+wire has positive UV area 0.00000278218692873, and the sphere range splitter is
+valid. The default Watson triangulator produced no triangulation despite the
+accepted boundary. Face tolerance is 0.0000001 mm; both circular edges have
+approximately 0.04823 mm tolerance. This distinguishes the remaining failure
+from the resolved boundary intersections. A bounded alternate triangulation of
+the same shared samples is being investigated; complete import remains open.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
