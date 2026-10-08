@@ -3841,9 +3841,16 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 static std::string spherical_boundary_failure_detail(const IMeshData::IFaceHandle& face) {
   try {
     if (face->GetSurface()->GetType() != GeomAbs_Sphere) return "";
-    std::ostringstream detail;
+    std::ostringstream detail, samples, summary;
     detail.precision(10);
-    struct Segment { gp_Pnt2d a, b; int edge, index; };
+    samples.precision(9);
+    summary.precision(10);
+    struct Segment {
+      gp_Pnt2d a, b;
+      int edge, index;
+      IMeshData::IEdgePtr native_edge;
+      double first_parameter, last_parameter;
+    };
     std::vector<Segment> segments;
     int edge_count = 0, sample_count = 0;
     bool complete = true;
@@ -3863,29 +3870,35 @@ static std::string spherical_boundary_failure_detail(const IMeshData::IFaceHandl
         }
         BRepAdaptor_Curve on_face(TopoDS::Edge(edge->GetEdge().Oriented(orientation)), face->GetFace());
         const auto& source = on_face.CurveOnSurface().GetCurve();
-        detail << "; sphere wire/edge " << wi << '/' << ei << " boundary samples";
+        double maximum_mesh_error = 0.0, maximum_source_error = 0.0;
+        samples << "; sphere wire/edge " << wi << '/' << ei << " boundary samples";
         for (int i = 0; i < pc->ParametersNb(); ++i) {
           if (++sample_count > 24) { complete = false; break; }
           const auto& uv = pc->GetPoint(i);
           const double parameter = pc->GetParameter(i);
           if (!finite_uv(uv) || !std::isfinite(parameter))
             return ", sphere sample diagnostic found nonfinite UV/parameter";
-          detail << " [" << i << " t " << parameter << " UV " << uv.X() << ',' << uv.Y();
+          samples << " [" << i << " t " << parameter << " UV " << uv.X() << ',' << uv.Y();
           const auto mesh_point = face->GetSurface()->Value(uv.X(), uv.Y());
           const double mesh_error = mesh_point.Distance(curve->GetPoint(i));
           if (!std::isfinite(mesh_error)) return ", sphere sample diagnostic found nonfinite distance";
-          detail << " error mm " << mesh_error;
+          maximum_mesh_error = std::max(maximum_mesh_error, mesh_error);
+          samples << " error mm " << mesh_error;
           if (edge->GetSameParam() && edge->GetSameRange() && !source.IsNull()) {
             const auto source_uv = source->Value(parameter);
             if (!finite_uv(source_uv)) return ", sphere sample diagnostic found nonfinite source UV";
             const double source_error = face->GetSurface()->Value(source_uv.X(), source_uv.Y()).Distance(curve->GetPoint(i));
             if (!std::isfinite(source_error)) return ", sphere sample diagnostic found nonfinite source distance";
-            detail << " sourceUV " << source_uv.X() << ',' << source_uv.Y()
+            maximum_source_error = std::max(maximum_source_error, source_error);
+            samples << " sourceUV " << source_uv.X() << ',' << source_uv.Y()
                    << " source error mm " << source_error;
           }
-          detail << ']';
-          if (i > 0) segments.push_back({pc->GetPoint(i - 1), uv, edge_count, i - 1});
+          samples << ']';
+          if (i > 0) segments.push_back({pc->GetPoint(i - 1), uv, edge_count, i - 1,
+              edge.get(), pc->GetParameter(i - 1), parameter});
         }
+        summary << ", sphere edge " << ei << " max mesh/source error mm "
+                << maximum_mesh_error << '/' << maximum_source_error;
       }
     }
     int crossings = 0;
@@ -3898,15 +3911,55 @@ static std::string spherical_boundary_failure_detail(const IMeshData::IFaceHandl
                 second.a.Coord(), second.b.Coord(), false, false, cross) != BRepMesh_GeomTool::Cross) continue;
         if (!finite_uv(cross)) return ", sphere sample diagnostic found nonfinite crossing";
         ++crossings;
-        if (crossings <= 2)
+        if (crossings <= 2) {
           detail << ", unfiltered cross edges/segments " << first.edge - 1 << '/' << first.index
                  << ':' << second.edge - 1 << '/' << second.index
                  << " UV " << cross.X() << ',' << cross.Y();
+          if (!first.native_edge->GetSameParam() || !first.native_edge->GetSameRange() ||
+              !second.native_edge->GetSameParam() || !second.native_edge->GetSameRange()) {
+            detail << " native parameter correspondence unavailable";
+            continue;
+          }
+          const auto av = first.b.Coord() - first.a.Coord();
+          const auto bv = second.b.Coord() - second.a.Coord();
+          const double aa = av.SquareModulus(), bb = bv.SquareModulus();
+          if (!std::isfinite(aa) || !std::isfinite(bb) || aa <= 0.0 || bb <= 0.0) continue;
+          const double at = first.first_parameter + (first.last_parameter - first.first_parameter) *
+              (cross.Coord() - first.a.Coord()).Dot(av) / aa;
+          const double bt = second.first_parameter + (second.last_parameter - second.first_parameter) *
+              (cross.Coord() - second.a.Coord()).Dot(bv) / bb;
+          if (!std::isfinite(at) || !std::isfinite(bt)) continue;
+          BRepAdaptor_Curve ac(first.native_edge->GetEdge()), bc(second.native_edge->GetEdge());
+          const auto ap = ac.Value(at), bp = bc.Value(bt);
+          const auto cross_point = face->GetSurface()->Value(cross.X(), cross.Y());
+          const double separation = ap.Distance(bp);
+          if (!std::isfinite(separation) || !std::isfinite(cross_point.X()) ||
+              !std::isfinite(cross_point.Y()) || !std::isfinite(cross_point.Z())) continue;
+          detail << " native parameters " << at << '/' << bt
+                 << " native separation mm " << separation;
+          if (ac.GetType() == GeomAbs_Circle && bc.GetType() == GeomAbs_Circle &&
+              std::isfinite(ac.Circle().Radius()) && std::isfinite(bc.Circle().Radius()) &&
+              std::isfinite(ac.Circle().Location().Distance(bc.Circle().Location())))
+            detail << " circle radii/center distance mm " << ac.Circle().Radius() << '/'
+                   << bc.Circle().Radius() << '/' << ac.Circle().Location().Distance(bc.Circle().Location());
+          TopoDS_Vertex a0, a1, b0, b1;
+          TopExp::Vertices(first.native_edge->GetEdge(), a0, a1);
+          TopExp::Vertices(second.native_edge->GetEdge(), b0, b1);
+          for (const auto& vertex : {a0, a1}) {
+            if (!vertex.IsNull() && ((!b0.IsNull() && vertex.IsSame(b0)) ||
+                                    (!b1.IsNull() && vertex.IsSame(b1))) &&
+                std::isfinite(cross_point.Distance(BRep_Tool::Pnt(vertex))) &&
+                std::isfinite(BRep_Tool::Tolerance(vertex)))
+              detail << " shared vertex distance/tolerance mm "
+                     << cross_point.Distance(BRep_Tool::Pnt(vertex)) << '/'
+                     << BRep_Tool::Tolerance(vertex);
+          }
+        }
       }
     }
-    detail << ", unfiltered sphere crossings " << crossings;
     if (!complete) detail << " (24-point diagnostic scope limited)";
-    return detail.str().substr(0, 5000);
+    return ", unfiltered sphere crossings " + std::to_string(crossings) +
+        detail.str().substr(0, 1500) + summary.str().substr(0, 600) + samples.str().substr(0, 1500);
   } catch (const Standard_Failure&) {
     return ", sphere sample diagnostic unavailable (OCCT exception)";
   } catch (const std::exception&) {
