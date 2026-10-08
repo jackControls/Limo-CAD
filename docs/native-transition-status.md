@@ -82,8 +82,15 @@ points per model. Strict rejection of unresolved nonzero faces remains. This
 candidate built and was physically retried from clean `ef4c3422`. The same face
 still failed with status 70 and edge sample counts 2,689, 11 and 2,177. Refinement
 alone did not resolve it; successful Medix import is not yet established.
-Further investigation measures the actual UV crossing and its physical distance
-from the shared vertex before changing boundary connection behavior.
+Clean `15d127a0` built, deployed and was physically retried on a matched GUI/MCP
+pair. The crossing is between internal samples of two edges sharing a vertex:
+its surface point is 0.0347300908856 mm from that vertex, whose tolerance is
+0.0346996401522 mm. One source pcurve differs from its native 3D curve by
+0.0000319350385369 mm there. The standard healer shifted that edge's endpoint
+by 0.0262846534818 mm on the surface. Dense sampling reached its per-edge limit
+without removing this crossing. The next investigation targets a transactional,
+tolerance-bounded repair of the sampled junction while retaining shared-edge
+sample consistency, exact imported topology and every nonzero face.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds

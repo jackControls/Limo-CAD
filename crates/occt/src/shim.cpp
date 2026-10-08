@@ -3103,6 +3103,240 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         saved.pcurve->GetPoint(count - 1) = saved.last;
       }
     };
+    int junction_attempts = 0, junction_repairs = 0;
+    // Collapse only a crossing's contiguous samples inside the shared CAD
+    // vertex's tolerance neighborhood. Every adjacent face must still pass.
+    const auto repair_junction = [&](const IMeshData::IFaceHandle& face,
+                                    const Handle(IMeshData::MapOfIEdgePtr)& crossings) {
+      try {
+        if (crossings.IsNull() || junction_attempts >= 16 ||
+            face->GetSurface()->IsUPeriodic() || face->GetSurface()->IsVPeriodic() ||
+            (face->GetStatusMask() & unrelated_errors) != 0 ||
+            (face->IsSet(IMeshData_Failure) && intersection_failures.count(face.get()) == 0))
+          return false;
+        for (int wi = 0; wi < face->WiresNb(); ++wi) {
+          const auto& wire = face->GetWire(wi);
+          if ((wire->GetStatusMask() & unrelated_errors) != 0 ||
+              (wire->IsSet(IMeshData_Failure) && !wire->IsSet(IMeshData_SelfIntersectingWire)))
+            return false;
+        }
+        const auto finite_point = [](const gp_Pnt& point) {
+          return std::isfinite(point.X()) && std::isfinite(point.Y()) && std::isfinite(point.Z());
+        };
+        const auto finite_uv = [](const gp_Pnt2d& point) {
+          return std::isfinite(point.X()) && std::isfinite(point.Y());
+        };
+        const double deflection = GetParameters().Deflection;
+        if (!std::isfinite(deflection) || deflection <= 0.0) return false;
+        std::size_t comparisons = 0;
+        for (int wi = 0; wi < face->WiresNb(); ++wi) {
+          const auto& wire = face->GetWire(wi);
+          for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
+            const int ni = (ei + 1) % wire->EdgesNb();
+            auto a = wire->GetEdge(ei), b = wire->GetEdge(ni);
+            if (a == b || !crossings->Contains(a) || !crossings->Contains(b) ||
+                !a->GetSameParam() || !b->GetSameParam() ||
+                !a->GetSameRange() || !b->GetSameRange() ||
+                a->PCurvesNb() > 16 || b->PCurvesNb() > 16) continue;
+            TopoDS_Vertex vertex;
+            if (!TopExp::CommonVertex(a->GetEdge(), b->GetEdge(), vertex)) continue;
+            const gp_Pnt center = BRep_Tool::Pnt(vertex);
+            const double vertex_tolerance = BRep_Tool::Tolerance(vertex);
+            const double a_tolerance = BRep_Tool::Tolerance(a->GetEdge());
+            const double b_tolerance = BRep_Tool::Tolerance(b->GetEdge());
+            if (!finite_point(center) || !std::isfinite(vertex_tolerance) || vertex_tolerance <= 0.0 ||
+                !std::isfinite(a_tolerance) || a_tolerance < 0.0 ||
+                !std::isfinite(b_tolerance) || b_tolerance < 0.0) continue;
+            const auto& ap = a->GetPCurve(face.get(), wire->GetEdgeOrientation(ei));
+            const auto& bp = b->GetPCurve(face.get(), wire->GetEdgeOrientation(ni));
+            if (ap.IsNull() || bp.IsNull()) continue;
+            const auto endpoint = [&](IMeshData::IEdgePtr edge) {
+              const auto& curve = edge->GetCurve();
+              const int count = curve->ParametersNb();
+              if (count < 2 || count > 4096) return -1;
+              TopoDS_Vertex first_vertex, last_vertex;
+              TopExp::Vertices(edge->GetEdge(), first_vertex, last_vertex);
+              const bool first = !first_vertex.IsNull() && first_vertex.IsSame(vertex) &&
+                  curve->GetPoint(0).SquareDistance(center) <= Precision::SquareConfusion();
+              const bool last = !last_vertex.IsNull() && last_vertex.IsSame(vertex) &&
+                  curve->GetPoint(count - 1).SquareDistance(center) <= Precision::SquareConfusion();
+              return first == last ? -1 : first ? 0 : count - 1;
+            };
+            const int ae = endpoint(a), be = endpoint(b);
+            if (ae < 0 || be < 0 ||
+                ap->ParametersNb() != a->GetCurve()->ParametersNb() ||
+                bp->ParametersNb() != b->GetCurve()->ParametersNb()) continue;
+            BRepAdaptor_Curve ac(a->GetEdge()), bc(b->GetEdge());
+            BRepAdaptor_Curve af(TopoDS::Edge(a->GetEdge().Oriented(ap->GetOrientation())), face->GetFace());
+            BRepAdaptor_Curve bf(TopoDS::Edge(b->GetEdge().Oriented(bp->GetOrientation())), face->GetFace());
+            for (int ai = 1; ai < ap->ParametersNb(); ++ai) {
+              for (int bi = 1; bi < bp->ParametersNb(); ++bi) {
+                if (++comparisons > 16000000) return false;
+                const auto& p = ap->GetPoint(ai - 1); const auto& q = ap->GetPoint(ai);
+                const auto& r = bp->GetPoint(bi - 1); const auto& s = bp->GetPoint(bi);
+                if (!finite_uv(p) || !finite_uv(q) || !finite_uv(r) || !finite_uv(s)) continue;
+                if (std::max(p.X(), q.X()) < std::min(r.X(), s.X()) ||
+                    std::max(r.X(), s.X()) < std::min(p.X(), q.X()) ||
+                    std::max(p.Y(), q.Y()) < std::min(r.Y(), s.Y()) ||
+                    std::max(r.Y(), s.Y()) < std::min(p.Y(), q.Y())) continue;
+                gp_Pnt2d uv;
+                if (BRepMesh_GeomTool::IntSegSeg(p.Coord(), q.Coord(), r.Coord(), s.Coord(),
+                        false, false, uv) != BRepMesh_GeomTool::Cross) continue;
+                if (!finite_uv(uv)) continue;
+                const gp_XY av = q.Coord() - p.Coord(), bv = s.Coord() - r.Coord();
+                if (!std::isfinite(av.SquareModulus()) || !std::isfinite(bv.SquareModulus()) ||
+                    av.SquareModulus() <= 0.0 || bv.SquareModulus() <= 0.0) continue;
+                const double at = ap->GetParameter(ai - 1) +
+                    (uv.Coord() - p.Coord()).Dot(av) / av.SquareModulus() *
+                        (ap->GetParameter(ai) - ap->GetParameter(ai - 1));
+                const double bt = bp->GetParameter(bi - 1) +
+                    (uv.Coord() - r.Coord()).Dot(bv) / bv.SquareModulus() *
+                        (bp->GetParameter(bi) - bp->GetParameter(bi - 1));
+                if (!std::isfinite(at) || !std::isfinite(bt)) continue;
+                const auto auv = af.CurveOnSurface().GetCurve()->Value(at);
+                const auto buv = bf.CurveOnSurface().GetCurve()->Value(bt);
+                if (!finite_uv(auv) || !finite_uv(buv)) continue;
+                const double ad = face->GetSurface()->Value(auv.X(), auv.Y()).Distance(ac.Value(at));
+                const double bd = face->GetSurface()->Value(buv.X(), buv.Y()).Distance(bc.Value(bt));
+                const double crossing_distance = face->GetSurface()->Value(uv.X(), uv.Y()).Distance(center);
+                if (!std::isfinite(ad) || !std::isfinite(bd) ||
+                    !std::isfinite(crossing_distance) || ad > a_tolerance || bd > b_tolerance ||
+                    crossing_distance >
+                        vertex_tolerance + std::max({ad, bd, Precision::Confusion()})) continue;
+                const auto near_vertex_path = [&](IMeshData::IEdgePtr edge, int end, int segment) {
+                  const auto& curve = edge->GetCurve();
+                  const int first = end == 0 ? 1 : segment;
+                  const int last = end == 0 ? segment - 1 : curve->ParametersNb() - 2;
+                  const double limit = vertex_tolerance + BRep_Tool::Tolerance(edge->GetEdge());
+                  const gp_Pnt retained = curve->GetPoint(end == 0 ? segment : segment - 1);
+                  if (!finite_point(retained)) return false;
+                  const gp_Vec chord(center, retained);
+                  const double length_squared = chord.SquareMagnitude();
+                  if (!std::isfinite(length_squared)) return false;
+                  for (int index = first; index <= last; ++index) {
+                    const auto& point = curve->GetPoint(index);
+                    if (!finite_point(point) || !std::isfinite(curve->GetParameter(index))) return false;
+                    const double distance = point.Distance(center);
+                    if (!std::isfinite(distance) || distance > limit) return false;
+                    const double fraction = length_squared > 0.0
+                        ? std::clamp(gp_Vec(center, point).Dot(chord) / length_squared, 0.0, 1.0) : 0.0;
+                    const double error = point.Distance(center.Translated(chord.Multiplied(fraction)));
+                    if (!std::isfinite(error) || error > deflection) return false;
+                  }
+                  return true;
+                };
+                if (!near_vertex_path(a, ae, ai) || !near_vertex_path(b, be, bi)) continue;
+                if (junction_attempts >= 16) return false;
+                struct PCurveState {
+                  IMeshData::IPCurveHandle curve;
+                  std::vector<gp_Pnt2d> points;
+                  std::vector<double> parameters;
+                  std::vector<int> indices;
+                };
+                struct EdgeState {
+                  IMeshData::IEdgePtr edge;
+                  int status;
+                  std::vector<gp_Pnt> points;
+                  std::vector<double> parameters;
+                  std::vector<PCurveState> pcurves;
+                };
+                struct FaceState { IMeshData::IFacePtr face; int status; std::vector<int> wires; };
+                std::vector<EdgeState> saved_edges;
+                std::map<IMeshData::IFacePtr, FaceState> saved_faces;
+                for (auto edge : {a, b}) {
+                  EdgeState saved{edge, edge->GetStatusMask(), {}, {}, {}};
+                  const auto& curve = edge->GetCurve();
+                  for (int index = 0; index < curve->ParametersNb(); ++index) {
+                    saved.points.push_back(curve->GetPoint(index));
+                    saved.parameters.push_back(curve->GetParameter(index));
+                  }
+                  for (int pi = 0; pi < edge->PCurvesNb(); ++pi) {
+                    const auto& pc = edge->GetPCurve(pi);
+                    PCurveState saved_pc{pc, {}, {}, {}};
+                    for (int index = 0; index < pc->ParametersNb(); ++index) {
+                      saved_pc.points.push_back(pc->GetPoint(index));
+                      saved_pc.parameters.push_back(pc->GetParameter(index));
+                      saved_pc.indices.push_back(pc->GetIndex(index));
+                    }
+                    saved.pcurves.push_back(std::move(saved_pc));
+                    auto* adjacent = pc->GetFace();
+                    if (saved_faces.count(adjacent) == 0) {
+                      FaceState state{adjacent, adjacent->GetStatusMask(), {}};
+                      for (int index = 0; index < adjacent->WiresNb(); ++index)
+                        state.wires.push_back(adjacent->GetWire(index)->GetStatusMask());
+                      saved_faces.emplace(adjacent, std::move(state));
+                    }
+                  }
+                  saved_edges.push_back(std::move(saved));
+                }
+                const auto old_affected_faces = affected_faces;
+                const auto restore_status = [](auto* item, int status) {
+                  item->UnsetStatus(static_cast<IMeshData_Status>(item->GetStatusMask()));
+                  item->SetStatus(static_cast<IMeshData_Status>(status));
+                };
+                const auto rollback = [&]() {
+                  for (const auto& saved : saved_edges) {
+                    const auto& curve = saved.edge->GetCurve();
+                    curve->Clear(false);
+                    for (std::size_t index = 0; index < saved.points.size(); ++index)
+                      curve->AddPoint(saved.points[index], saved.parameters[index]);
+                    for (const auto& pc : saved.pcurves) {
+                      pc.curve->Clear(false);
+                      for (std::size_t index = 0; index < pc.points.size(); ++index) {
+                        pc.curve->AddPoint(pc.points[index], pc.parameters[index]);
+                        pc.curve->GetIndex(static_cast<int>(index)) = pc.indices[index];
+                      }
+                    }
+                    restore_status(saved.edge, saved.status);
+                  }
+                  for (const auto& entry : saved_faces) {
+                    restore_status(entry.first, entry.second.status);
+                    for (std::size_t index = 0; index < entry.second.wires.size(); ++index)
+                      restore_status(entry.first->GetWire(static_cast<int>(index)).get(), entry.second.wires[index]);
+                  }
+                  affected_faces = old_affected_faces;
+                };
+                ++junction_attempts;
+                try {
+                  for (int which = 0; which < 2; ++which) {
+                    const auto& saved = saved_edges[which];
+                    const int end = which == 0 ? ae : be, segment = which == 0 ? ai : bi;
+                    const auto& curve = saved.edge->GetCurve();
+                    curve->Clear(false);
+                    for (int index = 0; index < static_cast<int>(saved.points.size()); ++index) {
+                      if (index > 0 && index < static_cast<int>(saved.points.size()) - 1 &&
+                          (end == 0 ? index < segment : index >= segment)) continue;
+                      curve->AddPoint(saved.points[index], saved.parameters[index]);
+                    }
+                    rebuild_pcurves(saved.edge);
+                  }
+                  ap->GetPoint(ae == 0 ? 0 : ap->ParametersNb() - 1) = uv;
+                  bp->GetPoint(be == 0 ? 0 : bp->ParametersNb() - 1) = uv;
+                  bool valid = true;
+                  for (const auto& entry : saved_faces) {
+                    BRepMesh_FaceChecker after(IMeshData::IFaceHandle(entry.first), GetParameters());
+                    if (!after.Perform()) { valid = false; break; }
+                  }
+                  if (valid) { ++junction_repairs; return true; }
+                } catch (const Standard_Failure&) {
+                  rollback();
+                  continue;
+                } catch (const std::exception&) {
+                  rollback();
+                  continue;
+                }
+                rollback();
+              }
+            }
+          }
+        }
+        return false;
+      } catch (const Standard_Failure&) {
+        return false;
+      } catch (const std::exception&) {
+        return false;
+      }
+    };
     const auto check_repaired_faces = [&]() {
       constexpr int max_boundary_passes = 8;
       constexpr int max_edge_points = 4096;
@@ -3115,7 +3349,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (affected_faces.count(face.get()) == 0 &&
               !face->IsSet(IMeshData_SelfIntersectingWire)) continue;
           BRepMesh_FaceChecker checker(face, GetParameters());
-          if (!checker.Perform()) {
+          bool valid = checker.Perform();
+          if (!valid && repair_junction(face, checker.GetIntersectingEdges()))
+            valid = checker.Perform();
+          if (!valid) {
             if (!face->IsSet(IMeshData_Failure) &&
                 (face->GetStatusMask() & unrelated_errors) == 0)
               intersection_failures.insert(face.get());
@@ -3145,6 +3382,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               ? "no reported boundary intersections"
               : "8 pass limit";
           boundary_repair_stop_ += ", added points " + std::to_string(added_points);
+          boundary_repair_stop_ += ", junction attempts/repairs " +
+              std::to_string(junction_attempts) + '/' + std::to_string(junction_repairs);
           break;
         }
         bool inserted = false;
@@ -3189,6 +3428,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               : parameter_mismatch ? "nonmatching edge parameters"
               : "no representable midpoint";
           boundary_repair_stop_ += ", added points " + std::to_string(added_points);
+          boundary_repair_stop_ += ", junction attempts/repairs " +
+              std::to_string(junction_attempts) + '/' + std::to_string(junction_repairs);
           break;
         }
       }
