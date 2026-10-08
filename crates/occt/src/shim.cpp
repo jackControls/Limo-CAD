@@ -3201,6 +3201,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     if (native_export_recovery_) {
       recover_export_boundaries();
       recover_export_internal_diagonals();
+      recover_export_chord_boundaries();
+      recover_export_longest_faces();
     }
     if (!range.More()) {
       for (const auto& trial : strip_trials) restore_spherical_strip(trial);
@@ -4953,15 +4955,284 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     }
     export_boundary_stop_="export boundary attempts/repaired/added triangles "+std::to_string(attempts)+"/"+
         std::to_string(repaired)+"/"+std::to_string(added)+"; continuous strip checks "+std::to_string(strip_continuous_checks_);
+    export_boundary_attempts_=attempts;
   }
 
-  // A native trim can be only partially represented by the original mesh.
-  // This bounded alternative uses the COMPLETE authoritative mapped wire,
-  // rather than treating an incomplete old facet union as the source domain.
-  // The original PCurves and native nodes stay intact, including the omitted
-  // UV representative witnessed by the post-install native pole certificate.
-  bool restore_complete_export_face(const StripTrial& trial,int pole_choice,bool lookahead=false) {
+  // Refine a sampled crossing only when the corresponding exact, oriented
+  // source PCurve intervals are disjoint. Snapshot after all earlier repairs;
+  // neither a failed remesh nor rollback may undo their qualified geometry.
+  void recover_export_chord_boundaries() {
+    struct Segment { IMeshData::IEdgePtr edge;IMeshData::IPCurveHandle pc;int first,last; };
+    int attempts=0,accepted=0,inserted=0;
+    const auto crossing=[&](IMeshData::IFacePtr face,std::array<Segment,2>& pair,bool& simple) {
+      simple=false;
+      if (face->WiresNb()!=1) { strip_stop_="chord target requires one wire";return false; }
+      const auto wire=face->GetWire(0);std::vector<Segment> segments;
+      for (int ei=0;ei<wire->EdgesNb();++ei) {
+        const auto edge=wire->GetEdge(ei);const auto orientation=wire->GetEdgeOrientation(ei);
+        const auto pc=edge->GetPCurve(face,orientation);
+        if (pc.IsNull() || pc->ParametersNb()<2 || pc->ParametersNb()>256 || BRep_Tool::Degenerated(edge->GetEdge()) ||
+            (orientation!=TopAbs_FORWARD && orientation!=TopAbs_REVERSED)) {
+          strip_stop_="chord target has unsupported native constraint";return false;
+        }
+        for (int i=1;i<pc->ParametersNb();++i) segments.push_back({edge,pc,
+            orientation==TopAbs_REVERSED ? pc->ParametersNb()-i : i-1,
+            orientation==TopAbs_REVERSED ? pc->ParametersNb()-i-1 : i});
+      }
+      if (segments.size()>1024) { strip_stop_="chord boundary segment cap";return false; }
+      for (std::size_t i=0;i<segments.size();++i) for (std::size_t j=i+1;j<segments.size();++j) {
+        if (++export_boundary_work_>2097152) { strip_stop_="chord crossing work cap";return false; }
+        const bool adjacent=j==i+1 || (i==0 && j+1==segments.size());
+        const auto a=segments[i].pc->GetPoint(segments[i].first),b=segments[i].pc->GetPoint(segments[i].last);
+        const auto c=segments[j].pc->GetPoint(segments[j].first),d=segments[j].pc->GetPoint(segments[j].last);
+        if (!strip_finite(a) || !strip_finite(b) || !strip_finite(c) || !strip_finite(d)) {
+          strip_stop_="chord crossing has nonfinite source station";return false;
+        }
+        if (certified_strip_pair(a,b,c,d,adjacent)) continue;
+        gp_Pnt2d hit;
+        if (adjacent || segments[i].edge==segments[j].edge || BRepMesh_GeomTool::IntSegSeg(
+              a.Coord(),b.Coord(),c.Coord(),d.Coord(),false,false,hit)!=BRepMesh_GeomTool::Cross) {
+          strip_stop_="chord boundary has an uncertified contact or self-edge crossing";return false;
+        }
+        pair={segments[i],segments[j]};return true;
+      }
+      double area=0.0;std::string why;
+      simple=simple_strip_boundary(face,area,true,&why);
+      if (!simple) strip_stop_="chord refined boundary "+why;
+      return false;
+    };
+    for (int fi=0;fi<GetModel()->FacesNb() && attempts<16 && export_boundary_attempts_<128;++fi) {
+      const auto face=GetModel()->GetFace(fi).get();
+      const int original=strip_original_faces_.FindIndex(face->GetFace())-1;
+      const auto prior=export_boundary_rejections_.find(original);
+      if (prior==export_boundary_rejections_.end() || prior->second.find("chart intersection")==std::string::npos ||
+          (face->GetStatusMask() & ~IMeshData_Outdated)!=0 || export_boundary_work_>=2097152) continue;
+      StripTrial trial;bool mutated=false,success=false;std::array<Segment,2> pair;bool simple=false;
+      std::string reason;
+      try {
+        if (!crossing(face,pair,simple)) continue;
+        std::set<IMeshData::IFacePtr> owners;
+        for (const auto& segment : pair) {
+          const auto edge=segment.edge;const auto curve=edge->GetCurve();
+          if (!edge->GetSameParam() || !edge->GetSameRange() || edge->GetDegenerated() || edge->PCurvesNb()!=2 ||
+              edge->GetPCurve(0)->GetFace()==edge->GetPCurve(1)->GetFace() || curve->ParametersNb()<2 || curve->ParametersNb()>248)
+            throw std::runtime_error("chord native parameters or owners are not certified");
+          StripEdge saved{edge,edge->GetStatusMask(),{},{},{}};
+          for (int i=0;i<curve->ParametersNb();++i) {
+            const auto point=curve->GetPoint(i);const double parameter=curve->GetParameter(i);
+            if (!strip_finite(point) || !std::isfinite(parameter) || (i &&
+                (parameter-curve->GetParameter(i-1))*(curve->GetParameter(1)-curve->GetParameter(0))<=0.0))
+              throw std::runtime_error("chord native parameter order/point is invalid");
+            saved.points.push_back(point);saved.parameters.push_back(parameter);
+          }
+          for (int pi=0;pi<edge->PCurvesNb();++pi) {
+            const auto pc=edge->GetPCurve(pi);owners.insert(pc->GetFace());
+            if (pc->ParametersNb()!=curve->ParametersNb()) throw std::runtime_error("chord owner sample count mismatch");
+            StripPCurve item{pc,{},{},{}};
+            for (int i=0;i<pc->ParametersNb();++i) {
+              if (pc->GetParameter(i)!=curve->GetParameter(i) || !strip_finite(pc->GetPoint(i)))
+                throw std::runtime_error("chord owner parameters/UV mismatch");
+              item.points.push_back(pc->GetPoint(i));item.parameters.push_back(pc->GetParameter(i));item.indices.push_back(pc->GetIndex(i));
+            }
+            saved.pcurves.push_back(std::move(item));
+          }
+          trial.edges.push_back(std::move(saved));
+        }
+        if (owners.size()>4) throw std::runtime_error("chord owner cap");
+        for (const auto owner : owners) {
+          if ((owner->GetStatusMask() & ~IMeshData_Outdated)!=0 || owner->WiresNb()!=1 ||
+              owner->GetSurface()->IsUPeriodic() || owner->GetSurface()->IsVPeriodic())
+            throw std::runtime_error("chord owner status/wire/periodic chart is unsupported");
+          for (int oi=1;oi<=strip_original_faces_.Extent();++oi) if (
+              strip_original_faces_.FindKey(oi).IsPartner(owner->GetFace()) && !strip_original_faces_.FindKey(oi).IsSame(owner->GetFace()))
+            throw std::runtime_error("chord owner has an uncertified located alias");
+          TopLoc_Location location;const auto mesh=BRep_Tool::Triangulation(owner->GetFace(),location);
+          if (mesh.IsNull() || !mesh->HasUVNodes() || mesh->NbNodes()>65536 || mesh->NbTriangles()>131072)
+            throw std::runtime_error("chord owner mesh cap/UV");
+          StripFace saved{owner,owner->GetStatusMask(),{},mesh,{}};
+          const int key=strip_original_faces_.FindIndex(owner->GetFace());
+          if (!key) throw std::runtime_error("chord owner original mapping missing");
+          saved.original_orientation=strip_original_faces_.FindKey(key).Orientation();
+          const auto wire=owner->GetWire(0);saved.wire_statuses.push_back(wire->GetStatusMask());
+          if (wire->GetStatusMask()!=0) throw std::runtime_error("chord owner wire status");
+          std::size_t count=0;
+          for (int ei=0;ei<wire->EdgesNb();++ei) {
+            const auto edge=wire->GetEdge(ei);const auto pc=edge->GetPCurve(owner,wire->GetEdgeOrientation(ei));
+            if (BRep_Tool::Degenerated(edge->GetEdge()) || pc.IsNull() || (count+=pc->ParametersNb())>1024)
+              throw std::runtime_error("chord owner pole/constraint cap");
+            std::vector<int> indices;
+            for (int i=0;i<pc->ParametersNb();++i) indices.push_back(pc->GetIndex(i));
+            saved.boundary_indices.push_back({pc,std::move(indices)});
+          }
+          trial.faces.push_back(std::move(saved));
+        }
+        ++attempts;++export_boundary_attempts_;
+        int added=0;
+        for (int pass=0;pass<8;++pass) {
+          Handle(Geom2d_Curve) intervals[2];
+          for (int side=0;side<2;++side) {
+            const auto& segment=pair[side];double low,high;
+            const auto source=BRep_Tool::CurveOnSurface(TopoDS::Edge(segment.edge->GetEdge().Oriented(segment.pc->GetOrientation())),
+                face->GetFace(),low,high);
+            const double first=segment.pc->GetParameter(segment.first),last=segment.pc->GetParameter(segment.last);
+            if (source.IsNull() || !std::isfinite(low) || !std::isfinite(high) || !std::isfinite(first) || !std::isfinite(last) ||
+                first==last || std::min(first,last)<low || std::max(first,last)>high)
+              throw std::runtime_error("chord source interval range is uncertified");
+            intervals[side]=new Geom2d_TrimmedCurve(source,std::min(first,last),std::max(first,last),true,false);
+          }
+          Geom2dAPI_InterCurveCurve exact(intervals[0],intervals[1],Precision::PConfusion());
+          if (!exact.Intersector().IsDone() || exact.Intersector().NbPoints()!=0 || exact.Intersector().NbSegments()!=0)
+            throw std::runtime_error("chord continuous source intervals are not certified disjoint");
+          for (const auto& segment : pair) {
+            if (std::none_of(trial.edges.begin(),trial.edges.end(),[&](const StripEdge& saved) { return saved.edge==segment.edge; }))
+              throw std::runtime_error("chord refinement reached an unrelated native edge");
+            const auto curve=segment.edge->GetCurve();const int index=std::max(segment.first,segment.last);
+            const double a=curve->GetParameter(index-1),b=curve->GetParameter(index),parameter=a+(b-a)*.5;
+            if (!std::isfinite(parameter) || parameter==a || parameter==b || curve->ParametersNb()>=256)
+              throw std::runtime_error("chord midpoint range/sample cap");
+            const auto point=BRepAdaptor_Curve(segment.edge->GetEdge()).Value(parameter);
+            if (!strip_finite(point)) throw std::runtime_error("chord midpoint native point is nonfinite");
+            std::vector<gp_Pnt2d> uv;
+            for (int pi=0;pi<segment.edge->PCurvesNb();++pi) {
+              const auto pc=segment.edge->GetPCurve(pi);const auto owner=pc->GetFace();double low,high;
+              const auto source=BRep_Tool::CurveOnSurface(TopoDS::Edge(segment.edge->GetEdge().Oriented(pc->GetOrientation())),owner->GetFace(),low,high);
+              if (pc->ParametersNb()!=curve->ParametersNb() || pc->GetParameter(index-1)!=a || pc->GetParameter(index)!=b ||
+                  source.IsNull() || !std::isfinite(low) || !std::isfinite(high) || parameter<low || parameter>high ||
+                  ++export_boundary_work_>2097152) throw std::runtime_error("chord owner source parameter/work gate");
+              const auto sample=source->Value(parameter);const auto surface=owner->GetSurface()->Value(sample.X(),sample.Y());
+              const double budget=std::min(GetParameters().Deflection/4.0,
+                  BRep_Tool::Tolerance(segment.edge->GetEdge())+BRep_Tool::Tolerance(owner->GetFace()));
+              if (!strip_finite(sample) || !strip_finite(surface) || !std::isfinite(budget) || budget<=0.0 || point.Distance(surface)>budget)
+                throw std::runtime_error("chord owner exact source/native sample exceeds tolerance or precision");
+              uv.push_back(sample);
+            }
+            mutated=true;curve->InsertPoint(index,point,parameter);
+            for (int pi=0;pi<segment.edge->PCurvesNb();++pi) segment.edge->GetPCurve(pi)->InsertPoint(index,uv[pi],parameter);
+            ++added;
+          }
+          bool now_simple=false;
+          if (!crossing(face,pair,now_simple)) {
+            if (!now_simple) throw std::runtime_error(strip_stop_);
+            break;
+          }
+          if (pass==7) throw std::runtime_error("chord refinement pass cap");
+        }
+        BRepMesh_MeshAlgoFactory factory;
+        for (const auto& saved : trial.faces) {
+          double area=0.0;std::string why;
+          if (!simple_strip_boundary(saved.face,area,true,&why)) throw std::runtime_error("chord owner boundary remains nonsimple: "+why);
+          const auto algo=factory.GetAlgo(saved.face->GetSurface()->GetType(),GetParameters());
+          if (algo.IsNull()) throw std::runtime_error("chord owner mesher unavailable");
+          BRep_Builder().UpdateFace(saved.face->GetFace(),Handle(Poly_Triangulation)());
+          saved.face->SetStatus(IMeshData_Outdated);
+          algo->Perform(saved.face,GetParameters(),Message_ProgressRange());
+        }
+        if (!restore_strip_station_nodes(trial)) throw std::runtime_error(strip_stop_);
+        for (const auto& saved : trial.faces) {
+          StripTrial single;single.faces.push_back(saved);
+          if (!restore_skipped_strip_nodes(single,true) || !validate_spherical_strip(single,true,true)) {
+            if (!restore_complete_export_face(single,0) || !validate_spherical_strip(single,true,true))
+              throw std::runtime_error("chord owner complete source qualification: "+strip_stop_);
+          }
+        }
+        if (!validate_spherical_strip(trial,true,true)) throw std::runtime_error("chord all-owner shared qualification: "+strip_stop_);
+        success=true;++accepted;inserted+=added;
+        export_boundary_rejections_[original]="continuous-source chord refinement certified all native owners";
+      } catch (const StripRollbackFailure&) { throw; }
+        catch (const Standard_Failure&) { reason="OCCT exception refining source chords"; }
+        catch (const std::exception& error) { reason=error.what(); }
+      if (!success && mutated) restore_spherical_strip(trial);
+      if (!success && !reason.empty()) {
+        export_boundary_rejections_[original]+="; chord: "+reason.substr(0,650);
+        std::fprintf(stderr,"Native export chord face %d rejected: %s\n",original,reason.substr(0,3000).c_str());
+      }
+    }
+    export_boundary_stop_+="; chord attempts/accepted/points "+std::to_string(attempts)+'/'+std::to_string(accepted)+'/'+std::to_string(inserted);
+  }
+
+  // Try geometric span contraction only after every earlier strategy and the
+  // shared-curve transaction. Fresh snapshots protect all accepted repairs.
+  void recover_export_longest_faces() {
+    int attempts=0,repaired=0,added=0;
+    for (int fi=0;fi<GetModel()->FacesNb() && export_boundary_attempts_<128 && export_boundary_work_<2097152;++fi) {
+      const auto face=GetModel()->GetFace(fi).get();
+      const int original=strip_original_faces_.FindIndex(face->GetFace())-1;
+      const auto rejection=export_boundary_rejections_.find(original);
+      if (rejection==export_boundary_rejections_.end() || rejection->second.find("whole-face")==std::string::npos ||
+          rejection->second.find("depth")==std::string::npos || face->WiresNb()!=1 || (face->GetStatusMask() & ~IMeshData_Outdated)!=0) continue;
+      StripTrial trial;std::string reason;int choices=1;
+      try {
+        TopLoc_Location location;const auto mesh=BRep_Tool::Triangulation(face->GetFace(),location);
+        if (mesh.IsNull() || !mesh->HasUVNodes() || mesh->NbNodes()>65536 || mesh->NbTriangles()>131072) continue;
+        bool located_alias=false;
+        for (int oi=1;oi<=strip_original_faces_.Extent();++oi) if (
+            strip_original_faces_.FindKey(oi).IsPartner(face->GetFace()) && !strip_original_faces_.FindKey(oi).IsSame(face->GetFace())) {
+          located_alias=true;break;
+        }
+        if (located_alias) continue;
+        StripFace saved{face,face->GetStatusMask(),{},mesh,{}};
+        if (original<0) throw std::runtime_error("longest-face original topology mapping missing");
+        saved.original_orientation=strip_original_faces_.FindKey(original+1).Orientation();
+        const auto wire=face->GetWire(0);saved.wire_statuses.push_back(wire->GetStatusMask());
+        if (wire->GetStatusMask()!=0) continue;
+        std::size_t samples=0;
+        for (int ei=0;ei<wire->EdgesNb();++ei) {
+          const auto pc=wire->GetEdge(ei)->GetPCurve(face,wire->GetEdgeOrientation(ei));
+          if (pc.IsNull() || (samples+=pc->ParametersNb())>1024) throw std::runtime_error("longest-face snapshot sample cap");
+          std::vector<int> indices;
+          for (int i=0;i<pc->ParametersNb();++i) indices.push_back(pc->GetIndex(i));
+          saved.boundary_indices.push_back({pc,std::move(indices)});
+        }
+        std::map<int,int> aliases;IMeshData::IEdgePtr pole=nullptr;
+        if (!qualify_native_pole(saved,mesh,location,aliases,pole,true,true)) continue;
+        std::set<int> used;
+        for (int ti=1;ti<=mesh->NbTriangles();++ti) {
+          if (++export_boundary_work_>2097152) throw std::runtime_error("longest-face physical incidence budget");
+          int ids[3];mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);gp_Pnt p[3];
+          for (int i=0;i<3;++i) {
+            if (ids[i]<1 || ids[i]>mesh->NbNodes()) throw std::runtime_error("longest-face invalid original facet");
+            p[i]=mesh->Node(ids[i]).Transformed(location.Transformation());
+            if (!strip_finite(p[i])) throw std::runtime_error("longest-face nonfinite original facet");
+          }
+          const double area=gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2])).SquareMagnitude();
+          if (!std::isfinite(area)) throw std::runtime_error("longest-face nonfinite original area");
+          if (area>0.0) for (int id : ids) used.insert(id);
+        }
+        int unused=0;
+        for (const auto& alias : aliases) if (!used.count(alias.first) && !used.count(alias.second)) ++unused;
+        if (unused>2) throw std::runtime_error("longest-face unused pole choice cap");
+        choices=1<<unused;trial.faces.push_back(std::move(saved));
+      } catch (const Standard_Failure&) { continue; }
+        catch (const std::exception&) { continue; }
+      const std::string prior=rejection->second;
+      for (int choice=0;choice<choices && export_boundary_attempts_<128 && export_boundary_work_<2097152;++choice) {
+        ++attempts;++export_boundary_attempts_;bool accepted=false;
+        try {
+          restore_spherical_strip(trial);
+          const bool complete=restore_complete_export_face(trial,choice,true,true);
+          accepted=complete && validate_spherical_strip(trial,true);
+          reason=std::string(complete ? "domain: " : "star: ")+strip_stop_;
+        } catch (const StripRollbackFailure&) { throw; }
+          catch (const Standard_Failure&) { reason="OCCT exception qualifying longest-face alternate"; }
+          catch (const std::exception&) { reason="exception qualifying longest-face alternate"; }
+        if (accepted) {
+          TopLoc_Location location;const auto mesh=BRep_Tool::Triangulation(face->GetFace(),location);
+          ++repaired;added+=mesh->NbTriangles()-trial.faces.front().triangulation->NbTriangles();
+          rejection->second="longest-edge native boundary restored and full domain certified";break;
+        }
+        restore_spherical_strip(trial);
+        rejection->second=prior.substr(0,1300)+"; longest choice "+std::to_string(choice)+' '+reason.substr(0,650);
+        std::fprintf(stderr,"Native export boundary face %d choice %d policy longest: %s\n",original,choice,reason.substr(0,3000).c_str());
+      }
+    }
+    export_boundary_stop_+="; longest attempts/repaired/added "+std::to_string(attempts)+'/'+std::to_string(repaired)+'/'+std::to_string(added);
+  }
+
+  // Rebuild the COMPLETE authoritative mapped wire rather than an incomplete
+  // old facet union. Original PCurves/native nodes and pole witnesses remain.
+  bool restore_complete_export_face(const StripTrial& trial,int pole_choice,bool lookahead=false,bool longest=false) {
     strip_stop_="whole-face preparation";
+    const char* policy=longest ? "longest" : lookahead ? "lookahead" : "original";
     try {
       if (trial.faces.size()!=1) { strip_stop_="whole-face requires one owner"; return false; }
       const auto& saved=trial.faces.front(); const auto face=saved.face;
@@ -5269,7 +5540,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         const auto emit_precision_trace=[&](const std::string& reason) {
           std::ostringstream detail;detail.precision(12);
           detail << "Native export refinement face " << strip_original_faces_.FindIndex(face->GetFace())-1 <<
-              " policy " << (lookahead ? "lookahead" : "original") << " rejected " << reason;
+              " policy " << policy << " rejected " << reason;
           for (int j=0;j<3;++j) {
             const int next=(j+1)%3;
             const auto edge=gp_Vec(p[j],p[next]);const double length=edge.Magnitude();
@@ -5286,7 +5557,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           std::fprintf(stderr,"%s\n",detail.str().substr(0,5000).c_str());
         };
         int chosen=-1,interior_candidates=0;
-        double best_edge=lookahead ? std::numeric_limits<double>::infinity() : -1.0,best_length=-1.0;
+        double best_edge=lookahead ? std::numeric_limits<double>::infinity() : -1.0,best_length=-1.0,best_uv_length=-1.0;
         std::vector<int> owners={cell_index};int depth=cell.depth;
         gp_Pnt2d selected_midpoint;gp_Pnt selected_midpoint_local;
         std::ostringstream alternatives;alternatives.precision(7);
@@ -5379,16 +5650,19 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           }
           if (export_boundary_work_>2097152) { strip_stop_="whole-face split child witness budget";return false; }
           const double score=std::max(trial_error/d,trial_angle/angle),length=p[i].Distance(p[next]);
+          const double uv_length=u[i].Distance(u[next]);
           alternatives << " children D/angle/score " << trial_error << '/' << trial_angle << '/' << score << (valid ? "]" : " invalid]");
-          if (valid && std::isfinite(score) && std::isfinite(length) &&
-              (score<best_edge || (score==best_edge && length>best_length))) {
+          const bool better=longest ? length>best_length || (length==best_length && uv_length>best_uv_length) :
+              score<best_edge || (score==best_edge && length>best_length);
+          if (valid && std::isfinite(score) && std::isfinite(length) && std::isfinite(uv_length) && better) {
             chosen=i;best_edge=score;best_length=length;owners=trial_owners;depth=trial_depth;
+            best_uv_length=uv_length;
             selected_midpoint=midpoint;selected_midpoint_local=local;
           }
         }
         if (chosen<0 && interior_candidates) {
           strip_stop_="cell "+std::to_string(cell.ids[0])+"/"+std::to_string(cell.ids[1])+"/"+std::to_string(cell.ids[2])+
-              " no certified two-owner split policy "+(lookahead ? "lookahead" : "original")+"; D/angle "+
+              " no certified two-owner split policy "+policy+"; D/angle "+
               std::to_string(max_error)+"/"+std::to_string(max_angle)+alternatives.str();
           for (const auto& split : recent_splits) strip_stop_+="; "+split;
           emit_precision_trace(strip_stop_);
@@ -5396,7 +5670,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         }
         if (depth>=8 || inserted>=4096 || replacement->NbNodes()>=65536 || active_count+2>4096 || cells.size()+4>16384) {
           strip_stop_="cell "+std::to_string(cell.ids[0])+"/"+std::to_string(cell.ids[1])+"/"+std::to_string(cell.ids[2])+
-              " policy "+(lookahead ? "lookahead" : "original")+" depth/nodes "+std::to_string(depth)+"/"+
+              " policy "+policy+" depth/nodes "+std::to_string(depth)+"/"+
               std::to_string(inserted)+" D/angle "+
               std::to_string(max_error)+"/"+std::to_string(max_angle)+" sample "+std::to_string(failing_sample)+
               " split "+(chosen>=0 ? std::to_string(cell.ids[chosen])+"/"+std::to_string(cell.ids[(chosen+1)%3]) : "centroid")+
@@ -6688,7 +6962,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       catch (const std::exception&) { strip_stop_ = "exception certifying native pole quotient"; return false; }
   }
 
-  bool validate_spherical_strip(const StripTrial& trial,bool native_export=false) {
+  bool validate_spherical_strip(const StripTrial& trial,bool native_export=false,bool all_source_witnesses=false) {
     strip_stop_ = "triangulation status";
     try {
       std::map<IMeshData::IEdgePtr, std::pair<int, int>> shared_incidence;
@@ -6839,7 +7113,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           for (int i = 0; i < 3; ++i) for (int j = i+1; j < 3; ++j)
             diameter = std::max(diameter, std::abs(uv[i].X()-uv[j].X()) + std::abs(uv[i].Y()-uv[j].Y()));
           uv_scale += diameter * diameter;
-          if (native_export && (face==trial.target || changed_boundary_nodes.count(ids[0]) ||
+          if (native_export && (all_source_witnesses || face==trial.target || changed_boundary_nodes.count(ids[0]) ||
               changed_boundary_nodes.count(ids[1]) || changed_boundary_nodes.count(ids[2]))) {
             const double angular=GetParameters().AngleInterior>0.0 ? GetParameters().AngleInterior : GetParameters().Angle;
             if (!std::isfinite(angular) || angular<=0.0) { strip_stop_="native strip invalid angular request";return false; }
@@ -7134,6 +7408,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   bool native_export_recovery_=false;
   std::size_t export_boundary_work_=0;
   int export_curve_diagnostics_=0;
+  int export_boundary_attempts_=0;
   std::string export_boundary_stop_;
   std::map<int,std::string> export_boundary_rejections_;
   TopTools_IndexedMapOfShape strip_original_faces_;

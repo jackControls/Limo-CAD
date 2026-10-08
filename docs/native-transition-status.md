@@ -28,18 +28,19 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `2cccc3d8` opens the complete
+Current October 8 Medix qualification: clean matched `fe195308` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
-536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 49 invalid
+536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 45 invalid
 boundary links and no multiply used links across 33 native shells. Restoring
 the original split policy recovers the 37 repaired faces lost by the earlier
 lookahead regression to 72 links. Connector caps and
 independent pole proposals now qualify. A bounded fallback to the earlier
 split strategy retains its primary trajectory and defers alternate trials.
-The next candidate processes only that alternate queue in FIFO order within
-the unchanged budgets; its GUI qualification is pending. Remaining source-angle
-failures and curved trim sampling are under investigation.
+FIFO processing of the alternate queue repairs one further face, reducing 49
+links to 45. Shared native curve sampling and a last longest-interior-edge
+strategy are the next candidate; their GUI qualification is pending. Remaining
+source-angle failures and curved trim sampling are under investigation.
 All 70 installed payload hashes match the clean manifest. No successful 3MF or
 native-precision-qualified STL is claimed. The Medix notes below record earlier
 trials; they do not supersede this current qualification.
@@ -102,6 +103,16 @@ reported crossing chord pairs. This establishes separation only for those
 specific source intervals. Their sampled chords cross despite native curve
 separation; a shared native edge sampling repair is being designed independently.
 No successful native-precision STL or 3MF is claimed.
+
+On clean matched `fe195308`, guarded GUI export reports 45 invalid links across
+33 native shells, 98 attempts, 38 repaired faces and 71 added triangles, with no
+multiply used links. Read-only inspection still reports zero scene errors and
+zero display warnings, and the saved archive matches exactly. The next candidate
+adds source-certified native midpoint samples to crossing chords on all shared
+owners in one export-only transaction, then tries FIFO longest-interior-edge
+refinement from fresh snapshots. All source accuracy, domain, work/depth limits,
+native ownership and final closure checks remain mandatory; GUI qualification
+is pending.
 
 The actual guarded GUI export on clean matched `7c235990` still reports 86
 unmatched links. Native curve diagnostics rule out zero-area incidence loss on
@@ -182,6 +193,14 @@ twenty-three features, seven definitions and ten occurrences. Both front posts
 now retain their apron and six-position rail/arm pilots. Saved parameters and
 exact live/archive comparison passed. Both rear-post patterns, remaining
 geometry, joints and drawings are unfinished.
+
+On clean matched `fe195308`, physical Hole input added the left-rear post's two
+Ø3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
+Z 350/390 mm. Naming, restoring all Browser eyes and Ctrl+S produced the
+[left-rear apron checkpoint](../examples/checkpoints/garden-bench-left-rear-apron-human-ui.limo):
+twenty-four features, seven definitions and ten occurrences. Its saved hole
+parameters and exact live/archive comparison passed. Rear rail/arm pilots,
+right-rear apron pilots, remaining geometry, joints and drawings are unfinished.
 
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled

@@ -235,6 +235,16 @@ geometry and references.
     comparison passed. Both rear-post patterns, remaining geometry, joints and
     drawings remain unfinished.
 
+27. On clean matched `fe195308`, isolate Body3 and select its outward −Y face in
+    Front view. The basis is origin `(0, 0, 0)`, U `(1, 0, 0)`, V `(0, 0, 1)`.
+    Add two simple Ø3.5 mm, 39 mm deep, flat-bottom pilots with no flip at U 32.5,
+    V 350/390 mm. Name the feature **Left rear post / Apron pilots Ø3.5 x 39 /
+    Z350 and Z390**. Restore all seven Browser eyes, use Isometric/Fit and save.
+    The [left-rear apron checkpoint](../checkpoints/garden-bench-left-rear-apron-human-ui.limo)
+    has twenty-four features, seven definitions and ten occurrences. Saved hole
+    parameters and exact live/archive comparison passed. Rear rail/arm pilots,
+    right-rear apron pilots, remaining geometry, joints and drawings remain open.
+
 Use the saved **Named Views** for a demonstration:
 
 1. Recall **01 / Front frame assembly**, **03 / Seat support frame** and
