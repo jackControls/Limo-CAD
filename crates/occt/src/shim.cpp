@@ -3095,6 +3095,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     std::vector<StripFace> faces;
     double shift = 0.0, angular = 0.0, coverage = 0.0, neighbor_gap = 0.0;
     std::string crossing_certificate;
+    bool certified_native_apex = false;
     bool accepted = false;
   };
   struct StripRollbackFailure : std::runtime_error {
@@ -4605,6 +4606,13 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       };
       std::vector<std::pair<int,int>> matched;
       std::size_t a=0,b=0;
+      // A source chart can encode the very same native vertex with endpoint
+      // UVs differing by arithmetic roundoff. Only a separately certified
+      // native identity may pair those occurrences without changing either UV.
+      if (trial.certified_native_apex) {
+        if (stations[0][0].second!=stations[1][0].second) { strip_stop_="certified native apex mesh ownership differs";return false; }
+        matched.emplace_back(0,0);a=b=1;
+      }
       while (a<stations[0].size() && b<stations[1].size()) {
         if (stations[0][a].first<stations[1][b].first) { ++a;continue; }
         if (stations[1][b].first<stations[0][a].first) { ++b;continue; }
@@ -5239,6 +5247,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     std::array<Handle(Geom2d_Curve),2> sources;
     std::array<TopoDS_Vertex,2> apex,outer;
     std::array<double,2> low_u,high_u;
+    std::array<int,2> apex_indices;
     std::array<int,2> wire_indices{-1,-1};
     const auto uv_roundoff=[](const gp_Pnt2d& a,const gp_Pnt2d& b) {
       return 64.0*std::numeric_limits<double>::epsilon()*(std::abs(a.X())+std::abs(a.Y())+
@@ -5281,19 +5290,39 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       if (native_first.IsNull() || native_last.IsNull()) return skipped("native rail endpoint identity gate");
       apex[side]=direction>0.0 ? native_first : native_last;
       outer[side]=direction>0.0 ? native_last : native_first;
-      low_u[side]=std::min(begin.X(),end.X());high_u[side]=std::max(begin.X(),end.X());
+      apex_indices[side]=direction>0.0 ? 0 : pc->ParametersNb()-1;
+      low_u[side]=pc->GetPoint(apex_indices[side]).X();
+      high_u[side]=pc->GetPoint(direction>0.0 ? pc->ParametersNb()-1 : 0).X();
     }
-    if (!apex[0].IsSame(apex[1]) || outer[0].IsSame(outer[1]) || low_u[0]!=low_u[1]) return skipped("shared low-U apex/distinct outer endpoint gate");
+    if (!apex[0].IsSame(apex[1]) || outer[0].IsSame(outer[1])) return skipped("shared native apex/distinct outer endpoint identity gate");
+    const auto first_apex=pcs[0]->GetPoint(apex_indices[0]),second_apex=pcs[1]->GetPoint(apex_indices[1]);
+    if (first_apex.Distance(second_apex)>uv_roundoff(first_apex,second_apex)) return skipped("native apex source-chart coordinate roundoff gate");
+    const auto native_apex=BRep_Tool::Pnt(apex[0]);
+    for (int side=0;side<2;++side) {
+      const auto edge=trial.edges[side].edge;
+      const auto point=edge->GetCurve()->GetPoint(apex_indices[side]);
+      const auto uv=pcs[side]->GetPoint(apex_indices[side]);
+      const auto surface=face->GetSurface()->Value(uv.X(),uv.Y());
+      const double budget=std::min(GetParameters().Deflection/4.0,BRep_Tool::Tolerance(edge->GetEdge())+BRep_Tool::Tolerance(face->GetFace()));
+      if (!strip_finite(native_apex) || !strip_finite(point) || point.Distance(native_apex)!=0.0 ||
+          !strip_finite(surface) || !std::isfinite(budget) || budget<=0.0 || surface.Distance(point)>budget)
+        return skipped("native apex exact world identity/source precision gate");
+    }
     const int connector=3-wire_indices[0]-wire_indices[1];
     TopoDS_Vertex connector_first,connector_last;TopExp::Vertices(wire->GetEdge(connector)->GetEdge(),connector_first,connector_last,false);
     if (connector_first.IsNull() || connector_last.IsNull() || !(
         (connector_first.IsSame(outer[0]) && connector_last.IsSame(outer[1])) ||
         (connector_first.IsSame(outer[1]) && connector_last.IsSame(outer[0])))) return skipped("native connector endpoint identity gate");
     const double common_end=std::min(high_u[0],high_u[1]);
+    const double common_start=std::max(low_u[0],low_u[1]);
     std::set<double> stations;
-    for (const auto& pc : pcs) for (int i=0;i<pc->ParametersNb();++i)
-      if (pc->GetPoint(i).X()<=common_end) stations.insert(pc->GetPoint(i).X());
-    if (stations.size()<3 || stations.size()>128 || *stations.begin()!=low_u[0] || *stations.rbegin()!=common_end) return skipped("common-U station budget/extent gate");
+    for (int side=0;side<2;++side) for (int i=0;i<pcs[side]->ParametersNb();++i) {
+      if (i==apex_indices[side]) continue; // paired native endpoint, not a discarded station
+      const double u=pcs[side]->GetPoint(i).X();
+      if (u<=common_start) return skipped("non-endpoint station lies inside apex roundoff interval");
+      if (u<=common_end) stations.insert(u);
+    }
+    if (stations.size()<2 || stations.size()>127 || *stations.rbegin()!=common_end) return skipped("retained common-U station budget/extent gate");
     for (int side=0;side<2;++side) for (double u : stations) {
       const auto edge=trial.edges[side].edge;const auto curve=edge->GetCurve();const auto pc=pcs[side];
       bool present=false;
@@ -5363,6 +5392,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       ++added;
     }
     synchronized.target=face;synchronized.target_edges=wire_indices;synchronized.connector=connector;
+    synchronized.certified_native_apex=true;
     std::fprintf(stderr,"Native export paired source rails face %d common stations %zu total native stations %d/%d connector preserved\n",
         strip_original_faces_.FindIndex(face->GetFace())-1,stations.size(),pcs[0]->ParametersNb(),pcs[1]->ParametersNb());
     return true;

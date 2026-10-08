@@ -28,7 +28,7 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `7a51d2e0` opens the complete
+Current October 8 Medix qualification: clean matched `ea88db4d` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
 536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 16 invalid
@@ -45,9 +45,12 @@ the longest strategy regressed the result to 24. Restoring the exact no-flip
 trajectory recovers 16 links. The bounded constrained-ear alternative also leaves
 16 links. Source inspection identifies two thin, three-edge strips whose native
 rails use different U stations. Their measured source widths exceed the retained
-native endpoint offsets. The next candidate synchronizes stations on strictly
-monotone native source rails and qualifies every affected owner before accepting
-the copied export mesh. GUI qualification is pending.
+native endpoint offsets. The station synchronization trial preserves the 16-link
+result: it skips two endpoint checks that mixed exact source evaluation with
+retained UV coordinates. The next candidate uses retained station coordinates
+for range checks and pairs the shared apex only after native vertex/world
+identity, coordinate-roundoff and source-precision certificates. Every affected
+owner still requires complete qualification. GUI qualification is pending.
 All 70 installed payload hashes match the clean manifest. No successful 3MF or
 native-precision-qualified STL is claimed. The Medix notes below record earlier
 trials; they do not supersede this current qualification.
