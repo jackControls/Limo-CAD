@@ -4270,23 +4270,33 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         if (other.IsPartner(face->GetFace()) && !other.IsSame(face->GetFace())) { alias=true; break; }
       }
       if (alias) { why="located face alias requires shared polygon ownership"; continue; }
-      ++attempts;
       StripTrial trial;
       trial.faces.push_back(saved);
       bool accepted=false;
-      try {
-        const bool restored=restore_skipped_strip_nodes(trial,true);
-        accepted=restored && validate_spherical_strip(trial,true);
-        if (!accepted) why=std::string(restored ? "domain: " : "fan: ")+strip_stop_.substr(0,330);
-      } catch (const Standard_Failure&) { why="OCCT exception qualifying restored native boundary"; }
-        catch (const std::exception&) { why="exception qualifying restored native boundary"; }
-      if (!accepted) {
-        try { BRep_Builder().UpdateFace(face->GetFace(),mesh); }
-        catch (...) { throw std::runtime_error("OCCT could not restore an export boundary triangulation"); }
-      } else {
-        const auto replacement=BRep_Tool::Triangulation(face->GetFace(),location);
-        ++repaired; added+=replacement->NbTriangles()-mesh->NbTriangles();
-        why="native boundary restored and full domain certified";
+      bool both_unused=!pole_aliases.empty();
+      for (const auto& entry : actual) for (const auto& pole : pole_aliases)
+        if (entry.first.first==pole.first || entry.first.second==pole.first ||
+            entry.first.first==pole.second || entry.first.second==pole.second) both_unused=false;
+      std::string first_rejection;
+      for (int choice=0;choice<(both_unused ? 2 : 1);++choice) {
+        if (attempts>=128 || export_boundary_work_>=2097152) { why="export restoration attempt/work budget exhausted"; break; }
+        ++attempts;
+        try {
+          const bool restored=restore_skipped_strip_nodes(trial,true,choice);
+          accepted=restored && validate_spherical_strip(trial,true);
+          if (!accepted) why=std::string(restored ? "domain: " : "fan: ")+strip_stop_.substr(0,330);
+        } catch (const Standard_Failure&) { why="OCCT exception qualifying restored native boundary"; }
+          catch (const std::exception&) { why="exception qualifying restored native boundary"; }
+        if (!accepted) {
+          try { BRep_Builder().UpdateFace(face->GetFace(),mesh); }
+          catch (...) { throw std::runtime_error("OCCT could not restore an export boundary triangulation"); }
+          if (!choice) first_rejection=why;
+          else why="unused-pole choices: 0 "+first_rejection.substr(0,100)+"; 1 "+why.substr(0,140);
+        } else {
+          const auto replacement=BRep_Tool::Triangulation(face->GetFace(),location);
+          ++repaired; added+=replacement->NbTriangles()-mesh->NbTriangles();
+          why="native boundary restored and full domain certified"; break;
+        }
       }
     }
     export_boundary_stop_="export boundary attempts/repaired/added triangles "+std::to_string(attempts)+"/"+
@@ -4296,7 +4306,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   // Some native triangulators omit collinear UV constraint samples even
   // though their mapped nodes and shared 3D curve samples remain available.
   // Reinsert only those existing nodes into the sole incident triangle.
-  bool restore_skipped_strip_nodes(const StripTrial& trial,bool native_export=false) {
+  bool restore_skipped_strip_nodes(const StripTrial& trial,bool native_export=false,int unused_pole_choice=0) {
     strip_corner_detail_.clear();
     strip_degenerate_details_.clear();
     try {
@@ -4316,7 +4326,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         std::map<Link,Incidence> links;
         std::map<int,int> pole_aliases;
         IMeshData::IEdgePtr pole_edge=nullptr;
-        if (native_export && !qualify_native_pole(saved,mesh,location,pole_aliases,pole_edge,true,true)) return false;
+        if (native_export && !qualify_native_pole(saved,mesh,location,pole_aliases,pole_edge,true,true,unused_pole_choice)) return false;
         const auto canonical=[&](int id) {
           const auto found=pole_aliases.find(id); return found==pole_aliases.end() ? id : found->second;
         };
@@ -4481,6 +4491,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               Split split{entry.second.triangle,{}};
               double previous_fraction = -1.0;
               bool corner = false;
+              bool ordered_collinear = true;
+              std::string order_rejection;
               for (int offset = 0; offset <= distance; ++offset) {
                 const int i = (from+offset)%static_cast<int>(chain.size());
                 const int id = chain[i].id; const auto uv = mesh->UVNode(id);
@@ -4493,17 +4505,30 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 const double correspondence_bound = uv_gap + mesh->UVNode(ids[cyclic]).Distance(chain[from].uv) +
                     mesh->UVNode(ids[(cyclic+1)%3]).Distance(chain[to].uv) + roundoff;
                 const auto point = mesh->Node(id).Transformed(location.Transformation());
+                const bool ordered=fraction>previous_fraction &&
+                    !(offset>0 && offset<distance && (fraction<=0.0 || fraction>=1.0));
+                if (!ordered && order_rejection.empty()) {
+                  order_rejection="collinear chain node "+std::to_string(id)+" fraction "+std::to_string(fraction)+
+                      " is outside ordered chord "+std::to_string(ids[cyclic])+"/"+std::to_string(ids[(cyclic+1)%3]);
+                }
+                ordered_collinear &= ordered;
                 if (!strip_finite(uv) || !strip_finite(native_uv) || !strip_finite(chain[i].native) ||
                     !strip_finite(point) || !std::isfinite(uv_gap) || !std::isfinite(fraction) || !std::isfinite(line_gap) ||
-                    uv_gap > Precision::PConfusion() ||
-                    fraction <= previous_fraction || (offset > 0 && offset < distance &&
-                        (fraction <= 0.0 || fraction >= 1.0 || used.count(id) || ambiguous.count(id))) ||
+                    uv_gap > Precision::PConfusion() || (!native_export && !ordered) ||
+                    (offset > 0 && offset < distance && (used.count(id) || ambiguous.count(id))) ||
                     point.Distance(chain[i].native) > Precision::Confusion()) {
                   std::ostringstream diagnostic; diagnostic.precision(6);
+                  const double native_gap=point.Distance(chain[i].native);
+                  const char* gate=(!strip_finite(uv) || !strip_finite(native_uv) || !strip_finite(chain[i].native) ||
+                      !strip_finite(point) || !std::isfinite(uv_gap) || !std::isfinite(fraction) || !std::isfinite(line_gap)) ? "nonfinite" :
+                      uv_gap>Precision::PConfusion() ? "UV-correspondence" : !native_export && !ordered ? "chord-order" :
+                      offset>0 && offset<distance && used.count(id) ? "already-used-interior" :
+                      offset>0 && offset<distance && ambiguous.count(id) ? "ambiguous-owner" : "native-XYZ-correspondence";
                   diagnostic << "adjacent face " << strip_original_faces_.FindIndex(saved.face->GetFace())-1 <<
-                      " skipped node " << id << " edge " << ids[cyclic] << '/' << ids[(cyclic+1)%3] <<
+                      " gate " << gate << " skipped node " << id << " edge " << ids[cyclic] << '/' << ids[(cyclic+1)%3] <<
                       " third " << ids[(cyclic+2)%3] << " fraction/gap/bound " << fraction << '/' << line_gap << '/' <<
-                      correspondence_bound << " used " << used.count(id);
+                      correspondence_bound << " UV gap/bound " << uv_gap << '/' << Precision::PConfusion() <<
+                      " native XYZ gap/bound " << native_gap << '/' << Precision::Confusion() << " used " << used.count(id);
                   strip_stop_ = diagnostic.str(); return false;
                 }
                 const auto on_surface = saved.face->GetSurface()->Value(uv.X(),uv.Y());
@@ -4547,6 +4572,11 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 }
                 strip_corner_detail_ = detail.str();
                 if (!simple_boundary_proved && !prove_simple_outer()) return false;
+              } else if (!ordered_collinear) {
+                // Straight subdivision still requires strict ordered fractions.
+                // A genuine trim corner is qualified instead by its complete
+                // simple domain and positive, precision-checked children.
+                strip_stop_=order_rejection; return false;
               }
               for (std::size_t i = 1; i + 1 < split.chain.size(); ++i)
                 if (!scheduled.insert(split.chain[i]).second) {
@@ -4683,7 +4713,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   // wedge at native sampling precision; never merge merely short edges.
   bool qualify_native_pole(const StripFace& saved, const Handle(Poly_Triangulation)& mesh,
                            const TopLoc_Location& location, std::map<int,int>& aliases,
-                           IMeshData::IEdgePtr& pole_edge, bool native_export=false, bool identity_only=false) {
+                           IMeshData::IEdgePtr& pole_edge, bool native_export=false, bool identity_only=false,int unused_choice=0) {
     pole_edge = nullptr;
     try {
       IMeshData::IPCurveHandle pole_pc;
@@ -4753,12 +4783,14 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         }
         for (int id : ids) used.insert(id);
       }
-      if (used.count(id0)+used.count(id1) != 1) {
+      const bool proposing_unused=native_export && identity_only && !used.count(id0) && !used.count(id1);
+      if (used.count(id0)+used.count(id1) != 1 && !proposing_unused) {
         strip_stop_ = "native pole requires one physical representative; nodes "+std::to_string(id0)+"/"+
             std::to_string(id1)+" positive-use "+std::to_string(used.count(id0))+"/"+std::to_string(used.count(id1))+
             " certified zero-pair cells "+std::to_string(zero_pole_cells); return false;
       }
-      const int representative = used.count(id0) ? id0 : id1, omitted = representative == id0 ? id1 : id0;
+      const int representative = proposing_unused ? (unused_choice ? id1 : id0) : used.count(id0) ? id0 : id1;
+      const int omitted = representative == id0 ? id1 : id0;
       aliases[omitted] = representative;
       // This only proposes connectivity on a disposable export mesh. The
       // complete chart/wedge/precision certificate is repeated after repair.
@@ -5952,28 +5984,31 @@ class NativeExportIndex {
   void validate(const FfiMesh& output) const {
     // Open surface STL remains supported; 3MF independently requires closure.
     if (!closed_) return;
-    struct Use { int count=0,balance=0; std::array<std::pair<std::size_t,int>,2> incidents; };
+    struct Use { int count=0,balance=0; std::array<std::pair<std::size_t,int>,4> incidents; };
     std::map<std::pair<std::uint32_t,std::uint32_t>,Use> uses;
     for (std::size_t i=0;i<output.indices.size();i+=3) for (int j=0;j<3;++j) {
       const auto a=output.indices[i+j],b=output.indices[i+(j+1)%3];
       auto& use=uses[{std::min(a,b),std::max(a,b)}];
-      if (use.count<2) use.incidents[use.count]={i/3,j};
+      if (use.count<4) use.incidents[use.count]={i/3,j};
       ++use.count; use.balance+=a<b ? 1 : -1;
     }
     std::size_t invalid=0;
     std::map<int,int> face_groups,edge_groups;
     std::map<std::pair<int,int>,int> invalid_types;
+    std::set<int> four_use_edges;
     std::vector<std::pair<std::pair<std::uint32_t,std::uint32_t>,Use>> failures;
     std::map<int,std::pair<std::pair<std::uint32_t,std::uint32_t>,Use>> examples_by_face;
     for (const auto& use : uses) if (use.second.count!=2 || use.second.balance!=0) {
       ++invalid;
       ++invalid_types[{use.second.count,use.second.balance}];
-      for (int i=0;i<std::min(2,use.second.count);++i) {
+      for (int i=0;i<std::min(4,use.second.count);++i) {
         const int face=facets_.at(use.second.incidents[i].first).face;
         ++face_groups[face]; examples_by_face.emplace(face,use);
       }
-      for (const auto id : {use.first.first,use.first.second}) if (vertex_keys_.at(id)[1]==2)
+      for (const auto id : {use.first.first,use.first.second}) if (vertex_keys_.at(id)[1]==2) {
         ++edge_groups[vertex_keys_[id][2]-1];
+        if (use.second.count>2) four_use_edges.insert(vertex_keys_[id][2]);
+      }
     }
     if (!invalid) return;
     std::ostringstream details; details.precision(12);
@@ -5984,6 +6019,17 @@ class NativeExportIndex {
       details << ' ' << type.first.first << '/' << type.first.second << ':' << type.second;
       if (++types==8) { if (invalid_types.size()>8) details << " [further types]"; break; }
     }
+    int multi_examples=0;
+    details << ". Multi-use incident face/tri/native-nodes";
+    for (const auto& use : uses) if (use.second.count>2) {
+      details << " [link " << use.first.first << '/' << use.first.second << " uses " << use.second.count;
+      for (int i=0;i<std::min(4,use.second.count);++i) {
+        const auto& incident=use.second.incidents[i]; const auto& facet=facets_.at(incident.first);
+        details << ' ' << facet.face << '/' << facet.triangle << ':' << facet.nodes[0] << ',' << facet.nodes[1] << ',' << facet.nodes[2];
+      }
+      details << ']';
+      if (++multi_examples==2) break;
+    }
     // Source incidence counts oriented OCCURRENCES in the same native shell,
     // including both occurrences of a seam. Unique ancestor counts alone
     // cannot distinguish a seam, omitted mesh owner, or nonmanifold edge.
@@ -5993,9 +6039,32 @@ class NativeExportIndex {
       std::sort(worst_edges.begin(),worst_edges.end(),[](const auto& a,const auto& b) { return a>b; });
       std::set<int> selected_edges;
       for (std::size_t i=0;i<std::min<std::size_t>(3,worst_edges.size());++i) selected_edges.insert(worst_edges[i].second+1);
+      for (int edge : four_use_edges) { if (selected_edges.size()>=6) break; selected_edges.insert(edge); }
       struct NativeUse { int count=0,balance=0; std::set<int> faces; std::vector<std::array<int,3>> owners; };
       std::map<std::pair<int,int>,NativeUse> native_uses;
       TopTools_IndexedMapOfShape native_faces; TopExp::MapShapes(shape_,TopAbs_FACE,native_faces);
+      const auto finite_uv=[](const gp_Pnt2d& p) { return std::isfinite(p.X()) && std::isfinite(p.Y()); };
+      int chart_examples=0;
+      details << ". Multi-use UV centroid/state/signed-area";
+      for (const auto& use : uses) if (use.second.count>2) {
+        details << " [link " << use.first.first << '/' << use.first.second;
+        for (int i=0;i<std::min(4,use.second.count);++i) {
+          const auto& facet=facets_.at(use.second.incidents[i].first);
+          const auto& mesh=face_meshes_.at(facet.face);
+          if (!mesh->HasUVNodes()) continue;
+          const auto a=mesh->UVNode(facet.nodes[0]),b=mesh->UVNode(facet.nodes[1]),c=mesh->UVNode(facet.nodes[2]);
+          const gp_Pnt2d center((a.Coord()+b.Coord()+c.Coord())/3.0);
+          if (!finite_uv(center) || !finite_uv(a) || !finite_uv(b) || !finite_uv(c)) {
+            details << ' ' << facet.face << ":nonfinite UV"; continue;
+          }
+          const auto face=TopoDS::Face(native_faces.FindKey(facet.face+1));
+          BRepClass_FaceClassifier classifier(face,center,Precision::PConfusion());
+          details << ' ' << facet.face << ':' << center.X() << ',' << center.Y() << '/' <<
+              static_cast<int>(classifier.State()) << '/' << .5*(b.Coord()-a.Coord()).Crossed(c.Coord()-a.Coord());
+        }
+        details << ']';
+        if (++chart_examples==2) break;
+      }
       std::size_t native_work=0;
       for (int si=1;si<=shells_.Extent();++si) for (TopExp_Explorer fe(shells_.FindKey(si),TopAbs_FACE);fe.More();fe.Next()) {
         const auto face=TopoDS::Face(fe.Current());
