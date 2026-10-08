@@ -76,6 +76,17 @@ native vertex and original wedge against the final composed quotient, with at
 most four representative choices; it awaits GUI qualification. Export is still
 refused, and the saved Medix model remains unchanged.
 
+On clean matched `cb464867`, actual GUI export reduces invalid links from 53 to
+49, still with no multiply used links across 33 native shells. The independent
+pole proposals now reach refinement; face 7236 fails its source-angle check
+instead of the earlier one-pole eligibility gate. Medix reopens with zero scene
+errors and zero display warnings and still matches its saved archive exactly.
+The next bounded refinement proposal evaluates all four children of both owners
+at seven source witnesses before selecting an interior split, and each child
+inherits its own parent's depth. Original precision, work/depth/node limits,
+native boundaries and final closure checks remain unchanged. GUI qualification
+is pending; native-precision export remains refused.
+
 The actual guarded GUI export on clean matched `7c235990` still reports 86
 unmatched links. Native curve diagnostics rule out zero-area incidence loss on
 the leading sphere faces: all ten existing facets have positive area, but native
@@ -146,6 +157,15 @@ twenty-two features, seven definitions and ten occurrences. Saved parameters,
 previous hole patterns and assembly preservation, and exact live/archive
 comparison passed. Right-front apron and both rear-post pilot patterns,
 remaining geometry, joints and drawings are unfinished.
+
+On clean matched `cb464867`, physical Hole input added the right-front post's
+two Ø3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
+Z 350/390 mm. Naming, restoring all Browser eyes and Ctrl+S produced the
+[front pilot checkpoint](../examples/checkpoints/garden-bench-front-pilots-human-ui.limo):
+twenty-three features, seven definitions and ten occurrences. Both front posts
+now retain their apron and six-position rail/arm pilots. Saved parameters and
+exact live/archive comparison passed. Both rear-post patterns, remaining
+geometry, joints and drawings are unfinished.
 
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled

@@ -5138,6 +5138,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       };
       for (std::size_t i=0;i<boundary.size();++i) add_cell({boundary[i],boundary[(i+1)%boundary.size()],node},0);
       int inspected=0,inserted=1,max_depth=0;
+      std::vector<std::string> recent_splits;
       // Bisect an unconstrained interior edge in BOTH incident cells. Retire
       // any prior neighbor certificate, and qualify all new cells again;
       // native boundary links remain unchanged and no hanging node survives.
@@ -5177,7 +5178,35 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (error>d || angular>angle) failing_sample=index;++index;
         }
         if (max_error<=d && max_angle<=angle) { cells[cell_index].qualified=true;continue; }
-        int chosen=-1;double best_edge=-1.0,best_length=-1.0;
+        int chosen=-1,interior_candidates=0;double best_edge=std::numeric_limits<double>::infinity(),best_length=-1.0;
+        std::vector<int> owners={cell_index};int depth=cell.depth;
+        gp_Pnt2d selected_midpoint;gp_Pnt selected_midpoint_local;
+        std::ostringstream alternatives;alternatives.precision(7);
+        const int prospective_node=replacement->NbNodes()+1;
+        const auto evaluate_child=[&](const std::array<int,3>& ids,const gp_Pnt2d& midpoint,const gp_Pnt& point,
+                                      double& error,double& angular) {
+          gp_Pnt2d uv[3];gp_Pnt xyz[3];
+          for (int j=0;j<3;++j) {
+            uv[j]=ids[j]==prospective_node ? midpoint : replacement->UVNode(ids[j]);
+            xyz[j]=ids[j]==prospective_node ? point : replacement->Node(ids[j]).Transformed(location.Transformation());
+            if (!strip_finite(uv[j]) || !strip_finite(xyz[j])) return false;
+          }
+          const auto normal=gp_Vec(xyz[0],xyz[1]).Crossed(gp_Vec(xyz[0],xyz[2]));
+          const double area=winding*(uv[1].Coord()-uv[0].Coord()).Crossed(uv[2].Coord()-uv[0].Coord());
+          if (!std::isfinite(area) || area<=0.0 || !std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude()<=0.0) return false;
+          for (const auto& w : weights) {
+            if (++export_boundary_work_>2097152) return false;
+            const gp_Pnt2d sample(uv[0].Coord()*w[0]+uv[1].Coord()*w[1]+uv[2].Coord()*w[2]);
+            const gp_Pnt affine(xyz[0].XYZ()*w[0]+xyz[1].XYZ()*w[1]+xyz[2].XYZ()*w[2]);
+            gp_Pnt source;gp_Dir source_normal;
+            if (!BRepMesh_GeomTool::Normal(face->GetSurface(),sample.X(),sample.Y(),source,source_normal) ||
+                !strip_finite(source) || !strip_finite(affine)) return false;
+            const double gap=affine.Distance(source),turn=normal.Angle(gp_Vec(source_normal)*winding);
+            if (!std::isfinite(gap) || !std::isfinite(turn)) return false;
+            error=std::max(error,gap);angular=std::max(angular,turn);
+          }
+          return true;
+        };
         for (int i=0;i<3;++i) {
           const int next=(i+1)%3,a=cell.ids[i],b=cell.ids[next];
           const auto key=link(a,b);
@@ -5195,47 +5224,84 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             }
             continue;
           }
-          const double score=std::max(midpoint_errors[i]/d,endpoint_normals[i].Angle(endpoint_normals[next])/angle);
-          const double length=p[i].Distance(p[next]);
-          if (!std::isfinite(score) || !std::isfinite(length)) { strip_stop_="whole-face nonfinite interior edge metric";return false; }
-          if (score>best_edge || (score==best_edge && length>best_length)) { chosen=i;best_edge=score;best_length=length; }
-        }
-        std::vector<int> owners={cell_index};int depth=cell.depth;
-        if (chosen>=0) {
-          const auto key=link(cell.ids[chosen],cell.ids[(chosen+1)%3]);const auto found=incidence.find(key);
+          ++interior_candidates;
+          const auto found=incidence.find(key);
           if (found==incidence.end() || found->second.size()!=2) { strip_stop_="whole-face interior split lacks exactly two owners";return false; }
-          owners.assign(found->second.begin(),found->second.end());int balance=0;
-          for (int owner : owners) {
-            depth=std::max(depth,cells[owner].depth);
+          const std::vector<int> trial_owners(found->second.begin(),found->second.end());int balance=0,trial_depth=0;
+          for (int owner : trial_owners) {
+            trial_depth=std::max(trial_depth,cells[owner].depth);
             for (int i=0;i<3;++i) if (link(cells[owner].ids[i],cells[owner].ids[(i+1)%3])==key)
               balance+=cells[owner].ids[i]<cells[owner].ids[(i+1)%3] ? 1 : -1;
           }
           if (balance!=0) { strip_stop_="whole-face split owners are not oppositely oriented";return false; }
+          alternatives << " [edge " << a << '/' << b << " owner-depths " << cells[trial_owners[0]].depth << '/' <<
+              cells[trial_owners[1]].depth << " xyz/UV-length " << p[i].Distance(p[next]) << '/' << u[i].Distance(u[next]) <<
+              " midpoint-error " << midpoint_errors[i];
+          if (trial_depth>=8) { alternatives << " lineage cap]";continue; }
+          const gp_Pnt2d midpoint((u[i].Coord()+u[next].Coord())*.5);
+          if (!strip_finite(midpoint) || BRepClass_FaceClassifier(face->GetFace(),midpoint,Precision::PConfusion()).State()!=TopAbs_IN) {
+            alternatives << " outside original trim]";continue;
+          }
+          if (++export_boundary_work_>2097152) { strip_stop_="whole-face split lookahead source budget";return false; }
+          const auto source=face->GetSurface()->Value(midpoint.X(),midpoint.Y());
+          const auto local=source.Transformed(location.Transformation().Inverted()),point=local.Transformed(location.Transformation());
+          if (!strip_finite(source) || !strip_finite(local) || !strip_finite(point)) { alternatives << " nonfinite midpoint]";continue; }
+          double trial_error=0.0,trial_angle=0.0;bool valid=true;
+          for (int owner : trial_owners) {
+            const auto& ids=cells[owner].ids;bool matched=false;
+            for (int j=0;j<3;++j) if (link(ids[j],ids[(j+1)%3])==key) {
+              matched=true;
+              valid &= evaluate_child({ids[j],prospective_node,ids[(j+2)%3]},midpoint,point,trial_error,trial_angle);
+              valid &= evaluate_child({prospective_node,ids[(j+1)%3],ids[(j+2)%3]},midpoint,point,trial_error,trial_angle);
+              break;
+            }
+            if (!matched) { strip_stop_="whole-face lookahead lost an owner";return false; }
+          }
+          if (export_boundary_work_>2097152) { strip_stop_="whole-face split child witness budget";return false; }
+          const double score=std::max(trial_error/d,trial_angle/angle),length=p[i].Distance(p[next]);
+          alternatives << " children D/angle/score " << trial_error << '/' << trial_angle << '/' << score << (valid ? "]" : " invalid]");
+          if (valid && std::isfinite(score) && std::isfinite(length) &&
+              (score<best_edge || (score==best_edge && length>best_length))) {
+            chosen=i;best_edge=score;best_length=length;owners=trial_owners;depth=trial_depth;
+            selected_midpoint=midpoint;selected_midpoint_local=local;
+          }
+        }
+        if (chosen<0 && interior_candidates) {
+          strip_stop_="cell "+std::to_string(cell.ids[0])+"/"+std::to_string(cell.ids[1])+"/"+std::to_string(cell.ids[2])+
+              " no certified two-owner split; D/angle "+std::to_string(max_error)+"/"+std::to_string(max_angle)+alternatives.str();
+          for (const auto& split : recent_splits) strip_stop_+="; "+split;
+          return false;
         }
         if (depth>=8 || inserted>=4096 || replacement->NbNodes()>=65536 || active_count+2>4096 || cells.size()+4>16384) {
           strip_stop_="cell "+std::to_string(cell.ids[0])+"/"+std::to_string(cell.ids[1])+"/"+std::to_string(cell.ids[2])+
               " depth/nodes "+std::to_string(depth)+"/"+std::to_string(inserted)+" D/angle "+
               std::to_string(max_error)+"/"+std::to_string(max_angle)+" sample "+std::to_string(failing_sample)+
               " split "+(chosen>=0 ? std::to_string(cell.ids[chosen])+"/"+std::to_string(cell.ids[(chosen+1)%3]) : "centroid")+
-              " endpoint source-gaps "+std::to_string(endpoint_errors[0])+"/"+std::to_string(endpoint_errors[1])+"/"+std::to_string(endpoint_errors[2]);return false;
+              " endpoint source-gaps "+std::to_string(endpoint_errors[0])+"/"+std::to_string(endpoint_errors[1])+"/"+std::to_string(endpoint_errors[2])+
+              alternatives.str();
+          for (const auto& split : recent_splits) strip_stop_+="; "+split;
+          return false;
         }
-        const gp_Pnt2d uv(chosen>=0 ? (u[chosen].Coord()+u[(chosen+1)%3].Coord())*.5 : (u[0].Coord()+u[1].Coord()+u[2].Coord())/3.0);
+        const gp_Pnt2d uv(chosen>=0 ? selected_midpoint : gp_Pnt2d((u[0].Coord()+u[1].Coord()+u[2].Coord())/3.0));
         if (!strip_finite(uv) || BRepClass_FaceClassifier(face->GetFace(),uv,Precision::PConfusion()).State()!=TopAbs_IN) {
           strip_stop_="whole-face refinement centroid outside source trim";return false;
         }
         if (++export_boundary_work_>2097152) { strip_stop_="whole-face refinement centre budget";return false; }
-        const auto source=face->GetSurface()->Value(uv.X(),uv.Y());
-        const auto local=source.Transformed(location.Transformation().Inverted());
-        if (!strip_finite(source) || !strip_finite(local)) { strip_stop_="whole-face refinement nonfinite source point";return false; }
+        const auto local=chosen>=0 ? selected_midpoint_local : face->GetSurface()->Value(uv.X(),uv.Y()).Transformed(location.Transformation().Inverted());
+        if (!strip_finite(local) || !strip_finite(local.Transformed(location.Transformation()))) { strip_stop_="whole-face refinement nonfinite source point";return false; }
         const int next=replacement->NbNodes()+1;replacement->ResizeNodes(next,true);
         replacement->SetUVNode(next,uv);replacement->SetNode(next,local);++inserted;max_depth=std::max(max_depth,depth+1);
+        recent_splits.push_back("split "+(chosen>=0 ? std::to_string(cell.ids[chosen])+"/"+std::to_string(cell.ids[(chosen+1)%3]) : "centroid")+
+            " owner-depths "+std::to_string(cells[owners.front()].depth)+"/"+std::to_string(cells[owners.back()].depth)+
+            " score "+std::to_string(best_edge));
+        if (recent_splits.size()>8) recent_splits.erase(recent_splits.begin());
         for (int owner : owners) {
           const auto old=cells[owner];retire(owner);
-          if (chosen<0) { for (int i=0;i<3;++i) add_cell({old.ids[i],old.ids[(i+1)%3],next},depth+1);continue; }
+          if (chosen<0) { for (int i=0;i<3;++i) add_cell({old.ids[i],old.ids[(i+1)%3],next},old.depth+1);continue; }
           const auto key=link(cell.ids[chosen],cell.ids[(chosen+1)%3]);bool found=false;
           for (int i=0;i<3;++i) if (link(old.ids[i],old.ids[(i+1)%3])==key) {
-            add_cell({old.ids[i],next,old.ids[(i+2)%3]},depth+1);
-            add_cell({next,old.ids[(i+1)%3],old.ids[(i+2)%3]},depth+1);found=true;break;
+            add_cell({old.ids[i],next,old.ids[(i+2)%3]},old.depth+1);
+            add_cell({next,old.ids[(i+1)%3],old.ids[(i+2)%3]},old.depth+1);found=true;break;
           }
           if (!found) { strip_stop_="whole-face split lost its native owner edge";return false; }
         }
