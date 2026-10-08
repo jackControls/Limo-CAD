@@ -156,6 +156,19 @@ Roller-300 scratch runtime was not restarted or operated. A foreground change
 during the export check was recovered by guarded focus, fresh observation and
 retry; universal Windows focus behavior remains unqualified.
 
+The complete native-picker capture guard at `cbe74672` was manually exercised
+on matched clean `0dbd0fdf`: a fresh Downloads STEP import and Save As used
+full observed dialogs before each input. The saved archive retains identical
+source bytes; the additional checkpoint is
+`D:/limo-cad-maintenance/ui-models/Medix KW22 v4 - fresh UI import 0dbd.limo`.
+The mesh-only spherical repair at `aeac1cd1` passed its geometric preparation
+checks but refused nonanalytic neighboring charts. Clean `15c67f8c` retains
+their healed UV trim polygons and bounds shared-point residuals instead of
+performing ambiguous inverse projection. Both trials reach final adjacent
+coverage/incidence validation, which rejects them and rolls back. A fresh
+matched GUI/MCP pair still reports both original warnings;
+complete triangulation and mesh export qualification remain unfinished.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,

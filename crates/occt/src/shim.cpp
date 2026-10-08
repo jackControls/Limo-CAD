@@ -4166,14 +4166,16 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             mesh->NbTriangles() < 1 || mesh->NbTriangles() > 131072) return false;
         std::map<std::pair<int,int>, int> links;
         std::map<std::pair<int,int>, int> directions, boundary_directions;
+        std::map<std::pair<int,int>, std::vector<int>> boundary_orientations;
         std::set<std::pair<int,int>> boundary;
         const auto link = [](int a, int b) { return std::make_pair(std::min(a,b), std::max(a,b)); };
         const auto direction = [](int a, int b) { return a < b ? 1 : -1; };
-        double uv_area = 0.0, uv_scale = 0.0, expected_area = 0.0;
+        double uv_area = 0.0, uv_scale = 0.0, expected_area = 0.0, mapped_area = 0.0, max_uv_gap = 0.0;
         for (int wi = 0; wi < face->WiresNb(); ++wi) {
           const auto& wire = face->GetWire(wi);
           if (wire->GetStatusMask() != 0) return false;
           std::vector<gp_Pnt2d> polygon;
+          std::vector<gp_Pnt2d> mapped_polygon;
           for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
             const auto edge = wire->GetEdge(ei);
             const auto pc = edge->GetPCurve(face, wire->GetEdgeOrientation(ei));
@@ -4190,20 +4192,32 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               strip_stop_ = "adjacent shared boundary mismatch";
               if (id < 1 || id > mesh->NbNodes() || mesh->Node(id).Transformed(location.Transformation()).Distance(curve->GetPoint(i)) >
                     Precision::Confusion() || mesh->UVNode(id).Distance(pc->GetPoint(i)) > Precision::PConfusion()) return false;
+              max_uv_gap = std::max(max_uv_gap, mesh->UVNode(id).Distance(pc->GetPoint(i)));
               if (i && id != pc->GetIndex(i-1)) {
                 const int previous = pc->GetIndex(i-1);
                 const auto key = link(previous, id);
                 boundary.insert(key);
                 boundary_directions[key] += traversal * direction(previous, id);
+                if (boundary_orientations[key].size() < 4)
+                  boundary_orientations[key].push_back(static_cast<int>(wire->GetEdgeOrientation(ei)));
               }
-              if (i + 1 < pc->ParametersNb()) polygon.push_back(pc->GetPoint(
-                  wire->GetEdgeOrientation(ei) == TopAbs_REVERSED ? pc->ParametersNb()-1-i : i));
+              if (i + 1 < pc->ParametersNb()) {
+                const int index = wire->GetEdgeOrientation(ei) == TopAbs_REVERSED ? pc->ParametersNb()-1-i : i;
+                polygon.push_back(pc->GetPoint(index));
+                const int mapped_index = pc->GetIndex(index);
+                if (mapped_index < 1 || mapped_index > mesh->NbNodes()) return false;
+                mapped_polygon.push_back(mesh->UVNode(mapped_index));
+              }
             }
           }
           if (polygon.size() < 3) return false;
           const auto origin = polygon.front().Coord();
-          for (std::size_t i = 0; i < polygon.size(); ++i)
+          const auto mapped_origin = mapped_polygon.front().Coord();
+          for (std::size_t i = 0; i < polygon.size(); ++i) {
             expected_area += 0.5 * (polygon[i].Coord()-origin).Crossed(polygon[(i+1)%polygon.size()].Coord()-origin);
+            mapped_area += 0.5 * (mapped_polygon[i].Coord()-mapped_origin).Crossed(
+                mapped_polygon[(i+1)%mapped_polygon.size()].Coord()-mapped_origin);
+          }
         }
         for (int ti = 1; ti <= mesh->NbTriangles(); ++ti) {
           int ids[3]; mesh->Triangle(ti).Get(ids[0], ids[1], ids[2]);
@@ -4254,14 +4268,33 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 trial.coverage > GetParameters().Deflection) return false;
           }
         }
-        strip_stop_ = "adjacent oriented domain or boundary incidence";
+        const int face_index = strip_original_faces_.FindIndex(face->GetFace()) - 1;
         for (const auto& entry : links) {
-          if (entry.second != (boundary.count(entry.first) ? 1 : 2) ||
-              directions[entry.first] != (boundary.count(entry.first) ? boundary_directions[entry.first] : 0)) return false;
+          const int expected_count = boundary.count(entry.first) ? 1 : 2;
+          const int expected_direction = boundary.count(entry.first) ? boundary_directions[entry.first] : 0;
+          if (entry.second != expected_count || directions[entry.first] != expected_direction) {
+            std::ostringstream diagnostic;
+            diagnostic << "adjacent face " << face_index << " link " << entry.first.first << '/' << entry.first.second <<
+                " count " << entry.second << '/' << expected_count << " direction " << directions[entry.first] << '/' <<
+                expected_direction << " boundary orientations";
+            for (int orientation : boundary_orientations[entry.first]) diagnostic << ' ' << orientation;
+            strip_stop_ = diagnostic.str(); return false;
+          }
         }
-        for (const auto& entry : boundary) if (links[entry] != 1) return false;
+        for (const auto& entry : boundary) if (links[entry] != 1) {
+          strip_stop_ = "adjacent face " + std::to_string(face_index) + " missing boundary link " +
+              std::to_string(entry.first) + '/' + std::to_string(entry.second) + " count " + std::to_string(links[entry]);
+          return false;
+        }
+        const double area_roundoff = 128.0 * std::numeric_limits<double>::epsilon() * uv_scale;
         if (!std::isfinite(uv_area) || !std::isfinite(expected_area) ||
-            std::abs(uv_area-std::abs(expected_area)) > 128.0 * std::numeric_limits<double>::epsilon() * uv_scale) return false;
+            std::abs(uv_area-std::abs(expected_area)) > area_roundoff) {
+          std::ostringstream diagnostic; diagnostic.precision(7);
+          diagnostic << "adjacent face " << face_index << " UV area delta " << std::abs(uv_area-std::abs(expected_area)) <<
+              " bound " << area_roundoff << " mapped delta " << std::abs(uv_area-std::abs(mapped_area)) <<
+              " max UV gap " << max_uv_gap;
+          strip_stop_ = diagnostic.str(); return false;
+        }
       }
       strip_stop_ = "opposite shared-edge face incidence";
       for (const auto& entry : shared_incidence)
