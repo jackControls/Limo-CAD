@@ -3171,7 +3171,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       if (trial.target->IsSet(IMeshData_Failure) &&
           (trial.target->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Failure)) == 0)
         retry_spherical_face(trial.target, stages.Next());
-      if (restore_skipped_strip_nodes(trial,native_export_recovery_) && validate_spherical_strip(trial,native_export_recovery_)) {
+      if ((!native_export_recovery_ || triangulate_synchronized_strip(trial)) &&
+          restore_skipped_strip_nodes(trial,native_export_recovery_) && validate_spherical_strip(trial,native_export_recovery_)) {
         ++strip_successes;
         trial.accepted = true;
       } else {
@@ -4165,6 +4166,89 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           return reject("shared endpoints do not cover exact source U extent");
         for (const auto& uv : target_uv[ei]) { new_v0 = std::min(new_v0, uv.Y()); new_v1 = std::max(new_v1, uv.Y()); }
       }
+      // Pair both rails at every original U station. This prevents a native
+      // triangulator from spanning a thin strip with a three-point circle ear.
+      if (native_export_recovery_) {
+        std::vector<double> stations;
+        for (const auto& edge_uv : target_uv) for (const auto& uv : edge_uv) stations.push_back(uv.X());
+        std::sort(stations.begin(),stations.end());stations.erase(std::unique(stations.begin(),stations.end()),stations.end());
+        if (stations.size()<3 || stations.size()>256) return reject("matched U station budget exhausted");
+        for (int ei=0;ei<2;++ei) {
+          const auto& saved=trial.edges[ei];BRepAdaptor_Curve native(saved.edge->GetEdge());
+          const auto native_pc=saved.edge->GetPCurve(face.get(),wire->GetEdgeOrientation(ei));
+          const auto pc_saved=std::find_if(saved.pcurves.begin(),saved.pcurves.end(),
+              [&](const StripPCurve& pc) { return pc.curve==native_pc; });
+          double first,last;
+          const auto source_pc=BRep_Tool::CurveOnSurface(TopoDS::Edge(saved.edge->GetEdge().Oriented(native_pc->GetOrientation())),
+              face->GetFace(),first,last);
+          if (source_pc.IsNull() || pc_saved==saved.pcurves.end()) return reject("matched strip source chart is unavailable");
+          const auto original_parameters=parameters[ei];const auto original_uv=target_uv[ei];
+          const auto evaluate=[&](double t) {
+            if (++export_boundary_work_>2097152) throw std::runtime_error("matched station source budget");
+            auto uv=source_pc->Value(t);const auto seed=interpolate(saved.parameters,pc_saved->points,t);
+            uv.SetX(uv.X()+std::round((seed.X()-uv.X())/kTau)*kTau);
+            if (!strip_finite(uv)) throw std::runtime_error("nonfinite matched source UV");return uv;
+          };
+          auto ordered=stations;
+          if (original_uv.front().X()>original_uv.back().X()) std::reverse(ordered.begin(),ordered.end());
+          std::vector<double> matched_parameters;std::vector<gp_Pnt2d> matched_uv;std::vector<gp_Pnt> matched_points;
+          for (double station : ordered) {
+            double t=std::numeric_limits<double>::quiet_NaN();
+            for (std::size_t i=0;i<original_uv.size();++i) if (original_uv[i].X()==station) { t=original_parameters[i];break; }
+            if (!std::isfinite(t)) {
+              for (std::size_t i=1;i<original_uv.size();++i) {
+                const double left_u=original_uv[i-1].X(),right_u=original_uv[i].X();
+                if ((station-left_u)*(station-right_u)>=0.0) continue;
+                double left=original_parameters[i-1],right=original_parameters[i];
+                for (int pass=0;pass<56;++pass) {
+                  const double middle=.5*(left+right),u=evaluate(middle).X();
+                  if ((u-station)*(right_u-left_u)<0.0) left=middle;else right=middle;
+                }
+                t=.5*(left+right);break;
+              }
+            }
+            if (!std::isfinite(t)) return reject("matched U station leaves original parameter range");
+            auto uv=evaluate(t);gp_Pnt point=native.Value(t);
+            const bool endpoint=matched_parameters.empty() || matched_parameters.size()+1==ordered.size();
+            if (endpoint) {
+              uv=matched_parameters.empty() ? pc_saved->points.front() : pc_saved->points.back();
+              point=matched_parameters.empty() ? saved.points.front() : saved.points.back();
+            } else {
+              if (std::abs(uv.X()-station)>64*std::numeric_limits<double>::epsilon()*std::max(1.0,std::abs(station)))
+                return reject("matched source inverse did not converge");
+              uv.SetX(station);
+              if (ei==moved) {
+                const double boundary=reference_v(station)+side*width;
+                uv.SetY(side>0.0 ? std::max(uv.Y(),boundary) : std::min(uv.Y(),boundary));point=surface->Value(uv.X(),uv.Y());
+              }
+            }
+            const double shift=point.Distance(native.Value(t));
+            if (!strip_finite(point) || !std::isfinite(shift) || shift>std::min(BRep_Tool::Tolerance(saved.edge->GetEdge()),deflection/4.0))
+              return reject("matched shared sample exceeds recorded displacement budget");
+            trial.shift=std::max(trial.shift,shift);new_v0=std::min(new_v0,uv.Y());new_v1=std::max(new_v1,uv.Y());
+            if (!matched_parameters.empty() && t<=matched_parameters.back()) return reject("matched native parameters are not strictly ordered");
+            matched_parameters.push_back(t);matched_uv.push_back(uv);matched_points.push_back(point);
+          }
+          const double half_angle=.5*std::min(GetParameters().Angle,saved.edge->GetAngularDeflection());
+          if (!std::isfinite(half_angle) || half_angle<=0.0) return reject("invalid matched circle angular request");
+          for (std::size_t i=1;i<matched_parameters.size();++i) {
+            const double step=matched_parameters[i]-matched_parameters[i-1];
+            const gp_Vec native_chord(native.Value(matched_parameters[i-1]),native.Value(matched_parameters[i]));
+            const gp_Vec chord(matched_points[i-1],matched_points[i]);
+            if (!std::isfinite(native_chord.SquareMagnitude()) || native_chord.SquareMagnitude()<=0.0 ||
+                !std::isfinite(chord.SquareMagnitude()) || chord.SquareMagnitude()<=0.0) return reject("matched curve chord is degenerate");
+            // Actual displacement differences, rather than independent error
+            // balls, certify the nearly coincident matched stations. For a
+            // circle the tangent/chord angle is bounded by half its arc step.
+            const double angular=step+2.0*chord.Angle(native_chord);
+            const double sag=native.Circle().Radius()*(1.0-std::cos(step/2.0))+trial.shift;
+            if (!std::isfinite(angular) || angular>half_angle || !std::isfinite(sag) || sag>deflection)
+              return reject("matched curve half-Angle or circle-sag certificate failed");
+            trial.angular=std::max(trial.angular,angular);max_sag=std::max(max_sag,sag);
+          }
+          parameters[ei]=std::move(matched_parameters);points[ei]=std::move(matched_points);target_uv[ei]=std::move(matched_uv);
+        }
+      }
       // Both regions have the same monotone-U extent in a nonperiodic chart.
       // Latitude-band distance plus chord interpolation bounds both directions,
       // including the old crossing's narrow lobe, without assuming equal area.
@@ -4211,6 +4295,53 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     } catch (const StripRollbackFailure&) { throw; }
       catch (const Standard_Failure&) { return reject("OCCT exception preparing regularized strip"); }
       catch (const std::exception&) { return reject("exception preparing regularized strip"); }
+  }
+
+  bool triangulate_synchronized_strip(const StripTrial& trial) {
+    try {
+      if (!trial.target || trial.target->WiresNb()!=1 || trial.target->GetWire(0)->EdgesNb()!=2) {
+        strip_stop_="matched strip has no two-edge target";return false;
+      }
+      const auto wire=trial.target->GetWire(0);
+      const auto first=wire->GetEdge(0)->GetPCurve(trial.target,wire->GetEdgeOrientation(0));
+      const auto second=wire->GetEdge(1)->GetPCurve(trial.target,wire->GetEdgeOrientation(1));
+      if (first.IsNull() || second.IsNull() || first->ParametersNb()!=second->ParametersNb() || first->ParametersNb()>256) {
+        strip_stop_="matched strip station counts differ";return false;
+      }
+      TopLoc_Location location;const auto mesh=BRep_Tool::Triangulation(trial.target->GetFace(),location);
+      if (mesh.IsNull() || !mesh->HasUVNodes()) { strip_stop_="matched strip has no indexed boundary mesh";return false; }
+      const auto ascending=[](const IMeshData::IPCurveHandle& pc,int station) {
+        return pc->GetPoint(0).X()<pc->GetPoint(pc->ParametersNb()-1).X() ? station : pc->ParametersNb()-1-station;
+      };
+      const int count=first->ParametersNb();std::vector<std::array<int,3>> triangles;
+      for (int i=0;i<count;++i) {
+        const int a=ascending(first,i),b=ascending(second,i),ai=first->GetIndex(a),bi=second->GetIndex(b);
+        if (ai<1 || bi<1 || ai>mesh->NbNodes() || bi>mesh->NbNodes() ||
+            first->GetPoint(a).X()!=second->GetPoint(b).X()) { strip_stop_="matched strip indexed U correspondence";return false; }
+        if ((i==0 || i+1==count) && ai!=bi) { strip_stop_="matched native endpoint has two mesh representatives";return false; }
+        if (i && i+1<count && ai==bi) { strip_stop_="matched strip interior boundaries collapsed";return false; }
+        if (!i) continue;
+        const int pa=first->GetIndex(ascending(first,i-1)),pb=second->GetIndex(ascending(second,i-1));
+        if (pa==ai || pb==bi) { strip_stop_="consecutive native strip stations collapsed";return false; }
+        for (auto cell : {std::array<int,3>{pa,ai,bi},std::array<int,3>{pa,bi,pb}}) {
+          if (cell[0]==cell[1] || cell[1]==cell[2] || cell[2]==cell[0]) {
+            if ((i==1 && pa==pb) || (i+1==count && ai==bi)) continue;
+            strip_stop_="non-endpoint matched strip cell collapsed";return false;
+          }
+          const auto u=mesh->UVNode(cell[0]),v=mesh->UVNode(cell[1]),w=mesh->UVNode(cell[2]);
+          const double area=(v.Coord()-u.Coord()).Crossed(w.Coord()-u.Coord());
+          if (!std::isfinite(area) || area==0.0) { strip_stop_="matched strip has zero/nonfinite UV cell";return false; }
+          if (area<0.0) std::swap(cell[1],cell[2]);triangles.push_back(cell);
+        }
+      }
+      if (triangles.size()!=static_cast<std::size_t>(2*count-4) || triangles.size()>508) { strip_stop_="matched strip facet budget/coverage";return false; }
+      const auto replacement=mesh->Copy();replacement->ResizeTriangles(static_cast<int>(triangles.size()),false);
+      for (std::size_t i=0;i<triangles.size();++i) replacement->SetTriangle(static_cast<int>(i)+1,
+          Poly_Triangle(triangles[i][0],triangles[i][1],triangles[i][2]));
+      replacement->RemoveNormals();replacement->ComputeNormals();BRep_Builder().UpdateFace(trial.target->GetFace(),replacement);
+      return true;
+    } catch (const Standard_Failure&) { strip_stop_="OCCT exception rebuilding matched strip";return false; }
+      catch (const std::exception&) { strip_stop_="exception rebuilding matched strip";return false; }
   }
 
   // Connectivity may ignore an exactly zero physical cell only when it
