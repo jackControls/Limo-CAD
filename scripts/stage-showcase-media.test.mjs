@@ -47,12 +47,15 @@ test('manifest and public release must agree on provenance and unique bounded me
   assert.throws(() => mediaAssets(manifest, inputs, release, { sha: 'b'.repeat(40) }));
 });
 
-function downloads({ corrupt, unpublished = false, moveTag = false, replaceManifest = false } = {}) {
+function downloads({ corrupt, unpublished = false, moveTag = false, replaceManifest = false, transferred = false } = {}) {
   const requests = [];
   const fetcher = async url => {
     requests.push(url);
     if (url.includes('/releases/tags/')) {
       const snapshot = { ...copy(release), draft: unpublished };
+      if (transferred) for (const asset of snapshot.assets) {
+        asset.browser_download_url = asset.browser_download_url.replace('jackControls/Limo-CAD/', 'limo-cad/Limo-CAD/');
+      }
       if (replaceManifest && requests.length > 1) snapshot.assets.at(-1).id = 'replacement';
       return Response.json(snapshot);
     }
@@ -63,6 +66,29 @@ function downloads({ corrupt, unpublished = false, moveTag = false, replaceManif
   };
   return { fetcher, requests };
 }
+
+test('the planned transfer keeps pinned release verification and playable staging working', async () => {
+  const network = downloads({ transferred: true });
+  assert.equal((await verifyMedia({ html, fetcher: network.fetcher })).length, names.length);
+  const site = await mkdtemp(path.join(os.tmpdir(), 'nbcad-media-transfer-test-'));
+  try {
+    await stageMedia({ html, site, fetcher: downloads({ transferred: true }).fetcher });
+    for (const name of names) assert.deepEqual(await readFile(path.join(site, 'media', name)), media);
+  } finally { await rm(site, { recursive: true, force: true }); }
+});
+
+test('transfer compatibility rejects other repositories, tags and asset names', () => {
+  for (const replacement of ['other/Limo-CAD/', 'limo-cad/Limo-CAD-fork/', 'limo-cad/other/']) {
+    const snapshot = copy(release);
+    snapshot.assets[0].browser_download_url = base.replace(`${repository}/`, replacement) + names[0];
+    assert.throws(() => mediaAssets(manifest, inputs, snapshot, { sha }));
+  }
+  for (const suffix of ['other-tag/' + names[0], tag + '/other.mp4']) {
+    const snapshot = copy(release);
+    snapshot.assets[0].browser_download_url = 'https://github.com/limo-cad/Limo-CAD/releases/download/' + suffix;
+    assert.throws(() => mediaAssets(manifest, inputs, snapshot, { sha }));
+  }
+});
 
 test('verified staging writes exactly three playable copies; existing output is refused before fetching', async () => {
   const site = await mkdtemp(path.join(os.tmpdir(), 'nbcad-media-test-'));
