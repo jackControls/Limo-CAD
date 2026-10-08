@@ -115,7 +115,7 @@ function Close-ObservedShellWindows {
         $candidate = Get-ShellWindow ([IntPtr]::new($observed))
         if ($null -ne $candidate) { $candidates.Add($candidate) }
     }
-    $report.shell_windows = @($candidates.ToArray())
+    $report.shell_windows = @($report.shell_windows) + @($candidates.ToArray())
 
     foreach ($candidate in $candidates) {
         $shellWindow = [IntPtr]::new($candidate.hwnd)
@@ -269,12 +269,23 @@ try {
         }
         $report.status = 'closed'
     }
+    # Closing the account dialog may reveal a different foreground shell.
+    # Qualify that observed window before the fixture requests CAD focus.
+    Close-ObservedShellWindows
     }
 } catch {
     $report.status = 'failed'
     $report.error = $_.Exception.Message
     throw
 } finally {
+    if (-not $IdentifyOnly) {
+        try {
+            $after = [HostedArmAccountWindow]::GetForegroundWindow()
+            $report.foreground_after = if ($after -eq [IntPtr]::Zero) { $null } else { Get-CoveringWindowIdentity $after }
+        } catch {
+            $report.foreground_observation_error = $_.Exception.Message
+        }
+    }
     $report.finished_utc = [DateTime]::UtcNow.ToString('o')
     [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($evidenceFile))
     [IO.File]::WriteAllText($evidenceFile, ($report | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))

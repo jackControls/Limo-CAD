@@ -9,6 +9,7 @@ public sealed class FakeShellWindow {
     public string Title, ClassName = "Windows.UI.Core.CoreWindow", ProcessName, Executable;
     public bool Visible = true, ChangeOwner, RejectClose, StayVisible, RejectHide;
     public int IdentityReads;
+    public long ForegroundAfterClose;
 }
 public static class HostedArmAccountWindow {
     public delegate bool EnumProc(IntPtr window, IntPtr unused);
@@ -46,7 +47,10 @@ public static class HostedArmAccountWindow {
         FakeShellWindow value = Windows[handle];
         result = UIntPtr.Zero;
         if (value.RejectClose) return IntPtr.Zero;
-        if (!value.StayVisible) value.Visible = false;
+        if (!value.StayVisible) {
+            value.Visible = false;
+            if (Foreground == handle) Foreground = value.ForegroundAfterClose;
+        }
         return new IntPtr(1);
     }
     public static bool ShowWindowAsync(IntPtr window, int command) {
@@ -118,6 +122,48 @@ try {
         $report = Invoke-Case ($kind + '-foreground') 'closed' 1
         if ($report.shell_windows.Count -ne 1 -or $report.shell_windows[0].status -ne 'closed') { throw 'Shell closure evidence missing' }
     }
+    foreach ($kind in @('Start', 'Search')) {
+        Reset-Windows
+        $account = [FakeShellWindow]::new()
+        $account.Title = 'Microsoft account'
+        $account.ProcessName = 'WWAHost'
+        $account.Executable = Join-Path $env:WINDIR 'System32\WWAHost.exe'
+        $account.ForegroundAfterClose = 200
+        [HostedArmAccountWindow]::Windows[100] = $account
+        $null = Add-Shell 200 $kind
+        [HostedArmAccountWindow]::Foreground = 100
+        $report = Invoke-Case ('account-reveals-' + $kind) 'closed' 2
+        if ($report.windows.Count -ne 1 -or $report.shell_windows.Count -ne 1 -or
+            $report.shell_windows[0].title -ne $kind -or $null -ne $report.foreground_after) {
+            throw 'The newly foreground shell must be qualified and closed after the account dialog'
+        }
+    }
+    Reset-Windows
+    $account = [FakeShellWindow]::new()
+    $account.Title = 'Microsoft account'
+    $account.ProcessName = 'WWAHost'
+    $account.Executable = Join-Path $env:WINDIR 'System32\WWAHost.exe'
+    $account.ForegroundAfterClose = 200
+    [HostedArmAccountWindow]::Windows[100] = $account
+    $foreign = Add-Shell 200 'Search'
+    $foreign.Title = 'Unrelated title'
+    [HostedArmAccountWindow]::Foreground = 100
+    $report = Invoke-Case 'account-reveals-foreign-window' 'closed' 1
+    if (-not $foreign.Visible -or $report.foreground_after.hwnd -ne 200 -or
+        $report.foreground_after.title -ne 'Unrelated title') { throw 'A revealed foreign window must be observed without closing it' }
+
+    Reset-Windows
+    $account = [FakeShellWindow]::new()
+    $account.Title = 'Microsoft account'
+    $account.ProcessName = 'WWAHost'
+    $account.Executable = Join-Path $env:WINDIR 'System32\WWAHost.exe'
+    $account.ForegroundAfterClose = 200
+    [HostedArmAccountWindow]::Windows[100] = $account
+    $forged = Add-Shell 200 'Search'
+    $forged.Executable = Join-Path $evidenceRoot 'SearchHost.exe'
+    [HostedArmAccountWindow]::Foreground = 100
+    $null = Invoke-Case 'account-reveals-forged-shell' 'failed' 1
+    if (-not $forged.Visible) { throw 'The newly revealed forged shell must be refused without closing it' }
     Reset-Windows
     $null = Add-Shell 100 'Start'
     $null = Add-Shell 200 'Search'
@@ -206,7 +252,7 @@ try {
     $refused = $false
     try { & $preflight -EvidencePath $escaped -Window 100 } catch { $refused = $true }
     if (-not $refused -or (Test-Path -LiteralPath $escaped) -or [HostedArmAccountWindow]::Closed.Count -ne 0) { throw 'Evidence path escape did not fail closed' }
-    Write-Output 'PASS: 23 managed shell-preflight cases; no desktop APIs invoked'
+    Write-Output 'PASS: 27 managed shell-preflight cases; no desktop APIs invoked'
 } finally {
     foreach ($name in $guardNames) { [Environment]::SetEnvironmentVariable($name, $original[$name]) }
 }

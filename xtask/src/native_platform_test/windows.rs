@@ -48,6 +48,7 @@ impl Driver {
             .env("LIMO_CAD_SESSION_DIR", &sessions)
             .env("LIMO_CAD_DESKTOP_BIN", &image);
         let client = Client::start_command(command, Some(Duration::from_secs(45)))?;
+        prepare_hosted_arm_desktop(out)?;
         Ok(Self {
             pid,
             helper: Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -491,6 +492,37 @@ impl Driver {
         self.check_process()?;
         output(&mut stdout)
     }
+}
+
+// Runner shell windows can become foreground after startup. This preparation
+// only closes individually qualified disposable-runner system windows; real
+// input still goes through the unchanged Rust owner/foreground guards.
+fn prepare_hosted_arm_desktop(out: &Path) -> Result<()> {
+    if std::env::var("GITHUB_ACTIONS").as_deref() != Ok("true")
+        || std::env::var("RUNNER_ENVIRONMENT").as_deref() != Ok("github-hosted")
+        || std::env::var("RUNNER_ARCH").as_deref() != Ok("ARM64")
+    {
+        return Ok(());
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .context("Repository root")?;
+    use std::os::windows::process::CommandExt;
+    let output = Command::new("pwsh.exe")
+        .creation_flags(0x08000000)
+        .args(["-NoProfile", "-NonInteractive", "-File"])
+        .arg(root.join("scripts/prepare-hosted-arm-desktop.ps1"))
+        .arg("-EvidencePath")
+        .arg(out.join("runner-ready-desktop.json"))
+        .stdin(Stdio::null())
+        .output()
+        .context("Prepare the disposable ARM64 desktop after GUI readiness")?;
+    ensure!(
+        output.status.success(),
+        "ARM64 ready-desktop preparation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
 }
 
 struct Mapping {

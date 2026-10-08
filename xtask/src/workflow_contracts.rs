@@ -337,6 +337,22 @@ fn windows_package_keyboard_checks_enable_both_native_input_features() {
         "if ($LASTEXITCODE -ne 0) { throw 'Packaged native input verification failed' }"
     ));
     assert!(!verify.contains("continue-on-error"));
+    let fixture = read("xtask/src/native_platform_test.rs");
+    ordered(
+        &fixture,
+        "wait_for_interface(&mut client, &session)",
+        "Driver::new(client.process_id(), out)",
+    );
+    let driver = read("xtask/src/native_platform_test/windows.rs");
+    ordered(
+        &driver,
+        "Client::start_command(command",
+        "prepare_hosted_arm_desktop(out)?",
+    );
+    assert!(
+        driver.contains("runner-ready-desktop.json")
+            && driver.contains(".creation_flags(0x08000000)")
+    );
 }
 
 #[test]
