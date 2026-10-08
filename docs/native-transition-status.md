@@ -125,6 +125,37 @@ The diagnostic subclass in `000a546d` failed Windows linking because it exposed
 unexported OCCT constraint helpers; deployment preserved the installed runtime.
 The correction uses the exported factory API and bounded boundary diagnostics.
 
+Clean `2ae55e47` built and was manually retried. Native curve measurements
+confirmed an interior self-crossing in the thin spherical boundary, away from
+either shared endpoint's tolerance envelope. Neither Watson nor the bounded
+Delabella retry accepted the two affected faces. Their exact geometry was not
+changed to invent a triangulation.
+
+Clean `4d3cf633` built, deployed and passed the actual Windows UI import and
+save/reopen walkthrough on a freshly observed matched GUI/MCP pair. Original
+imported STEP bodies may now open with explicit display warnings for unavailable
+face triangles. Exact STEP/BRep geometry, stable face slots and boundary edges
+remain retained. The persistent amber banner and read-only MCP summary expose
+these omissions; derived modeling, cutaway and mesh exports remain strict.
+Imports without any usable triangles still fail.
+
+The Medix import has one compound body, 8,908 face identities, 453,400 display
+triangles, no feature errors and two warnings (`face:3779`, `face:3792`). It was
+saved through the native picker as
+`D:/limo-cad-maintenance/ui-models/Medix KW22 v4 - human UI import.limo`.
+The archive's embedded STEP is byte-for-byte identical to the 42,065,951-byte
+Downloads source (SHA-256
+`17d7473c73db7bdf302aa118fe377bae10578f1c72fe03238f8448545d26d8d2`).
+Closing and reopening through File > Open reproduced the same body metrics,
+warning keys and saved model. A physical File > Export All Bodies as STL attempt
+was explicitly refused for incomplete display tessellation; no STL was created.
+Evidence is retained outside source under `D:/limo-cad-maintenance/ui-models/medix-4d3-*`.
+This qualifies opening and document preservation, not complete triangulation or
+printability of Medix. No test suites or recipe replay ran. The separate
+Roller-300 scratch runtime was not restarted or operated. A foreground change
+during the export check was recovered by guarded focus, fresh observation and
+retry; universal Windows focus behavior remains unqualified.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,
