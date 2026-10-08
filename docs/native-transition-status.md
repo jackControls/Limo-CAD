@@ -45,6 +45,17 @@ This change has not been deployed or qualified against a live GUI; existing
 documents and workers remain on the verified installed build. Genuine Windows
 foreground restrictions still prevent input.
 
+The user-reported `Medix_KW22_v4.STEP` import reached OCCT transfer, then failed
+with "could not discretize tangential face boundaries without crossing chords".
+The complete 42 MB SolidWorks AP214 file contains 24 solid definitions and 8,478
+faces. The custom mesher now recognizes crossings inside a real shared vertex's
+OCCT vertex/edge tolerance instead of refining those tolerated junctions until
+failure. Crossings outside that tolerance retain refinement and rejection;
+remaining errors identify the face, wire, edges, curve types and tolerance.
+The STEP source is unchanged. This correction still requires native build and
+physical UI import qualification; it does not yet establish successful Medix
+import or broader geometry qualification.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,

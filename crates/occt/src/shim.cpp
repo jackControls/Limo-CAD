@@ -3049,6 +3049,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     for (int pass = 0; pass <= max_refinement_passes; ++pass) {
       std::map<IMeshData::IEdgePtr, std::vector<double>> additions;
       bool crossing = false;
+      std::string crossing_detail;
       for (int fi = 0; fi < model->FacesNb(); ++fi) {
         const auto& face = model->GetFace(fi);
         if (face->GetSurface()->GetType() != GeomAbs_Plane) continue;
@@ -3065,6 +3066,15 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             if (a_circle == (bc.GetType() == GeomAbs_Circle)) continue;
             const auto& ap = a->GetPCurve(face.get(), wire->GetEdgeOrientation(ei));
             const auto& bp = b->GetPCurve(face.get(), wire->GetEdgeOrientation(ni));
+            TopoDS_Vertex shared_vertex;
+            const bool has_shared_vertex =
+                TopExp::CommonVertex(a->GetEdge(), b->GetEdge(), shared_vertex);
+            const double junction_tolerance = has_shared_vertex
+                ? std::max({Precision::Confusion(),
+                            BRep_Tool::Tolerance(shared_vertex),
+                            BRep_Tool::Tolerance(a->GetEdge()),
+                            BRep_Tool::Tolerance(b->GetEdge())})
+                : Precision::Confusion();
             auto cross = [](const gp_Pnt2d& p, const gp_Pnt2d& q, const gp_Pnt2d& r) {
               return (q.X()-p.X())*(r.Y()-p.Y()) - (q.Y()-p.Y())*(r.X()-p.X());
             };
@@ -3080,6 +3090,52 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                     Precision::SquareConfusion()) continue;
                 if (cross(p,q,r)*cross(p,q,s) >= -1e-18 ||
                     cross(r,s,p)*cross(r,s,q) >= -1e-18) continue;
+                const double denominator =
+                    (q.X()-p.X())*(s.Y()-r.Y()) -
+                    (q.Y()-p.Y())*(s.X()-r.X());
+                const double fraction =
+                    ((r.X()-p.X())*(s.Y()-r.Y()) -
+                     (r.Y()-p.Y())*(s.X()-r.X())) / denominator;
+                const gp_Pnt2d intersection(
+                    p.X() + fraction*(q.X()-p.X()),
+                    p.Y() + fraction*(q.Y()-p.Y()));
+                const double junction_distance = has_shared_vertex
+                    ? face->GetSurface()->Value(intersection.X(), intersection.Y())
+                          .Distance(BRep_Tool::Pnt(shared_vertex))
+                    : std::numeric_limits<double>::infinity();
+                // STEP vertices can tolerate a junction wider than Confusion.
+                // Refining a crossing inside that junction cannot repair the
+                // exact curves and can exhaust every pass on valid geometry.
+                if (has_shared_vertex && junction_distance <= junction_tolerance)
+                    continue;
+                if (crossing_detail.empty()) {
+                  const auto curve_name = [](GeomAbs_CurveType type) {
+                    switch (type) {
+                      case GeomAbs_Line: return "line";
+                      case GeomAbs_Circle: return "circle";
+                      case GeomAbs_Ellipse: return "ellipse";
+                      case GeomAbs_Hyperbola: return "hyperbola";
+                      case GeomAbs_Parabola: return "parabola";
+                      case GeomAbs_BezierCurve: return "Bezier";
+                      case GeomAbs_BSplineCurve: return "B-spline";
+                      case GeomAbs_OffsetCurve: return "offset";
+                      default: return "other";
+                    }
+                  };
+                  std::ostringstream detail;
+                  detail.precision(17);
+                  detail << " (face " << fi << ", wire " << wi
+                         << ", edges " << ei << '/' << ni
+                         << ", curves " << curve_name(ac.GetType()) << '/'
+                         << curve_name(bc.GetType())
+                         << ", parameters " << ap->GetParameter(ai-1) << ':'
+                         << ap->GetParameter(ai) << '/' << bp->GetParameter(bi-1)
+                         << ':' << bp->GetParameter(bi)
+                         << ", junction distance mm " << junction_distance
+                         << ", junction tolerance mm " << junction_tolerance
+                         << ", pass " << pass << ')';
+                  crossing_detail = detail.str();
+                }
                 crossing = true;
                 auto circular = a_circle ? a : b;
                 auto other = a_circle ? b : a;
@@ -3109,7 +3165,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
       if (!crossing) return BRepMesh_Context::HealModel();
       if (additions.empty() || pass == max_refinement_passes) {
-        throw std::runtime_error("OCCT could not discretize tangential face boundaries without crossing chords");
+        throw std::runtime_error("OCCT could not discretize tangential face boundaries without crossing chords" + crossing_detail);
       }
       bool inserted = false;
       for (auto& entry : additions) {
@@ -3157,7 +3213,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         BRepMesh_EdgeDiscret::Tessellate2d(edge, true);
       }
       if (!inserted) {
-        throw std::runtime_error("OCCT could not refine crossing tangential face boundaries");
+        throw std::runtime_error("OCCT could not refine crossing tangential face boundaries" + crossing_detail);
       }
     }
     return true;
