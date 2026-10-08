@@ -22,7 +22,7 @@ fn enabled_for(platform: &str, read: impl Fn(&str) -> Option<String>) -> bool {
     platform
         && matches("GITHUB_ACTIONS", "true")
         && matches("RUNNER_ENVIRONMENT", "github-hosted")
-        && matches("GITHUB_REPOSITORY", limo_cad_build_info::repository_slug())
+        && matches("GITHUB_REPOSITORY_ID", limo_cad_build_info::repository_id())
 }
 
 #[cfg(target_os = "windows")]
@@ -282,7 +282,7 @@ mod tests {
                     "RUNNER_OS" => runner.into(),
                     "GITHUB_ACTIONS" => "true".into(),
                     "RUNNER_ENVIRONMENT" => "github-hosted".into(),
-                    "GITHUB_REPOSITORY" => limo_cad_build_info::repository_slug().into(),
+                    "GITHUB_REPOSITORY_ID" => limo_cad_build_info::repository_id().into(),
                     _ => return None,
                 })
             };
@@ -293,7 +293,7 @@ mod tests {
                 "RUNNER_OS",
                 "GITHUB_ACTIONS",
                 "RUNNER_ENVIRONMENT",
-                "GITHUB_REPOSITORY",
+                "GITHUB_REPOSITORY_ID",
             ] {
                 assert!(
                     !enabled_for(platform, |name| {
@@ -306,9 +306,9 @@ mod tests {
                     "{platform}: missing {key}"
                 );
             }
-            for repository in ["another/repo", "jackControls/noBS-CAD"] {
+            for repository in ["1313334316", "01313334315"] {
                 assert!(!enabled_for(platform, |key| {
-                    if key == "GITHUB_REPOSITORY" {
+                    if key == "GITHUB_REPOSITORY_ID" {
                         Some(repository.into())
                     } else {
                         environment(key)

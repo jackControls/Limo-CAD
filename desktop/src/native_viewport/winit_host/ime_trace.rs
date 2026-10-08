@@ -21,7 +21,7 @@ fn enabled_for(platform: &str, read: impl Fn(&str) -> Option<String>) -> bool {
             ("GITHUB_ACTIONS", "true"),
             ("RUNNER_OS", "macOS"),
             ("RUNNER_ENVIRONMENT", "github-hosted"),
-            ("GITHUB_REPOSITORY", limo_cad_build_info::repository_slug()),
+            ("GITHUB_REPOSITORY_ID", limo_cad_build_info::repository_id()),
         ]
         .into_iter()
         .all(|(key, expected)| read(key).as_deref() == Some(expected))
@@ -88,7 +88,7 @@ mod tests {
                 "GITHUB_ACTIONS" => "true",
                 "RUNNER_OS" => "macOS",
                 "RUNNER_ENVIRONMENT" => "github-hosted",
-                "GITHUB_REPOSITORY" => limo_cad_build_info::repository_slug(),
+                "GITHUB_REPOSITORY_ID" => limo_cad_build_info::repository_id(),
                 "GITHUB_RUN_ID" => "36366040955",
                 _ => return None,
             }
@@ -106,7 +106,7 @@ mod tests {
             "GITHUB_ACTIONS",
             "RUNNER_OS",
             "RUNNER_ENVIRONMENT",
-            "GITHUB_REPOSITORY",
+            "GITHUB_REPOSITORY_ID",
             "GITHUB_RUN_ID",
         ] {
             assert!(!enabled_for("macos", |key| {
@@ -126,9 +126,9 @@ mod tests {
                 }
             }));
         }
-        for repository in ["", "another/repo", "jackControls/noBS-CAD"] {
+        for repository in ["", "1313334316", "01313334315"] {
             assert!(!enabled_for("macos", |key| {
-                if key == "GITHUB_REPOSITORY" {
+                if key == "GITHUB_REPOSITORY_ID" {
                     Some(repository.into())
                 } else {
                     environment(key)

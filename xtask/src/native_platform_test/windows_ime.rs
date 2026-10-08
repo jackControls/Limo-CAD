@@ -31,7 +31,7 @@ pub(super) fn stock_success(report: &Value, run: &str) -> bool {
         && report["environment"]["run_id"] == run
         && report["environment"]["runner_os"] == "Windows"
         && report["environment"]["runner_environment"] == "github-hosted"
-        && report["environment"]["repository"] == crate::repository::slug()
+        && report["environment"]["repository_id"] == crate::repository::id()
         && report["requested"]["exercise_ime"] == true
         && report["japanese_profile_enabled"] == true
         && report["ime"]["status"] == "stock-control-ime-feasible"
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn stock_inventory_and_zero_key_diagnosis_do_not_pass_actual_input_prerequisite() {
         let report = json!({"status":"profile-diagnosis-complete", "japanese_profile_enabled":true,
-            "environment":{"run_id":"123","runner_os":"Windows","runner_environment":"github-hosted","repository":crate::repository::slug()}});
+            "environment":{"run_id":"123","runner_os":"Windows","runner_environment":"github-hosted","repository":crate::repository::slug(),"repository_id":crate::repository::id()}});
         assert!(!stock_success(&report, "123"));
     }
 
@@ -308,16 +308,19 @@ mod tests {
     fn stock_contract_rejects_late_commit_and_unfinished_cancellation() {
         let report = json!({"status":"stock-control-ime-feasible", "japanese_profile_enabled":true,
             "requested":{"exercise_ime":true},
-            "environment":{"run_id":"123","runner_os":"Windows","runner_environment":"github-hosted","repository":crate::repository::slug()},
+            "environment":{"run_id":"123","runner_os":"Windows","runner_environment":"github-hosted","repository":crate::repository::slug(),"repository_id":crate::repository::id()},
             "ime":{"status":"stock-control-ime-feasible","native_bevy_validated":false,
                 "preedit":"はる","results_before_commit":0,"committed":"はる","cancelled_text":"はる","final_text":"はる",
                 "result_count":1,"composition_starts":2,"composition_ends":2,"escape_count":2,
                 "received_ime_messages":[{"preedit":"はる"},{"result":"はる"}]}});
         assert!(stock_success(&report, "123"));
+        let mut transferred = report.clone();
+        transferred["environment"]["repository"] = json!("limo-cad/Limo-CAD");
+        assert!(stock_success(&transferred, "123"));
         assert!(!stock_success(&report, "other-run"));
         for (pointer, bad) in [
-            ("/environment/repository", json!("jackControls/noBS-CAD")),
-            ("/environment/repository", json!("another/repo")),
+            ("/environment/repository_id", json!(null)),
+            ("/environment/repository_id", json!("1313334316")),
             ("/ime/result_count", json!(2)),
             ("/ime/composition_ends", json!(1)),
             ("/ime/escape_count", json!(3)),

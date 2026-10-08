@@ -10,7 +10,7 @@ Set-StrictMode -Version Latest
 function Assert-DisposableRunner {
     if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or
         $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
-        $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
+        $env:GITHUB_REPOSITORY_ID -ne '1313334315' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
         throw 'Provisioning and real input are allowed only in the explicitly opted-in disposable GitHub-hosted Windows job'
     }
     $runnerRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
@@ -39,7 +39,8 @@ $report = [ordered]@{
         powershell = $PSVersionTable.PSVersion.ToString()
         image_os = $env:ImageOS; image_version = $env:ImageVersion
         runner_os = $env:RUNNER_OS; runner_environment = $env:RUNNER_ENVIRONMENT
-        repository = $env:GITHUB_REPOSITORY; run_id = $env:GITHUB_RUN_ID; sha = $env:GITHUB_SHA
+        repository = $env:GITHUB_REPOSITORY; repository_id = $env:GITHUB_REPOSITORY_ID
+        run_id = $env:GITHUB_RUN_ID; sha = $env:GITHUB_SHA
         identity_sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
         session_id = (Get-Process -Id $PID).SessionId
         probe_script_sha256 = (Get-FileHash -LiteralPath $PSCommandPath).Hash

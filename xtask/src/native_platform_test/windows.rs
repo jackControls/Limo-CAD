@@ -1,7 +1,7 @@
 //! Windows fixtures share the production, owner-fenced MCP computer-control path.
 use crate::replay::Client;
-use anyhow::{Context, Result, bail, ensure};
-use serde_json::{Value, json};
+use anyhow::{bail, ensure, Context, Result};
+use serde_json::{json, Value};
 use std::{
     cell::RefCell,
     fs,

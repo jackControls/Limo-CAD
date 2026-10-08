@@ -135,7 +135,7 @@ stock-control exercise on a fresh disposable runner:
 gh workflow run native-host-tests.yml --repo jackControls/Limo-CAD --ref feat/bevy-interface -f ime-probe-only=true -f ime-provision-japanese=true -f ime-exercise=true
 ```
 
-Provisioning and input are guarded to `jackControls/Limo-CAD` on an explicitly
+Provisioning and input require repository ID `1313334315` on an explicitly
 opted-in GitHub-hosted Windows job with evidence beneath `RUNNER_TEMP`. The VM is
 discarded by GitHub afterward. The inventory-only script may be run locally:
 
