@@ -91,6 +91,14 @@ by 0.0262846534818 mm on the surface. Dense sampling reached its per-edge limit
 without removing this crossing. The next investigation targets a transactional,
 tolerance-bounded repair of the sampled junction while retaining shared-edge
 sample consistency, exact imported topology and every nonzero face.
+Clean `a1e7f5da` built, deployed and was physically retried on a matched GUI/MCP
+pair. Seven sampled junction repairs passed their adjacent-face boundary checks;
+the first unresolved face moved from 2225 to 2281. Import still failed and the
+new tab remained empty. The next crossing is 0.0314075013296 mm from its shared
+vertex, whose tolerance is 0.0313735171429 mm; the measured source pcurve/3D
+discrepancy there is 0.0000174693969219 mm. The candidate preserves imported
+topology and rejects unresolved nonzero faces. Successful Medix import remains
+unqualified while this next junction is investigated.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
