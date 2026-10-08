@@ -36,6 +36,7 @@ pub(crate) enum FileCommand {
     Name(u64),
     ApplyName(u64),
     Cancel(u64),
+    ErrorDetails(u64),
     Discard(u64),
     SaveContinue(u64),
     /// Read the desktop stdio presence. Does not change the document or menus.
@@ -355,6 +356,14 @@ pub(crate) fn reduce(
 ) -> Result<Value, String> {
     bridge
         .with_native_document_owner(engine, &action.context, || handle.validate_action(action))?;
+    if let FileCommand::ErrorDetails(token) = command {
+        let services = world.resource::<NativeServices>().clone();
+        let dialog = owned_dialog(world, &services, &action.context, *token)?;
+        if matches!(action.control.input, ControlInput::SetValue(_)) {
+            return Err("File error details are read-only".into());
+        }
+        return Ok(json!({"changed":false,"error":dialog.error}));
+    }
     if let FileCommand::Bambu(token, generation, command) = command {
         let services = world.resource::<NativeServices>().clone();
         return bambu::reduce(
