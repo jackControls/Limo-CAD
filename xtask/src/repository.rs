@@ -11,25 +11,8 @@ pub fn id() -> &'static str {
     include_str!("../../REPOSITORY_ID").trim()
 }
 
-fn api_slug(repository_id: Option<String>, repository: Option<String>) -> String {
-    // Avoid sending an authenticated API request through the old redirect
-    // while checked-out Pages links still carry the pre-transfer owner.
-    if repository_id.as_deref() == Some(id()) && repository.as_deref() == Some("limo-cad/Limo-CAD")
-    {
-        "limo-cad/Limo-CAD".into()
-    } else {
-        slug().into()
-    }
-}
-
 pub fn api() -> String {
-    format!(
-        "https://api.github.com/repos/{}",
-        api_slug(
-            std::env::var("GITHUB_REPOSITORY_ID").ok(),
-            std::env::var("GITHUB_REPOSITORY").ok(),
-        )
-    )
+    format!("https://api.github.com/repos/{}", slug())
 }
 
 pub fn releases() -> String {

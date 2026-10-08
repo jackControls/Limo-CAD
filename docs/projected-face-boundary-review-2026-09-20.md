@@ -140,7 +140,7 @@ Changes are needed before merging. The intended face-boundary closure works in t
 
 ### 1. [P1] Restore projected profiles before planning dependent solid features
 
-[manager.rs:4274](https://github.com/jackControls/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/manager.rs#L4274), [session.rs:487](https://github.com/jackControls/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/session.rs#L487)
+[manager.rs:4274](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/manager.rs#L4274), [session.rs:487](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/session.rs#L487)
 
 Projections are discarded on serialization and initialized empty on load. `prepare_load_project` builds the complete profile catalog and replay plan before any kernel commit can reconstruct them. Consequently, a feature using a boundary-closed profile cannot be replayed. The new refresh also skips a sketch whenever a later topology-writing feature exists, so a consuming extrude/cut prevents recovery even after the first commit; there is no previous projection to retain in a newly loaded session.
 
@@ -150,7 +150,7 @@ Required: reconstruct references at the appropriate history stage before plannin
 
 ### 2. [P1] Preserve existing profile identities when adding implicit boundaries
 
-[manager.rs:5736](https://github.com/jackControls/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/manager.rs#L5736), [manager.rs:600](https://github.com/jackControls/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/manager.rs#L600)
+[manager.rs:5736](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/manager.rs#L5736), [manager.rs:600](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/manager.rs#L600)
 
 Adding projected edges changes the bounded-face list, but existing solid definitions still select profiles by their numeric index. Filtering out projected-only faces does not preserve those indices: the remainder of a support face shares authored edges with a closed shape that touches its boundary, so it is retained and can sort before the original profile.
 
@@ -160,7 +160,7 @@ Required: preserve/remap authored-profile identity for existing features, or exp
 
 ### 3. [P1] Swap endpoint acquisitions together with clockwise arc angles
 
-[session.rs:3097](https://github.com/jackControls/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/session.rs#L3097)
+[session.rs:3097](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/session.rs#L3097)
 
 Clockwise travel swaps the stored start/end angles, but the stored start is still attached using the original `start_target`, and the stored end using `sweep_target`. Those targets identify existing sketch points, not just coordinates, so the solver binds each acquired point to the wrong end and distorts the requested arc.
 
@@ -170,7 +170,7 @@ Required: map the acquisitions and their eligibility checks to the corresponding
 
 ### 4. [P1] Update the native pocket test to the final request shape
 
-[pocket_profile_edges.rs:135](https://github.com/jackControls/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/occt/tests/pocket_profile_edges.rs#L135)
+[pocket_profile_edges.rs:135](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/occt/tests/pocket_profile_edges.rs#L135)
 
 The new feature-gated test initializes `ArcCenterRequest.clockwise`, which was removed by a later commit. `cargo test -p limo-cad-occt --features native-occt --test pocket_profile_edges --no-run` fails with E0560; the compiler lists `angle_text` and `sweep_rad` as the available missing fields. Native-OCCT test builds including this integration target cannot complete. The ordinary sketch/solid suite does not compile it.
 
@@ -178,7 +178,7 @@ Required: update this call and run the native-feature integration test against t
 
 ### 5. [P2] Do not treat every acquired point as an arc-owned endpoint
 
-[sketch.rs:183](https://github.com/jackControls/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/sketch.rs#L183)
+[sketch.rs:183](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/sketch.rs#L183)
 
 The deletion cascade treats every `ArcEndpointCoincident` point without another surviving relation/entity as owned by the deleted arc. That relation also represents acquisition of a pre-existing user point; it contains no ownership information.
 
@@ -188,7 +188,7 @@ Required: distinguish generated endpoint handles from acquired/authored points b
 
 ### 6. [P2] Use the shared snap policy in rectangle and circle previews too
 
-[Viewport.tsx:7793](https://github.com/jackControls/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/src/components/viewport/Viewport.tsx#L7793), [Viewport.tsx:7814](https://github.com/jackControls/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/src/components/viewport/Viewport.tsx#L7814)
+[Viewport.tsx:7793](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/src/components/viewport/Viewport.tsx#L7793), [Viewport.tsx:7814](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/src/components/viewport/Viewport.tsx#L7814)
 
 Rectangle/circle commits now use `acquireToolSnap`, enabling midpoints and projected boundaries, but their live preview paths still call `snapCursorInfo(p, false, ...)` at lines 7478 and 7514. The shared-policy refactor therefore leaves preview and commit using different reference sets.
 
@@ -198,7 +198,7 @@ Required: route all preview paths through the tool policy and test hover/preview
 
 ### 7. [P2] Preserve projected circular-edge direction in the native renderer
 
-[platform.rs:5498](https://github.com/jackControls/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/desktop/src/native_viewport/platform.rs#L5498)
+[platform.rs:5498](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/desktop/src/native_viewport/platform.rs#L5498)
 
 The native projection renderer reconstructs every partial circular edge as a positive counter-clockwise sweep using only its first/last sample. Body-edge samples can project clockwise, particularly when the sketch basis normal is reversed. Forcing a positive sweep draws the complementary arc. Browser drawing, snapping, and profile extraction instead follow the actual sample polyline, so desktop users see a reference boundary different from the one used for geometry.
 
@@ -208,7 +208,7 @@ Required: recover direction from intermediate samples/the analytic orientation, 
 
 ### 8. [P2] Keep driving-angle parameter metadata in dimension DTOs
 
-[dims.rs:856](https://github.com/jackControls/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/session/dims.rs#L856)
+[dims.rs:856](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/crates/sketch/src/session/dims.rs#L856)
 
 The `ArcAngle` display special case always emits null parameter ID, name, and expression, including for driving dimensions backed by formulas. The dimension editor uses `param_expression` to prepopulate the editable formula, falling back to the numeric value when it is absent. Opening and accepting such an angle therefore replaces the expression with a literal and can sever parameter dependencies.
 

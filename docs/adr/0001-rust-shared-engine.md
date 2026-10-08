@@ -33,6 +33,6 @@ shell code.
 ## Follow-up PRs
 
 - Windows portable CI exists (merged #1); extend with engine/MCP required
-  checks ([#14](https://github.com/jackControls/Limo-CAD/issues/14)).
-- Shared export crate used by Tauri and MCP (pairs with [#13](https://github.com/jackControls/Limo-CAD/issues/13)).
+  checks ([#14](https://github.com/limo-cad/Limo-CAD/issues/14)).
+- Shared export crate used by Tauri and MCP (pairs with [#13](https://github.com/limo-cad/Limo-CAD/issues/13)).
 - Packaging parity for Linux remains an open gap; track in issues, not README hope.

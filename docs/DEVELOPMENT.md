@@ -9,7 +9,7 @@ Install Git and the
 [Rust toolchain](https://rustup.rs/), then:
 
 ```sh
-git clone https://github.com/jackControls/Limo-CAD.git
+git clone https://github.com/limo-cad/Limo-CAD.git
 cd Limo-CAD
 ```
 

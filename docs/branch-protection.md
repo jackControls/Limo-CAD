@@ -7,11 +7,11 @@ It now runs Rust shared-interface tests and compiles the WASM engine boundary;
 it does not run React or npm. The Bevy merge therefore needs no ruleset change
 to satisfy this existing context. `Rust WASM engine facade` and
 `Repository Rust contracts` are additional checks. The repository is now
-`jackControls/Limo-CAD`; required check identities survive the rename.
+`limo-cad/Limo-CAD`; required check identities survive the rename.
 
 ## Verified repository policy
 
-Read back on 2026-10-03, `jackControls/Limo-CAD` uses the active **[Protect main](https://github.com/jackControls/Limo-CAD/rules/19790895)**
+Read back on 2026-10-03, `limo-cad/Limo-CAD` uses the active **[Protect main](https://github.com/limo-cad/Limo-CAD/rules/19790895)**
 ruleset (id `19790895`). Main requires one approving review, dismissal of stale
 approvals, and resolution of review threads. Force pushes and branch deletion are
 blocked. The PR author cannot supply their own approval.
@@ -34,8 +34,8 @@ triage access is insufficient. Inspect all applicable results on the exact PR
 head before merging; the two required checks do not replace native acceptance or
 package verification when those are relevant.
 
-Tracking: [#14](https://github.com/jackControls/Limo-CAD/issues/14) (parent
-[#9](https://github.com/jackControls/Limo-CAD/issues/9)).
+Tracking: [#14](https://github.com/limo-cad/Limo-CAD/issues/14) (parent
+[#9](https://github.com/limo-cad/Limo-CAD/issues/9)).
 
 ### Release tags
 
@@ -143,7 +143,7 @@ the current engine facade, not a complete browser app. See [Development](DEVELOP
 ## Adding further required checks
 
 After the remaining jobs always report and have passed on a PR, an administrator
-(Jack) can add their exact Check Run names to **[Protect main](https://github.com/jackControls/Limo-CAD/rules/19790895)**,
+(Jack) can add their exact Check Run names to **[Protect main](https://github.com/limo-cad/Limo-CAD/rules/19790895)**,
 preserving its existing checks, review rules, and deletion rules.
 Reusable-workflow check names may include the caller job prefix; copy the name
 from the actual PR.
@@ -160,7 +160,7 @@ required set, including docs-only PRs.
 
 ## Repository ownership
 
-Collaborators can use branches directly on `jackControls/Limo-CAD` with that
+Collaborators can use branches directly on `limo-cad/Limo-CAD` with that
 repository as `origin`; a personal fork is optional. Before deleting a fork,
 preserve unique commits and finish or migrate any upstream PR using its branches.
 Disable redundant fork Actions separately so retiring a fork does not remove

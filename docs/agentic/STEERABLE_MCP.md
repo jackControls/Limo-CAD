@@ -38,7 +38,7 @@ Keep `disclosure::tags_for_tool` aligned when adding dialogs or export tools.
 - refresh is explicit (no filesystem watcher);
 - this is **not** a live UI co-link / LWW writeback.
 
-Revisioned MCP→UI sync remains future work. Installer / UI launch: [#32](https://github.com/jackControls/Limo-CAD/pull/32).
+Revisioned MCP→UI sync remains future work. Installer / UI launch: [#32](https://github.com/limo-cad/Limo-CAD/pull/32).
 
 
 ## Print export
@@ -51,5 +51,5 @@ pre-sliced project. STL is geometry-only.
 ## Related reading
 
 - [mcp-harness.md](../mcp-harness.md)
-- Issues [#10](https://github.com/jackControls/Limo-CAD/issues/10), [#11](https://github.com/jackControls/Limo-CAD/issues/11)
+- Issues [#10](https://github.com/limo-cad/Limo-CAD/issues/10), [#11](https://github.com/limo-cad/Limo-CAD/issues/11)
 - MCP tools / listChanged: https://modelcontextprotocol.io/specification/2025-06-18/server/tools

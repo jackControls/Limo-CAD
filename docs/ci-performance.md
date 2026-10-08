@@ -94,11 +94,11 @@ capacity. The serial recipe assertions still do the same work.
 
 ## Baseline and verification
 
-In [main run 35241288725](https://github.com/jackControls/Limo-CAD/actions/runs/35241288725),
+In [main run 35241288725](https://github.com/limo-cad/Limo-CAD/actions/runs/35241288725),
 recipe acceptance took 58 minutes on Linux and 100 minutes on Windows, while
 compilation took 52 seconds and 2 minutes respectively. That makes runner-isolated
 flagship tests more useful than adding Rust caches alone. In
-[package run 35526256187](https://github.com/jackControls/Limo-CAD/actions/runs/35526256187),
+[package run 35526256187](https://github.com/limo-cad/Limo-CAD/actions/runs/35526256187),
 the cold Windows ARM SDK installation took 71 minutes. These are baselines, not
 a guaranteed runtime for every runner.
 

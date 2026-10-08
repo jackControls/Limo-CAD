@@ -5,7 +5,7 @@ version = "0.2.2"
 edition = "2021"
 description = "Limo CAD native Bevy desktop"
 license = "LGPL-2.1-or-later"
-repository = "https://github.com/jackControls/Limo-CAD"
+repository = "https://github.com/limo-cad/Limo-CAD"
 
 [workspace]
 

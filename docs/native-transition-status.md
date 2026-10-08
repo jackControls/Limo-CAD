@@ -4,16 +4,16 @@ Release qualification checkpoint: **2026-10-06 UTC**, with the local UI walkthro
 updated **2026-10-08 UTC**. The default desktop on the Bevy integration branch
 uses **Bevy `=0.20.0-rc.2`**, application version **0.2.2**, one native host and
 one shared CAD/CAM command path. The integration is tracked by
-[PR #124](https://github.com/jackControls/Limo-CAD/pull/124) and has not merged
+[PR #124](https://github.com/limo-cad/Limo-CAD/pull/124) and has not merged
 into `main`. Passing required checks and an external approval remain merge gates.
 
-The public [Bevy preview](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
+The public [Bevy preview](https://github.com/limo-cad/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 contains **Windows x64 ZIP and Ubuntu 26.04 x64 DEB from `9b082687`**.
 Windows passed SDK-free headless/desktop MCP
 checks on Thunder; Ubuntu passed its hosted MCP, X11 and Wayland-desktop checks.
 The independently built hosted Windows x64 package also passed native-input
 checks on this clean source. The AppImage build and Ubuntu 26.04 qualification
-passed in the [tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112),
+passed in the [tagged package run](https://github.com/limo-cad/Limo-CAD/actions/runs/37232261112),
 but that artifact has not been added to the public preview. Windows ARM64 failed;
 macOS built and signed but remains blocked by Apple's team-agreement HTTP 403.
 The superseded October 2 preview release was removed; its source tag remains.
@@ -281,7 +281,7 @@ The conversion includes:
   an owned snapshot after successful rendering. Annotation edits reuse frame
   artwork; rejected frames move the existing sheet snapshot into the error receipt.
   Pose-vector copies, per-body replay invalidation and presentation resource
-  granularity remain tracked in [#333](https://github.com/jackControls/Limo-CAD/issues/333).
+  granularity remain tracked in [#333](https://github.com/limo-cad/Limo-CAD/issues/333).
 - An explicit Winit window-icon binding (#259). The deployed Windows small-icon
   handle and native chrome capture confirm the title-bar fix. The packaged MCP
   passed schema-7 attach, rendered inspect and a read-only assembly query.
@@ -523,7 +523,7 @@ regressions passed. The new commits do not have fresh interactive GPU evidence.
 This main draft still targets the earlier viewport and is not integrated into
 the Bevy rc.2 application.
 
-CodeQL alert [#147](https://github.com/jackControls/Limo-CAD/security/code-scanning/147)
+CodeQL alert [#147](https://github.com/limo-cad/Limo-CAD/security/code-scanning/147)
 identified unsafe matrix-copy arithmetic in the packaged OpenCASCADE 7.9.3 header;
 that SDK remains unpatched. Its size calculation can overflow or narrow before
 `memmove`. A large-matrix application trigger has not been established. The
@@ -580,7 +580,7 @@ it, and the board does not replace the MCP document/session bridge.
 The public Windows x64 ZIP passed SDK-free headless and desktop MCP checks on
 Thunder, both before and after installation. The Ubuntu DEB passed headless and
 desktop MCP, X11 input/rendering and Wayland-desktop lifecycle/URI checks in the
-[tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112/job/111525874975).
+[tagged package run](https://github.com/limo-cad/Limo-CAD/actions/runs/37232261112/job/111525874975).
 The restored-window and Unicode-field X11 captures were reviewed. Checksums and
 embedded metadata identify clean `9b082687` source; a machine-readable build
 receipt accompanies the packages. The hosted Windows x64 build also passed
@@ -634,7 +634,7 @@ native-service approach does not require that port. See [web/README.md](../web/R
 
 ## Audited deletions and history
 
-The snapshot [`6394fb44`](https://github.com/jackControls/Limo-CAD/commit/6394fb449f12e17dededd76dc702081ff7c277eb)
+The snapshot [`6394fb44`](https://github.com/limo-cad/Limo-CAD/commit/6394fb449f12e17dededd76dc702081ff7c277eb)
 was previously mislabeled as an unfinished UI rewrite. Independently formatting
 all 81 changed Rust files and their parent versions produced identical output:
 it was formatting, not an upcoming feature. Its explicit revert removed no
