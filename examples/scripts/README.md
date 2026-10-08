@@ -179,6 +179,16 @@ geometry and references.
     has seven definitions and nine occurrences, and its archive matches the live
     model. The new instance is still at the source origin; its placement and
     shared right instance remain unfinished.
+22. On clean matched `19ca11c7`, set the left lower instance's placement to
+    `(37, 30, 130)` mm with zero rotation, apply and save. Duplicate that instance
+    in Assembly, select the duplicate, rename it **Right lower side rail**, and
+    apply `(1135, 30, 130)` mm with zero rotation. Save with Ctrl+S and use Fit.
+    The [lower-placement checkpoint](../checkpoints/garden-bench-lower-placements-human-ui.limo)
+    has nineteen features, seven definitions and ten occurrences. Both lower
+    instances share definition 14 and all four bores; the upper rails retain
+    their separate definition 12. The saved model matches the live document.
+    Top pilots, remaining post pilots, geometry, joints and drawing/layout work
+    remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 

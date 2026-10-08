@@ -38,7 +38,13 @@ reported 86 unmatched boundary links and no multiply used links. Conforming
 source-interior refinement resolved their previous largest boundary group while
 preserving the original STEP and document. All 70 installed payload hashes
 match. No successful 3MF or
-native-precision-qualified STL is claimed. The Medix notes below record earlier
+native-precision-qualified STL is claimed. The subsequent clean matched
+`19ca11c7` GUI opens the same complete saved import, but export still refuses
+the paired-strip candidate: sphere faces 3779 and 3792 report **consecutive native
+strip stations collapsed**. The next candidate reconstructs distinct station
+indices on copied owner meshes while preserving every native parameter,
+junction endpoint, source witness and closure guard; it is not yet qualified.
+The Medix notes below record earlier
 trials chronologically; they do not supersede this current qualification.
 
 The actual guarded GUI export on clean matched `7c235990` still reports 86
@@ -73,6 +79,15 @@ qualified the saved [lower-component checkpoint](../examples/checkpoints/garden-
 seven definitions and nine occurrences, with existing upper/apron shared
 definitions and placements preserved. Lower-rail placements, its shared right
 instance and the remaining bench geometry are unfinished.
+
+On clean matched `19ca11c7`, the physical Assembly UI placed the left lower rail
+at `(37, 30, 130)` mm, duplicated it, and named/placed the right lower rail at
+`(1135, 30, 130)` mm. Both rotations are zero. Ctrl+S and read-only comparison
+qualified the [lower-placement checkpoint](../examples/checkpoints/garden-bench-lower-placements-human-ui.limo):
+nineteen features, seven definitions and ten occurrences. The two lower rails
+share definition 14 and its four clearance bores, separately from upper-rail
+definition 12. Remaining pilots, geometry, joints and drawing/layout work are
+unfinished.
 
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled
