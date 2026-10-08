@@ -255,6 +255,16 @@ geometry and references.
     parameters and exact live/archive comparison passed. Both rear rail/arm pilot
     patterns, remaining geometry, joints and drawings remain unfinished.
 
+29. On clean matched `e7e0a775`, isolate Body3 and select its outward −X face in
+    Left view. Its basis is origin `(0, 65, 0)`, U `(0, −1, 0)`, V `(0, 0, 1)`.
+    Add six simple Ø3.5 mm, 39 mm deep, flat-bottom pilots with no flip at U 32.5,
+    V 365/400/170/205/590/615 mm. Name the feature **Left rear post / Rail and arm
+    pilots Ø3.5 x 39 / Six positions**. Restore all seven Browser eyes and save.
+    The [left-rear pilot checkpoint](../checkpoints/garden-bench-left-rear-pilots-human-ui.limo)
+    has twenty-six features, seven definitions and ten occurrences. Saved hole
+    parameters and exact live/archive comparison passed. Right-rear rail/arm
+    pilots, remaining geometry, joints and drawings remain unfinished.
+
 Use the saved **Named Views** for a demonstration:
 
 1. Recall **01 / Front frame assembly**, **03 / Seat support frame** and

@@ -57,6 +57,7 @@
 #include <GeomAbs_Shape.hxx>
 #include <GeomAbs_SurfaceType.hxx>
 #include <Geom2d_Line.hxx>
+#include <Geom2d_BSplineCurve.hxx>
 #include <Geom2dAPI_InterCurveCurve.hxx>
 #include <Geom2d_TrimmedCurve.hxx>
 #include <Geom_CylindricalSurface.hxx>
@@ -5184,19 +5185,23 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           StripTrial single;single.faces.push_back(std::move(current));
           bool qualified=restore_skipped_strip_nodes(single,true) && validate_spherical_strip(single,true,true);
           std::string owner_stop=strip_stop_;
-          for (int strategy=0;strategy<4 && !qualified;++strategy) {
+          for (int strategy=0;strategy<5 && !qualified;++strategy) {
             restore_spherical_strip(single);
             if (strategy>0) {
               if (export_boundary_attempts_>=128 || export_boundary_work_>=2097152) { owner_stop="chord owner alternate attempt/work cap";break; }
               ++export_boundary_attempts_;
             }
-            const bool complete=restore_complete_export_face(single,0,strategy>0,strategy>=2,strategy==3);
+            const bool complete=strategy==0 ? restore_export_ear_face(single) :
+                restore_complete_export_face(single,0,strategy>1,strategy>=3,strategy==4);
             qualified=complete && validate_spherical_strip(single,true,true);
             owner_stop="owner "+std::to_string(strip_original_faces_.FindIndex(saved.face->GetFace())-1)+
                 " strategy "+std::to_string(strategy)+' '+strip_stop_;
             if (!qualified) std::fprintf(stderr,"Native export chord target %d %s\n",original,owner_stop.substr(0,3000).c_str());
           }
-          if (!qualified) { restore_spherical_strip(single);throw std::runtime_error("chord owner complete source qualification: "+owner_stop); }
+          if (!qualified) {
+            diagnose_export_rails(saved.face);
+            restore_spherical_strip(single);throw std::runtime_error("chord owner complete source qualification: "+owner_stop);
+          }
         }
         if (!validate_spherical_strip(trial,true,true)) throw std::runtime_error("chord all-owner shared qualification: "+strip_stop_);
         success=true;++accepted;inserted+=added;
@@ -5211,6 +5216,198 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       }
     }
     export_boundary_stop_+="; chord attempts/accepted/points "+std::to_string(attempts)+'/'+std::to_string(accepted)+'/'+std::to_string(inserted);
+  }
+
+  // A constrained boundary ear avoids artificial centroid spokes. It replaces
+  // the complete mapped disk only after every positive ear passes the actual
+  // source precision witnesses; no native station or collinear node is dropped.
+  bool restore_export_ear_face(const StripTrial& trial) {
+    strip_stop_="source ear preparation";
+    try {
+      if (trial.faces.size()!=1) return false;
+      const auto face=trial.faces.front().face;TopLoc_Location location;
+      const auto mesh=BRep_Tool::Triangulation(face->GetFace(),location);
+      if (face->WiresNb()!=1 || mesh.IsNull() || !mesh->HasUVNodes() || (face->GetStatusMask() & ~IMeshData_Outdated)!=0) return false;
+      std::vector<int> polygon;const auto wire=face->GetWire(0);
+      for (int ei=0;ei<wire->EdgesNb();++ei) {
+        const auto edge=wire->GetEdge(ei);const auto pc=edge->GetPCurve(face,wire->GetEdgeOrientation(ei));
+        if (pc.IsNull() || BRep_Tool::Degenerated(edge->GetEdge()) || pc->ParametersNb()<2 || pc->ParametersNb()!=edge->GetCurve()->ParametersNb()) return false;
+        for (int i=0;i<pc->ParametersNb();++i) {
+          const int id=pc->GetIndex(i);
+          if (id<1 || id>mesh->NbNodes() || !strip_finite(pc->GetPoint(i)) || !strip_finite(mesh->UVNode(id)) ||
+              !strip_finite(mesh->Node(id)) || !strip_finite(edge->GetCurve()->GetPoint(i)) ||
+              mesh->UVNode(id).Distance(pc->GetPoint(i))>Precision::PConfusion() ||
+              mesh->Node(id).Transformed(location.Transformation()).Distance(edge->GetCurve()->GetPoint(i))>Precision::Confusion()) return false;
+        }
+        const auto next_edge=wire->GetEdge((ei+1)%wire->EdgesNb());
+        const auto next_pc=next_edge->GetPCurve(face,wire->GetEdgeOrientation((ei+1)%wire->EdgesNb()));
+        if (next_pc.IsNull() || next_pc->ParametersNb()<2) return false;
+        const int end=wire->GetEdgeOrientation(ei)==TopAbs_REVERSED ? 0 : pc->ParametersNb()-1;
+        const int start=wire->GetEdgeOrientation((ei+1)%wire->EdgesNb())==TopAbs_REVERSED ? next_pc->ParametersNb()-1 : 0;
+        if (pc->GetIndex(end)!=next_pc->GetIndex(start)) { strip_stop_="source ear native junction identity differs";return false; }
+        for (int i=0;i+1<pc->ParametersNb();++i) {
+          const int index=wire->GetEdgeOrientation(ei)==TopAbs_REVERSED ? pc->ParametersNb()-1-i : i;
+          polygon.push_back(pc->GetIndex(index));
+          if (polygon.size()>32) { strip_stop_="source ear boundary cap";return false; }
+        }
+      }
+      if (polygon.size()<3 || std::set<int>(polygon.begin(),polygon.end()).size()!=polygon.size()) return false;
+      double area=0.0;
+      const auto origin=mesh->UVNode(polygon.front());
+      for (std::size_t i=0;i<polygon.size();++i) {
+        const auto a=mesh->UVNode(polygon[i]),b=mesh->UVNode(polygon[(i+1)%polygon.size()]);
+        if (!strip_finite(a) || !strip_finite(b) || a.Distance(b)==0.0) return false;
+        area+=(a.Coord()-origin.Coord()).Crossed(b.Coord()-origin.Coord());
+        for (std::size_t j=i+1;j<polygon.size();++j) {
+          if (++export_boundary_work_>2097152) { strip_stop_="source ear simplicity cap";return false; }
+          if (!certified_strip_pair(a,b,mesh->UVNode(polygon[j]),mesh->UVNode(polygon[(j+1)%polygon.size()]),
+                j==i+1 || (i==0 && j+1==polygon.size()))) { strip_stop_="source ear mapped boundary is not simple";return false; }
+        }
+      }
+      if (!std::isfinite(area) || area==0.0) return false;
+      const double winding=area>0.0 ? 1.0 : -1.0;
+      const double d=GetParameters().Deflection,angle=GetParameters().AngleInterior>0.0 ? GetParameters().AngleInterior : GetParameters().Angle;
+      if (!std::isfinite(d) || !std::isfinite(angle) || d<=0.0 || angle<=0.0) return false;
+      const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
+      int states=0;std::vector<std::array<int,3>> triangles;
+      const auto precise=[&](const std::array<int,3>& ids) {
+        gp_Pnt p[3];gp_Pnt2d uv[3];
+        for (int i=0;i<3;++i) {
+          uv[i]=mesh->UVNode(ids[i]);p[i]=mesh->Node(ids[i]).Transformed(location.Transformation());
+          if (!strip_finite(p[i]) || !strip_finite(uv[i])) return false;
+        }
+        if (winding*certified_strip_orientation(uv[0],uv[1],uv[2])<=0.0) return false;
+        const auto normal=gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2]));
+        if (!std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude()<=0.0) return false;
+        for (const auto& w : weights) {
+          if (++export_boundary_work_>2097152) return false;
+          const gp_Pnt2d at(uv[0].Coord()*w[0]+uv[1].Coord()*w[1]+uv[2].Coord()*w[2]);
+          const gp_Pnt affine(p[0].XYZ()*w[0]+p[1].XYZ()*w[1]+p[2].XYZ()*w[2]);gp_Pnt source;gp_Dir source_normal;
+          if (!BRepMesh_GeomTool::Normal(face->GetSurface(),at.X(),at.Y(),source,source_normal) || !strip_finite(source)) return false;
+          const double error=affine.Distance(source),angular=normal.Angle(gp_Vec(source_normal)*winding);
+          if (!std::isfinite(error) || !std::isfinite(angular) || error>d || angular>angle) return false;
+        }
+        return true;
+      };
+      const auto triangulate=[&](auto&& self,const std::vector<int>& active)->bool {
+        if (++states>512 || ++export_boundary_work_>2097152) return false;
+        if (active.size()==3) {
+          const std::array<int,3> last={active[0],active[1],active[2]};
+          if (!precise(last)) return false;triangles.push_back(last);return true;
+        }
+        for (std::size_t i=0;i<active.size();++i) {
+          const auto prev=(i+active.size()-1)%active.size(),next=(i+1)%active.size();
+          const std::array<int,3> ear={active[prev],active[i],active[next]};
+          const auto a=mesh->UVNode(ear[0]),b=mesh->UVNode(ear[1]),c=mesh->UVNode(ear[2]);
+          if (winding*certified_strip_orientation(a,b,c)<=0.0) continue;
+          bool clear=true;
+          for (std::size_t j=0;j<active.size() && clear;++j) {
+            if (++export_boundary_work_>2097152) return false;
+            if (j!=prev && j!=i && j!=next) {
+              const auto p=mesh->UVNode(active[j]);
+              clear=winding*certified_strip_orientation(a,b,p)<0.0 || winding*certified_strip_orientation(b,c,p)<0.0 ||
+                  winding*certified_strip_orientation(c,a,p)<0.0;
+            }
+            const auto end=(j+1)%active.size();
+            if (clear && j!=prev && j!=next && end!=prev && end!=next)
+              clear=certified_strip_pair(a,c,mesh->UVNode(active[j]),mesh->UVNode(active[end]),false);
+          }
+          if (!clear || !precise(ear)) continue;
+          auto remainder=active;remainder.erase(remainder.begin()+i);triangles.push_back(ear);
+          if (self(self,remainder)) return true;
+          triangles.pop_back();
+          if (states>=512 || export_boundary_work_>2097152) return false;
+        }
+        return false;
+      };
+      if (!triangulate(triangulate,polygon) || triangles.size()+2!=polygon.size()) {
+        strip_stop_="source ear no fully precise constrained triangulation; states "+std::to_string(states);return false;
+      }
+      const auto replacement=mesh->Copy();replacement->ResizeTriangles(static_cast<int>(triangles.size()),false);
+      for (std::size_t i=0;i<triangles.size();++i) replacement->SetTriangle(static_cast<int>(i)+1,Poly_Triangle(triangles[i][0],triangles[i][1],triangles[i][2]));
+      replacement->RemoveNormals();replacement->ComputeNormals();BRep_Builder().UpdateFace(face->GetFace(),replacement);
+      strip_stop_="fully source-qualified constrained ears installed";return true;
+    } catch (const Standard_Failure&) { strip_stop_="OCCT exception certifying source ears";return false; }
+      catch (const std::exception&) { strip_stop_="exception certifying source ears";return false; }
+  }
+
+  void diagnose_export_rails(IMeshData::IFacePtr face) const {
+    try {
+      if (face->WiresNb()!=1 || face->GetWire(0)->EdgesNb()>8) return;
+      TopTools_IndexedMapOfShape native_edges,vertices;
+      TopExp::MapShapes(GetModel()->GetShape(),TopAbs_EDGE,native_edges);
+      TopExp::MapShapes(GetModel()->GetShape(),TopAbs_VERTEX,vertices);
+      const int original=strip_original_faces_.FindIndex(face->GetFace())-1;
+      struct Rail { double span;IMeshData::IPCurveHandle pc;Handle(Geom2d_Curve) source;int edge; };
+      std::vector<Rail> rails;const auto wire=face->GetWire(0);
+      for (int ei=0;ei<wire->EdgesNb();++ei) {
+        const auto edge=wire->GetEdge(ei);const auto pc=edge->GetPCurve(face,wire->GetEdgeOrientation(ei));
+        if (pc.IsNull() || pc->ParametersNb()<2 || pc->ParametersNb()>64) continue;
+        const int count=pc->ParametersNb(),key=native_edges.FindIndex(edge->GetEdge())-1;
+        double low,high;const auto source=BRep_Tool::CurveOnSurface(TopoDS::Edge(edge->GetEdge().Oriented(pc->GetOrientation())),face->GetFace(),low,high);
+        if (source.IsNull()) continue;
+        double u0=std::numeric_limits<double>::infinity(),u1=-u0,v0=u0,v1=-u0;
+        const double direction=pc->GetPoint(count-1).X()-pc->GetPoint(0).X();bool monotone=direction!=0.0;
+        for (int i=0;i<count;++i) {
+          const auto uv=pc->GetPoint(i);if (!strip_finite(uv)) return;
+          u0=std::min(u0,uv.X());u1=std::max(u1,uv.X());v0=std::min(v0,uv.Y());v1=std::max(v1,uv.Y());
+          if (i) monotone &= (uv.X()-pc->GetPoint(i-1).X())*direction>0.0;
+        }
+        TopoDS_Vertex first,last;TopExp::Vertices(edge->GetEdge(),first,last,false);
+        BRepAdaptor_Curve adaptor(TopoDS::Edge(edge->GetEdge().Oriented(pc->GetOrientation())),face->GetFace());
+        const auto curve=adaptor.CurveOnSurface().GetCurve();
+        std::ostringstream detail;detail.precision(12);
+        detail << "Native export rail catalog face " << original << " wire-edge/native " << ei << '/' << key <<
+            " orientation " << static_cast<int>(pc->GetOrientation()) << " native-param vertices " << vertices.FindIndex(first)-1 << '/' << vertices.FindIndex(last)-1 <<
+            " native/discrete deg " << BRep_Tool::Degenerated(edge->GetEdge()) << '/' << edge->GetDegenerated() <<
+            " samples " << count << " params " << pc->GetParameter(0) << '/' << pc->GetParameter(count-1) <<
+            " U/Vbounds " << u0 << '/' << u1 << ':' << v0 << '/' << v1 << " sampled-Umonotone " << monotone <<
+            " source-type/periodic " << static_cast<int>(curve->GetType()) << '/' << source->IsPeriodic();
+        if (curve->GetType()==GeomAbs_BSplineCurve) {
+          const auto spline=curve->BSpline();bool poles_monotone=true;
+          if (!spline.IsNull() && spline->NbPoles()<=128) {
+            for (int i=2;i<=spline->NbPoles();++i) poles_monotone &= (spline->Pole(i).X()-spline->Pole(i-1).X())*direction>=0.0;
+            detail << " degree/poles/rational/control-Umonotone " << spline->Degree() << '/' << spline->NbPoles() << '/' << spline->IsRational() << '/' << poles_monotone;
+          }
+        }
+        std::set<int> anchors={0,1,count/2,count-2,count-1};
+        for (int i : anchors) {
+          if (i<0 || i>=count || i>=edge->GetCurve()->ParametersNb()) continue;
+          const auto uv=pc->GetPoint(i),exact=source->Value(pc->GetParameter(i));
+          const auto native=edge->GetCurve()->GetPoint(i);gp_Pnt surface;gp_Dir normal;
+          if (!strip_finite(exact) || !strip_finite(native) || !BRepMesh_GeomTool::Normal(face->GetSurface(),uv.X(),uv.Y(),surface,normal) || !strip_finite(surface)) continue;
+          detail << " anchor " << i << " t/UV " << pc->GetParameter(i) << ':' << uv.X() << '/' << uv.Y() <<
+              " gap/normal-component " << native.Distance(surface) << '/' << std::abs(gp_Vec(surface,native).Dot(gp_Vec(normal))) <<
+              " sourceUV " << exact.X() << '/' << exact.Y();
+        }
+        std::fprintf(stderr,"%s\n",detail.str().substr(0,4000).c_str());
+        if (monotone) rails.push_back({u1-u0,pc,source,key});
+      }
+      std::sort(rails.begin(),rails.end(),[](const Rail& a,const Rail& b) { return a.span>b.span; });
+      if (rails.size()<2 || rails[0].edge==rails[1].edge) return;
+      const auto range=[](const Rail& rail) {
+        const auto a=rail.source->Value(rail.pc->GetParameter(0)),b=rail.source->Value(rail.pc->GetParameter(rail.pc->ParametersNb()-1));
+        return std::make_pair(std::min(a.X(),b.X()),std::max(a.X(),b.X()));
+      };
+      const auto first=range(rails[0]),second=range(rails[1]);const double start=std::max(first.first,second.first),end=std::min(first.second,second.second);
+      if (!std::isfinite(start) || !std::isfinite(end) || start>=end) return;
+      for (double fraction : {.25,.5,.75}) {
+        const double u=start+(end-start)*fraction;gp_Pnt2d uv[2];gp_Pnt points[2];
+        for (int side=0;side<2;++side) {
+          const auto& rail=rails[side];double a=rail.pc->GetParameter(0),b=rail.pc->GetParameter(rail.pc->ParametersNb()-1);
+          const bool ascending=rail.source->Value(b).X()>rail.source->Value(a).X();
+          for (int step=0;step<48;++step) {
+            const double middle=a+(b-a)*.5;uv[side]=rail.source->Value(middle);
+            if (!strip_finite(uv[side])) return;
+            if ((uv[side].X()<u)==ascending) a=middle;else b=middle;
+          }
+          points[side]=face->GetSurface()->Value(uv[side].X(),uv[side].Y());if (!strip_finite(points[side])) return;
+        }
+        std::fprintf(stderr,"Native export rail width face %d edges %d/%d sampled-root U %.12g UV-V %.12g/%.12g source-width-mm %.12g\n",
+            original,rails[0].edge,rails[1].edge,u,uv[0].Y(),uv[1].Y(),points[0].Distance(points[1]));
+      }
+    } catch (const Standard_Failure&) { std::fprintf(stderr,"Native export rail diagnostic unavailable (OCCT)\n"); }
+      catch (const std::exception&) { std::fprintf(stderr,"Native export rail diagnostic unavailable (native)\n"); }
   }
 
   // Try geometric span contraction only after every earlier strategy and the

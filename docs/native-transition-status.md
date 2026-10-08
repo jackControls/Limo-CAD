@@ -28,10 +28,10 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `31c9a6ba` opens the complete
+Current October 8 Medix qualification: clean matched `e7e0a775` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
-536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 24 invalid
+536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 16 invalid
 boundary links and no multiply used links across 33 native shells. Restoring
 the original split policy recovers the 37 repaired faces lost by the earlier
 lookahead regression to 72 links. Connector caps and
@@ -41,9 +41,9 @@ FIFO processing of the alternate queue repairs one further face, reducing 49
 links to 45; a last longest-interior-edge strategy repairs seven more faces and
 reduces the count to 16 on `0528a7db`. The next trial reaches shared-curve owner
 qualification but rolls it back for source-angle failures; inserting flips into
-the longest strategy regresses the result to 24. The next candidate restores
-the exact no-flip longest trajectory before deferred sampler and flip trials.
-GUI qualification is pending.
+the longest strategy regressed the result to 24. Restoring the exact no-flip
+trajectory recovers 16 links. A bounded constrained-ear alternative retaining
+every native boundary station is the next candidate; GUI qualification is pending.
 All 70 installed payload hashes match the clean manifest. No successful 3MF or
 native-precision-qualified STL is claimed. The Medix notes below record earlier
 trials; they do not supersede this current qualification.
@@ -142,6 +142,18 @@ and separately deferred flip trials. The original 16-link qualification remains
 the best result. Scene inspection remains at zero errors and zero display
 warnings and the live model still matches the saved archive exactly.
 
+Actual guarded GUI export on clean matched `e7e0a775` recovers the exact 16-link
+baseline: original repairs 98/38/71 and longest repairs 18/7/491. Two sampler
+transactions and two deferred flip attempts are rejected; neither changes the
+saved model or loosens final accuracy/closure checks. Both sampler targets now
+fail on nearly collinear same-rail triangles. The next candidate tries a bounded
+complete constrained-ear triangulation, preserving every native station and
+qualifying every triangle at all seven source witnesses before installation.
+Bounded native rail diagnostics measure actual rail separation and source/native
+normal offsets; they do not certify or alter geometry. Read-only inspection
+remains at zero scene errors and zero display warnings; no accepted STL or 3MF
+is claimed.
+
 The actual guarded GUI export on clean matched `7c235990` still reports 86
 unmatched links. Native curve diagnostics rule out zero-area incidence loss on
 the leading sphere faces: all ten existing facets have positive area, but native
@@ -183,6 +195,15 @@ nineteen features, seven definitions and ten occurrences. The two lower rails
 share definition 14 and its four clearance bores, separately from upper-rail
 definition 12. Remaining pilots, geometry, joints and drawing/layout work are
 unfinished.
+
+On clean matched `e7e0a775`, physical Hole input added six Ø3.5 mm, 39 mm deep,
+flat-bottom left-rear rail/arm pilots at stock X 0 mm, Y 32.5 mm and Z
+365/400/170/205/590/615 mm. The named
+[left-rear pilot checkpoint](../examples/checkpoints/garden-bench-left-rear-pilots-human-ui.limo)
+has twenty-six features, seven definitions and ten occurrences with all Browser
+eyes restored. Saved parameters and exact live/archive comparison passed.
+Only right-rear rail/arm pilots remain among the post patterns; remaining bench
+geometry, joints and drawings are unfinished.
 
 On clean matched `08efc3e7`, physical top-face selection and the Hole dialog
 added the lower rail's two Ø3.5 mm, 32 mm deep, flat-bottom stretcher pilots at
