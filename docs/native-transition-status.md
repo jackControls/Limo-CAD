@@ -28,6 +28,23 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
+The October 7 manual reconnect now has an explicit `cad-call --installed
+--interactive` path. It verifies the recorded clean deployed identity, enabled
+native control and all installed payload hashes without rebuilding, promoting or
+closing CAD when the source checkout advances. Live reconnect to the unchanged
+`0db4c009` payload returned a matched GUI/MCP pair and rejected an inactive bench
+session after a second tab became active. Rendered bench capture succeeded. A
+foreground request was denied and a fresh observation confirmed CAD was still
+in the background; physical input qualification after this reconnect remains
+pending foreground ownership.
+
+The Windows focus source now synchronizes with the window queue for at most one
+second after an accepted activation request, then rechecks process/document/window
+ownership and actual foreground state. Its native-control build check passes.
+This change has not been deployed or qualified against a live GUI; existing
+documents and workers remain on the verified installed build. Genuine Windows
+foreground restrictions still prevent input.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,

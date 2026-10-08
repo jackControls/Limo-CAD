@@ -143,14 +143,52 @@ pub(crate) fn verify_installed_runtime() -> Result<PathBuf> {
 }
 
 fn verify_runtime() -> Result<PathBuf> {
-    let executable = installed_executable()?;
-    let directory = executable.parent().context("installed executable parent")?;
-    ordinary_directory(directory)?;
     let manifest = read_manifest()?;
     ensure!(
         snapshot(&manifest.source.checkout)? == manifest.source,
         "Installed runtime is stale for its source checkout; run cargo xtask deploy-native"
     );
+    verify_payload(&manifest)
+}
+
+/// Reconnect to a clean deployed build while its source checkout advances.
+/// This never builds, promotes, rebinds the source or stops a running desktop.
+pub(crate) fn verify_installed_for_control() -> Result<PathBuf> {
+    let _deployment = lock_runtime()?;
+    let manifest = read_manifest()?;
+    ensure!(
+        !manifest.source.modified
+            && manifest.source.checkout.is_absolute()
+            && manifest.source.revision.len() == 40
+            && manifest
+                .source
+                .revision
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+            && manifest.source.sha256.len() == 64
+            && manifest
+                .source
+                .sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit()),
+        "Installed control requires a recorded clean source identity"
+    );
+    ensure!(
+        manifest.native_computer_control,
+        "Installed runtime has no native computer control; explicitly deploy-native --computer-control"
+    );
+    let executable = verify_payload(&manifest)?;
+    eprintln!(
+        "Reconnecting to verified installed CAD from {} (sha256 {}); current source is not qualified",
+        manifest.source.revision, manifest.executable_sha256
+    );
+    Ok(executable)
+}
+
+fn verify_payload(manifest: &RuntimeManifest) -> Result<PathBuf> {
+    let executable = installed_executable()?;
+    let directory = executable.parent().context("installed executable parent")?;
+    ordinary_directory(directory)?;
     ensure!(
         manifest
             .payload

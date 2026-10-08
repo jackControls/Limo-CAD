@@ -313,14 +313,31 @@ impl ComputerControl {
             return Err("Desktop changed while checking input guards; observe again".into());
         }
         if focus {
-            unsafe {
+            let accepted = unsafe {
                 if IsIconic(hwnd) != 0 {
                     ShowWindow(hwnd, SW_RESTORE);
                 }
-                SetForegroundWindow(hwnd);
+                SetForegroundWindow(hwnd) != 0
+            };
+            if accepted && unsafe { GetForegroundWindow() } != hwnd {
+                let mut result = 0;
+                unsafe {
+                    SendMessageTimeoutW(hwnd, WM_NULL, 0, 0, SMTO_ABORTIFHUNG, 1_000, &mut result);
+                }
+            }
+            observed.process.verify()?;
+            if session::computer_control_owner(session_id)? != observed.owner
+                || target_window(&observed.owner, main)? != target
+            {
+                return Err("CAD owner or window changed during activation; observe again".into());
             }
             if unsafe { GetForegroundWindow() } != hwnd || unsafe { IsIconic(hwnd) } != 0 {
-                return Err("Windows denied CAD foreground activation; no input was sent".into());
+                return Err(if accepted {
+                    "CAD foreground activation was not confirmed; no input was sent"
+                } else {
+                    "Windows denied CAD foreground activation; no input was sent"
+                }
+                .into());
             }
             return Ok(
                 json!({"status":"focused","owner":observed.owner,"observation_consumed":true,

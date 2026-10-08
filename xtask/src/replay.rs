@@ -916,13 +916,15 @@ fn print_usage(script: bool) {
         );
     } else {
         println!(
-            "Usage: cargo xtask cad-call --server PATH [--tool NAME] [--args JSON | --args-file FILE] [OPTIONS]\n\
+            "Usage: cargo xtask cad-call [--server PATH | --installed] [--tool NAME] [--args JSON | --args-file FILE] [OPTIONS]\n\
   --tool NAME                    MCP tool name (default: cad_interface).\n\
   --session UUID                 Attach to an explicitly selected live design.\n\
   --out FILE.json                Write the tool result instead of stdout.\n\
   --interactive                  Keep one MCP connection; accept one {{\"tool\":NAME,\"arguments\":OBJECT}} per stdin line.\n\
                                  With --out, replace that file with each response and print its receipt.\n\
-                                 Transport failure stops the connection; calls are never retried."
+                                 Transport failure stops the connection; calls are never retried.\n\
+  --installed                    Verify and reconnect to the clean canonical native-control runtime.\n\
+                                 Never build, deploy or stop CAD; this does not qualify current source."
         );
     }
     println!(

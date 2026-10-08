@@ -9,6 +9,22 @@ See [the product interface](interface.md) for the complete contract and
 
 ## Choose the document owner
 
+For manual native UI work, use `cargo xtask cad-call --installed --interactive
+--out RESPONSE.json` to reconnect after a source edit or committed checkpoint.
+This explicit mode verifies the canonical runtime manifest, its recorded clean
+source identity, enabled native computer control and every installed payload hash.
+It never builds, deploys or closes a desktop. It qualifies only the installed
+revision, not the current checkout. Ordinary managed commands still prepare the
+current source. Rebuild xtask with `--features native-control-harness` when using
+the Windows control harness.
+
+Discover a fresh active session, require `build_pair.status=matched`, and observe
+before each individual guarded `cad_computer_control` input. Read-only captures
+verify the visible result; `input_sent` alone proves only insertion. Preserve other
+open documents and follow the active session after document replacement or
+Undo/Redo. Windows may deny a foreground request; never send input without a
+fresh observation confirming that CAD owns the foreground.
+
 `cad_route` is the single live broker tool. It addresses multiple desktop
 documents through one stdio server with three actions: `submit` sends one request,
 `status` polls a submitted request's ticket, and `batch` sends a bounded ordered
