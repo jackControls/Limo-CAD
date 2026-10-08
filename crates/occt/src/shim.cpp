@@ -3095,10 +3095,16 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   };
  public:
   const std::string& BoundaryRepairStop() const { return boundary_repair_stop_; }
+  std::string StripRepairStop(int face_index) const {
+    const auto found = strip_face_rejections_.find(face_index);
+    return strip_repair_stop_ + "; " + (found == strip_face_rejections_.end() ?
+        "no strip rejection recorded for this face" : found->second.substr(0, 180));
+  }
 
   Standard_Boolean DiscretizeFaces(const Message_ProgressRange& range) override {
     const auto& model = GetModel();
     if (model.IsNull()) return false;
+    strip_face_rejections_.clear();
     std::set<IMeshData::IFacePtr> eligible;
     for (int fi = 0; fi < model->FacesNb(); ++fi) {
       const auto& face = model->GetFace(fi);
@@ -3117,12 +3123,22 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     try {
     for (int fi = 0; fi < model->FacesNb() && strip_attempts < 16; ++fi) {
       const auto& face = model->GetFace(fi);
-      if (eligible.count(face.get()) == 0 || face->WiresNb() != 1 ||
-          face->GetWire(0)->EdgesNb() != 2) continue;
+      if (face->GetSurface()->GetType() != GeomAbs_Sphere) continue;
+      const int original_index = strip_original_faces_.FindIndex(face->GetFace()) - 1;
+      if (eligible.count(face.get()) == 0) {
+        strip_face_rejections_[original_index] = "prior face/wire status prevents strip trial";
+        continue;
+      }
+      if (face->WiresNb() != 1 || face->GetWire(0)->EdgesNb() != 2) {
+        strip_face_rejections_[original_index] = "sphere is not a one-wire/two-edge strip";
+        continue;
+      }
       StripTrial trial;
       if (!prepare_spherical_strip(face, strip_faces, trial, strip_attempts)) {
+        strip_face_rejections_[original_index] = strip_stop_.empty() ? "candidate eligibility was not established" : strip_stop_;
         if (!strip_stop_.empty() && strip_rejections.size() < 600)
-          strip_rejections += " face " + std::to_string(fi) + ": " + strip_stop_.substr(0, 200);
+          strip_rejections += " face " + std::to_string(strip_original_faces_.FindIndex(face->GetFace()) - 1) +
+              ": " + strip_stop_.substr(0, 200);
         continue;
       }
       try { strip_trials.push_back(std::move(trial)); }
@@ -3148,7 +3164,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         ++strip_successes;
         trial.accepted = true;
       } else {
-        strip_rejections += " rejected after meshing: " + strip_stop_.substr(0, 200);
+        strip_face_rejections_[strip_original_faces_.FindIndex(trial.target->GetFace()) - 1] =
+            "after meshing: " + strip_stop_;
+        strip_rejections += " face " + std::to_string(strip_original_faces_.FindIndex(trial.target->GetFace()) - 1) +
+            " after meshing: " + strip_stop_.substr(0, 200);
         restore_spherical_strip(trial);
         // Restore and remesh only this transaction's adjacent faces before
         // ModelPostProcessor creates their polygon-on-triangulation links.
@@ -3175,6 +3194,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     boundary_repair_stop_ += ", spherical strip attempts/prepared/accepted " +
         std::to_string(strip_attempts) + '/' + std::to_string(strip_trials.size()) + '/' +
         std::to_string(strip_successes);
+    strip_repair_stop_ = "strip attempts/prepared/accepted " + std::to_string(strip_attempts) + '/' +
+        std::to_string(strip_trials.size()) + '/' + std::to_string(strip_successes);
     for (const auto& trial : strip_trials) {
       if (!trial.accepted) continue;
       std::ostringstream certificate;
@@ -3857,30 +3878,37 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       const auto& surface = face->GetSurface();
       const double radius = surface->Sphere().Radius(), deflection = GetParameters().Deflection;
       const auto e0 = wire->GetEdge(0), e1 = wire->GetEdge(1);
-      if (e0 == e1 || !e0->GetSameParam() || !e1->GetSameParam() ||
-          !e0->GetSameRange() || !e1->GetSameRange()) return false;
+      if (e0 == e1) return reject("same edge occurs twice in strip");
+      if (!e0->GetSameParam() || !e1->GetSameParam() || !e0->GetSameRange() || !e1->GetSameRange()) {
+        const std::string flags = "native SameParam/Range e0 " + std::to_string(e0->GetSameParam()) + '/' +
+            std::to_string(e0->GetSameRange()) + " e1 " + std::to_string(e1->GetSameParam()) + '/' +
+            std::to_string(e1->GetSameRange());
+        return reject(flags.c_str());
+      }
       const auto p0 = e0->GetPCurve(face.get(), wire->GetEdgeOrientation(0));
       const auto p1 = e1->GetPCurve(face.get(), wire->GetEdgeOrientation(1));
       BRepAdaptor_Curve native0(e0->GetEdge()), native1(e1->GetEdge());
       if (p0.IsNull() || p1.IsNull() || native0.GetType() != GeomAbs_Circle ||
           native1.GetType() != GeomAbs_Circle || p0->ParametersNb() < 3 || p1->ParametersNb() < 3 ||
           p0->ParametersNb() > 128 || p1->ParametersNb() > 128 || !std::isfinite(radius) || radius <= 0.0 ||
-          !std::isfinite(deflection) || deflection <= 0.0) return false;
+          !std::isfinite(deflection) || deflection <= 0.0) return reject("native circle/sample or finite mesh-parameter gate");
       const double edge_tol = std::min(BRep_Tool::Tolerance(e0->GetEdge()), BRep_Tool::Tolerance(e1->GetEdge()));
       double u0, u1, v0, v1; BRepTools::UVBounds(face->GetFace(), u0, u1, v0, v1);
       if (!std::isfinite(edge_tol) || edge_tol <= 0.0 || !std::isfinite(u0) || !std::isfinite(u1) ||
           !std::isfinite(v0) || !std::isfinite(v1) || u1 <= u0 || v1 < v0 || u1 - u0 >= kPi ||
           std::max(std::abs(v0), std::abs(v1)) >= kPi / 4.0 ||
-          radius * (v1 - v0) > std::min(deflection, edge_tol) / 16.0) return false;
+          radius * (v1 - v0) > std::min(deflection, edge_tol) / 16.0) return reject("source UV band or recorded-tolerance gate");
       TopoDS_Vertex a0, a1, b0, b1;
       TopExp::Vertices(e0->GetEdge(), a0, a1); TopExp::Vertices(e1->GetEdge(), b0, b1);
       if (a0.IsNull() || a1.IsNull() || b0.IsNull() || b1.IsNull() || a0.IsSame(a1) ||
-          !((a0.IsSame(b0) && a1.IsSame(b1)) || (a0.IsSame(b1) && a1.IsSame(b0)))) return false;
+          !((a0.IsSame(b0) && a1.IsSame(b1)) || (a0.IsSame(b1) && a1.IsSame(b0))))
+        return reject("two distinct shared topological endpoints were not established");
       const double direction0 = p0->GetPoint(p0->ParametersNb()-1).X() - p0->GetPoint(0).X();
       const double direction1 = p1->GetPoint(p1->ParametersNb()-1).X() - p1->GetPoint(0).X();
       const double traversal0 = direction0 * (wire->GetEdgeOrientation(0) == TopAbs_REVERSED ? -1.0 : 1.0);
       const double traversal1 = direction1 * (wire->GetEdgeOrientation(1) == TopAbs_REVERSED ? -1.0 : 1.0);
-      if (!std::isfinite(traversal0) || !std::isfinite(traversal1) || traversal0 * traversal1 >= 0.0) return false;
+      if (!std::isfinite(traversal0) || !std::isfinite(traversal1) || traversal0 * traversal1 >= 0.0)
+        return reject("opposed monotone wire traversal was not established");
       // Require a real coincident native-curve crossing, not an arbitrary thin face.
       bool crossing = false;
       for (int i = 1; i < p0->ParametersNb(); ++i) for (int j = 1; j < p1->ParametersNb(); ++j) {
@@ -3898,7 +3926,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         if (std::isfinite(a) && std::isfinite(b) && native0.Value(a).Distance(native1.Value(b)) <= Precision::Confusion())
           crossing = true;
       }
-      if (!crossing) return false;
+      if (!crossing) return reject("no native-coincident boundary crossing");
       ++attempts;
       trial.target = face.get();
       double errors[2] = {}, width = 0.0;
@@ -4467,6 +4495,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   std::string boundary_repair_stop_ = "not run";
   std::string spherical_retry_stop_;
   std::string strip_stop_;
+  std::string strip_repair_stop_ = "strip repair not run";
+  std::map<int, std::string> strip_face_rejections_;
   std::size_t strip_comparisons_ = 0;
   TopTools_IndexedMapOfShape strip_original_faces_;
 };
@@ -5127,8 +5157,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
         if (!imported_display) throw std::runtime_error(failure);
         output.display_warning_face_indices.push_back(static_cast<std::uint32_t>(face_index - 1));
         output.display_warning_messages.push_back(rust::String(
-            "Imported STEP face has no display triangles; exact geometry is retained. " +
-            failure.substr(0, 1024)));
+            "Face " + std::to_string(face_index - 1) + ": display triangles missing; exact STEP retained. " +
+            boundary_context->StripRepairStop(face_index - 1) + ". " + failure.substr(0, 700)));
       }
     }
   }
