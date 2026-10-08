@@ -26,6 +26,7 @@
 #include <BRepMesh_Context.hxx>
 #include <BRepMesh_EdgeDiscret.hxx>
 #include <BRepMesh_FaceChecker.hxx>
+#include <BRepMesh_GeomTool.hxx>
 #include <IMeshData_Model.hxx>
 #include <IMeshData_Face.hxx>
 #include <IMeshData_Wire.hxx>
@@ -3040,6 +3041,8 @@ static std::string topology_signature(const TopoDS_Shape& shape) {
 
 class TangentBoundaryMeshContext : public BRepMesh_Context {
  public:
+  const std::string& BoundaryRepairStop() const { return boundary_repair_stop_; }
+
   Standard_Boolean HealModel() override {
     const auto& model = GetModel();
     if (model.IsNull()) return false;
@@ -3137,16 +3140,31 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               wire->UnsetStatus(IMeshData_Failure);
           }
         }
-        if (intersecting_edges.empty() || pass == max_boundary_passes)
+        if (intersecting_edges.empty() || pass == max_boundary_passes) {
+          boundary_repair_stop_ = intersecting_edges.empty()
+              ? "no reported boundary intersections"
+              : "8 pass limit";
+          boundary_repair_stop_ += ", added points " + std::to_string(added_points);
           break;
+        }
         bool inserted = false;
+        bool parameter_mismatch = false, edge_limit = false, point_limit = false;
         for (auto edge : intersecting_edges) {
-          if (!edge->GetSameParam() || !edge->GetSameRange()) continue;
+          if (!edge->GetSameParam() || !edge->GetSameRange()) {
+            parameter_mismatch = true;
+            continue;
+          }
           const auto& points = edge->GetCurve();
           const int count = points->ParametersNb();
-          if (count < 2 || count > (max_edge_points + 1) / 2 ||
-              static_cast<std::size_t>(count - 1) > max_added_points - added_points)
+          if (count < 2) continue;
+          if (count > (max_edge_points + 1) / 2) {
+            edge_limit = true;
             continue;
+          }
+          if (static_cast<std::size_t>(count - 1) > max_added_points - added_points) {
+            point_limit = true;
+            continue;
+          }
           BRepAdaptor_Curve curve(edge->GetEdge());
           bool edge_inserted = false;
           // Refine exact curve samples without replacing the samples already
@@ -3165,7 +3183,14 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (!edge_inserted) continue;
           rebuild_pcurves(edge);
         }
-        if (!inserted) break;
+        if (!inserted) {
+          boundary_repair_stop_ = edge_limit ? "4096 edge point limit"
+              : point_limit ? "65536 added point limit"
+              : parameter_mismatch ? "nonmatching edge parameters"
+              : "no representable midpoint";
+          boundary_repair_stop_ += ", added points " + std::to_string(added_points);
+          break;
+        }
       }
       return Standard_True;
     };
@@ -3322,7 +3347,148 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     }
     return true;
   }
+
+ private:
+  std::string boundary_repair_stop_ = "not run";
 };
+
+static std::string boundary_failure_detail(
+    const IMeshData::IFaceHandle& face, const IMeshTools_Parameters& parameters) {
+  try {
+    BRepMesh_FaceChecker checker(face, parameters);
+    if (checker.Perform()) return ", no reported boundary intersections";
+    const auto& intersections = checker.GetIntersectingEdges();
+    if (intersections.IsNull()) return ", no crossing edge map";
+    struct Edge {
+      IMeshData::IEdgePtr edge;
+      IMeshData::IPCurveHandle pcurve;
+      int wire;
+      int index;
+    };
+    std::vector<Edge> edges;
+    for (int wi = 0; wi < face->WiresNb() && edges.size() < 6; ++wi) {
+      const auto& wire = face->GetWire(wi);
+      for (int ei = 0; ei < wire->EdgesNb() && edges.size() < 6; ++ei) {
+        auto edge = wire->GetEdge(ei);
+        if (!intersections->Contains(edge)) continue;
+        const auto& pcurve = edge->GetPCurve(face.get(), wire->GetEdgeOrientation(ei));
+        if (!pcurve.IsNull() && pcurve->ParametersNb() >= 2)
+          edges.push_back({edge, pcurve, wi, ei});
+      }
+    }
+    std::size_t comparisons = 0;
+    const auto finite_uv = [](const gp_Pnt2d& point) {
+      return std::isfinite(point.X()) && std::isfinite(point.Y());
+    };
+    for (std::size_t a = 0; a < edges.size(); ++a) {
+      for (std::size_t b = a + 1; b < edges.size(); ++b) {
+        const auto& ae = edges[a]; const auto& be = edges[b];
+        for (int ai = 1; ai < ae.pcurve->ParametersNb(); ++ai) {
+          const auto& p = ae.pcurve->GetPoint(ai - 1);
+          const auto& q = ae.pcurve->GetPoint(ai);
+          for (int bi = 1; bi < be.pcurve->ParametersNb(); ++bi) {
+            if (++comparisons > 16000000) return ", crossing diagnostic search limit";
+            const auto& r = be.pcurve->GetPoint(bi - 1);
+            const auto& s = be.pcurve->GetPoint(bi);
+            if (!finite_uv(p) || !finite_uv(q) || !finite_uv(r) || !finite_uv(s))
+              return ", boundary diagnostic found nonfinite UV samples";
+            if (std::max(p.X(), q.X()) < std::min(r.X(), s.X()) ||
+                std::max(r.X(), s.X()) < std::min(p.X(), q.X()) ||
+                std::max(p.Y(), q.Y()) < std::min(r.Y(), s.Y()) ||
+                std::max(r.Y(), s.Y()) < std::min(p.Y(), q.Y())) continue;
+            gp_Pnt2d intersection;
+            if (BRepMesh_GeomTool::IntSegSeg(p.Coord(), q.Coord(), r.Coord(), s.Coord(),
+                    false, false, intersection) != BRepMesh_GeomTool::Cross) continue;
+            if (!finite_uv(intersection))
+              return ", boundary diagnostic found nonfinite intersection";
+            const gp_XY av = q.Coord() - p.Coord(), bv = s.Coord() - r.Coord();
+            const double aa = av.SquareModulus(), bb = bv.SquareModulus();
+            const double dot = av.Dot(bv);
+            if (!std::isfinite(aa) || !std::isfinite(bb) || !std::isfinite(dot) ||
+                aa <= 0.0 || bb <= 0.0) continue;
+            const double cosine = (dot / std::sqrt(aa)) / std::sqrt(bb);
+            if (!std::isfinite(cosine)) continue;
+            const double angle = std::acos(std::clamp(cosine, -1.0, 1.0));
+            if (angle < kPi / 36.0) continue;
+            const double af = (intersection.Coord() - p.Coord()).Dot(av) / av.SquareModulus();
+            const double bf = (intersection.Coord() - r.Coord()).Dot(bv) / bv.SquareModulus();
+            const double at = ae.pcurve->GetParameter(ai - 1) +
+                af * (ae.pcurve->GetParameter(ai) - ae.pcurve->GetParameter(ai - 1));
+            const double bt = be.pcurve->GetParameter(bi - 1) +
+                bf * (be.pcurve->GetParameter(bi) - be.pcurve->GetParameter(bi - 1));
+            if (!std::isfinite(at) || !std::isfinite(bt))
+              return ", boundary diagnostic found nonfinite curve parameters";
+            std::ostringstream detail;
+            detail.precision(12);
+            detail << ", crossing wires/edges " << ae.wire << '/' << ae.index
+                   << ':' << be.wire << '/' << be.index << " segments "
+                   << ai - 1 << ':' << bi - 1 << " UV " << intersection.X()
+                   << ',' << intersection.Y() << " angle deg " << angle * 180.0 / kPi
+                   << " parameters " << at << ':' << bt
+                   << " intervals " << ae.pcurve->GetParameter(ai - 1) << ':'
+                   << ae.pcurve->GetParameter(ai) << '/'
+                   << be.pcurve->GetParameter(bi - 1) << ':' << be.pcurve->GetParameter(bi)
+                   << " segment UV " << p.X() << ',' << p.Y() << ':' << q.X() << ',' << q.Y()
+                   << '/' << r.X() << ',' << r.Y() << ':' << s.X() << ',' << s.Y()
+                   << " face deflection " << face->GetDeflection();
+            const gp_Pnt cross_point = face->GetSurface()->Value(intersection.X(), intersection.Y());
+            TopoDS_Vertex vertex;
+            const bool has_vertex = TopExp::CommonVertex(ae.edge->GetEdge(), be.edge->GetEdge(), vertex);
+            if (has_vertex) {
+              detail << " vertex distance/tolerance mm "
+                     << cross_point.Distance(BRep_Tool::Pnt(vertex)) << '/'
+                     << BRep_Tool::Tolerance(vertex);
+            }
+            for (const auto& item : {std::make_pair(ae, at), std::make_pair(be, bt)}) {
+              const auto& edge = item.first;
+              const auto& pc = edge.pcurve;
+              detail << "; edge " << edge.index << " orientation " << pc->GetOrientation()
+                     << " same param/range " << edge.edge->GetSameParam() << '/'
+                     << edge.edge->GetSameRange() << " tolerance mm "
+                     << BRep_Tool::Tolerance(edge.edge->GetEdge());
+              if (!edge.edge->GetSameParam() || !edge.edge->GetSameRange()) continue;
+              BRepAdaptor_Curve native(edge.edge->GetEdge());
+              BRepAdaptor_Curve on_face(
+                  TopoDS::Edge(edge.edge->GetEdge().Oriented(pc->GetOrientation())), face->GetFace());
+              const auto& exact_pc = on_face.CurveOnSurface().GetCurve();
+              detail << " endpoints";
+              for (int index : {0, pc->ParametersNb() - 1}) {
+                const auto& uv = pc->GetPoint(index);
+                const double t = pc->GetParameter(index);
+                if (!finite_uv(uv) || !std::isfinite(t))
+                  return ", boundary diagnostic found nonfinite endpoint";
+                const auto native_uv = exact_pc->Value(t);
+                if (!finite_uv(native_uv))
+                  return ", boundary diagnostic found nonfinite source endpoint";
+                const auto native_point = native.Value(t);
+                detail << " [" << t << " UV " << uv.X() << ',' << uv.Y()
+                       << " sourceUV " << native_uv.X() << ',' << native_uv.Y()
+                       << " shift/error mm "
+                       << face->GetSurface()->Value(uv.X(), uv.Y()).Distance(
+                              face->GetSurface()->Value(native_uv.X(), native_uv.Y())) << '/'
+                       << face->GetSurface()->Value(uv.X(), uv.Y()).Distance(native_point) << ']';
+              }
+              const auto native_uv = exact_pc->Value(item.second);
+              if (!finite_uv(native_uv))
+                return ", boundary diagnostic found nonfinite source intersection";
+              const auto native_point = native.Value(item.second);
+              detail << " crossing chord/source error mm " << cross_point.Distance(native_point)
+                     << '/' << face->GetSurface()->Value(native_uv.X(), native_uv.Y()).Distance(native_point);
+              if (has_vertex)
+                detail << " native vertex distance mm " << native_point.Distance(BRep_Tool::Pnt(vertex));
+            }
+            return detail.str().substr(0, 2400);
+          }
+        }
+      }
+    }
+    return ", no different-edge crossing found in diagnostic scope";
+  } catch (const Standard_Failure&) {
+    return ", boundary diagnostic unavailable (OCCT failure)";
+  } catch (const std::exception&) {
+    return ", boundary diagnostic unavailable (native exception)";
+  }
+}
 
 static FfiMesh mesh_shape(std::uint64_t body_id,
                           const TopoDS_Shape& shape,
@@ -3503,7 +3669,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   mesher.ChangeParameters().Deflection = linear;
   mesher.ChangeParameters().Angle = angular;
   mesher.ChangeParameters().InParallel = true;
-  Handle(IMeshTools_Context) context = new TangentBoundaryMeshContext();
+  auto* boundary_context = new TangentBoundaryMeshContext();
+  Handle(IMeshTools_Context) context = boundary_context;
   mesher.Perform(context, range);
   if (budget) budget->progress->check("meshing");
 
@@ -3555,7 +3722,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
             diagnostic << ", surface "
                        << surface_name(discrete_face->GetSurface()->GetType())
                        << ", face status " << discrete_face->GetStatusMask()
-                       << ", wires " << discrete_face->WiresNb();
+                       << ", wires " << discrete_face->WiresNb()
+                       << ", boundary repair " << boundary_context->BoundaryRepairStop();
             int reported_edges = 0;
             for (int wi = 0; wi < std::min(2, discrete_face->WiresNb()); ++wi) {
               const auto& wire = discrete_face->GetWire(wi);
@@ -3568,6 +3736,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
                 diagnostic << ' ' << (pcurve.IsNull() ? 0 : pcurve->ParametersNb());
               }
             }
+            diagnostic << boundary_failure_detail(discrete_face, context->GetParameters());
             break;
           }
         }

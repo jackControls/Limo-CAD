@@ -1,7 +1,7 @@
 # Native transition status
 
 Release qualification checkpoint: **2026-10-06 UTC**, with the local UI walkthrough
-updated **2026-10-07 UTC**. The default desktop on the Bevy integration branch
+updated **2026-10-08 UTC**. The default desktop on the Bevy integration branch
 uses **Bevy `=0.20.0-rc.2`**, application version **0.2.2**, one native host and
 one shared CAD/CAM command path. The integration is tracked by
 [PR #124](https://github.com/jackControls/Limo-CAD/pull/124) and has not merged
@@ -43,8 +43,10 @@ second after an accepted activation request, then rechecks process/document/wind
 ownership and actual foreground state. Its native-control build check and full
 native desktop build pass. The fixes were deployed from clean `2e98c2f5`; the
 reopened bench reports a matched GUI/MCP pair. Genuine Windows foreground denials
-remain correctly rejected; the accepted-activation branch and physical pointer
-qualification still need live UI verification.
+remain correctly rejected. On October 8, an accepted guarded activation on clean
+`75a04561` was followed by a fresh foreground=true observation and a physical
+click selecting the bench tab. This qualifies that accepted activation and
+pointer sequence; it does not establish universal focus or gesture timing.
 
 The user-reported `Medix_KW22_v4.STEP` import reached OCCT transfer, then failed
 with "could not discretize tangential face boundaries without crossing chords".
@@ -77,8 +79,11 @@ only edges reported by OCCT's boundary-intersection checker, evaluates added
 points on the exact curves, preserves healed UV endpoints and rechecks adjacent
 faces. It is bounded to eight passes, 4,096 points per edge and 65,536 added
 points per model. Strict rejection of unresolved nonzero faces remains. This
-candidate awaits a native build and physical import retry; successful Medix
-import is not yet established.
+candidate built and was physically retried from clean `ef4c3422`. The same face
+still failed with status 70 and edge sample counts 2,689, 11 and 2,177. Refinement
+alone did not resolve it; successful Medix import is not yet established.
+Further investigation measures the actual UV crossing and its physical distance
+from the shared vertex before changing boundary connection behavior.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
