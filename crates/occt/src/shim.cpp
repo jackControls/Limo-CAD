@@ -4589,28 +4589,42 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       }
       // Removing exactly b changes the oriented boundary by triangle (a,b,c).
       // Both full polygons must be simple; all other chart edges stay unchanged.
-      const auto simple_area = [&](const std::vector<int>& polygon,double& area) {
-        if (polygon.size()<3) return false;
+      const auto simple_area = [&](const std::vector<int>& polygon,double& area,const char* chart) {
+        const auto reject = [&](const std::string& reason) {
+          strip_stop_ = std::string("native pole ")+chart+" chart "+reason; return false;
+        };
+        if (polygon.size()<3) return reject("has fewer than three nodes");
         area = 0.0; const auto origin = mesh->UVNode(polygon.front()).Coord();
         for (std::size_t i = 0; i < polygon.size(); ++i) {
           const auto p = mesh->UVNode(polygon[i]), q = mesh->UVNode(polygon[(i+1)%polygon.size()]);
-          if (!strip_finite(p) || !strip_finite(q) || p.Distance(q)<=Precision::PConfusion()) return false;
+          if (!strip_finite(p) || !strip_finite(q) || p.Distance(q)<=Precision::PConfusion())
+            return reject("nonfinite/degenerate segment "+std::to_string(polygon[i])+"/"+
+                std::to_string(polygon[(i+1)%polygon.size()]));
           area += 0.5*(p.Coord()-origin).Crossed(q.Coord()-origin);
           for (std::size_t j = i+1; j < polygon.size(); ++j) {
-            if (++pole_certificate_work_ > 2097152) return false;
+            if (++pole_certificate_work_ > 2097152) return reject("exceeded certificate work budget");
             gp_Pnt2d intersection;
             const auto flag = BRepMesh_GeomTool::IntSegSeg(p.Coord(),q.Coord(),mesh->UVNode(polygon[j]).Coord(),
                 mesh->UVNode(polygon[(j+1)%polygon.size()]).Coord(),true,true,intersection);
             const bool adjacent = j==i+1 || (i==0 && j+1==polygon.size());
-            if (flag!=BRepMesh_GeomTool::NoIntersection && !(adjacent && flag==BRepMesh_GeomTool::EndPointTouch)) return false;
+            if (flag!=BRepMesh_GeomTool::NoIntersection && !(adjacent && flag==BRepMesh_GeomTool::EndPointTouch)) {
+              std::ostringstream detail; detail.precision(9);
+              detail << "intersection status " << static_cast<int>(flag) << " segments " << polygon[i] << '/' <<
+                  polygon[(i+1)%polygon.size()] << " and " << polygon[j] << '/' << polygon[(j+1)%polygon.size()] <<
+                  " at " << intersection.X() << '/' << intersection.Y();
+              return reject(detail.str());
+            }
           }
         }
-        return std::isfinite(area) && area>0.0;
+        if (!std::isfinite(area) || area==0.0) return reject("has nonfinite/zero signed area");
+        return true;
       };
       double source_area,quotient_area;
-      if (!simple_area(original,source_area) || !simple_area(quotient,quotient_area)) {
-        strip_stop_ = "native pole source/quotient chart is not a certified simple outer boundary"; return false;
+      if (!simple_area(original,source_area,"source") || !simple_area(quotient,quotient_area,"quotient")) return false;
+      if (std::signbit(source_area)!=std::signbit(quotient_area)) {
+        strip_stop_ = "native pole quotient reverses the source chart winding"; return false;
       }
+      const double chart_winding = std::signbit(quotient_area) ? -1.0 : 1.0;
       const auto auv = mesh->UVNode(a), buv = mesh->UVNode(b), cuv = mesh->UVNode(c);
       const double wedge_area = 0.5*(buv.Coord()-auv.Coord()).Crossed(cuv.Coord()-auv.Coord());
       // Bound subtraction and polygon accumulation using the stored chart's
@@ -4695,8 +4709,12 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         gp_Dir source_normal; gp_Pnt source_point;
         sample_stop = "undefined source normal";
         if (!BRepMesh_GeomTool::Normal(saved.face->GetSurface(),parameter.X(),parameter.Y(),source_point,source_normal)) return false;
+        // The chart may wind in either direction. Compare the actual facet
+        // normals with the source normal oriented by that same certified
+        // winding; retaining its sign is independent of physical face reversal.
+        const gp_Vec oriented_source_normal=gp_Vec(source_normal)*chart_winding;
         const double angle=std::max({reference_normal.Angle(source_normal),
-            normal.Angle(gp_Vec(source_normal)),float_normal.Angle(gp_Vec(source_normal))});
+            normal.Angle(oriented_source_normal),float_normal.Angle(oriented_source_normal)});
         max_angle=std::max(max_angle,angle);
         sample_stop = "actual facet angular budget";
         return std::isfinite(angle) && angle<=angular;
