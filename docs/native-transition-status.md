@@ -28,11 +28,11 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `fc275793` opens the complete
+Current October 8 Medix qualification: clean matched `51cb7479` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
-536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 8 invalid
-boundary links and no multiply used links across 33 native shells. Restoring
+536 × 327.47 × 48 mm. Actual GUI 3MF and STL exports now pass the native
+source-precision and oriented-closure checks across 33 native shells. Restoring
 the original split policy recovers the 37 repaired faces lost by the earlier
 lookahead regression to 72 links. Connector caps and
 independent pole proposals now qualify. A bounded fallback to the earlier
@@ -51,14 +51,21 @@ UV coordinates. Using retained station coordinates for range checks and pairing
 the shared apex after native vertex/world identity, coordinate-roundoff and
 source-precision certificates qualifies both rail repairs and all affected
 owners: two accepted transactions insert 22 native stations, reducing 16 links
-to 8. Only native face groups 7146/7147/7279 and 7236/7237/7254 remain. Their
-connectivity recovery is still under investigation. The next copied trial seeds
-a complete constrained native-boundary disk before the existing conformal
-source-precision refinement; every native station and final source/pole/domain/
-closure check remains. GUI qualification is pending.
-All 70 installed payload hashes match the clean manifest. No successful 3MF or
-native-precision-qualified STL is claimed. The Medix notes below record earlier
-trials; they do not supersede this current qualification.
+to 8. A complete constrained native-boundary seed then repairs the two remaining
+six-edge rational B-spline patches, without artificial star spokes. Every native
+station and final source/pole/domain/closure check remains.
+All 70 installed payload hashes match the clean manifest. The actual portable
+3MF has 227,034 vertices, 454,572 triangles, zero zero-area triangles and zero
+invalid directed-edge links. The actual ASCII STL has the same 454,572 facets,
+zero nonfinite or degenerate facets and zero opposing normals. Every ordered
+vertex coordinate matches exactly between the exported formats. The original
+STEP hash and live/saved CAD model are unchanged. See the
+[manual export evidence](qualification/medix-kw22-native-human-ui-20261008.json).
+Three default-bed layout issues remain because the preserved 536 mm import is
+below and larger than that bed; portable export deliberately retains its original
+placement. This does not qualify physical printing. These results qualify the
+local Windows GUI path; the complete three-model walkthrough remains unfinished.
+The Medix notes below record earlier trials and do not supersede this result.
 
 The subsequent clean matched `35722a50` GUI export still reports 86 unmatched
 links. Three continuous source intersections are now qualified, but the thin
