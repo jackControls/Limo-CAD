@@ -46,6 +46,7 @@ pub(crate) struct TabSummary {
 #[derive(Default)]
 pub(crate) struct DocumentWorkspace {
     tabs: Vec<Tab>,
+    initial_publication_pending: bool,
 }
 
 /// Owned bytes may be written off the UI thread. Dropping cancelled work also
@@ -150,12 +151,20 @@ impl DocumentWorkspace {
         if self.tabs.is_empty()
             && engine.active_project_session_id() == crate::state::BOOTSTRAP_SESSION_ID
         {
+            self.initial_publication_pending = true;
             let id = uuid::Uuid::new_v4().to_string();
             parse_engine_envelope(bridge.with_project_session_transition(window, engine, || {
                 engine.bind_project_session(&id)
             }))?;
         }
         let owner = bridge.native_document_context(window, engine)?;
+        if self.initial_publication_pending {
+            // Rebinding retains the startup session, but its published metadata
+            // still names the bootstrap document. Publish the real owner before
+            // exposing the first tab; retain this obligation if storage fails.
+            bridge.publish_native_document(engine, &owner, "solid")?;
+            self.initial_publication_pending = false;
+        }
         let (receipt, name, file_epoch) = {
             let publishers = bridge
                 .publishers
