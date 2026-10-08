@@ -3196,13 +3196,24 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 const auto auv = af.CurveOnSurface().GetCurve()->Value(at);
                 const auto buv = bf.CurveOnSurface().GetCurve()->Value(bt);
                 if (!finite_uv(auv) || !finite_uv(buv)) continue;
+                const double aet = ap->GetParameter(ae), bet = bp->GetParameter(be);
+                if (!std::isfinite(aet) || !std::isfinite(bet)) continue;
+                const auto aeuv = af.CurveOnSurface().GetCurve()->Value(aet);
+                const auto beuv = bf.CurveOnSurface().GetCurve()->Value(bet);
+                if (!finite_uv(aeuv) || !finite_uv(beuv)) continue;
                 const double ad = face->GetSurface()->Value(auv.X(), auv.Y()).Distance(ac.Value(at));
                 const double bd = face->GetSurface()->Value(buv.X(), buv.Y()).Distance(bc.Value(bt));
+                const double aed = face->GetSurface()->Value(aeuv.X(), aeuv.Y()).Distance(ac.Value(aet));
+                const double bed = face->GetSurface()->Value(beuv.X(), beuv.Y()).Distance(bc.Value(bet));
                 const double crossing_distance = face->GetSurface()->Value(uv.X(), uv.Y()).Distance(center);
+                // Include the measured source representation error at this
+                // junction, always bounded by its edge's existing tolerance.
                 if (!std::isfinite(ad) || !std::isfinite(bd) ||
+                    !std::isfinite(aed) || !std::isfinite(bed) ||
                     !std::isfinite(crossing_distance) || ad > a_tolerance || bd > b_tolerance ||
+                    aed > a_tolerance || bed > b_tolerance ||
                     crossing_distance >
-                        vertex_tolerance + std::max({ad, bd, Precision::Confusion()})) continue;
+                        vertex_tolerance + std::max({ad, bd, aed, bed, Precision::Confusion()})) continue;
                 const auto near_vertex_path = [&](IMeshData::IEdgePtr edge, int end, int segment) {
                   const auto& curve = edge->GetCurve();
                   const int first = end == 0 ? 1 : segment;
@@ -3707,7 +3718,9 @@ static std::string boundary_failure_detail(
                        << " shift/error mm "
                        << face->GetSurface()->Value(uv.X(), uv.Y()).Distance(
                               face->GetSurface()->Value(native_uv.X(), native_uv.Y())) << '/'
-                       << face->GetSurface()->Value(uv.X(), uv.Y()).Distance(native_point) << ']';
+                       << face->GetSurface()->Value(uv.X(), uv.Y()).Distance(native_point)
+                       << " source error mm "
+                       << face->GetSurface()->Value(native_uv.X(), native_uv.Y()).Distance(native_point) << ']';
               }
               const auto native_uv = exact_pc->Value(item.second);
               if (!finite_uv(native_uv))
