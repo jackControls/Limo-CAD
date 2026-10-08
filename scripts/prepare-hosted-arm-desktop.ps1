@@ -166,17 +166,18 @@ function Close-ObservedShellWindows {
     }
 }
 
-function Get-WslTerminalWindow([IntPtr]$window) {
+function Get-HostedTerminalWindow([IntPtr]$window) {
     if (-not [HostedArmAccountWindow]::IsWindowVisible($window)) { return $null }
     $identity = Get-CoveringWindowIdentity $window
     $expectedTitle = Join-Path $env:WINDIR 'System32\wsl.exe'
     if ($identity.class -cne 'CASCADIA_HOSTING_WINDOW_CLASS' -or
-        -not [string]::Equals($identity.title, $expectedTitle, [StringComparison]::OrdinalIgnoreCase)) {
+        ($identity.title -cne 'Terminal' -and
+         -not [string]::Equals($identity.title, $expectedTitle, [StringComparison]::OrdinalIgnoreCase))) {
         return $null
     }
     $executable = $identity.executable
     if ([string]::IsNullOrEmpty($executable) -or [string]::IsNullOrEmpty($env:ProgramFiles)) {
-        throw 'Cannot establish the hosted WSL terminal executable identity'
+        throw 'Cannot establish the hosted runner terminal executable identity'
     }
     if ($executable.StartsWith('\\?\', [StringComparison]::Ordinal)) { $executable = $executable.Substring(4) }
     $executable = [IO.Path]::GetFullPath($executable)
@@ -184,40 +185,41 @@ function Get-WslTerminalWindow([IntPtr]$window) {
     if ($identity.process_name -cne 'WindowsTerminal' -or
         -not $executable.StartsWith($packageRoot, [StringComparison]::OrdinalIgnoreCase) -or
         $executable.Substring($packageRoot.Length) -cnotmatch '^Microsoft\.WindowsTerminal_\d+\.\d+\.\d+\.\d+_arm64__8wekyb3d8bbwe[\\/]WindowsTerminal\.exe$') {
-        throw 'Refusing a WSL terminal outside its Microsoft ARM64 WindowsApps package'
+        throw 'Refusing a terminal outside its Microsoft ARM64 WindowsApps package'
     }
     $identity
 }
 
-function Hide-ObservedWslTerminalWindows {
-    # The ARM64 runner image can open a WSL update prompt after GUI readiness:
+function Hide-ObservedHostedTerminalWindows {
+    # The ARM64 runner image can open a WSL update prompt after GUI readiness,
+    # including a Terminal window with the application's default title:
     # https://github.com/actions/runner-images/issues/14264
     # Hide that exact observed window; leave the terminal and update running.
     $candidates = [Collections.Generic.List[object]]::new()
     $seen = [Collections.Generic.HashSet[long]]::new()
     foreach ($observed in @($Window, [HostedArmAccountWindow]::GetForegroundWindow().ToInt64())) {
         if ($observed -eq 0 -or -not $seen.Add($observed)) { continue }
-        $candidate = Get-WslTerminalWindow ([IntPtr]::new($observed))
+        $candidate = Get-HostedTerminalWindow ([IntPtr]::new($observed))
         if ($null -ne $candidate) { $candidates.Add($candidate) }
     }
     $report.terminal_windows = @($report.terminal_windows) + @($candidates.ToArray())
     foreach ($candidate in $candidates) {
         $window = [IntPtr]::new($candidate.hwnd)
-        $current = Get-WslTerminalWindow $window
+        $current = Get-HostedTerminalWindow $window
         if ($null -eq $current -or $current.process_id -ne $candidate.process_id -or
             $current.title -cne $candidate.title -or $current.process_name -cne $candidate.process_name -or
             -not [string]::Equals($current.executable, $candidate.executable, [StringComparison]::OrdinalIgnoreCase)) {
-            throw 'WSL terminal identity changed before runner preparation; nothing was sent'
+            throw 'Terminal identity changed before runner preparation; nothing was sent'
         }
         if (-not [HostedArmAccountWindow]::ShowWindowAsync($window, 0)) {
-            throw 'The verified hosted WSL terminal refused SW_HIDE'
+            throw 'The verified hosted runner terminal refused SW_HIDE'
         }
         $deadline = [DateTime]::UtcNow.AddSeconds(2)
         while ([HostedArmAccountWindow]::IsWindowVisible($window)) {
             [uint32]$owner = 0
             [void][HostedArmAccountWindow]::GetWindowThreadProcessId($window, [ref]$owner)
-            if ($owner -ne $candidate.process_id) { throw 'WSL terminal owner changed while waiting for SW_HIDE' }
-            if ([DateTime]::UtcNow -ge $deadline) { throw 'The hosted WSL terminal remained visible after SW_HIDE' }
+            if ($owner -ne $candidate.process_id) { throw 'Terminal owner changed while waiting for SW_HIDE' }
+            if ([DateTime]::UtcNow -ge $deadline) { throw 'The hosted runner terminal remained visible after SW_HIDE' }
             Start-Sleep -Milliseconds 50
         }
         $candidate | Add-Member -NotePropertyName method -NotePropertyValue 'SW_HIDE'
@@ -230,7 +232,7 @@ $report = [ordered]@{
     runner_arch = $env:RUNNER_ARCH
     status = 'inspecting'
     started_utc = [DateTime]::UtcNow.ToString('o')
-    method = 'WM_CLOSE to exactly matched account/Start/Search windows; verified Start/Search fallback and exact WSL terminal SW_HIDE; no input, account action or process termination'
+    method = 'WM_CLOSE to exactly matched account/Start/Search windows; verified Start/Search fallback and Microsoft ARM64 Terminal SW_HIDE; no input, account action or process termination'
     windows = @()
     shell_windows = @()
     terminal_windows = @()
@@ -254,7 +256,7 @@ try {
         }
     } else {
     Close-ObservedShellWindows
-    Hide-ObservedWslTerminalWindows
+    Hide-ObservedHostedTerminalWindows
     $accountWindows = [Collections.Generic.List[object]]::new()
     $inspectionErrors = [Collections.Generic.List[string]]::new()
 
@@ -333,7 +335,7 @@ try {
     # Closing the account dialog may reveal a different foreground shell.
     # Qualify that observed window before the fixture requests CAD focus.
     Close-ObservedShellWindows
-    Hide-ObservedWslTerminalWindows
+    Hide-ObservedHostedTerminalWindows
     }
 } catch {
     $report.status = 'failed'

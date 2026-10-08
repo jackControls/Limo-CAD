@@ -11,9 +11,20 @@ $executable = Join-Path $PackageDirectory 'Limo-CAD.exe'
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw "Missing package: $executable" }
 
 
+$prepareDesktop = Join-Path $PSScriptRoot 'prepare-hosted-arm-desktop.ps1'
+$check = {
+  if ($env:RUNNER_ARCH -eq 'ARM64') {
+    New-Item -ItemType Directory -Path $DiagnosticsDirectory -Force | Out-Null
+    & $prepareDesktop -EvidencePath (Join-Path $DiagnosticsDirectory 'runner-account-dialog.json')
+  }
+  & cargo run --quiet --locked -p xtask --features native-control-harness -- test-mcp native-platform --desktop-input --server $executable --out (Join-Path $DiagnosticsDirectory 'native-platform')
+  if ($LASTEXITCODE -ne 0) { throw 'Packaged native input verification failed' }
+}.GetNewClosure()
+
+& pwsh -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'ci/arm-runner-wsl-isolation.test.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'WSL isolation regression tests failed' }
 if ($env:RUNNER_ARCH -eq 'ARM64') {
-  New-Item -ItemType Directory -Path $DiagnosticsDirectory -Force | Out-Null
-  & (Join-Path $PSScriptRoot 'prepare-hosted-arm-desktop.ps1') -EvidencePath (Join-Path $DiagnosticsDirectory 'runner-account-dialog.json')
+  & (Join-Path $PSScriptRoot 'ci/arm-runner-wsl-isolation.ps1') -EvidencePath (Join-Path $DiagnosticsDirectory 'runner-wsl-isolation.json') -Action $check
+} else {
+  & $check
 }
-& cargo run --quiet --locked -p xtask --features native-control-harness -- test-mcp native-platform --desktop-input --server $executable --out (Join-Path $DiagnosticsDirectory 'native-platform')
-if ($LASTEXITCODE -ne 0) { throw 'Packaged native input verification failed' }

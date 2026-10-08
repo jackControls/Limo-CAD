@@ -133,16 +133,19 @@ try {
     $env:RUNNER_TEMP = $evidenceRoot
     $env:ProgramFiles = Join-Path $evidenceRoot 'Program Files'
 
-    foreach ($extended in @($false, $true)) {
-        Reset-Windows
-        $value = Add-WslTerminal 100
-        if ($extended) { $value.Executable = '\\?\' + $value.Executable }
-        [HostedArmAccountWindow]::Foreground = 100
-        $report = Invoke-Case ('wsl-terminal-hidden-' + $extended) 'closed' 0
-        if ($value.Visible -or [HostedArmAccountWindow]::Hidden.Count -ne 1 -or
-            $report.terminal_windows.Count -ne 1 -or $report.terminal_windows[0].status -ne 'hidden' -or
-            $report.terminal_windows[0].method -ne 'SW_HIDE') {
-            throw 'The exact WSL terminal must be hidden without closing a process or sending input'
+    foreach ($title in @('wsl', 'Terminal')) {
+        foreach ($extended in @($false, $true)) {
+            Reset-Windows
+            $value = Add-WslTerminal 100
+            if ($title -eq 'Terminal') { $value.Title = 'Terminal' }
+            if ($extended) { $value.Executable = '\\?\' + $value.Executable }
+            [HostedArmAccountWindow]::Foreground = 100
+            $report = Invoke-Case ('terminal-hidden-' + $title + '-' + $extended) 'closed' 0
+            if ($value.Visible -or [HostedArmAccountWindow]::Hidden.Count -ne 1 -or
+                $report.terminal_windows.Count -ne 1 -or $report.terminal_windows[0].status -ne 'hidden' -or
+                $report.terminal_windows[0].method -ne 'SW_HIDE') {
+                throw 'The verified terminal must be hidden without closing a process or sending input'
+            }
         }
     }
 
