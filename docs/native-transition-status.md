@@ -217,6 +217,17 @@ native topology correspondence. Raising a global tolerance would collapse valid
 small facets. Native topology-indexed export remains under development; no
 successful 3MF or physical-print qualification is claimed.
 
+The next clean matched `26a7ea22` uses native shell/vertex/edge identities for
+export indexing and checks native winding before writing. Actual UI 3MF
+preflight exposes a further precision defect at face 3794, triangle 1: ordinary
+nearest-f32 rounding alone reverses this approximately 14-micrometre edge facet
+by 1.649 radians. The same ordered rounded vertices are present at facet 160,565
+in the preceding STL. Its earlier normal check verified stored normals against
+serialized vertices, so that file is now retained only as diagnostic evidence;
+it is not a native-winding-qualified export. A separate f64 export channel and
+precision-preserving text STL path are under development. Display remains at
+zero errors/warnings and the saved source geometry remains unchanged.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,
