@@ -3171,7 +3171,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       if (trial.target->IsSet(IMeshData_Failure) &&
           (trial.target->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Failure)) == 0)
         retry_spherical_face(trial.target, stages.Next());
-      if ((!native_export_recovery_ || triangulate_synchronized_strip(trial)) &&
+      if ((!native_export_recovery_ || (restore_strip_station_nodes(trial) && triangulate_synchronized_strip(trial))) &&
           restore_skipped_strip_nodes(trial,native_export_recovery_) && validate_spherical_strip(trial,native_export_recovery_)) {
         ++strip_successes;
         trial.accepted = true;
@@ -4295,6 +4295,103 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     } catch (const StripRollbackFailure&) { throw; }
       catch (const Standard_Failure&) { return reject("OCCT exception preparing regularized strip"); }
       catch (const std::exception&) { return reject("exception preparing regularized strip"); }
+  }
+
+  // Native meshing may merge close UV stations even though their native
+  // parameters and physical samples are distinct. Restore their correspondence
+  // on copied face meshes, without coalescing source stations or junctions.
+  bool restore_strip_station_nodes(const StripTrial& trial) {
+    try {
+      for (const auto& saved : trial.faces) {
+        const auto face=saved.face;TopLoc_Location location;
+        const auto mesh=BRep_Tool::Triangulation(face->GetFace(),location);
+        if (mesh.IsNull() || !mesh->HasUVNodes() || mesh->NbNodes()>65536) {
+          strip_stop_="strip station owner has no bounded UV mesh";return false;
+        }
+        std::set<int> endpoints,other_constraints;
+        std::map<int,TopoDS_Vertex> endpoint_vertices;
+        std::set<int> ambiguous_vertices;
+        for (int wi=0;wi<face->WiresNb();++wi) {
+          const auto wire=face->GetWire(wi);
+          for (int ei=0;ei<wire->EdgesNb();++ei) {
+            const auto edge=wire->GetEdge(ei);const auto pc=edge->GetPCurve(face,wire->GetEdgeOrientation(ei));
+            if (pc.IsNull() || pc->ParametersNb()<2) { strip_stop_="strip station owner lacks native constraints";return false; }
+            TopoDS_Vertex first,last;TopExp::Vertices(edge->GetEdge(),first,last);
+            for (int index : {0,pc->ParametersNb()-1}) {
+              const int id=pc->GetIndex(index);endpoints.insert(id);
+              const auto vertex=index==0 ? first : last;
+              const auto found=endpoint_vertices.find(id);
+              if (vertex.IsNull() || (found!=endpoint_vertices.end() && !found->second.IsSame(vertex))) ambiguous_vertices.insert(id);
+              else endpoint_vertices[id]=vertex;
+            }
+            const bool shared=std::any_of(trial.edges.begin(),trial.edges.end(),[&](const StripEdge& item) { return item.edge==edge; });
+            if (!shared) for (int i=1;i+1<pc->ParametersNb();++i) other_constraints.insert(pc->GetIndex(i));
+          }
+        }
+        struct Station { IMeshData::IPCurveHandle pc;int index,old;gp_Pnt2d uv;gp_Pnt point;double budget;bool endpoint; };
+        std::vector<Station> stations;std::map<int,std::vector<std::size_t>> groups;
+        for (const auto& edge : trial.edges) for (const auto& pc : edge.pcurves) {
+          if (pc.curve->GetFace()!=face) continue;
+          const auto curve=edge.edge->GetCurve();
+          if (pc.curve->ParametersNb()!=curve->ParametersNb() || curve->ParametersNb()>256) {
+            strip_stop_="strip station owner parameter correspondence";return false;
+          }
+          for (int i=0;i<curve->ParametersNb();++i) {
+            if (++export_boundary_work_>2097152) { strip_stop_="strip station reconstruction work budget";return false; }
+            const int old=pc.curve->GetIndex(i);
+            const auto uv=pc.curve->GetPoint(i);const auto point=curve->GetPoint(i);
+            const double budget=std::min(GetParameters().Deflection/4.0,
+                BRep_Tool::Tolerance(edge.edge->GetEdge())+BRep_Tool::Tolerance(face->GetFace()));
+            if (old<1 || old>mesh->NbNodes() || !strip_finite(uv) || !strip_finite(point) || !std::isfinite(budget) || budget<=0.0) {
+              strip_stop_="strip station reconstruction invalid index/point/budget";return false;
+            }
+            const bool endpoint=i==0 || i+1==curve->ParametersNb();
+            if (endpoint && (ambiguous_vertices.count(old) || !endpoints.count(old) ||
+                mesh->Node(old).Transformed(location.Transformation()).Distance(point)>Precision::Confusion() ||
+                mesh->UVNode(old).Distance(uv)>Precision::PConfusion())) {
+              strip_stop_="strip station native endpoint ownership/correspondence";return false;
+            }
+            groups[old].push_back(stations.size());stations.push_back({pc.curve,i,old,uv,point,budget,endpoint});
+          }
+        }
+        const auto replacement=mesh->Copy();
+        for (const auto& group : groups) {
+          const int old=group.first;bool native_endpoint=endpoints.count(old)!=0;
+          std::size_t retained=stations.size();double best=std::numeric_limits<double>::infinity();
+          const auto old_point=mesh->Node(old).Transformed(location.Transformation());const auto old_uv=mesh->UVNode(old);
+          if (!strip_finite(old_point) || !strip_finite(old_uv)) { strip_stop_="strip station original node is nonfinite";return false; }
+          for (std::size_t index : group.second) {
+            const auto& station=stations[index];
+            if (station.endpoint) continue;
+            if (native_endpoint || other_constraints.count(old)) continue;
+            const auto before=face->GetSurface()->Value(old_uv.X(),old_uv.Y());
+            const auto after=face->GetSurface()->Value(station.uv.X(),station.uv.Y());
+            const double shift=old_point.Distance(station.point),chart_shift=before.Distance(after);
+            if (!strip_finite(before) || !strip_finite(after) || !std::isfinite(shift) || !std::isfinite(chart_shift) ||
+                shift>station.budget || chart_shift>station.budget) continue;
+            if (shift+chart_shift<best) { best=shift+chart_shift;retained=index; }
+          }
+          for (std::size_t index : group.second) {
+            auto& station=stations[index];
+            if (station.endpoint) continue;
+            int node=old;
+            if (index!=retained) {
+              if (replacement->NbNodes()>=65536) { strip_stop_="strip station reconstructed node budget";return false; }
+              node=replacement->NbNodes()+1;replacement->ResizeNodes(node,true);
+            }
+            const auto local=station.point.Transformed(location.Transformation().Inverted());
+            const auto represented=local.Transformed(location.Transformation());
+            if (!strip_finite(local) || !strip_finite(represented) || represented.Distance(station.point)>Precision::Confusion()) {
+              strip_stop_="strip station local/world correspondence";return false;
+            }
+            replacement->SetNode(node,local);replacement->SetUVNode(node,station.uv);station.pc->GetIndex(station.index)=node;
+          }
+        }
+        replacement->RemoveNormals();replacement->ComputeNormals();BRep_Builder().UpdateFace(face->GetFace(),replacement);
+      }
+      return true;
+    } catch (const Standard_Failure&) { strip_stop_="OCCT exception reconstructing native strip stations";return false; }
+      catch (const std::exception&) { strip_stop_="exception reconstructing native strip stations";return false; }
   }
 
   bool triangulate_synchronized_strip(const StripTrial& trial) {
