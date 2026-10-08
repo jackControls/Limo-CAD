@@ -84,6 +84,7 @@
 #include <Interface_Static.hxx>
 #include <Interface_HArray1OfHAsciiString.hxx>
 #include <Poly_Triangulation.hxx>
+#include <Poly_PolygonOnTriangulation.hxx>
 #include <OSD_Environment.hxx>
 #include <STEPControl_StepModelType.hxx>
 #include <STEPControl_Reader.hxx>
@@ -5604,6 +5605,152 @@ static std::string boundary_failure_detail(
   }
 }
 
+// Export indexing follows native topology, not coordinate proximity. Two
+// contacting shells can have identical coordinates and still distinct vertices.
+class NativeExportIndex {
+ public:
+  using Key = std::array<int,4>; // shell, kind (face/vertex/edge), shape, sample
+  struct Node { Key key; double tolerance; };
+  struct Sample { std::uint32_t index; gp_Pnt point; };
+  NativeExportIndex(const TopoDS_Shape& shape, const TopTools_IndexedMapOfShape& edges, double deflection)
+      : edges_(edges), deflection_(deflection) {
+    TopExp::MapShapes(shape,TopAbs_SHELL,shells_);
+    TopExp::MapShapes(shape,TopAbs_VERTEX,vertices_);
+    TopExp::MapShapesAndUniqueAncestors(shape,TopAbs_FACE,TopAbs_SHELL,face_shells_,false);
+    closed_ = shells_.Extent()>0;
+    for (int si=1;si<=shells_.Extent();++si) closed_ &= BRep_Tool::IsClosed(shells_.FindKey(si));
+  }
+  std::vector<Node> face_nodes(const TopoDS_Face& face, int face_index,
+                              const Handle(Poly_Triangulation)& mesh, const TopLoc_Location& location) {
+    int owner = -face_index-1; // A standalone surface has no shared shell owner.
+    if (face_shells_.Contains(face)) {
+      const auto& shells = face_shells_.FindFromKey(face);
+      if (shells.Extent()>1) fail(face_index,"face has multiple native shell owners");
+      if (shells.Extent()==1) owner = shells_.FindIndex(shells.First());
+    }
+    if (owner<0) closed_=false;
+    if (mesh->NbNodes()>1000000 || (node_work_+=mesh->NbNodes())>8000000)
+      fail(face_index,"native node budget exceeded");
+    std::vector<Node> nodes(mesh->NbNodes()+1);
+    for (int ni=1;ni<=mesh->NbNodes();++ni) nodes[ni]={{owner,0,face_index,ni},0.0};
+    const auto assign = [&](int id,const Key& key,double tolerance) {
+      if (id<1 || id>mesh->NbNodes() || !std::isfinite(tolerance) || tolerance<0.0)
+        fail(face_index,"invalid boundary node/tolerance");
+      if (nodes[id].key[1]!=0 && nodes[id].key!=key)
+        fail(face_index,"node "+std::to_string(id)+" has conflicting native vertex/edge identities");
+      nodes[id]={key,tolerance};
+    };
+    // Keep oriented occurrences: a seam has two polygons on the same face.
+    for (TopExp_Explorer explorer(face,TopAbs_EDGE);explorer.More();explorer.Next()) {
+      const auto edge=TopoDS::Edge(explorer.Current());
+      const int ei=edges_.FindIndex(edge);
+      const auto polygon=BRep_Tool::PolygonOnTriangulation(edge,mesh,location);
+      if (ei<=0 || polygon.IsNull() || polygon->NbNodes()<2 || polygon->NbNodes()>65536)
+        fail(face_index,"edge "+std::to_string(ei-1)+" has no bounded native boundary polygon");
+      TopoDS_Vertex first,last; TopExp::Vertices(edge,first,last,false);
+      if (first.IsNull() || last.IsNull()) fail(face_index,"edge "+std::to_string(ei-1)+" lacks native endpoints");
+      if (BRep_Tool::Degenerated(edge)) {
+        if (polygon->NbNodes()!=2 || !first.IsSame(last))
+          fail(face_index,"native degenerate edge "+std::to_string(ei-1)+" has ambiguous pole ownership");
+        const int vi=vertices_.FindIndex(first);
+        if (vi<=0) fail(face_index,"native pole vertex is absent from shape");
+        assign(polygon->Node(1),{owner,1,vi,0},BRep_Tool::Tolerance(first));
+        assign(polygon->Node(2),{owner,1,vi,0},BRep_Tool::Tolerance(first));
+        continue;
+      }
+      if (!polygon->HasParameters() || !BRep_Tool::SameParameter(edge) || !BRep_Tool::SameRange(edge))
+        fail(face_index,"edge "+std::to_string(ei-1)+" lacks common native sample parameters");
+      double range_first,range_last; BRep_Tool::Range(edge,range_first,range_last);
+      const double parameter_roundoff=128.0*std::numeric_limits<double>::epsilon()*
+          std::max({1.0,std::abs(range_first),std::abs(range_last)});
+      if (!std::isfinite(range_first) || !std::isfinite(range_last) || range_last<=range_first ||
+          !std::isfinite(polygon->Parameter(1)) || !std::isfinite(polygon->Parameter(polygon->NbNodes())) ||
+          std::abs(polygon->Parameter(1)-range_first)>parameter_roundoff ||
+          std::abs(polygon->Parameter(polygon->NbNodes())-range_last)>parameter_roundoff)
+        fail(face_index,"edge "+std::to_string(ei-1)+" has ambiguous endpoint parameter ordering");
+      const auto edge_key=std::make_pair(owner,ei);
+      auto found=edge_parameters_.find(edge_key);
+      if (found==edge_parameters_.end()) {
+        if ((parameter_work_+=polygon->NbNodes())>2000000) fail(face_index,"native edge parameter budget exceeded");
+        std::vector<double> parameters;
+        for (int i=1;i<=polygon->NbNodes();++i) {
+          const double parameter=polygon->Parameter(i);
+          if (!std::isfinite(parameter) || (i>1 && parameter<=parameters.back()))
+            fail(face_index,"edge "+std::to_string(ei-1)+" sample parameters are not strictly ordered");
+          parameters.push_back(parameter);
+        }
+        found=edge_parameters_.emplace(edge_key,std::move(parameters)).first;
+      }
+      if (found->second.size()!=static_cast<std::size_t>(polygon->NbNodes()))
+        fail(face_index,"edge "+std::to_string(ei-1)+" sample count differs across owners: "+
+            std::to_string(found->second.size())+"/"+std::to_string(polygon->NbNodes()));
+      for (int i=1;i<=polygon->NbNodes();++i) {
+        if (!std::isfinite(polygon->Parameter(i)) ||
+            std::abs(polygon->Parameter(i)-found->second[i-1])>parameter_roundoff)
+          fail(face_index,"edge "+std::to_string(ei-1)+" sample "+std::to_string(i)+" native parameters differ");
+        if (i==1 || i==polygon->NbNodes()) {
+          const auto vertex=i==1 ? first : last;
+          const int vi=vertices_.FindIndex(vertex);
+          if (vi<=0) fail(face_index,"native boundary vertex is absent from shape");
+          assign(polygon->Node(i),{owner,1,vi,0},BRep_Tool::Tolerance(vertex));
+        } else {
+          assign(polygon->Node(i),{owner,2,ei,i},BRep_Tool::Tolerance(edge));
+        }
+      }
+    }
+    return nodes;
+  }
+  Sample sample(const Node& node,const gp_Pnt& point,const gp_Dir& normal,FfiMesh& output,int face_index) {
+    const auto found=samples_.find(node.key);
+    if (found!=samples_.end()) {
+      const double gap=found->second.point.Distance(point);
+      if (!std::isfinite(gap) || gap>std::min(node.tolerance,deflection_/16.0)) {
+        std::ostringstream detail; detail.precision(12);
+        detail << "native shared sample kind/shape/slot " << node.key[1] << '/' << node.key[2]-1 << '/' << node.key[3] <<
+            " gap " << gap << " tolerance/precision " << node.tolerance << '/' << deflection_/16.0;
+        fail(face_index,detail.str());
+      }
+      return found->second;
+    }
+    const std::uint32_t index=static_cast<std::uint32_t>(output.positions.size()/3);
+    output.positions.push_back(static_cast<float>(point.X()));
+    output.positions.push_back(static_cast<float>(point.Y()));
+    output.positions.push_back(static_cast<float>(point.Z()));
+    append_vec(output.normals,gp_Vec(normal));
+    const Sample value{index,point}; samples_.emplace(node.key,value); return value;
+  }
+  void validate(const FfiMesh& output) const {
+    // Open surface STL remains supported; 3MF independently requires closure.
+    if (!closed_) return;
+    struct Use { int count=0,balance=0; };
+    std::map<std::pair<std::uint32_t,std::uint32_t>,Use> uses;
+    for (std::size_t i=0;i<output.indices.size();i+=3) for (int j=0;j<3;++j) {
+      const auto a=output.indices[i+j],b=output.indices[i+(j+1)%3];
+      auto& use=uses[{std::min(a,b),std::max(a,b)}]; ++use.count; use.balance+=a<b ? 1 : -1;
+    }
+    std::size_t invalid=0; std::ostringstream details;
+    for (const auto& use : uses) if (use.second.count!=2 || use.second.balance!=0) {
+      if (++invalid<=6) details << " link " << use.first.first << '/' << use.first.second <<
+          " uses/balance " << use.second.count << '/' << use.second.balance;
+    }
+    if (invalid) throw std::runtime_error("Native export topology is not a closed oriented mesh: "+std::to_string(invalid)+
+        " invalid links; "+std::to_string(shells_.Extent())+" native shells."+details.str());
+  }
+ private:
+  [[noreturn]] void fail(int face_index,const std::string& message) const {
+    throw std::runtime_error("Native export topology face "+std::to_string(face_index-1)+": "+message+
+        "; native shells "+std::to_string(shells_.Extent()));
+  }
+  const TopTools_IndexedMapOfShape& edges_;
+  TopTools_IndexedMapOfShape shells_,vertices_;
+  TopTools_IndexedDataMapOfShapeListOfShape face_shells_;
+  std::map<std::pair<int,int>,std::vector<double>> edge_parameters_;
+  std::map<Key,Sample> samples_;
+  double deflection_;
+  bool closed_=false;
+  std::size_t node_work_=0,parameter_work_=0;
+};
+
 static FfiMesh mesh_shape(std::uint64_t body_id,
                           const TopoDS_Shape& shape,
                           double linear_deflection,
@@ -5875,6 +6022,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   context->ChangeParameters().CleanModel = true;
   context->Clean();
   context.Nullify();
+  std::unique_ptr<NativeExportIndex> export_index;
+  if (strict_float_precision) export_index=std::make_unique<NativeExportIndex>(shape,edge_map,linear);
   std::size_t collapsed_float_triangles = 0, nonfinite_float_triangles = 0, unsafe_float_faces = 0;
   std::vector<std::string> float_face_groups, first_float_failures, last_float_failures;
   output.face_edge_offsets.push_back(0);
@@ -5924,6 +6073,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
         static_cast<std::uint32_t>(output.indices.size()));
     std::size_t face_float_failures = 0;
     const gp_Trsf transform = location.Transformation();
+    std::vector<NativeExportIndex::Node> export_nodes;
+    if (export_index) export_nodes=export_index->face_nodes(face,face_index,triangulation,location);
     for (int triangle_index = 1;
          triangle_index <= triangulation->NbTriangles(); ++triangle_index) {
       const Poly_Triangle triangle = triangulation->Triangle(triangle_index);
@@ -5970,18 +6121,76 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
           }
         }
       }
+      gp_Pnt indexed_points[3]; bool indexed_changed=false;
       for (int vertex = 0; vertex < 3; ++vertex) {
         gp_Dir normal = triangulation->Normal(indices[vertex]);
         normal.Transform(transform);
         if (face.Orientation() == TopAbs_REVERSED) {
           normal.Reverse();
         }
-        output.positions.push_back(static_cast<float>(points[vertex].X()));
-        output.positions.push_back(static_cast<float>(points[vertex].Y()));
-        output.positions.push_back(static_cast<float>(points[vertex].Z()));
-        append_vec(output.normals, gp_Vec(normal));
-        output.indices.push_back(
-            static_cast<std::uint32_t>(output.indices.size()));
+        if (export_index) {
+          const auto sample=export_index->sample(export_nodes[indices[vertex]],points[vertex],normal,output,face_index);
+          output.indices.push_back(sample.index);
+          indexed_points[vertex]=gp_Pnt(output.positions[3*sample.index],output.positions[3*sample.index+1],
+              output.positions[3*sample.index+2]);
+          indexed_changed |= indexed_points[vertex].X()!=static_cast<float>(points[vertex].X()) ||
+              indexed_points[vertex].Y()!=static_cast<float>(points[vertex].Y()) ||
+              indexed_points[vertex].Z()!=static_cast<float>(points[vertex].Z());
+        } else {
+          output.positions.push_back(static_cast<float>(points[vertex].X()));
+          output.positions.push_back(static_cast<float>(points[vertex].Y()));
+          output.positions.push_back(static_cast<float>(points[vertex].Z()));
+          append_vec(output.normals, gp_Vec(normal));
+          output.indices.push_back(static_cast<std::uint32_t>(output.indices.size()));
+        }
+      }
+      if (export_index) {
+        const gp_Vec actual_normal=gp_Vec(indexed_points[0],indexed_points[1]).Crossed(
+            gp_Vec(indexed_points[0],indexed_points[2]));
+        const double normal2=actual_normal.SquareMagnitude();
+        const auto reject=[&](const std::string& why) {
+          std::ostringstream diagnostic; diagnostic.precision(12);
+          diagnostic << "Native export topology face " << face_index-1 << " triangle " << triangle_index <<
+              " nodes " << indices[0] << '/' << indices[1] << '/' << indices[2] << ": " << why << "; old/new XYZ";
+          for (int i=0;i<3;++i) diagnostic << " (" << points[i].X() << ',' << points[i].Y() << ',' << points[i].Z() <<
+              ")->(" << indexed_points[i].X() << ',' << indexed_points[i].Y() << ',' << indexed_points[i].Z() << ')';
+          throw std::runtime_error(diagnostic.str());
+        };
+        if (!std::isfinite(normal2) || normal2<=0.0 || actual_normal.Dot(triangle_normal)<=0.0)
+          reject("represented facet collapsed or reversed after native indexing");
+        if (indexed_changed) {
+          const double normal_angle=actual_normal.Angle(triangle_normal);
+          if (!std::isfinite(normal_angle) || normal_angle>angular)
+            reject("native indexing exceeds requested facet angular precision: "+std::to_string(normal_angle));
+          if (!triangulation->HasUVNodes()) reject("changed shared boundary has no source UV precision witness");
+          const gp_Pnt2d uv[3]={triangulation->UVNode(indices[0]),triangulation->UVNode(indices[1]),
+              triangulation->UVNode(indices[2])};
+          // Native estimator samples, not an all-point Hausdorff claim. The
+          // source BRep and triangulation remain untouched by export indexing.
+          const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},
+              {1.0/3,1.0/3,1.0/3}};
+          for (const auto& w : weights) {
+            const double u=w[0]*uv[0].X()+w[1]*uv[1].X()+w[2]*uv[2].X();
+            const double v=w[0]*uv[0].Y()+w[1]*uv[1].Y()+w[2]*uv[2].Y();
+            const gp_Pnt affine(w[0]*indexed_points[0].X()+w[1]*indexed_points[1].X()+w[2]*indexed_points[2].X(),
+                w[0]*indexed_points[0].Y()+w[1]*indexed_points[1].Y()+w[2]*indexed_points[2].Y(),
+                w[0]*indexed_points[0].Z()+w[1]*indexed_points[1].Z()+w[2]*indexed_points[2].Z());
+            if (!std::isfinite(u) || !std::isfinite(v)) reject("nonfinite source UV witness");
+            gp_Pnt source_point; gp_Vec du,dv;
+            surface.D1(u,v,source_point,du,dv);
+            gp_Vec source_normal=du.Crossed(dv);
+            if (face.Orientation()==TopAbs_REVERSED) source_normal.Reverse();
+            const double source_normal2=source_normal.SquareMagnitude();
+            if (!std::isfinite(source_normal2) || source_normal2<=0.0)
+              reject("changed native boundary has no nonsingular source normal witness");
+            const double source_angle=actual_normal.Angle(source_normal);
+            if (!std::isfinite(source_angle) || source_angle>angular)
+              reject("native indexed source sample exceeds requested angle: "+std::to_string(source_angle));
+            const double gap=source_point.Distance(affine);
+            if (!std::isfinite(gap) || gap>linear)
+              reject("native indexed source sample exceeds requested deflection: "+std::to_string(gap));
+          }
+        }
       }
     }
     output.face_index_counts.push_back(
@@ -6022,6 +6231,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
     for (const auto& detail : last_float_failures) diagnostic << "; " << detail;
     throw std::runtime_error(diagnostic.str());
   }
+  if (export_index) export_index->validate(output);
   output.edge_point_offsets.push_back(0);
   if (imported_display && output.indices.empty())
     throw std::runtime_error("Imported STEP has no valid display triangles; exact geometry cannot be displayed");
