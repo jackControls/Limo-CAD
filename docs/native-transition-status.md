@@ -169,6 +169,16 @@ coverage/incidence validation, which rejects them and rolls back. A fresh
 matched GUI/MCP pair still reports both original warnings;
 complete triangulation and mesh export qualification remain unfinished.
 
+Further matched runs through `6c6d5c5b` preserved and restored omitted native
+trim corners only after coverage and precision checks, but still rolled back
+both trials. The clean `feb57db3` run includes the repository transfer to
+`limo-cad/Limo-CAD` and the `2252074f` diagnostics. Those identify native
+degenerate edges on neighboring faces 5925 and 5497: their native endpoints
+coincide, while the imported surface-coordinate endpoints differ by about
+0.031 mm. The original model remains unchanged and both display warnings
+remain visible. A tolerance-bounded treatment of those collapsed native edges
+is still under development; successful complete mesh exports are not claimed.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,
