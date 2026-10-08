@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn transferred_api_owner_requires_the_same_repository_id() {
+    assert_eq!(
+        api_slug(Some(id().into()), Some("limo-cad/Limo-CAD".into())),
+        "limo-cad/Limo-CAD"
+    );
+    for repository_id in [None, Some("1313334316".into()), Some("01313334315".into())] {
+        assert_eq!(
+            api_slug(repository_id, Some("limo-cad/Limo-CAD".into())),
+            slug()
+        );
+    }
+    assert_eq!(
+        api_slug(Some(id().into()), Some("another/repo".into())),
+        slug()
+    );
+}
+
+#[test]
 fn ci_guards_retarget_exact_repository_literals_without_relaxing_conditions() {
     let from = "jackControls/noBS-CAD";
     let to = "new-owner/new-cad";
@@ -28,14 +46,15 @@ fn ci_guards_retarget_exact_repository_literals_without_relaxing_conditions() {
 }
 
 #[test]
-fn hosted_desktop_guards_and_the_arm_fixture_use_the_owned_repository() {
+fn hosted_desktop_guards_and_the_arm_fixtures_use_the_stable_repository_id() {
     let guard = Regex::new(
-        r#"\bGITHUB_REPOSITORY\b[^A-Za-z0-9_\r\n]*?(?:==|!=|-eq|-ne|=)\s*["']?([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)($|["'\s;,)])"#,
+        r#"\bGITHUB_REPOSITORY_ID\b[^A-Za-z0-9_\r\n]*?(?:==|!=|-eq|-ne|=)\s*["']?([0-9]+)($|["'\s;,)])"#,
     )
     .unwrap();
     for file in [
         "scripts/prepare-hosted-arm-desktop.ps1",
         "scripts/ci/arm-runner-preflight.test.ps1",
+        "scripts/ci/arm-runner-shell-preflight.test.ps1",
         "xtask/platform/native-print-cancel-windows.ps1",
         "xtask/platform/native-windows-ime-session.ps1",
         "xtask/platform/native-input-macos.swift",
@@ -49,7 +68,7 @@ fn hosted_desktop_guards_and_the_arm_fixture_use_the_owned_repository() {
             .captures_iter(&source)
             .map(|capture| capture[1].to_owned())
             .collect::<Vec<_>>();
-        assert_eq!(guards, [slug()], "{file}");
+        assert_eq!(guards, [id()], "{file}");
     }
 }
 

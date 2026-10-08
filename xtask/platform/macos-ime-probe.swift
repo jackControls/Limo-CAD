@@ -66,7 +66,7 @@ func launchProbe(out: URL, arguments: [String], environment: [String: String]) t
     configuration.arguments = arguments + ["--app-child"]
     // LaunchServices does not inherit a shell's CI guard variables automatically.
     // Forward only the guards/provenance, never the runner's whole environment.
-    let names = ["GITHUB_ACTIONS", "RUNNER_OS", "RUNNER_ENVIRONMENT", "GITHUB_REPOSITORY",
+    let names = ["GITHUB_ACTIONS", "RUNNER_OS", "RUNNER_ENVIRONMENT", "GITHUB_REPOSITORY", "GITHUB_REPOSITORY_ID",
                  "GITHUB_RUN_ID", "GITHUB_SHA", "RUNNER_TEMP", "ImageOS", "ImageVersion"]
     configuration.environment = environment.filter { names.contains($0.key) }
     configuration.environment["LIMO_CAD_IME_SUPERVISOR_PID"] = String(getpid())
@@ -554,7 +554,7 @@ var probe: Probe?
 do {
     let env = ProcessInfo.processInfo.environment, args = Array(CommandLine.arguments.dropFirst())
     try require(env["GITHUB_ACTIONS"] == "true" && env["RUNNER_OS"] == "macOS" &&
-                env["RUNNER_ENVIRONMENT"] == "github-hosted" && env["GITHUB_REPOSITORY"] == "jackControls/Limo-CAD" &&
+                env["RUNNER_ENVIRONMENT"] == "github-hosted" && env["GITHUB_REPOSITORY_ID"] == "1313334315" &&
                 env["GITHUB_RUN_ID"]?.range(of: "^[0-9]+$", options: .regularExpression) != nil, "Disposable GitHub macOS runner required")
     try require(args.count >= 2 && args[0] == "--out", "Expected --out directory")
     try require(args.dropFirst(2).allSatisfy { ["--enable-japanese", "--exercise", "--launch", "--app-child"].contains($0) }, "Unknown probe option")

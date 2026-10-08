@@ -85,7 +85,7 @@ function Add-Shell([long]$handle, [string]$kind) {
     $value
 }
 
-$guardNames = @('GITHUB_ACTIONS', 'RUNNER_ENVIRONMENT', 'RUNNER_OS', 'RUNNER_ARCH', 'GITHUB_REPOSITORY', 'GITHUB_RUN_ID', 'RUNNER_TEMP')
+$guardNames = @('GITHUB_ACTIONS', 'RUNNER_ENVIRONMENT', 'RUNNER_OS', 'RUNNER_ARCH', 'GITHUB_REPOSITORY_ID', 'GITHUB_RUN_ID', 'RUNNER_TEMP')
 $original = @{}
 foreach ($name in $guardNames) { $original[$name] = [Environment]::GetEnvironmentVariable($name) }
 $evidenceRoot = Join-Path ([IO.Path]::GetTempPath()) ('limo-cad-shell-preflight-fake-' + [Guid]::NewGuid())
@@ -107,7 +107,7 @@ try {
     $env:RUNNER_ENVIRONMENT = 'github-hosted'
     $env:RUNNER_OS = 'Windows'
     $env:RUNNER_ARCH = 'ARM64'
-    $env:GITHUB_REPOSITORY = 'jackControls/Limo-CAD'
+    $env:GITHUB_REPOSITORY_ID = '1313334315'
     $env:GITHUB_RUN_ID = '1234'
     $env:RUNNER_TEMP = $evidenceRoot
 

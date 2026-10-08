@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
     $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'ARM64' -or
-    $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
+    $env:GITHUB_REPOSITORY_ID -ne '1313334315' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
     throw 'Account-window preparation requires the disposable GitHub-hosted ARM64 package runner'
 }
 $runnerRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar

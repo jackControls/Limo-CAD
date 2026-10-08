@@ -20,7 +20,7 @@ function Resolve-OwnedImePaths([string]$RunnerRoot, [string]$OutputRoot, [string
 
 if ($env:LIMO_CAD_NATIVE_IME_TEST -ne 'windows-japanese' -or $env:GITHUB_ACTIONS -ne 'true' -or
     $env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or
-    $env:GITHUB_REPOSITORY -ne 'jackControls/Limo-CAD' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
+    $env:GITHUB_REPOSITORY_ID -ne '1313334315' -or $env:GITHUB_RUN_ID -notmatch '^\d+$') {
     throw 'Explicit disposable GitHub Windows IME opt-in is required'
 }
 if (-not $env:LIMO_CAD_IME_SESSION -or -not $env:LIMO_CAD_IME_FIELD_TOKEN) { throw 'Missing document/field receipt' }
