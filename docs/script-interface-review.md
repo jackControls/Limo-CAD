@@ -1,6 +1,6 @@
 # Script interface: validation and remaining work
 
-PR [#99](https://github.com/jackControls/Limo-CAD/pull/99) contains the native
+PR [#99](https://github.com/limo-cad/Limo-CAD/pull/99) contains the native
 Scripts workspace, MCP adapter and presentation controls. The Rust interpreter
 is a separate lower layer; bundled recipe sources, their catalog and
 example-dependent acceptance checks are a separate upper layer. Review readiness

@@ -13,16 +13,6 @@ const maxJsonBytes = 1024 * 1024;
 const sha256 = /^[a-f0-9]{64}$/;
 const requireThat = (condition, message) => { if (!condition) throw new Error(message); };
 
-// GitHub redirects the old release URL after transfer, but its API reports the
-// new canonical download URL. Accept only this planned move, retaining the
-// exact pinned tag and file name. Remove the alias after retargeting the links.
-function sameReleaseUrl(actual, expected) {
-  if (actual === expected) return true;
-  const prefix = 'https://github.com/jackControls/Limo-CAD/releases/download/';
-  return repository === 'jackControls/Limo-CAD' && expected.startsWith(prefix) &&
-    actual === 'https://github.com/limo-cad/Limo-CAD/releases/download/' + expected.slice(prefix.length);
-}
-
 // Pure and shared with the offline link checker. Only these three exact local
 // sources may be absent from the checkout; all come from one pinned release.
 export function mediaInputs(html) {
@@ -58,7 +48,7 @@ export function mediaAssets(manifest, inputs, release, commit) {
     const published = release.assets.find(a => a.name === input.name);
     requireThat(asset && published, `Missing media: ${input.name}`);
     requireThat(Number.isSafeInteger(asset.bytes) && asset.bytes >= 12 && asset.bytes <= maxMediaBytes && sha256.test(asset.sha256), `Invalid media metadata: ${input.name}`);
-    requireThat(published.size === asset.bytes && sameReleaseUrl(published.browser_download_url, input.url), `Published media differs from manifest: ${input.name}`);
+    requireThat(published.size === asset.bytes && published.browser_download_url === input.url, `Published media differs from manifest: ${input.name}`);
     requireThat(!published.digest || published.digest === `sha256:${asset.sha256}`, `Published media digest differs: ${input.name}`);
     return { ...input, bytes: asset.bytes, sha256: asset.sha256 };
   });
@@ -112,7 +102,7 @@ async function resolveRelease(inputs, fetcher) {
   const release = await readJson(`${api}/releases/tags/${tag}`, fetcher);
   requireThat(release.tag_name === tag && release.draft === false, 'Showcase release is not public');
   const manifestUrl = `https://github.com/${repository}/releases/download/${tag}/release-manifest.json`;
-  requireThat(release.assets?.filter(a => a.name === 'release-manifest.json' && sameReleaseUrl(a.browser_download_url, manifestUrl)).length === 1, 'Missing public release manifest');
+  requireThat(release.assets?.filter(a => a.name === 'release-manifest.json' && a.browser_download_url === manifestUrl).length === 1, 'Missing public release manifest');
   const manifest = await readJson(manifestUrl, fetcher);
   const commit = await readJson(`${api}/commits/${tag}`, fetcher);
   return { release, manifest, assets: mediaAssets(manifest, inputs, release, commit) };

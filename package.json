@@ -6,11 +6,11 @@
   "license": "LGPL-2.1-or-later",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jackControls/Limo-CAD.git"
+    "url": "https://github.com/limo-cad/Limo-CAD.git"
   },
-  "homepage": "https://github.com/jackControls/Limo-CAD#readme",
+  "homepage": "https://github.com/limo-cad/Limo-CAD#readme",
   "bugs": {
-    "url": "https://github.com/jackControls/Limo-CAD/issues"
+    "url": "https://github.com/limo-cad/Limo-CAD/issues"
   },
   "type": "module",
   "scripts": {

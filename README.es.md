@@ -15,19 +15,19 @@
 Diseña piezas mecánicas, ensamblajes y planos en tu propio equipo, a mano o con
 tu agente de IA, y mantén editable cada croquis y cada operación.
 
-[![Última versión](https://img.shields.io/github/v/release/jackControls/Limo-CAD?label=release)](https://github.com/jackControls/Limo-CAD/releases/latest)
+[![Última versión](https://img.shields.io/github/v/release/limo-cad/Limo-CAD?label=release)](https://github.com/limo-cad/Limo-CAD/releases/latest)
 [![Licencia: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
-[![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
+[![Discussions](https://img.shields.io/github/discussions/limo-cad/Limo-CAD?label=discussions)](https://github.com/limo-cad/Limo-CAD/discussions)
 
 **Pre-alfa · Versión 0.2.2**
-· [Notas de la versión y comprobaciones](https://github.com/jackControls/Limo-CAD/releases/tag/v0.2.2)
+· [Notas de la versión y comprobaciones](https://github.com/limo-cad/Limo-CAD/releases/tag/v0.2.2)
 · [Ayuda de instalación (en inglés)](docs/INSTALL.md)
 
 | Plataforma | Descarga |
 |---|---|
-| Windows 11 | [ZIP x64](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-x64.zip) · [ZIP ARM64](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-arm64.zip) |
-| macOS (Apple silicon) | [DMG](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_aarch64.dmg), firmado y notarizado |
-| Linux | [DEB para Ubuntu 26.04](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.deb) · [AppImage](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.AppImage) |
+| Windows 11 | [ZIP x64](https://github.com/limo-cad/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-x64.zip) · [ZIP ARM64](https://github.com/limo-cad/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-arm64.zip) |
+| macOS (Apple silicon) | [DMG](https://github.com/limo-cad/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_aarch64.dmg), firmado y notarizado |
+| Linux | [DEB para Ubuntu 26.04](https://github.com/limo-cad/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.deb) · [AppImage](https://github.com/limo-cad/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.AppImage) |
 
 La firma de código para Windows está en curso. Hasta que llegue, SmartScreen puede
 mostrar una advertencia en el primer inicio; elige **Más información → Ejecutar de todas formas**.
@@ -63,45 +63,45 @@ la grabación de la construcción; **Bucle de construcción** es un extracto bre
 <table>
 <tr>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench.png" alt="Banco de jardín con listones de respaldo abombados y reposabrazos redondeados"></a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench.png" alt="Banco de jardín con listones de respaldo abombados y reposabrazos redondeados"></a><br>
 <b>Banco de jardín</b><br>
 Cambia la cota de un listón y todo el respaldo se actualiza. El bastidor, los brazos y las uniones siguen siendo editables.
 </td>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise.png" alt="Tornillo de banco con mordaza deslizante guiada y mango compacto de tornillo en D"></a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise.png" alt="Tornillo de banco con mordaza deslizante guiada y mango compacto de tornillo en D"></a><br>
 <b>Tornillo de banco</b><br>
 Gira el tornillo y la mordaza lo sigue. Mordazas de 100 mm, recorrido de 90 mm, seis piezas impresas más tornillería.
 </td>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine.png" alt="Turbina de eje vertical de dos etapas con eje sobre rodamientos y transmisión al generador"></a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine.png" alt="Turbina de eje vertical de dos etapas con eje sobre rodamientos y transmisión al generador"></a><br>
 <b>Turbina de eje vertical</b><br>
 Dos etapas Savonius sobre un eje con rodamientos, que mueven un generador mediante una transmisión 4:1.
 </td>
 </tr>
 <tr>
 <td align="center">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>Ver</b></a>
-· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">Abrir receta</a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#garden-bench"><b>Ver</b></a>
+· <a href="https://limo-cad.github.io/Limo-CAD/open.html#garden-bench">Abrir receta</a><br>
 <a href="examples/scripts/garden-bench.nbcad.jsonc">Código</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/bench-loop.gif">Bucle de construcción</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
 <td align="center">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>Ver</b></a>
-· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">Abrir receta</a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>Ver</b></a>
+· <a href="https://limo-cad.github.io/Limo-CAD/open.html#d-screw-vise">Abrir receta</a><br>
 <a href="examples/scripts/d-screw-vise.nbcad.jsonc">Código</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/vise-loop.gif">Bucle de construcción</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
 <td align="center">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>Ver</b></a>
-· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">Abrir receta</a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>Ver</b></a>
+· <a href="https://limo-cad.github.io/Limo-CAD/open.html#vertical-axis-turbine">Abrir receta</a><br>
 <a href="examples/scripts/vertical-axis-turbine.nbcad.jsonc">Código</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">Bucle de construcción</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>
 </tr>
 </table>
@@ -169,7 +169,7 @@ reproducible o una mejora concreta.
 · [Documentación (en inglés)](docs/INDEX.md)
 
 ¿Preguntas, ideas o algo que hayas creado? Abre un hilo en
-[Discussions](https://github.com/jackControls/Limo-CAD/discussions). Si Limo CAD te
+[Discussions](https://github.com/limo-cad/Limo-CAD/discussions). Si Limo CAD te
 resulta útil, una estrella ayuda a que otras personas lo encuentren.
 
 Trabajamos hacia lecciones de diseño guiadas y asistentes conversacionales, y

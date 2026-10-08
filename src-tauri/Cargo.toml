@@ -5,7 +5,7 @@ version = "0.2.2"
 edition = "2021"
 description = "noBS CAD desktop shell (Tauri 2)"
 license = "LGPL-2.1-or-later"
-repository = "https://github.com/jackControls/Limo-CAD"
+repository = "https://github.com/limo-cad/Limo-CAD"
 
 # The src-tauri crate is its own workspace so `cargo test` at the repo root
 # stays engine-only; engine crates are shared by path dependency.

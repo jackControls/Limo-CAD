@@ -2,8 +2,8 @@
 
 ## Verified repository policy
 
-As of 2026-09-20, this repository (`jackControls/Limo-CAD`, named
-`noBS-CAD` until 2026-10-03) uses the active **[Protect main](https://github.com/jackControls/Limo-CAD/rules/19790895)**
+As of 2026-09-20, this repository (`limo-cad/Limo-CAD`, named
+`noBS-CAD` until 2026-10-03) uses the active **[Protect main](https://github.com/limo-cad/Limo-CAD/rules/19790895)**
 ruleset (id `19790895`). Main requires one approving review, dismissal of stale
 approvals, and resolution of review threads. Force pushes and branch deletion are
 blocked. The PR author cannot supply their own approval.
@@ -24,8 +24,8 @@ triage access is insufficient. Inspect all applicable results on the exact PR
 head before merging; the two required checks do not replace native acceptance or
 package verification when those are relevant.
 
-Tracking: [#14](https://github.com/jackControls/Limo-CAD/issues/14) (parent
-[#9](https://github.com/jackControls/Limo-CAD/issues/9)).
+Tracking: [#14](https://github.com/limo-cad/Limo-CAD/issues/14) (parent
+[#9](https://github.com/limo-cad/Limo-CAD/issues/9)).
 
 ### Release tags
 
@@ -139,7 +139,7 @@ npm run e2e
 ## Adding further required checks
 
 After the remaining jobs always report and have passed on a PR, an administrator
-(Jack) can add their exact Check Run names to **[Protect main](https://github.com/jackControls/Limo-CAD/rules/19790895)**,
+(Jack) can add their exact Check Run names to **[Protect main](https://github.com/limo-cad/Limo-CAD/rules/19790895)**,
 preserving its existing checks, owner PR bypass, review rules, and deletion rules.
 Reusable-workflow check names may include the caller job prefix; copy the name
 from the actual PR.
@@ -156,7 +156,7 @@ required set, including docs-only PRs and the owner-only PR bypass.
 
 ## Repository ownership
 
-Collaborators can use branches directly on `jackControls/Limo-CAD` with that
+Collaborators can use branches directly on `limo-cad/Limo-CAD` with that
 repository as `origin`; a personal fork is optional. Before deleting a fork,
 preserve unique commits and finish or migrate any upstream PR using its branches.
 Disable redundant fork Actions separately so retiring a fork does not remove

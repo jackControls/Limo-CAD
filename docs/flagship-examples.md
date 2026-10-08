@@ -13,7 +13,7 @@ decisions, material implications and calculation assumptions are retained in
 [the engineering brief](flagship-engineering.md). The individual design pages
 below describe the later implementations and source-specific evidence.
 
-For immediate inspection, the [showcase media release](https://github.com/jackControls/Limo-CAD/releases/tag/showcase-v0.2.0)
+For immediate inspection, the [showcase media release](https://github.com/limo-cad/Limo-CAD/releases/tag/showcase-v0.2.0)
 includes editable `bench.nbcad`, `vise.nbcad` and `turbine.nbcad` projects. Use
 **File → Open** in CAD. To watch construction or open a recipe for replay, use
 the [README showcase](../README.md#made-in-nobs-cad).

@@ -157,7 +157,7 @@ The Visual C++ runtime is intentionally not copied into this directory.
 Microsoft recommends the centrally installed Redistributable so it can receive
 security and servicing updates independently.
 
-Source: https://github.com/jackControls/Limo-CAD
+Source: https://github.com/limo-cad/Limo-CAD
 Source commit: $sourceCommit
 "@ | Set-Content (Join-Path $packageDir "README.txt") -Encoding utf8
 

@@ -7,7 +7,7 @@ OKF concepts, not inside them.
 ## Who it is for
 
 - **Humans** — browse `knowledge/machine-design/` in git or on the [knowledge
-  site](https://jackcontrols.github.io/Limo-CAD/).
+  site](https://limo-cad.github.io/Limo-CAD/).
 - **Agents** — use `cad_help` **search**, then `get` on returned ids. If the
   full markdown page is needed, use `resources/read` on its selected
   `nbcad://knowledge/...` URI; do not glob resources as the first search. Do not

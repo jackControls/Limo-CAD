@@ -5,14 +5,14 @@ The `knowledge/` directory is an
 bundle: Markdown concepts with YAML frontmatter for humans and agents.
 
 - Browse in-repo: start at [`knowledge/index.md`](../knowledge/index.md)
-- Hosted: [knowledge site](https://jackcontrols.github.io/Limo-CAD/) via `.github/workflows/pages-knowledge.yml`
+- Hosted: [knowledge site](https://limo-cad.github.io/Limo-CAD/) via `.github/workflows/pages-knowledge.yml`
 - Prefer **`cad_help`** (`search` → `get` / `topics`) for discovery; then
   `resources/read` on `nbcad://knowledge/...` when the full page is needed
   (start at `nbcad://knowledge/index.md`). Prefer bundled markdown over scraping Pages HTML.
 - Keep concepts **thin**; longer factual and proposed design stays in
   [`mcp-harness.md`](mcp-harness.md) and
   [`proposed-architecture.md`](proposed-architecture.md)
-- Tracking epic: [#9](https://github.com/jackControls/Limo-CAD/issues/9)
+- Tracking epic: [#9](https://github.com/limo-cad/Limo-CAD/issues/9)
 
 Validate the bundle locally with:
 
