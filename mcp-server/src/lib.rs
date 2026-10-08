@@ -1951,8 +1951,8 @@ impl CadServer {
         let bodies: Vec<Value> = meshes
             .iter()
             .map(|mesh| {
-                let mut min = [f32::MAX; 3];
-                let mut max = [f32::MIN; 3];
+                let mut min = [f64::MAX; 3];
+                let mut max = [f64::MIN; 3];
                 for p in mesh.positions.as_chunks::<3>().0 {
                     for i in 0..3 {
                         min[i] = min[i].min(p[i]);
