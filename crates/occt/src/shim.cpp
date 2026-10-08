@@ -28,10 +28,7 @@
 #include <BRepMesh_FaceChecker.hxx>
 #include <BRepMesh_GeomTool.hxx>
 #include <BRepMesh_SphereRangeSplitter.hxx>
-#include <BRepMesh_DelabellaBaseMeshAlgo.hxx>
-#include <BRepMesh_CustomDelaunayBaseMeshAlgo.hxx>
-#include <BRepMesh_DelaunayNodeInsertionMeshAlgo.hxx>
-#include <BRepMesh_DataStructureOfDelaun.hxx>
+#include <BRepMesh_DelabellaMeshAlgoFactory.hxx>
 #include <IMeshTools_MeshAlgo.hxx>
 #include <IMeshData_Model.hxx>
 #include <IMeshData_Face.hxx>
@@ -3047,48 +3044,6 @@ static std::string topology_signature(const TopoDS_Shape& shape) {
 
 
 
-// The exact spherical algorithm selected by OCCT's Delabella factory, with
-// bounded stage diagnostics for exceptions swallowed by BaseMeshAlgo::Perform.
-using SphericalDelabellaBase = BRepMesh_DelaunayNodeInsertionMeshAlgo<
-    BRepMesh_SphereRangeSplitter,
-    BRepMesh_CustomDelaunayBaseMeshAlgo<BRepMesh_DelabellaBaseMeshAlgo>>;
-class DiagnosticSphericalMesher : public SphericalDelabellaBase {
- public:
-  DiagnosticSphericalMesher() { SetPreProcessSurfaceNodes(true); }
-  std::string Stage() const { return stage_; }
- protected:
-  Standard_Boolean initDataStructure() override {
-    stage_ = "initialization";
-    try {
-      const bool valid = SphericalDelabellaBase::initDataStructure();
-      stage_ = valid ? "initialized nodes " + std::to_string(getStructure()->NbNodes()) :
-          "invalid initialization";
-      return valid;
-    } catch (const Standard_Failure& error) { note_exception(error); throw; }
-  }
-  void buildBaseTriangulation() override {
-    stage_ = "base triangulation";
-    try {
-      SphericalDelabellaBase::buildBaseTriangulation();
-      stage_ = "base domain triangles " + std::to_string(getStructure()->ElementsOfDomain().Extent());
-    } catch (const Standard_Failure& error) { note_exception(error); throw; }
-  }
-  void postProcessMesh(BRepMesh_Delaun& mesher, const Message_ProgressRange& range) override {
-    stage_ = "postprocessing";
-    try {
-      SphericalDelabellaBase::postProcessMesh(mesher, range);
-      stage_ = "postprocessed domain triangles " +
-          std::to_string(getStructure()->ElementsOfDomain().Extent());
-    } catch (const Standard_Failure& error) { note_exception(error); throw; }
-  }
- private:
-  void note_exception(const Standard_Failure& error) {
-    const char* message = error.GetMessageString();
-    stage_ += " exception " + std::string(message ? message : "unspecified").substr(0, 120);
-  }
-  std::string stage_ = "not started";
-};
-
 class TangentBoundaryMeshContext : public BRepMesh_Context {
  public:
   const std::string& BoundaryRepairStop() const { return boundary_repair_stop_; }
@@ -3751,7 +3706,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       try {
         // Retry only the failed face, before ModelPostProcessor attaches shared
         // edge polygons. Both factories consume the identical discrete boundary.
-        Handle(DiagnosticSphericalMesher) algorithm = new DiagnosticSphericalMesher();
+        BRepMesh_DelabellaMeshAlgoFactory factory;
+        const auto algorithm = factory.GetAlgo(GeomAbs_Sphere, GetParameters());
+        if (algorithm.IsNull()) return false;
         // This flag belongs solely to the failed first attempt. Restore it on
         // every rejected trial; success still requires the full validation below.
         face->UnsetStatus(IMeshData_Failure);
@@ -3763,7 +3720,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             triangulation->NbTriangles() > 0 && triangulation->NbTriangles() <= 16384 &&
             std::isfinite(triangulation->Deflection()) && triangulation->Deflection() >= 0.0 &&
             (face->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Failure)) == 0;
-        spherical_retry_stop_ = "trial " + algorithm->Stage() + " status " +
+        spherical_retry_stop_ = "trial triangulation null " + std::to_string(triangulation.IsNull()) + " status " +
             std::to_string(face->GetStatusMask()) + " nodes/triangles " +
             std::to_string(triangulation.IsNull() ? 0 : triangulation->NbNodes()) + '/' +
             std::to_string(triangulation.IsNull() ? 0 : triangulation->NbTriangles());
@@ -3880,6 +3837,82 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   std::string boundary_repair_stop_ = "not run";
   std::string spherical_retry_stop_;
 };
+
+static std::string spherical_boundary_failure_detail(const IMeshData::IFaceHandle& face) {
+  try {
+    if (face->GetSurface()->GetType() != GeomAbs_Sphere) return "";
+    std::ostringstream detail;
+    detail.precision(10);
+    struct Segment { gp_Pnt2d a, b; int edge, index; };
+    std::vector<Segment> segments;
+    int edge_count = 0, sample_count = 0;
+    bool complete = true;
+    const auto finite_uv = [](const gp_Pnt2d& uv) {
+      return std::isfinite(uv.X()) && std::isfinite(uv.Y());
+    };
+    for (int wi = 0; wi < face->WiresNb() && complete; ++wi) {
+      const auto& wire = face->GetWire(wi);
+      for (int ei = 0; ei < wire->EdgesNb() && complete; ++ei) {
+        if (++edge_count > 6) { complete = false; break; }
+        const auto& edge = wire->GetEdge(ei);
+        const auto orientation = wire->GetEdgeOrientation(ei);
+        const auto& pc = edge->GetPCurve(face.get(), orientation);
+        const auto& curve = edge->GetCurve();
+        if (pc.IsNull() || pc->ParametersNb() != curve->ParametersNb()) {
+          complete = false; break;
+        }
+        BRepAdaptor_Curve on_face(TopoDS::Edge(edge->GetEdge().Oriented(orientation)), face->GetFace());
+        const auto& source = on_face.CurveOnSurface().GetCurve();
+        detail << "; sphere wire/edge " << wi << '/' << ei << " boundary samples";
+        for (int i = 0; i < pc->ParametersNb(); ++i) {
+          if (++sample_count > 24) { complete = false; break; }
+          const auto& uv = pc->GetPoint(i);
+          const double parameter = pc->GetParameter(i);
+          if (!finite_uv(uv) || !std::isfinite(parameter))
+            return ", sphere sample diagnostic found nonfinite UV/parameter";
+          detail << " [" << i << " t " << parameter << " UV " << uv.X() << ',' << uv.Y();
+          const auto mesh_point = face->GetSurface()->Value(uv.X(), uv.Y());
+          const double mesh_error = mesh_point.Distance(curve->GetPoint(i));
+          if (!std::isfinite(mesh_error)) return ", sphere sample diagnostic found nonfinite distance";
+          detail << " error mm " << mesh_error;
+          if (edge->GetSameParam() && edge->GetSameRange() && !source.IsNull()) {
+            const auto source_uv = source->Value(parameter);
+            if (!finite_uv(source_uv)) return ", sphere sample diagnostic found nonfinite source UV";
+            const double source_error = face->GetSurface()->Value(source_uv.X(), source_uv.Y()).Distance(curve->GetPoint(i));
+            if (!std::isfinite(source_error)) return ", sphere sample diagnostic found nonfinite source distance";
+            detail << " sourceUV " << source_uv.X() << ',' << source_uv.Y()
+                   << " source error mm " << source_error;
+          }
+          detail << ']';
+          if (i > 0) segments.push_back({pc->GetPoint(i - 1), uv, edge_count, i - 1});
+        }
+      }
+    }
+    int crossings = 0;
+    for (std::size_t a = 0; a < segments.size(); ++a) {
+      for (std::size_t b = a + 1; b < segments.size(); ++b) {
+        const auto& first = segments[a]; const auto& second = segments[b];
+        if (first.edge == second.edge && std::abs(first.index - second.index) <= 1) continue;
+        gp_Pnt2d cross;
+        if (BRepMesh_GeomTool::IntSegSeg(first.a.Coord(), first.b.Coord(),
+                second.a.Coord(), second.b.Coord(), false, false, cross) != BRepMesh_GeomTool::Cross) continue;
+        if (!finite_uv(cross)) return ", sphere sample diagnostic found nonfinite crossing";
+        ++crossings;
+        if (crossings <= 2)
+          detail << ", unfiltered cross edges/segments " << first.edge - 1 << '/' << first.index
+                 << ':' << second.edge - 1 << '/' << second.index
+                 << " UV " << cross.X() << ',' << cross.Y();
+      }
+    }
+    detail << ", unfiltered sphere crossings " << crossings;
+    if (!complete) detail << " (24-point diagnostic scope limited)";
+    return detail.str().substr(0, 5000);
+  } catch (const Standard_Failure&) {
+    return ", sphere sample diagnostic unavailable (OCCT exception)";
+  } catch (const std::exception&) {
+    return ", sphere sample diagnostic unavailable (exception)";
+  }
+}
 
 // Optional diagnostics of a failed face's actual meshing domain. This does not
 // change its shared samples, exact geometry or failure status.
@@ -4394,6 +4427,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
               }
             }
             diagnostic << face_mesh_failure_detail(discrete_face, context->GetParameters())
+                       << spherical_boundary_failure_detail(discrete_face)
                        << boundary_failure_detail(discrete_face, context->GetParameters());
             break;
           }

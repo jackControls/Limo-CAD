@@ -121,6 +121,9 @@ pair. The bounded spherical Delabella retry was attempted on two freshly failed
 faces, but neither yielded an accepted triangulation. Face 3779 still failed and
 the import tab remained empty. No failed face was omitted. Retry progress-range
 ownership and more precise trial diagnostics are the next investigation.
+The diagnostic subclass in `000a546d` failed Windows linking because it exposed
+unexported OCCT constraint helpers; deployment preserved the installed runtime.
+The correction uses the exported factory API and bounded boundary diagnostics.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
