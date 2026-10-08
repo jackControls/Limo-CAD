@@ -240,6 +240,14 @@ samples. A native-topology-proven repair remains open; no precision-qualified
 STL or successful 3MF export is claimed. Canceling preflight leaves the document
 unchanged and the CAD window active.
 
+Matched `b3d5d5fc` adds export-only, source-checked boundary recovery and corrects
+its false candidates on ordinary reversed boundary links. Actual UI preflight
+still refuses the same 115 links: five attempted face repairs were rejected,
+with none installed. The ranked diagnostics identify genuine native degenerate
+edges at the largest failing face groups, with coincident native endpoints but
+distinct surface-coordinate representatives. Pole-aware recovery remains open;
+the native precision, domain and closure guards have not been relaxed.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,
