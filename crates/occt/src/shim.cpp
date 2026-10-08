@@ -57,6 +57,8 @@
 #include <GeomAbs_Shape.hxx>
 #include <GeomAbs_SurfaceType.hxx>
 #include <Geom2d_Line.hxx>
+#include <Geom2dAPI_InterCurveCurve.hxx>
+#include <Geom2d_TrimmedCurve.hxx>
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_BSplineSurface.hxx>
@@ -3088,6 +3090,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     std::vector<StripEdge> edges;
     std::vector<StripFace> faces;
     double shift = 0.0, angular = 0.0, coverage = 0.0, neighbor_gap = 0.0;
+    std::string crossing_certificate;
     bool accepted = false;
   };
   struct StripRollbackFailure : std::runtime_error {
@@ -3109,6 +3112,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     if (model.IsNull()) return false;
     strip_face_rejections_.clear();
     pole_certificate_work_ = 0;
+    strip_continuous_checks_=0;
     export_boundary_work_=0;
     export_boundary_stop_.clear();
     export_boundary_rejections_.clear();
@@ -3167,7 +3171,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       if (trial.target->IsSet(IMeshData_Failure) &&
           (trial.target->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Failure)) == 0)
         retry_spherical_face(trial.target, stages.Next());
-      if (restore_skipped_strip_nodes(trial) && validate_spherical_strip(trial)) {
+      if (restore_skipped_strip_nodes(trial,native_export_recovery_) && validate_spherical_strip(trial,native_export_recovery_)) {
         ++strip_successes;
         trial.accepted = true;
       } else {
@@ -3212,7 +3216,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       std::ostringstream certificate;
       certificate.precision(6);
       certificate << " shift/angular/band/neighbor-gap mm,rad,mm,mm " << trial.shift << '/' << trial.angular << '/' <<
-          trial.coverage << '/' << trial.neighbor_gap;
+          trial.coverage << '/' << trial.neighbor_gap << trial.crossing_certificate;
       boundary_repair_stop_ += certificate.str();
     }
     if (!strip_rejections.empty()) boundary_repair_stop_ += strip_rejections.substr(0, 800);
@@ -3924,7 +3928,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         return reject("opposed monotone wire traversal was not established");
       // Require a real coincident native-curve crossing, not an arbitrary thin face.
       bool crossing = false;
-      for (int i = 1; i < p0->ParametersNb(); ++i) for (int j = 1; j < p1->ParametersNb(); ++j) {
+      for (int i = 1; i < p0->ParametersNb() && !crossing; ++i) for (int j = 1; j < p1->ParametersNb() && !crossing; ++j) {
         if (++strip_comparisons_ > 65536) return reject("spherical crossing comparison budget exhausted");
         gp_Pnt2d uv;
         if (BRepMesh_GeomTool::IntSegSeg(p0->GetPoint(i-1).Coord(), p0->GetPoint(i).Coord(),
@@ -3936,8 +3940,53 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               (uv.Coord() - pc->GetPoint(k-1).Coord()).Dot(delta) / delta.SquareModulus();
         };
         const double a = parameter(p0, i), b = parameter(p1, j);
-        if (std::isfinite(a) && std::isfinite(b) && native0.Value(a).Distance(native1.Value(b)) <= Precision::Confusion())
-          crossing = true;
+        if (!std::isfinite(a) || !std::isfinite(b)) continue;
+        if (native0.Value(a).Distance(native1.Value(b))<=Precision::Confusion()) { crossing=true;break; }
+        if (!native_export_recovery_) continue;
+        // A native 3D curve and its stored source PCurve can differ by their
+        // recorded representation tolerance. Establish an actual continuous
+        // source-chart crossing before considering that discrepancy; a chord
+        // crossing or expanded confusion epsilon is not sufficient.
+        if (++strip_continuous_checks_>16) return reject("continuous strip intersection budget exhausted");
+        double source_first0,source_last0,source_first1,source_last1;
+        const auto source0=BRep_Tool::CurveOnSurface(TopoDS::Edge(e0->GetEdge().Oriented(p0->GetOrientation())),
+            face->GetFace(),source_first0,source_last0);
+        const auto source1=BRep_Tool::CurveOnSurface(TopoDS::Edge(e1->GetEdge().Oriented(p1->GetOrientation())),
+            face->GetFace(),source_first1,source_last1);
+        if (source0.IsNull() || source1.IsNull()) return reject("continuous strip source PCurve is unavailable");
+        const double a0=std::min(p0->GetParameter(i-1),p0->GetParameter(i)),a1=std::max(p0->GetParameter(i-1),p0->GetParameter(i));
+        const double b0=std::min(p1->GetParameter(j-1),p1->GetParameter(j)),b1=std::max(p1->GetParameter(j-1),p1->GetParameter(j));
+        if (!std::isfinite(a0) || !std::isfinite(a1) || !std::isfinite(b0) || !std::isfinite(b1) ||
+            !std::isfinite(source_first0) || !std::isfinite(source_last0) || !std::isfinite(source_first1) || !std::isfinite(source_last1) ||
+            a0>=a1 || b0>=b1 || a0<source_first0 || a1>source_last0 || b0<source_first1 || b1>source_last1)
+          return reject("continuous strip intervals leave the exact source range");
+        const Handle(Geom2d_Curve) first=new Geom2d_TrimmedCurve(source0,a0,a1,true,false);
+        const Handle(Geom2d_Curve) second=new Geom2d_TrimmedCurve(source1,b0,b1,true,false);
+        Geom2dAPI_InterCurveCurve exact(first,second,Precision::PConfusion());
+        const auto& intersections=exact.Intersector();
+        if (!intersections.IsDone() || intersections.NbPoints()!=1 || intersections.NbSegments()!=0) {
+          std::ostringstream reason;reason << "continuous strip crossing done/points/segments " << intersections.IsDone();
+          if (intersections.IsDone()) reason << '/' << intersections.NbPoints() << '/' << intersections.NbSegments();
+          return reject(reason.str().c_str());
+        }
+        const auto& point=intersections.Point(1);const double at=point.ParamOnFirst(),bt=point.ParamOnSecond();
+        if (!std::isfinite(at) || !std::isfinite(bt) || at<=a0 || at>=a1 || bt<=b0 || bt>=b1)
+          return reject("continuous strip crossing is not interior to the sampled intervals");
+        const auto auv=source0->Value(at),buv=source1->Value(bt);
+        if (!strip_finite(auv) || !strip_finite(buv) || auv.Distance(buv)>Precision::PConfusion())
+          return reject("continuous source PCurve intersection is unresolved");
+        const auto ap=surface->Value(auv.X(),auv.Y()),bp=surface->Value(buv.X(),buv.Y());
+        const auto an=native0.Value(at),bn=native1.Value(bt);
+        const double error0=ap.Distance(an),error1=bp.Distance(bn),pair=an.Distance(bn),source_gap=ap.Distance(bp);
+        const double budget0=std::min(BRep_Tool::Tolerance(e0->GetEdge()),deflection/4.0);
+        const double budget1=std::min(BRep_Tool::Tolerance(e1->GetEdge()),deflection/4.0);
+        if (!strip_finite(ap) || !strip_finite(bp) || !strip_finite(an) || !strip_finite(bn) ||
+            !std::isfinite(error0) || !std::isfinite(error1) || !std::isfinite(pair) || !std::isfinite(source_gap) ||
+            source_gap>Precision::Confusion() || error0>budget0 || error1>budget1 || pair>std::min(budget0,budget1))
+          return reject("continuous crossing exceeds recorded representation or mesh precision");
+        std::ostringstream certificate;certificate.precision(9);
+        certificate << " continuous-source crossing native-gap/errors " << pair << '/' << error0 << '/' << error1;
+        trial.crossing_certificate=certificate.str();crossing=true;break;
       }
       if (!crossing) return reject("no native-coincident boundary crossing");
       ++attempts;
@@ -4326,9 +4375,13 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           why="native boundary restored and full domain certified"; break;
         }
       }
+      if (!accepted) {
+        const auto strip=strip_face_rejections_.find(original);
+        if (strip!=strip_face_rejections_.end()) why="strip: "+strip->second.substr(0,350)+"; "+why;
+      }
     }
     export_boundary_stop_="export boundary attempts/repaired/added triangles "+std::to_string(attempts)+"/"+
-        std::to_string(repaired)+"/"+std::to_string(added);
+        std::to_string(repaired)+"/"+std::to_string(added)+"; continuous strip checks "+std::to_string(strip_continuous_checks_);
   }
 
   // A native trim can be only partially represented by the original mesh.
@@ -5800,6 +5853,11 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       for (const auto& edge : trial.edges) shared_incidence[edge.edge] = {0,0};
       for (const auto& saved : trial.faces) {
         const auto face = saved.face;
+        std::set<int> changed_boundary_nodes;
+        if (native_export) for (const auto& shared : trial.edges) for (const auto& pc : shared.pcurves) {
+          if (pc.curve->GetFace()!=face) continue;
+          for (int i=0;i<pc.curve->ParametersNb();++i) changed_boundary_nodes.insert(pc.curve->GetIndex(i));
+        }
         TopLoc_Location location;
         const auto mesh = BRep_Tool::Triangulation(face->GetFace(), location);
         if ((face->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Reused)) != 0 || mesh.IsNull() ||
@@ -5939,17 +5997,38 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           for (int i = 0; i < 3; ++i) for (int j = i+1; j < 3; ++j)
             diameter = std::max(diameter, std::abs(uv[i].X()-uv[j].X()) + std::abs(uv[i].Y()-uv[j].Y()));
           uv_scale += diameter * diameter;
+          if (native_export && (face==trial.target || changed_boundary_nodes.count(ids[0]) ||
+              changed_boundary_nodes.count(ids[1]) || changed_boundary_nodes.count(ids[2]))) {
+            const double angular=GetParameters().AngleInterior>0.0 ? GetParameters().AngleInterior : GetParameters().Angle;
+            if (!std::isfinite(angular) || angular<=0.0) { strip_stop_="native strip invalid angular request";return false; }
+            const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
+            int sample_index=0;
+            for (const auto& w : weights) {
+              if (++export_boundary_work_>2097152) { strip_stop_="native strip source witness budget";return false; }
+              const gp_Pnt2d at(uv[0].Coord()*w[0]+uv[1].Coord()*w[1]+uv[2].Coord()*w[2]);
+              const gp_Pnt affine(p[0].XYZ()*w[0]+p[1].XYZ()*w[1]+p[2].XYZ()*w[2]);gp_Pnt source;gp_Dir direction;
+              if (!BRepMesh_GeomTool::Normal(face->GetSurface(),at.X(),at.Y(),source,direction) || !strip_finite(source)) {
+                strip_stop_="native strip source normal undefined";return false;
+              }
+              const double distance=affine.Distance(source),error=normal.Angle(gp_Vec(direction)*(std::signbit(area) ? -1.0 : 1.0));
+              if (!std::isfinite(distance) || !std::isfinite(error) || distance>GetParameters().Deflection || error>angular) {
+                strip_stop_="native strip face/tri/sample "+std::to_string(strip_original_faces_.FindIndex(face->GetFace())-1)+"/"+
+                    std::to_string(ti)+"/"+std::to_string(sample_index)+" source D/angle "+std::to_string(distance)+"/"+std::to_string(error);return false;
+              }
+              ++sample_index;
+            }
+          }
           if (face == trial.target) {
             strip_stop_ = "spherical radial winding or float precision";
             const auto center = face->GetSurface()->Sphere().Location();
             const gp_Pnt centroid((p[0].XYZ()+p[1].XYZ()+p[2].XYZ())/3.0);
             const gp_Pnt fcentroid((fp[0].XYZ()+fp[1].XYZ()+fp[2].XYZ())/3.0);
-            if (normal.Dot(gp_Vec(center,centroid)) <= 0.0 ||
-                !std::isfinite(float_normal.SquareMagnitude()) || float_normal.SquareMagnitude() <= 0.0 ||
-                float_normal.Dot(gp_Vec(center,fcentroid)) <= 0.0) return false;
+            if (normal.Dot(gp_Vec(center,centroid)) <= 0.0 || (!native_export &&
+                (!std::isfinite(float_normal.SquareMagnitude()) || float_normal.SquareMagnitude() <= 0.0 ||
+                float_normal.Dot(gp_Vec(center,fcentroid)) <= 0.0))) return false;
             double source_error = 0.0;
             for (int i = 0; i < 3; ++i) source_error = std::max(source_error,
-                fp[i].Distance(face->GetSurface()->Value(uv[i].X(), uv[i].Y())));
+                (native_export ? p[i] : fp[i]).Distance(face->GetSurface()->Value(uv[i].X(), uv[i].Y())));
             strip_stop_ = "spherical triangle plus region deflection";
             if (source_error + 0.5 * face->GetSurface()->Sphere().Radius() * diameter * diameter +
                 trial.coverage > GetParameters().Deflection) return false;
@@ -6208,6 +6287,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   std::string strip_repair_stop_ = "strip repair not run";
   std::map<int, std::string> strip_face_rejections_;
   std::size_t strip_comparisons_ = 0;
+  int strip_continuous_checks_=0;
   std::size_t pole_certificate_work_ = 0;
   bool native_export_recovery_=false;
   std::size_t export_boundary_work_=0;
