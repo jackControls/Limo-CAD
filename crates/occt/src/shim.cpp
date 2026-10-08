@@ -4157,6 +4157,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   // Reinsert only those existing nodes into the sole incident triangle.
   bool restore_skipped_strip_nodes(const StripTrial& trial) {
     strip_corner_detail_.clear();
+    strip_degenerate_details_.clear();
     try {
       std::size_t work = 0;
       for (const auto& saved : trial.faces) {
@@ -4197,6 +4198,34 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             const auto edge = wire->GetEdge(ei);
             const auto orientation = wire->GetEdgeOrientation(ei);
             const auto pc = edge->GetPCurve(saved.face,orientation);
+            if (BRep_Tool::Degenerated(edge->GetEdge()) || edge->GetDegenerated()) {
+              std::ostringstream detail; detail.precision(11);
+              const int face_index = strip_original_faces_.FindIndex(saved.face->GetFace())-1;
+              detail << "; face " << face_index << " wire/edge " << wi << '/' << ei << " native/discrete degenerate " <<
+                  BRep_Tool::Degenerated(edge->GetEdge()) << '/' << edge->GetDegenerated();
+              if (!pc.IsNull() && pc->ParametersNb() >= 2 && pc->ParametersNb() == edge->GetCurve()->ParametersNb()) {
+                const int last = pc->ParametersNb()-1;
+                const auto first_uv = pc->GetPoint(0), last_uv = pc->GetPoint(last);
+                detail << " native/surface separation " << edge->GetCurve()->GetPoint(0).Distance(edge->GetCurve()->GetPoint(last)) << '/' <<
+                    saved.face->GetSurface()->Value(first_uv.X(),first_uv.Y()).Distance(
+                        saved.face->GetSurface()->Value(last_uv.X(),last_uv.Y()));
+                for (int index : {0,pc->ParametersNb()-1}) {
+                  const int id = pc->GetIndex(index);
+                  const auto uv = pc->GetPoint(index);
+                  const auto native = edge->GetCurve()->GetPoint(index);
+                  detail << " node " << id << " UV(" << uv.X() << ',' << uv.Y() << ") nativeXYZ(" <<
+                      native.X() << ',' << native.Y() << ',' << native.Z() << ')';
+                  if (id >= 1 && id <= mesh->NbNodes()) {
+                    const auto mapped_uv = mesh->UVNode(id);
+                    const auto point = mesh->Node(id).Transformed(location.Transformation());
+                    const auto surface = saved.face->GetSurface()->Value(uv.X(),uv.Y());
+                    detail << " surfaceXYZ(" << surface.X() << ',' << surface.Y() << ',' << surface.Z() <<
+                        ") gap " << native.Distance(surface) << " mapped UV/XYZ gap " << mapped_uv.Distance(uv) << '/' << point.Distance(native);
+                  }
+                }
+              }
+              strip_degenerate_details_[face_index] += detail.str().substr(0,650);
+            }
             if ((orientation != TopAbs_FORWARD && orientation != TopAbs_REVERSED) || pc.IsNull() ||
                 BRep_Tool::Degenerated(edge->GetEdge()) ||
                 pc->ParametersNb() < 2 || pc->ParametersNb() > 256 ||
@@ -4600,7 +4629,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               diagnostic << " orientations";
               for (int orientation : boundary_orientations[entry.first]) diagnostic << ' ' << orientation;
             }
-            strip_stop_ = diagnostic.str(); return false;
+            strip_stop_ = diagnostic.str();
+            const auto degenerate = strip_degenerate_details_.find(face_index);
+            if (degenerate != strip_degenerate_details_.end()) strip_stop_ += degenerate->second.substr(0,550);
+            return false;
           }
         }
         for (const auto& entry : boundary) if (links[entry] != 1) {
@@ -4828,6 +4860,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   std::string spherical_retry_stop_;
   std::string strip_stop_;
   std::string strip_corner_detail_;
+  std::map<int,std::string> strip_degenerate_details_;
   std::string strip_repair_stop_ = "strip repair not run";
   std::map<int, std::string> strip_face_rejections_;
   std::size_t strip_comparisons_ = 0;
