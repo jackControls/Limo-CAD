@@ -25,6 +25,7 @@
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRepMesh_Context.hxx>
 #include <BRepMesh_EdgeDiscret.hxx>
+#include <BRepMesh_FaceChecker.hxx>
 #include <IMeshData_Model.hxx>
 #include <IMeshData_Face.hxx>
 #include <IMeshData_Wire.hxx>
@@ -3042,8 +3043,51 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   Standard_Boolean HealModel() override {
     const auto& model = GetModel();
     if (model.IsNull()) return false;
-
-
+    // The default healer can rediscretize edges, so run it before preserving
+    // the additional circular-boundary samples below.
+    if (!BRepMesh_Context::HealModel()) return false;
+    std::set<IMeshData::IFacePtr> affected_faces;
+    std::set<IMeshData::IFacePtr> intersection_failures;
+    constexpr int unrelated_errors = IMeshData_OpenWire | IMeshData_TooFewPoints |
+        IMeshData_UnorientedWire | IMeshData_UserBreak;
+    for (int fi = 0; fi < model->FacesNb(); ++fi) {
+      const auto& face = model->GetFace(fi);
+      if (face->IsSet(IMeshData_SelfIntersectingWire) &&
+          (face->GetStatusMask() & unrelated_errors) == 0) {
+        bool other_wire_failure = false;
+        for (int wi = 0; wi < face->WiresNb(); ++wi) {
+          const auto& wire = face->GetWire(wi);
+          other_wire_failure |= (wire->GetStatusMask() & unrelated_errors) != 0 ||
+              (wire->IsSet(IMeshData_Failure) &&
+               !wire->IsSet(IMeshData_SelfIntersectingWire));
+        }
+        if (!other_wire_failure) intersection_failures.insert(face.get());
+      }
+    }
+    const auto check_repaired_faces = [&]() {
+      for (int fi = 0; fi < model->FacesNb(); ++fi) {
+        const auto& face = model->GetFace(fi);
+        if (affected_faces.count(face.get()) == 0 &&
+            !face->IsSet(IMeshData_SelfIntersectingWire)) continue;
+        BRepMesh_FaceChecker checker(face, GetParameters());
+        if (!checker.Perform()) {
+          face->SetStatus(IMeshData_SelfIntersectingWire);
+          face->SetStatus(IMeshData_Failure);
+          continue;
+        }
+        face->UnsetStatus(IMeshData_SelfIntersectingWire);
+        if (intersection_failures.count(face.get()) != 0)
+          face->UnsetStatus(IMeshData_Failure);
+        for (int wi = 0; wi < face->WiresNb(); ++wi) {
+          const auto& wire = face->GetWire(wi);
+          if (!wire->IsSet(IMeshData_SelfIntersectingWire)) continue;
+          wire->UnsetStatus(IMeshData_SelfIntersectingWire);
+          if ((wire->GetStatusMask() & unrelated_errors) == 0)
+            wire->UnsetStatus(IMeshData_Failure);
+        }
+      }
+      return Standard_True;
+    };
 
     constexpr int max_refinement_passes = 16;
     for (int pass = 0; pass <= max_refinement_passes; ++pass) {
@@ -3163,7 +3207,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
 
 
-      if (!crossing) return BRepMesh_Context::HealModel();
+      if (!crossing) return check_repaired_faces();
       if (additions.empty() || pass == max_refinement_passes) {
         throw std::runtime_error("OCCT could not discretize tangential face boundaries without crossing chords" + crossing_detail);
       }
@@ -3195,20 +3239,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           pcurve->Clear(false);
           const auto& affected = pcurve->GetFace();
           affected->SetStatus(IMeshData_Outdated);
-
-
-
-          if (affected->IsSet(IMeshData_SelfIntersectingWire)) {
-            affected->UnsetStatus(IMeshData_SelfIntersectingWire);
-            affected->UnsetStatus(IMeshData_Failure);
-          }
-          for (int wi = 0; wi < affected->WiresNb(); ++wi) {
-            const auto& wire = affected->GetWire(wi);
-            if (wire->IsSet(IMeshData_SelfIntersectingWire)) {
-              wire->UnsetStatus(IMeshData_SelfIntersectingWire);
-              wire->UnsetStatus(IMeshData_Failure);
-            }
-          }
+          affected_faces.insert(affected);
         }
         BRepMesh_EdgeDiscret::Tessellate2d(edge, true);
       }
@@ -3399,7 +3430,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   mesher.ChangeParameters().Deflection = linear;
   mesher.ChangeParameters().Angle = angular;
   mesher.ChangeParameters().InParallel = true;
-  mesher.Perform(new TangentBoundaryMeshContext(), range);
+  Handle(IMeshTools_Context) context = new TangentBoundaryMeshContext();
+  mesher.Perform(context, range);
   if (budget) budget->progress->check("meshing");
 
   FfiMesh output;
@@ -3413,9 +3445,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
                  static_cast<std::size_t>(edge_map.Extent()) > budget->edge_points)) {
     throw std::runtime_error("Section topology exceeds the native geometry budget");
   }
-  output.face_edge_offsets.push_back(0);
   for (int face_index = 1; face_index <= face_map.Extent(); ++face_index) {
-    if (budget) budget->progress->check("mesh extraction");
+    if (budget) budget->progress->check("mesh validation");
     const TopoDS_Face face = TopoDS::Face(face_map.FindKey(face_index));
     TopLoc_Location location;
     const Handle(Poly_Triangulation) triangulation =
@@ -3426,14 +3457,64 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
       if (!std::isfinite(properties.Mass()) || std::abs(properties.Mass()) > 1e-14) {
         std::ostringstream diagnostic;
         diagnostic.precision(17);
-        diagnostic << properties.Mass();
+        diagnostic << "area " << properties.Mass()
+                   << ", mesh status " << mesher.GetStatusFlags();
+        const auto& model = context->GetModel();
+        if (!model.IsNull()) {
+          for (int fi = 0; fi < model->FacesNb(); ++fi) {
+            const auto& discrete_face = model->GetFace(fi);
+            if (!discrete_face->GetFace().IsSame(face)) continue;
+            const auto surface_name = [](GeomAbs_SurfaceType type) {
+              switch (type) {
+                case GeomAbs_Plane: return "plane";
+                case GeomAbs_Cylinder: return "cylinder";
+                case GeomAbs_Cone: return "cone";
+                case GeomAbs_Sphere: return "sphere";
+                case GeomAbs_Torus: return "torus";
+                case GeomAbs_BezierSurface: return "Bezier";
+                case GeomAbs_BSplineSurface: return "B-spline";
+                case GeomAbs_SurfaceOfRevolution: return "revolution";
+                case GeomAbs_SurfaceOfExtrusion: return "extrusion";
+                case GeomAbs_OffsetSurface: return "offset";
+                default: return "other";
+              }
+            };
+            diagnostic << ", surface "
+                       << surface_name(discrete_face->GetSurface()->GetType())
+                       << ", face status " << discrete_face->GetStatusMask()
+                       << ", wires " << discrete_face->WiresNb();
+            int reported_edges = 0;
+            for (int wi = 0; wi < std::min(2, discrete_face->WiresNb()); ++wi) {
+              const auto& wire = discrete_face->GetWire(wi);
+              diagnostic << ", wire " << wi << " status " << wire->GetStatusMask()
+                         << " edges " << wire->EdgesNb() << " samples";
+              for (int ei = 0; ei < wire->EdgesNb() && reported_edges < 6;
+                   ++ei, ++reported_edges) {
+                const auto& pcurve = wire->GetEdge(ei)->GetPCurve(
+                    discrete_face.get(), wire->GetEdgeOrientation(ei));
+                diagnostic << ' ' << (pcurve.IsNull() ? 0 : pcurve->ParametersNb());
+              }
+            }
+            break;
+          }
+        }
         throw std::runtime_error("OCCT did not triangulate body " +
             std::to_string(body_id) + " face " + std::to_string(face_index - 1) +
-            " (area " + diagnostic.str() +
-            ", mesh status " + std::to_string(mesher.GetStatusFlags()) + ")");
+            " (" + diagnostic.str() + ")");
       }
-
-
+    }
+  }
+  context->ChangeParameters().CleanModel = true;
+  context->Clean();
+  context.Nullify();
+  output.face_edge_offsets.push_back(0);
+  for (int face_index = 1; face_index <= face_map.Extent(); ++face_index) {
+    if (budget) budget->progress->check("mesh extraction");
+    const TopoDS_Face face = TopoDS::Face(face_map.FindKey(face_index));
+    TopLoc_Location location;
+    const Handle(Poly_Triangulation) triangulation =
+        BRep_Tool::Triangulation(face, location);
+    if (triangulation.IsNull()) {
       output.face_first_indices.push_back(static_cast<std::uint32_t>(output.indices.size()));
       output.face_index_counts.push_back(0);
       append_plane(output.face_plane_data, face);

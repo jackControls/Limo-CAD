@@ -61,6 +61,17 @@ model was compared semantically with its saved archive and matched exactly; its
 second tab contained no features after the failed import. Recovery and session
 data were preserved.
 
+On October 8, foreground ownership was confirmed and guarded physical input
+opened a new tab, selected File > Import STEP, entered the Downloads path in the
+owned native dialog and accepted it. The original crossing-chord error no longer
+occurred, but import still failed at body 1 face 2225 (area 0.14921575060521969,
+aggregate mesh status 6); the tab remained empty at generation 1. The mesher now
+runs OCCT's standard healer before its custom circular-boundary sampling, then
+checks affected boundaries before clearing intersection-specific failure flags.
+Generic failures and strict nonzero-face triangulation checks remain. Additional
+diagnostics report the failed face's own status, surface and bounded wire/sample
+counts. This next correction awaits native build and a physical import retry.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,
