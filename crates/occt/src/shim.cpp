@@ -4849,6 +4849,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               strip_stop_="restored export trim fan has zero/nonfinite native area"; return false;
             }
             const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
+            int sample_index=0;
             for (const auto& w : weights) {
               const gp_Pnt2d sample(uv[0].Coord()*w[0]+uv[1].Coord()*w[1]+uv[2].Coord()*w[2]);
               gp_Pnt on_surface; gp_Dir source_normal;
@@ -4863,9 +4864,14 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 return false;
               }
               if (!std::isfinite(angle) || angle>angular) {
-                strip_stop_="restored export fan source facet angle "+std::to_string(angle)+" exceeds "+std::to_string(angular);
+                std::ostringstream diagnostic; diagnostic.precision(8);
+                diagnostic << "export child " << child[0] << '/' << child[1] << '/' << child[2] << " sample " << sample_index <<
+                    " source angle/budget " << angle << '/' << angular << " gap " << error <<
+                    " UV " << sample.X() << '/' << sample.Y();
+                strip_stop_=diagnostic.str();
                 return false;
               }
+              ++sample_index;
             }
           }
           for (int i = 0; i < 3; ++i) {
@@ -5376,7 +5382,27 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           strip_stop_ = "adjacent geometric normal winding";
           if (!std::isfinite(surface_normal.SquareMagnitude()) || surface_normal.SquareMagnitude() <= 0.0 ||
               !std::isfinite(geometric_winding) || geometric_winding == 0.0 ||
-              std::signbit(geometric_winding) != std::signbit(area)) return false;
+              std::signbit(geometric_winding) != std::signbit(area)) {
+            bool changed=saved.triangulation.IsNull() || ti>saved.triangulation->NbTriangles();
+            if (!changed) {
+              const auto old=saved.triangulation->Triangle(ti);
+              for (int i=0;i<3;++i) changed |= old.Value(i+1)!=ids[i];
+            }
+            std::ostringstream diagnostic; diagnostic.precision(8);
+            diagnostic << "face " << strip_original_faces_.FindIndex(face->GetFace())-1 << " tri " << ti <<
+                (changed ? " changed" : " original") << " nodes " << ids[0] << '/' << ids[1] << '/' << ids[2] <<
+                " winding facet2/D1normal2/dot " << normal.SquareMagnitude() << '/' << surface_normal.SquareMagnitude() << '/' <<
+                geometric_winding << " UVarea " << area << " adaptor orientation " << static_cast<int>(face->GetSurface()->Face().Orientation());
+            gp_Pnt normalized_point; gp_Dir normalized_normal;
+            try {
+              if (BRepMesh_GeomTool::Normal(face->GetSurface(),centroid_uv.X(),centroid_uv.Y(),normalized_point,normalized_normal))
+                diagnostic << " normalized angle " << normal.Angle(gp_Vec(normalized_normal)*(std::signbit(area) ? -1.0 : 1.0));
+              else diagnostic << " normalized source undefined";
+            } catch (const Standard_Failure&) { diagnostic << " normalized diagnostic unavailable (OCCT)"; }
+              catch (const std::exception&) { diagnostic << " normalized diagnostic unavailable (native)"; }
+            diagnostic << " UV " << centroid_uv.X() << '/' << centroid_uv.Y();
+            strip_stop_=diagnostic.str(); return false;
+          }
           uv_area += std::abs(area);
           double diameter = 0.0;
           for (int i = 0; i < 3; ++i) for (int j = i+1; j < 3; ++j)
@@ -6318,7 +6344,7 @@ class NativeExportIndex {
       const auto rejection=rejections_.find(face.second);
       if (rejection==rejections_.end() || rejection->second=="no mapped-native boundary shortcut" ||
           rejection->second=="native boundary restored and full domain certified") continue;
-      details << " [face " << face.second << " bad uses " << face.first << ' ' << rejection->second.substr(0,220) << ']';
+      details << " [face " << face.second << " bad uses " << face.first << ' ' << rejection->second.substr(0,360) << ']';
       if (++stages==4) break;
     }
     details << ". Source face/link-use groups";
@@ -6588,6 +6614,10 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   // Native local edge-size scaling refines small export curves without
   // changing the requested linear/angular precision or display defaults.
   mesher.ChangeParameters().AdjustMinSize = native_export_precision;
+  // Export uses native doubles. Allow the standard interior optimizer to
+  // insert nodes down to its accepted kernel numerical floor; the default
+  // display minimum remains unchanged and requested D/Angle still apply.
+  if (native_export_precision) mesher.ChangeParameters().MinSize = Precision::Confusion();
   mesher.ChangeParameters().InParallel = true;
   auto* boundary_context = new TangentBoundaryMeshContext();
   boundary_context->EnableNativeExportRecovery(native_export_precision);
