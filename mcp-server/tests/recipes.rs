@@ -513,6 +513,58 @@ fn part_geometry(
     );
 }
 
+fn stl_mesh(bytes: &[u8]) -> Value {
+    let mut positions = Vec::new();
+    if bytes.starts_with(b"solid ") {
+        let text = std::str::from_utf8(bytes).expect("ASCII STL must be UTF-8");
+        let body = text
+            .strip_prefix("solid LimoCAD\n")
+            .and_then(|text| text.strip_suffix("endsolid LimoCAD\n"))
+            .expect("ASCII STL must have a complete solid envelope");
+        let lines: Vec<_> = body.lines().map(str::trim).collect();
+        assert!(!lines.is_empty() && lines.len().is_multiple_of(7));
+        let vector = |line: &str, prefix: &str| {
+            let numbers: Vec<f64> = line
+                .strip_prefix(prefix)
+                .expect("STL facet record")
+                .split_whitespace()
+                .map(|number| number.parse().expect("STL coordinate"))
+                .collect();
+            assert_eq!(numbers.len(), 3);
+            assert!(numbers.iter().all(|number| number.is_finite()));
+            numbers
+        };
+        for facet in lines.as_chunks::<7>().0 {
+            let normal = vector(facet[0], "facet normal ");
+            assert!((normal.iter().map(|v| v * v).sum::<f64>() - 1.).abs() < 1e-4);
+            assert_eq!(facet[1], "outer loop");
+            for vertex in &facet[2..5] {
+                positions.extend(vector(vertex, "vertex "));
+            }
+            assert_eq!(facet[5], "endloop");
+            assert_eq!(facet[6], "endfacet");
+        }
+    } else {
+        assert!(bytes.len() >= 84, "binary STL header");
+        let triangles = u32::from_le_bytes(bytes[80..84].try_into().unwrap()) as usize;
+        assert!(triangles > 0);
+        assert_eq!(bytes.len(), 84 + 50 * triangles);
+        for facet in bytes[84..].as_chunks::<50>().0 {
+            let values: Vec<_> = facet[..48]
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|value| f64::from(f32::from_le_bytes(*value)))
+                .collect();
+            assert!(values.iter().all(|value| value.is_finite()));
+            assert!((values[..3].iter().map(|v| v * v).sum::<f64>() - 1.).abs() < 1e-4);
+            positions.extend_from_slice(&values[3..]);
+        }
+    }
+    let indices: Vec<_> = (0..positions.len() / 3).collect();
+    json!({"mesh":{"positions":positions,"indices":indices}})
+}
+
 #[test]
 fn native_part_recipes_preserve_analytic_geometry_restore_and_export() {
     for (id, min, max, volume, tolerance) in [
@@ -599,9 +651,15 @@ fn native_part_recipes_preserve_analytic_geometry_restore_and_export() {
                     );
                 }
                 "stl" => {
-                    let triangles = u32::from_le_bytes(bytes[80..84].try_into().unwrap()) as usize;
-                    assert!(triangles > 0);
-                    assert_eq!(bytes.len(), 84 + 50 * triangles);
+                    // Native f64 coordinates use lossless ASCII whenever the
+                    // binary STL f32 representation would change geometry.
+                    part_geometry(
+                        &json!({"errors":[],"bodies":[stl_mesh(&bytes)]}),
+                        min,
+                        max,
+                        volume,
+                        tolerance,
+                    );
                 }
                 "3mf" => {
                     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
