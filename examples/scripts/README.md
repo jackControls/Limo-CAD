@@ -289,6 +289,22 @@ geometry and references.
     named views; exact live/archive comparison passed. Its appearance, placement
     and support blocks remain unfinished.
 
+32. On clean matched `d515b39a`, select Body8 and set its appearance to
+    **Oiled timber (visual designation)**, **Honey timber**, RGB 187/126/68,
+    with an empty material family. In Assembly, Make component absorbs the
+    promoted source. Name the reusable definition and its instance **Center
+    seat bearer**, then apply instance translation 586/30/325 mm and zero
+    rotation. The actual viewport shows the timber-colored bearer crossing
+    the frame. Save the [center-bearer checkpoint](../checkpoints/garden-bench-center-bearer-human-ui.limo);
+    exact live/archive comparison passed, with twenty-nine features, eight
+    definitions, eleven occurrences, five named views, zero scene errors and
+    zero display warnings. Both appearance Apply and Make component had failed
+    on the prior runtime with **Native interface transition is pending**. The
+    new dispatch fence permits only a footer repaint, retaining every owner,
+    revision, control, layout and modal guard; both physical retries passed.
+    Support blocks and the remaining geometry, joints, drawings and print
+    layouts remain unfinished.
+
 Use the saved **Named Views** for a demonstration:
 
 1. Recall **01 / Front frame assembly**, **03 / Seat support frame** and

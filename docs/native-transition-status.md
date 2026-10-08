@@ -76,6 +76,20 @@ The managed GUI and operator now both use the supported `LIMO_CAD_SESSION_DIR`
 and `LIMO_CAD_PRINT_CACHE` overrides on D: to reduce pressure on C:. The original
 session, document, settings and recovery files remain preserved.
 
+Actual guarded bench clicks on clean matched `d515b39a` qualify the footer-race
+fix. Appearance Apply and Make component had both refused unchanged Body8 with
+**Native interface transition is pending**. Queued dispatch now permits only
+`document/status` text changes while retaining the original control stamp,
+owner/revision, layout, visibility and modal fences; fresh pointer/MCP observation
+remains strict. Both retries passed. The saved
+[center-bearer checkpoint](../examples/checkpoints/garden-bench-center-bearer-human-ui.limo)
+has its independent timber-colored 28 × 415 × 90 mm bearer named and placed at
+586/30/325 mm with identity rotation. Exact live/archive comparison passed with
+twenty-nine features, eight definitions, eleven occurrences, five named views,
+zero scene errors and zero display warnings. Support blocks and the rest of the
+three-model walkthrough remain unfinished. The newly observed threaded-part
+export identity conflict remains under investigation in automatic native CI.
+
 The subsequent clean matched `35722a50` GUI export still reports 86 unmatched
 links. Three continuous source intersections are now qualified, but the thin
 three-edge strips are refused as nonsimple or unoriented. The next candidate
