@@ -28,7 +28,10 @@
 #include <BRepMesh_FaceChecker.hxx>
 #include <BRepMesh_GeomTool.hxx>
 #include <BRepMesh_SphereRangeSplitter.hxx>
-#include <BRepMesh_DelabellaMeshAlgoFactory.hxx>
+#include <BRepMesh_DelabellaBaseMeshAlgo.hxx>
+#include <BRepMesh_CustomDelaunayBaseMeshAlgo.hxx>
+#include <BRepMesh_DelaunayNodeInsertionMeshAlgo.hxx>
+#include <BRepMesh_DataStructureOfDelaun.hxx>
 #include <IMeshTools_MeshAlgo.hxx>
 #include <IMeshData_Model.hxx>
 #include <IMeshData_Face.hxx>
@@ -3044,6 +3047,48 @@ static std::string topology_signature(const TopoDS_Shape& shape) {
 
 
 
+// The exact spherical algorithm selected by OCCT's Delabella factory, with
+// bounded stage diagnostics for exceptions swallowed by BaseMeshAlgo::Perform.
+using SphericalDelabellaBase = BRepMesh_DelaunayNodeInsertionMeshAlgo<
+    BRepMesh_SphereRangeSplitter,
+    BRepMesh_CustomDelaunayBaseMeshAlgo<BRepMesh_DelabellaBaseMeshAlgo>>;
+class DiagnosticSphericalMesher : public SphericalDelabellaBase {
+ public:
+  DiagnosticSphericalMesher() { SetPreProcessSurfaceNodes(true); }
+  std::string Stage() const { return stage_; }
+ protected:
+  Standard_Boolean initDataStructure() override {
+    stage_ = "initialization";
+    try {
+      const bool valid = SphericalDelabellaBase::initDataStructure();
+      stage_ = valid ? "initialized nodes " + std::to_string(getStructure()->NbNodes()) :
+          "invalid initialization";
+      return valid;
+    } catch (const Standard_Failure& error) { note_exception(error); throw; }
+  }
+  void buildBaseTriangulation() override {
+    stage_ = "base triangulation";
+    try {
+      SphericalDelabellaBase::buildBaseTriangulation();
+      stage_ = "base domain triangles " + std::to_string(getStructure()->ElementsOfDomain().Extent());
+    } catch (const Standard_Failure& error) { note_exception(error); throw; }
+  }
+  void postProcessMesh(BRepMesh_Delaun& mesher, const Message_ProgressRange& range) override {
+    stage_ = "postprocessing";
+    try {
+      SphericalDelabellaBase::postProcessMesh(mesher, range);
+      stage_ = "postprocessed domain triangles " +
+          std::to_string(getStructure()->ElementsOfDomain().Extent());
+    } catch (const Standard_Failure& error) { note_exception(error); throw; }
+  }
+ private:
+  void note_exception(const Standard_Failure& error) {
+    const char* message = error.GetMessageString();
+    stage_ += " exception " + std::string(message ? message : "unspecified").substr(0, 120);
+  }
+  std::string stage_ = "not started";
+};
+
 class TangentBoundaryMeshContext : public BRepMesh_Context {
  public:
   const std::string& BoundaryRepairStop() const { return boundary_repair_stop_; }
@@ -3061,19 +3106,23 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         clean_wires &= face->GetWire(wi)->GetStatusMask() == 0;
       if (clean_wires) eligible.insert(face.get());
     }
-    if (!BRepMesh_Context::DiscretizeFaces(range)) return false;
+    Message_ProgressScope stages(range, "Face triangulation and recovery", 17);
+    if (!BRepMesh_Context::DiscretizeFaces(stages.Next())) return false;
     int attempts = 0, successes = 0;
+    std::string rejections;
     for (int fi = 0; fi < model->FacesNb() && attempts < 16 && range.More(); ++fi) {
       const auto& face = model->GetFace(fi);
       if (eligible.count(face.get()) == 0 || !face->IsSet(IMeshData_Failure) ||
           (face->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Failure)) != 0) continue;
       ++attempts;
-      if (retry_spherical_face(face, range)) ++successes;
+      if (retry_spherical_face(face, stages.Next())) ++successes;
+      else if (attempts - successes <= 2)
+        rejections += " face " + std::to_string(fi) + ": " + spherical_retry_stop_.substr(0, 350);
     }
     boundary_repair_stop_ += ", spherical retries/successes " +
         std::to_string(attempts) + '/' + std::to_string(successes);
     if (attempts != successes)
-      boundary_repair_stop_ += " last rejection " + spherical_retry_stop_;
+      boundary_repair_stop_ += " rejections" + rejections;
     return true;
   }
 
@@ -3702,9 +3751,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       try {
         // Retry only the failed face, before ModelPostProcessor attaches shared
         // edge polygons. Both factories consume the identical discrete boundary.
-        BRepMesh_DelabellaMeshAlgoFactory factory;
-        const auto algorithm = factory.GetAlgo(GeomAbs_Sphere, GetParameters());
-        if (algorithm.IsNull()) return false;
+        Handle(DiagnosticSphericalMesher) algorithm = new DiagnosticSphericalMesher();
+        // This flag belongs solely to the failed first attempt. Restore it on
+        // every rejected trial; success still requires the full validation below.
+        face->UnsetStatus(IMeshData_Failure);
         algorithm->Perform(face, GetParameters(), range);
         TopLoc_Location location;
         const auto triangulation = BRep_Tool::Triangulation(face->GetFace(), location);
@@ -3713,7 +3763,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             triangulation->NbTriangles() > 0 && triangulation->NbTriangles() <= 16384 &&
             std::isfinite(triangulation->Deflection()) && triangulation->Deflection() >= 0.0 &&
             (face->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Failure)) == 0;
-        spherical_retry_stop_ = "no complete triangulation or unexpected status";
+        spherical_retry_stop_ = "trial " + algorithm->Stage() + " status " +
+            std::to_string(face->GetStatusMask()) + " nodes/triangles " +
+            std::to_string(triangulation.IsNull() ? 0 : triangulation->NbNodes()) + '/' +
+            std::to_string(triangulation.IsNull() ? 0 : triangulation->NbTriangles());
         const auto finite = [](const gp_Pnt& point) {
           return std::isfinite(point.X()) && std::isfinite(point.Y()) && std::isfinite(point.Z());
         };
