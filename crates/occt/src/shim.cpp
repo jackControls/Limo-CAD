@@ -5612,6 +5612,7 @@ class NativeExportIndex {
   using Key = std::array<int,4>; // shell, kind (face/vertex/edge), shape, sample
   struct Node { Key key; double tolerance; };
   struct Sample { std::uint32_t index; gp_Pnt point; };
+  struct Facet { int face,triangle; std::array<int,3> nodes; };
   NativeExportIndex(const TopoDS_Shape& shape, const TopTools_IndexedMapOfShape& edges, double deflection)
       : edges_(edges), deflection_(deflection) {
     TopExp::MapShapes(shape,TopAbs_SHELL,shells_);
@@ -5629,6 +5630,7 @@ class NativeExportIndex {
       if (shells.Extent()==1) owner = shells_.FindIndex(shells.First());
     }
     if (owner<0) closed_=false;
+    face_meshes_[face_index-1]=mesh;
     if (mesh->NbNodes()>1000000 || (node_work_+=mesh->NbNodes())>8000000)
       fail(face_index,"native node budget exceeded");
     std::vector<Node> nodes(mesh->NbNodes()+1);
@@ -5718,24 +5720,105 @@ class NativeExportIndex {
     output.positions.push_back(static_cast<float>(point.Z()));
     append_point(output.export_positions,point);
     append_vec(output.normals,gp_Vec(normal));
+    vertex_keys_.push_back(node.key);
+    vertex_tolerances_.push_back(node.tolerance);
     const Sample value{index,point}; samples_.emplace(node.key,value); return value;
   }
+  void facet(int face,int triangle,const int* nodes,bool skipped,double cross2=0.0) {
+    const Facet value{face-1,triangle,{nodes[0],nodes[1],nodes[2]}};
+    if (!skipped) facets_.push_back(value);
+    else {
+      ++skipped_faces_[face-1];
+      if (cross2>0.0) ++positive_skipped_faces_[face-1];
+      if (skipped_facets_.size()<4) {
+        skipped_facets_.push_back(value);
+        skipped_cross2_.push_back(cross2);
+      }
+    }
+  }
+  void retained_small(int face) { ++retained_small_faces_[face-1]; }
   void validate(const FfiMesh& output) const {
     // Open surface STL remains supported; 3MF independently requires closure.
     if (!closed_) return;
-    struct Use { int count=0,balance=0; };
+    struct Use { int count=0,balance=0; std::array<std::pair<std::size_t,int>,2> incidents; };
     std::map<std::pair<std::uint32_t,std::uint32_t>,Use> uses;
     for (std::size_t i=0;i<output.indices.size();i+=3) for (int j=0;j<3;++j) {
       const auto a=output.indices[i+j],b=output.indices[i+(j+1)%3];
-      auto& use=uses[{std::min(a,b),std::max(a,b)}]; ++use.count; use.balance+=a<b ? 1 : -1;
+      auto& use=uses[{std::min(a,b),std::max(a,b)}];
+      if (use.count<2) use.incidents[use.count]={i/3,j};
+      ++use.count; use.balance+=a<b ? 1 : -1;
     }
-    std::size_t invalid=0; std::ostringstream details;
+    std::size_t invalid=0;
+    std::map<int,int> face_groups,edge_groups;
+    std::vector<std::pair<std::pair<std::uint32_t,std::uint32_t>,Use>> failures;
+    std::set<int> example_faces;
     for (const auto& use : uses) if (use.second.count!=2 || use.second.balance!=0) {
-      if (++invalid<=6) details << " link " << use.first.first << '/' << use.first.second <<
-          " uses/balance " << use.second.count << '/' << use.second.balance;
+      ++invalid;
+      const int first_face=facets_.at(use.second.incidents[0].first).face;
+      if (failures.size()<64 && example_faces.insert(first_face).second) failures.push_back(use);
+      for (int i=0;i<std::min(2,use.second.count);++i) ++face_groups[facets_.at(use.second.incidents[i].first).face];
+      for (const auto id : {use.first.first,use.first.second}) if (vertex_keys_.at(id)[1]==2)
+        ++edge_groups[vertex_keys_[id][2]-1];
     }
-    if (invalid) throw std::runtime_error("Native export topology is not a closed oriented mesh: "+std::to_string(invalid)+
-        " invalid links; "+std::to_string(shells_.Extent())+" native shells."+details.str());
+    if (!invalid) return;
+    std::ostringstream details; details.precision(12);
+    details << "Native export topology is not a closed oriented mesh: " << invalid <<
+        " invalid links; " << shells_.Extent() << " native shells. Source face/link-use groups";
+    const auto groups=[&](const std::map<int,int>& source) {
+      std::vector<std::pair<int,int>> ranked;
+      for (const auto& entry : source) ranked.emplace_back(entry.second,entry.first);
+      std::sort(ranked.begin(),ranked.end(),[](const auto& a,const auto& b) { return a>b; });
+      for (std::size_t i=0;i<std::min<std::size_t>(12,ranked.size());++i)
+        details << ' ' << ranked[i].second << ':' << ranked[i].first;
+      if (ranked.size()>12) details << " [" << ranked.size()-12 << " further groups]";
+    };
+    groups(face_groups); details << "; native edge/endpoint-use groups"; groups(edge_groups);
+    details << "; retained positive small-facet groups"; groups(retained_small_faces_);
+    details << "; native extraction skipped triangle groups"; groups(skipped_faces_);
+    details << "; positive threshold-skipped groups"; groups(positive_skipped_faces_);
+    for (std::size_t i=0;i<skipped_facets_.size();++i) {
+      const auto& f=skipped_facets_[i]; details << " [face " << f.face << " tri " << f.triangle <<
+          " nodes " << f.nodes[0] << '/' << f.nodes[1] << '/' << f.nodes[2] << " cross2 " << skipped_cross2_[i] << ']';
+    }
+    const auto vertex=[&](std::uint32_t id) {
+      const auto& key=vertex_keys_.at(id);
+      details << id << "{shell " << key[0]-1 << ' ' << (key[1]==0 ? "face/node " : key[1]==1 ? "vertex " : "edge/sample ") <<
+          key[2]-1 << '/' << key[3] << " tol " << vertex_tolerances_.at(id);
+      if (key[1]==2) details << " t " << edge_parameters_.at({key[0],key[2]}).at(key[3]-1);
+      details << " XYZ " << output.export_positions[3*id] << ',' << output.export_positions[3*id+1] << ',' <<
+          output.export_positions[3*id+2] << '}';
+    };
+    std::size_t examples=0,raw_work=0;
+    for (const auto& failure : failures) {
+      if (details.str().size()>3800) break;
+      const auto& use=failure.second;
+      details << "; link "; vertex(failure.first.first); details << '/'; vertex(failure.first.second);
+      details << " uses/balance " << use.count << '/' << use.balance;
+      for (int i=0;i<std::min(2,use.count);++i) {
+        const auto& incident=use.incidents[i]; const auto& f=facets_.at(incident.first);
+        const int a=f.nodes[incident.second],b=f.nodes[(incident.second+1)%3];
+        details << " incident face/tri/facet " << f.face << '/' << f.triangle << '/' << incident.first <<
+            " native nodes " << a << '/' << b << " third " << f.nodes[(incident.second+2)%3];
+        const auto& mesh=face_meshes_.at(f.face); int raw=0;
+        if (mesh->HasUVNodes()) {
+          const auto ua=mesh->UVNode(a),ub=mesh->UVNode(b);
+          details << " UV " << ua.X() << ',' << ua.Y() << '/' << ub.X() << ',' << ub.Y();
+        }
+        if (raw_work+static_cast<std::size_t>(mesh->NbTriangles())<=2000000) {
+          raw_work+=mesh->NbTriangles();
+          for (int ti=1;ti<=mesh->NbTriangles();++ti) {
+            const auto triangle=mesh->Triangle(ti);
+            for (int j=1;j<=3;++j) {
+              const int x=triangle.Value(j),y=triangle.Value(j%3+1);
+              if ((x==a && y==b) || (x==b && y==a)) ++raw;
+            }
+          }
+          details << " raw face uses " << raw;
+        } else details << " raw incidence budget exhausted";
+      }
+      if (++examples==8) break;
+    }
+    throw std::runtime_error(details.str().substr(0,4800));
   }
  private:
   [[noreturn]] void fail(int face_index,const std::string& message) const {
@@ -5747,6 +5830,12 @@ class NativeExportIndex {
   TopTools_IndexedDataMapOfShapeListOfShape face_shells_;
   std::map<std::pair<int,int>,std::vector<double>> edge_parameters_;
   std::map<Key,Sample> samples_;
+  std::vector<Key> vertex_keys_;
+  std::vector<double> vertex_tolerances_;
+  std::vector<Facet> facets_,skipped_facets_;
+  std::vector<double> skipped_cross2_;
+  std::map<int,int> skipped_faces_,positive_skipped_faces_,retained_small_faces_;
+  std::map<int,Handle(Poly_Triangulation)> face_meshes_;
   double deflection_;
   bool closed_=false;
   std::size_t node_work_=0,parameter_work_=0;
@@ -6086,9 +6175,18 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
                           triangulation->Node(indices[2]).Transformed(transform)};
       gp_Vec triangle_normal(points[0], points[1]);
       triangle_normal.Cross(gp_Vec(points[0], points[2]));
-      if (triangle_normal.SquareMagnitude() <= 1e-24) {
+      const double native_cross2=triangle_normal.SquareMagnitude();
+      if (export_index && !std::isfinite(native_cross2))
+        throw std::runtime_error("Native export topology face "+std::to_string(face_index-1)+
+            " triangle "+std::to_string(triangle_index)+": nonfinite native facet cross product");
+      // Lossless export retains every finite positive-area native facet.
+      // Display keeps its existing area cutoff; exact-zero facets add no surface.
+      if (export_index ? native_cross2==0.0 : native_cross2<=1e-24) {
+        if (export_index) export_index->facet(face_index,triangle_index,indices,true,native_cross2);
         continue;
       }
+      if (export_index && native_cross2<=1e-24) export_index->retained_small(face_index);
+      if (export_index) export_index->facet(face_index,triangle_index,indices,false);
       gp_Pnt indexed_points[3]; bool indexed_changed=false;
       for (int vertex = 0; vertex < 3; ++vertex) {
         gp_Dir normal = triangulation->Normal(indices[vertex]);
