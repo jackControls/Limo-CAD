@@ -264,6 +264,24 @@ and dimensions 536 × 327.47 × 48 mm. No native-precision-qualified STL or 3MF 
 claimed. The foreground GUI/MCP pair is matched; unique GUI output/error logs
 are retained for the previously unexplained process exit.
 
+The export-only minimum-size trial at `3b61ad80` increases the actual refusal
+to 136 links. Its diagnostics identify a genuinely inverted original native
+facet, with a normalized source-normal angle of 3.009 radians; the derivatives
+are finite and nonzero. `6d916088` reverts that minimum-size setting and trials
+a larger source UV patch. Actual UI preflight returns to 107 links, rejecting
+its replacement child at 0.810 radians against the unchanged 0.700 interior
+angle budget. No export artifact is accepted by either trial. Source geometry
+and the complete Medix checkpoint remain preserved.
+
+The bench Hole dialog was reopened through physical input on matched `3b61ad80`
+without reproducing the earlier unexpected process exit. Enter in a position
+field accepted the dialog; physical Undo removed that premature hole and restored
+eighteen features. A separate local **Crown garden bench - lower stock isolated
+human UI.limo** preserves the isolated lower-stock view. Its sketches, extrudes,
+holes and assembly match the original bench archive, and its live model matched
+the separate saved checkpoint before restart. This adds no lower-rail bores;
+the original bench document and committed checkpoint remain intact.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,
