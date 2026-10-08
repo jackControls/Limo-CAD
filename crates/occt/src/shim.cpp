@@ -4587,9 +4587,41 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       if (a != representative && c != representative) {
         strip_stop_ = "native pole representatives are not consecutive on source boundary"; return false;
       }
+      const auto auv = mesh->UVNode(a), buv = mesh->UVNode(b), cuv = mesh->UVNode(c);
+      int pole_segment = -1;
+      for (int i=0;i<count;++i) {
+        const int from=original[i],to=original[(i+1)%count];
+        if ((from==id0 && to==id1) || (from==id1 && to==id0)) {
+          if (pole_segment!=-1) { strip_stop_ = "native pole trace has ambiguous oriented ownership"; return false; }
+          pole_segment=i;
+        }
+      }
+      if (pole_segment==-1) { strip_stop_ = "native pole trace is absent from oriented boundary"; return false; }
+      const int incoming=(pole_segment+count-1)%count,outgoing=(pole_segment+1)%count;
+      const auto local_pair=std::minmax(incoming,outgoing);
+      int local_crossings=0;
+      gp_Pnt2d local_crossing;
+      const auto in_witnessed_wedge = [&](const gp_Pnt2d& point) {
+        if (!strip_finite(point)) return false;
+        const double twice_area=(buv.Coord()-auv.Coord()).Crossed(cuv.Coord()-auv.Coord());
+        if (!std::isfinite(twice_area) || twice_area==0.0) return false;
+        const gp_Pnt2d vertices[3]={auv,buv,cuv};
+        for (int i=0;i<3;++i) {
+          const auto from=vertices[i],to=vertices[(i+1)%3];
+          const double cross=(to.Coord()-from.Coord()).Crossed(point.Coord()-from.Coord());
+          const double coordinates=std::abs(from.X())+std::abs(from.Y())+std::abs(to.X())+
+              std::abs(to.Y())+std::abs(point.X())+std::abs(point.Y());
+          const double roundoff=64.0*std::numeric_limits<double>::epsilon()*coordinates*coordinates;
+          if (!std::isfinite(cross) || !std::isfinite(roundoff) ||
+              (twice_area>0.0 ? cross < -roundoff : cross > roundoff)) return false;
+        }
+        return true;
+      };
       // Removing exactly b changes the oriented boundary by triangle (a,b,c).
-      // Both full polygons must be simple; all other chart edges stay unchanged.
-      const auto simple_area = [&](const std::vector<int>& polygon,double& area,const char* chart) {
+      // The quotient must be simple. A sole proper source crossing between
+      // the incoming/outgoing segments at this native pole is confined to
+      // that same witnessed wedge; all other contacts remain disallowed.
+      const auto simple_area = [&](const std::vector<int>& polygon,double& area,const char* chart,bool source_chart) {
         const auto reject = [&](const std::string& reason) {
           strip_stop_ = std::string("native pole ")+chart+" chart "+reason; return false;
         };
@@ -4608,6 +4640,22 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 mesh->UVNode(polygon[(j+1)%polygon.size()]).Coord(),true,true,intersection);
             const bool adjacent = j==i+1 || (i==0 && j+1==polygon.size());
             if (flag!=BRepMesh_GeomTool::NoIntersection && !(adjacent && flag==BRepMesh_GeomTool::EndPointTouch)) {
+              if (source_chart && flag==BRepMesh_GeomTool::Cross &&
+                  static_cast<int>(i)==local_pair.first && static_cast<int>(j)==local_pair.second &&
+                  local_crossings==0 && in_witnessed_wedge(intersection)) {
+                // Cross must lie strictly inside both native-adjacent source
+                // segments, not describe another endpoint or backtracking.
+                bool interior=true;
+                for (int index : {incoming,outgoing}) {
+                  const auto from=mesh->UVNode(original[index]),to=mesh->UVNode(original[(index+1)%count]);
+                  const auto delta=to.Coord()-from.Coord();
+                  const double length2=delta.SquareModulus();
+                  if (!std::isfinite(length2) || length2<=0.0) { interior=false; break; }
+                  const double fraction=(intersection.Coord()-from.Coord()).Dot(delta)/length2;
+                  interior &= std::isfinite(fraction) && fraction>0.0 && fraction<1.0;
+                }
+                if (interior) { ++local_crossings; local_crossing=intersection; continue; }
+              }
               std::ostringstream detail; detail.precision(9);
               detail << "intersection status " << static_cast<int>(flag) << " segments " << polygon[i] << '/' <<
                   polygon[(i+1)%polygon.size()] << " and " << polygon[j] << '/' << polygon[(j+1)%polygon.size()] <<
@@ -4620,12 +4668,11 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         return true;
       };
       double source_area,quotient_area;
-      if (!simple_area(original,source_area,"source") || !simple_area(quotient,quotient_area,"quotient")) return false;
+      if (!simple_area(original,source_area,"source",true) || !simple_area(quotient,quotient_area,"quotient",false)) return false;
       if (std::signbit(source_area)!=std::signbit(quotient_area)) {
         strip_stop_ = "native pole quotient reverses the source chart winding"; return false;
       }
       const double chart_winding = std::signbit(quotient_area) ? -1.0 : 1.0;
-      const auto auv = mesh->UVNode(a), buv = mesh->UVNode(b), cuv = mesh->UVNode(c);
       const double wedge_area = 0.5*(buv.Coord()-auv.Coord()).Crossed(cuv.Coord()-auv.Coord());
       // Bound subtraction and polygon accumulation using the stored chart's
       // coordinate scale, including rounding before the origin subtraction.
@@ -4734,6 +4781,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       }
       // Wedge and actual incident triangle are checked directly; the native
       // estimator intentionally excludes triangles at degenerate boundaries.
+      if (local_crossings && !sample(local_crossing,false)) return rejected_sample("native pole local crossing");
       for (int i=0;i<=4;++i) for (int j=0;j<=4-i;++j) {
         const double x=i/4.0,y=j/4.0,z=1.0-x-y;
         if (!sample(gp_Pnt2d(auv.Coord()*x+buv.Coord()*y+cuv.Coord()*z),false)) {
@@ -4755,6 +4803,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       std::ostringstream certificate; certificate.precision(7);
       certificate << "; certified native pole " << omitted << "->" << representative << " D/angle " << deflection << '/' << angular <<
           " measured error/angle " << max_error << '/' << max_angle << " signed chart wedge " << wedge_area;
+      certificate << " localized source crossings " << local_crossings;
       strip_corner_detail_ += certificate.str();
       return true;
     } catch (const Standard_Failure&) { strip_stop_ = "OCCT exception certifying native pole quotient"; return false; }
