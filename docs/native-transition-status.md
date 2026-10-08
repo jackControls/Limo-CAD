@@ -99,6 +99,14 @@ vertex, whose tolerance is 0.0313735171429 mm; the measured source pcurve/3D
 discrepancy there is 0.0000174693969219 mm. The candidate preserves imported
 topology and rejects unresolved nonzero faces. Successful Medix import remains
 unqualified while this next junction is investigated.
+Clean `afe296af` built, deployed and was physically retried on a matched GUI/MCP
+pair. The repair now includes measured original pcurve/3D discrepancies at the
+shared endpoint, each bounded by its incident edge's recorded tolerance. All
+eight sampled junction repairs passed. Import progressed to body 1 face 3779,
+a spherical face with signed area -0.000015055593139196334 mm², status 4 and no
+reported boundary intersections. That nonzero face was rejected rather than
+omitted; the import tab stayed empty. Its meshing failure is the next unresolved
+issue, and successful Medix import is still not established.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
