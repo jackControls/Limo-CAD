@@ -3841,9 +3841,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
   // Certify a simple discrete polygon independently of FaceChecker's small-
   // angle/loop-area exemptions. Endpoints remain the shared CAD mesh nodes.
-  static bool certified_strip_pair(const gp_Pnt2d& a,const gp_Pnt2d& b,
-                                   const gp_Pnt2d& c,const gp_Pnt2d& d,bool adjacent) {
-    const auto orientation=[](const gp_Pnt2d& p,const gp_Pnt2d& q,const gp_Pnt2d& r) {
+  static int certified_strip_orientation(const gp_Pnt2d& p,const gp_Pnt2d& q,const gp_Pnt2d& r) {
       const double x=q.X()-p.X(),y=q.Y()-p.Y(),u=r.X()-p.X(),v=r.Y()-p.Y();
       const double scale=std::abs(p.X())+std::abs(p.Y())+std::abs(q.X())+std::abs(q.Y())+
           std::abs(r.X())+std::abs(r.Y());
@@ -3851,13 +3849,15 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           scale*(std::abs(x)+std::abs(y)+std::abs(u)+std::abs(v)));
       const double value=x*v-y*u;
       return std::isfinite(value) && std::isfinite(error) ? (value>error ? 1 : value<-error ? -1 : 0) : 0;
-    };
+  }
+  static bool certified_strip_pair(const gp_Pnt2d& a,const gp_Pnt2d& b,
+                                   const gp_Pnt2d& c,const gp_Pnt2d& d,bool adjacent) {
     if (adjacent) {
       gp_Pnt2d before,shared,after;
       if (b.X()==c.X() && b.Y()==c.Y()) { before=a;shared=b;after=d; }
       else if (d.X()==a.X() && d.Y()==a.Y()) { before=c;shared=d;after=b; }
       else return false;
-      if (orientation(before,shared,after)!=0) return true;
+      if (certified_strip_orientation(before,shared,after)!=0) return true;
       const auto incoming=shared.Coord()-before.Coord(),outgoing=after.Coord()-shared.Coord();
       const double value=incoming.Dot(outgoing);
       const double scale=std::abs(before.X())+std::abs(before.Y())+std::abs(shared.X())+std::abs(shared.Y())+
@@ -3871,9 +3871,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     }
     if (std::max(a.X(),b.X())<std::min(c.X(),d.X()) || std::max(c.X(),d.X())<std::min(a.X(),b.X()) ||
         std::max(a.Y(),b.Y())<std::min(c.Y(),d.Y()) || std::max(c.Y(),d.Y())<std::min(a.Y(),b.Y())) return true;
-    const int first=orientation(a,b,c),second=orientation(a,b,d);
+    const int first=certified_strip_orientation(a,b,c),second=certified_strip_orientation(a,b,d);
     if (first!=0 && first==second) return true;
-    const int third=orientation(c,d,a),fourth=orientation(c,d,b);
+    const int third=certified_strip_orientation(c,d,a),fourth=certified_strip_orientation(c,d,b);
     return third!=0 && third==fourth;
   }
 
@@ -4570,7 +4570,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   }
 
   // Pair the common interval of two long sides, then retain every unchanged
-  // connector/tail station in a positive cap fan. The complete wire/domain and
+  // connector/tail station in a constrained cap. The complete wire/domain and
   // seven source precision witnesses still qualify all installed cells.
   bool triangulate_connector_strip(const StripTrial& trial) {
     try {
@@ -4642,18 +4642,94 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       if (contains_shared(first)==contains_shared(second)) { strip_stop_="connector unique cap traversal";return false; }
       cap=contains_shared(first) ? second : first;
       if (cap.size()<3 || cap.size()>32) { strip_stop_="connector native cap constraint budget";return false; }
-      // Preserve the cap's oriented boundary. A non-star cap is rejected;
-      // no native connector node is dropped or replaced by a shortcut.
+      // Preserve the cap's oriented boundary, including collinear stations.
+      // Only positive ears may be removed from the active polygon, and their
+      // triangles retain every original connector/tail constraint.
       double cap_area=0.0;const auto origin=mesh->UVNode(cap.front()).Coord();
       for (std::size_t i=0;i<cap.size();++i) cap_area+=(mesh->UVNode(cap[i]).Coord()-origin).Crossed(
           mesh->UVNode(cap[(i+1)%cap.size()]).Coord()-origin);
       if (!std::isfinite(cap_area) || cap_area<=0.0) { strip_stop_="connector cap UV area/winding";return false; }
-      for (std::size_t i=1;i+1<cap.size();++i) {
-        const auto x=mesh->UVNode(cap[i]),y=mesh->UVNode(cap[i+1]);
-        if ((x.Coord()-origin).Crossed(y.Coord()-origin)*cap_area<=0.0 || !append({cap[0],cap[i],cap[i+1]})) {
-          strip_stop_="connector cap lacks a positive source fan";return false;
+      if (std::set<int>(cap.begin(),cap.end()).size()!=cap.size()) { strip_stop_="connector cap repeats a native node";return false; }
+      for (std::size_t i=0;i<cap.size();++i) for (std::size_t j=i+1;j<cap.size();++j) {
+        if (++export_boundary_work_>2097152) { strip_stop_="connector cap proof work budget";return false; }
+        const bool adjacent=j==i+1 || (i==0 && j+1==cap.size());
+        if (!certified_strip_pair(mesh->UVNode(cap[i]),mesh->UVNode(cap[(i+1)%cap.size()]),
+            mesh->UVNode(cap[j]),mesh->UVNode(cap[(j+1)%cap.size()]),adjacent)) {
+          strip_stop_="connector cap closure is not certified simple segments "+std::to_string(i)+'/'+std::to_string(j);return false;
         }
       }
+      const double d=GetParameters().Deflection;
+      const double angular=GetParameters().AngleInterior>0.0 ? GetParameters().AngleInterior : GetParameters().Angle;
+      if (!std::isfinite(d) || d<=0.0 || !std::isfinite(angular) || angular<=0.0) { strip_stop_="connector cap precision budget";return false; }
+      std::string cap_stop="no positive constrained ear";
+      const auto precise=[&](const std::array<int,3>& cell) {
+        gp_Pnt points[3];gp_Pnt2d uv[3];
+        for (int i=0;i<3;++i) {
+          points[i]=mesh->Node(cell[i]).Transformed(location.Transformation());uv[i]=mesh->UVNode(cell[i]);
+          if (!strip_finite(points[i]) || !strip_finite(uv[i])) { cap_stop="nonfinite native cap ear";return false; }
+        }
+        const auto normal=gp_Vec(points[0],points[1]).Crossed(gp_Vec(points[0],points[2]));
+        if (!std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude()<=0.0) { cap_stop="zero native cap ear";return false; }
+        const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
+        int sample_index=0;
+        for (const auto& w : weights) {
+          if (++export_boundary_work_>2097152) { cap_stop="cap source work budget";return false; }
+          const gp_Pnt2d sample(uv[0].Coord()*w[0]+uv[1].Coord()*w[1]+uv[2].Coord()*w[2]);
+          const gp_Pnt affine(points[0].XYZ()*w[0]+points[1].XYZ()*w[1]+points[2].XYZ()*w[2]);
+          gp_Pnt source;gp_Dir source_normal;
+          if (!BRepMesh_GeomTool::Normal(trial.target->GetSurface(),sample.X(),sample.Y(),source,source_normal)) {
+            cap_stop="cap source normal is undefined";return false;
+          }
+          const double error=affine.Distance(source),angle=normal.Angle(gp_Vec(source_normal));
+          if (!strip_finite(source) || !strip_finite(affine) || !std::isfinite(error) || error>d || !std::isfinite(angle) || angle>angular) {
+            std::ostringstream reason;reason.precision(8);
+            reason << "ear " << cell[0] << '/' << cell[1] << '/' << cell[2] << " sample " << sample_index <<
+                " source D/angle " << error << '/' << angle << " budgets " << d << '/' << angular;
+            cap_stop=reason.str();return false;
+          }
+          ++sample_index;
+        }
+        return true;
+      };
+      std::vector<std::array<int,3>> cap_cells;int states=0;
+      const auto search=[&](auto&& self,const std::vector<int>& polygon)->bool {
+        if (++states>512 || ++export_boundary_work_>2097152) { cap_stop="cap constrained search/work budget";return false; }
+        for (std::size_t i=0;i<polygon.size();++i) {
+          const int previous=polygon[(i+polygon.size()-1)%polygon.size()],ear=polygon[i],next=polygon[(i+1)%polygon.size()];
+          const auto a=mesh->UVNode(previous),b=mesh->UVNode(ear),c=mesh->UVNode(next);
+          if (certified_strip_orientation(a,b,c)!=1) continue;
+          bool valid=true;
+          for (int id : polygon) {
+            if (++export_boundary_work_>2097152) { cap_stop="cap vertex proof work budget";return false; }
+            if (id==previous || id==ear || id==next) continue;
+            const auto point=mesh->UVNode(id);
+            // A certified negative half-plane proves the node lies outside.
+            // All on/inside/unresolved points block this ear, including native
+            // collinear stations that must remain constrained.
+            if (certified_strip_orientation(a,b,point)!=-1 && certified_strip_orientation(b,c,point)!=-1 &&
+                certified_strip_orientation(c,a,point)!=-1) { valid=false;break; }
+          }
+          for (std::size_t j=0;valid && j<polygon.size();++j) {
+            if (++export_boundary_work_>2097152) { cap_stop="cap diagonal proof work budget";return false; }
+            const int x=polygon[j],y=polygon[(j+1)%polygon.size()];
+            if (x==previous || x==next || y==previous || y==next) continue;
+            if (!certified_strip_pair(a,c,mesh->UVNode(x),mesh->UVNode(y),false)) valid=false;
+          }
+          const std::array<int,3> cell{previous,ear,next};
+          if (!valid || !precise(cell)) continue;
+          cap_cells.push_back(cell);
+          if (polygon.size()==3) return true;
+          auto remaining=polygon;remaining.erase(remaining.begin()+i);
+          if (self(self,remaining)) return true;
+          cap_cells.pop_back();
+          if (states>=512 || export_boundary_work_>2097152) return false;
+        }
+        return false;
+      };
+      if (!search(search,cap) || cap_cells.size()!=cap.size()-2) {
+        strip_stop_="connector constrained cap states "+std::to_string(states)+": "+cap_stop;return false;
+      }
+      for (const auto& cell : cap_cells) if (!append(cell)) { strip_stop_="certified cap installation failed";return false; }
       if (cells.size()!=boundary.size()-2) { strip_stop_="connector complete wire facet coverage";return false; }
       const auto replacement=mesh->Copy();replacement->ResizeTriangles(static_cast<int>(cells.size()),false);
       for (std::size_t i=0;i<cells.size();++i) replacement->SetTriangle(static_cast<int>(i)+1,Poly_Triangle(cells[i][0],cells[i][1],cells[i][2]));

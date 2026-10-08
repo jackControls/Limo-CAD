@@ -28,14 +28,14 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `eeb0aa05` opens the complete
+Current October 8 Medix qualification: clean matched `8ee3a909` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
 536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 86 unmatched
 boundary links and no multiply used links. The copied-mesh station repair now
-gets past the earlier sphere-strip meshing failures; extra native wire edges on
-sphere faces 3794/3796 prevent the existing two-edge recovery certificate from
-applying. The earlier `d2ba9017` trial exposed a 1.540435 radian facet-normal error
+gets past the earlier sphere-strip meshing failures. Three-edge recovery now
+qualifies the source crossing and polygon simplicity; the connector cap is still
+refused because its fixed-root fan is not positive. The earlier `d2ba9017` trial exposed a 1.540435 radian facet-normal error
 on sphere face 3779. The earlier `69f1ee6b`/`7c235990` trials
 reported 86 unmatched boundary links and no multiply used links. Conforming
 source-interior refinement resolved their previous largest boundary group while
@@ -58,6 +58,14 @@ three-edge strips are refused as nonsimple or unoriented. The next candidate
 replaces the scale-dependent UV segment classifier with conservative certified
 separation; ambiguous contacts and every existing source/domain/closure guard
 still reject. It is not yet qualified through the GUI.
+
+The subsequent clean matched `8ee3a909` GUI export gets past that simplicity
+check but still reports 86 unmatched links. Its leading thin spheres now stop
+after meshing at **connector cap lacks a positive source fan**. A bounded
+constrained cap triangulation now preserves every connector and tail station,
+checks positive disjoint ears and seven source precision witnesses, and bounds
+backtracking to 512 states. It awaits GUI qualification; no successful
+native-precision export is claimed.
 
 The actual guarded GUI export on clean matched `7c235990` still reports 86
 unmatched links. Native curve diagnostics rule out zero-area incidence loss on
