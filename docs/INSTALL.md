@@ -9,7 +9,7 @@ New source builds use `Limo-CAD.exe` on Windows, `limo-cad` on Linux/macOS,
 `.limo` projects and `limo-cad://` recipe links. The instructions below match
 the published preview's executable, `.nbcad` files and `nbcad://` links.
 
-Download the **[Bevy rc.2 preview](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)**
+Download the **[Bevy rc.2 preview](https://github.com/limo-cad/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)**
 for **Windows x64 or Ubuntu 26.04 x64**. It includes the native desktop, Scripts
 library and MCP server; no compiler or agent is needed to use it. Choose an
 application package, not GitHub's **Source code** archives.
@@ -53,7 +53,7 @@ through Windows Update or the GPU manufacturer's support site, then restart CAD.
 The published Windows x64 package passed SDK-free headless and desktop MCP
 checks on Thunder, including Save and guarded shutdown. An independent hosted
 build of the same clean source also passed native-input checks in the
-[tagged package run](https://github.com/jackControls/Limo-CAD/actions/runs/37232261112).
+[tagged package run](https://github.com/limo-cad/Limo-CAD/actions/runs/37232261112).
 This preview has no verified Windows 10 minimum.
 This preview has no setup installer or automatic updater.
 
@@ -118,7 +118,7 @@ saves the editable CAD project (`.limo`). Keep the project when you want to cont
 modeling; keep the recipe when you want to replay its construction.
 
 To inspect a flagship without waiting for construction, download its `.limo`
-from the [showcase media release](https://github.com/jackControls/Limo-CAD/releases/tag/showcase-v0.2.0)
+from the [showcase media release](https://github.com/limo-cad/Limo-CAD/releases/tag/showcase-v0.2.0)
 and use **File → Open**. Browser **Open recipe** links load source into Scripts;
 review it before choosing **Run in new design**. Launch the installed app once
 before using those browser links, so it can register its recipe handler. New

@@ -2,7 +2,7 @@
 
 - Status: Accepted viewport contract; shell/composition ownership superseded by [ADR 0003](0003-bevy-interface.md)
 - Date: 2026-07-30
-- Tracking: [#20](https://github.com/jackControls/Limo-CAD/issues/20)
+- Tracking: [#20](https://github.com/limo-cad/Limo-CAD/issues/20)
 
 ## Context
 

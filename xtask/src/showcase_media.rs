@@ -19,21 +19,6 @@ const NAMES: [&str; 3] = [
 const MAX_MEDIA: u64 = 128 * 1024 * 1024;
 const MAX_JSON: u64 = 1024 * 1024;
 
-fn same_release_url(actual: &Value, expected: &str) -> bool {
-    if actual == expected {
-        return true;
-    }
-    let prefix = "https://github.com/jackControls/Limo-CAD/releases/download/";
-    crate::repository::slug() == "jackControls/Limo-CAD"
-        && expected.strip_prefix(prefix).is_some_and(|suffix| {
-            actual.as_str()
-                == Some(
-                    format!("https://github.com/limo-cad/Limo-CAD/releases/download/{suffix}")
-                        .as_str(),
-                )
-        })
-}
-
 #[derive(Debug, Clone)]
 pub(super) struct Input {
     pub name: String,
@@ -239,7 +224,7 @@ fn assets(
             );
             ensure!(
                 published["size"].as_u64() == Some(bytes)
-                    && same_release_url(&published["browser_download_url"], &input.url),
+                    && published["browser_download_url"].as_str() == Some(input.url.as_str()),
                 "published media differs from manifest: {}",
                 input.name
             );
@@ -288,7 +273,7 @@ fn resolve_release(network: &impl Network, inputs: &[Input]) -> Result<(Value, V
         release["assets"].as_array().is_some_and(|assets| assets
             .iter()
             .filter(|a| a["name"] == "release-manifest.json"
-                && same_release_url(&a["browser_download_url"], &manifest_url))
+                && a["browser_download_url"].as_str() == Some(manifest_url.as_str()))
             .count()
             == 1),
         "missing public release manifest"
@@ -432,7 +417,10 @@ mod tests {
             format!("{}.attacker.example/releases", crate::repository::api()),
             "https://api.github.com.attacker.example/repos/x/y".into(),
             "https://api.github.com/repos/someone/else/releases".into(),
-            "http://api.github.com/repos/jackControls/Limo-CAD/releases".into(),
+            format!(
+                "http://api.github.com/repos/{}/releases",
+                crate::repository::slug()
+            ),
         ] {
             assert!(network.token_for(&url).is_none());
         }
@@ -505,14 +493,8 @@ mod tests {
         }
     }
     #[test]
-    fn planned_transfer_preserves_pinned_public_verification_and_staging() {
-        let mut network = Fixture::new();
-        for asset in network.release["assets"].as_array_mut().unwrap() {
-            asset["browser_download_url"] = json!(asset["browser_download_url"]
-                .as_str()
-                .unwrap()
-                .replace("jackControls/Limo-CAD/", "limo-cad/Limo-CAD/"));
-        }
+    fn published_release_verifies_and_stages_pinned_videos() {
+        let network = Fixture::new();
         resolve_release(&network, &inputs(&network.html()).unwrap()).unwrap();
         let site = tempfile::tempdir().unwrap();
         stage(&network, &network.html(), site.path()).unwrap();
@@ -525,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn transfer_alias_rejects_other_repositories_tags_and_files() {
+    fn published_media_urls_require_the_exact_repository_tag_and_file() {
         let network = Fixture::new();
         let input = inputs(&network.html()).unwrap();
         for url in [

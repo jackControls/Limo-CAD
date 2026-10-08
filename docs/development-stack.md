@@ -7,7 +7,7 @@ Rendering changes the presentation, not the modeling operations or final checks.
 
 ## Review and merge order
 
-The [native GitHub stack shown in PR #115](https://github.com/jackControls/Limo-CAD/pull/115)
+The [native GitHub stack shown in PR #115](https://github.com/limo-cad/Limo-CAD/pull/115)
 is the current source of truth for its order, approvals and CI. PR95 merged on
 September 11; the twenty remaining layers now start at PR96. The full sequence is:
 

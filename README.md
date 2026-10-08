@@ -15,18 +15,18 @@
 Design mechanical parts, assemblies and drawings on your own machine, by hand
 or with your AI agent, and keep every sketch and feature editable.
 
-[![Bevy preview](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
+[![Bevy preview](https://img.shields.io/badge/Bevy-0.20.0--rc.2-blue)](https://github.com/limo-cad/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 [![License: LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
-[![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
+[![Discussions](https://img.shields.io/github/discussions/limo-cad/Limo-CAD?label=discussions)](https://github.com/limo-cad/Limo-CAD/discussions)
 
 **Pre-alpha · Bevy rc.2 preview · Application version 0.2.2**
-· [Preview notes, source and checks](https://github.com/jackControls/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
+· [Preview notes, source and checks](https://github.com/limo-cad/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 · [Installation help](docs/INSTALL.md)
 
 | Platform | Download |
 |---|---|
-| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS-CAD-0.2.2-windows-x64.zip) |
-| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/jackControls/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS.CAD_0.2.2_amd64.deb) |
+| Windows 11 | [x64 ZIP](https://github.com/limo-cad/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS-CAD-0.2.2-windows-x64.zip) |
+| Linux | [Ubuntu 26.04 x64 DEB](https://github.com/limo-cad/Limo-CAD/releases/download/bevy-preview-0.2.2-20261004.1/noBS.CAD_0.2.2_amd64.deb) |
 
 These rebuilt packages use clean source `9b082687`, including System appearance,
 the Windows window icon and finished-sketch history across memory eviction.
@@ -61,45 +61,45 @@ recording; **Build loop** is a short accelerated excerpt.
 <table>
 <tr>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench.png" alt="Garden bench with crowned back slats and rounded armrests"></a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench.png" alt="Garden bench with crowned back slats and rounded armrests"></a><br>
 <b>Garden bench</b><br>
 Change one picket dimension and the whole back updates. Frame, arms and joints stay editable.
 </td>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise.png" alt="Vise with a captured sliding jaw and compact D-screw handle"></a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise.png" alt="Vise with a captured sliding jaw and compact D-screw handle"></a><br>
 <b>Vise</b><br>
 Turn the screw and the jaw follows. 100 mm jaws, 90 mm travel, six printed parts plus hardware.
 </td>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine.png" alt="Two-stage vertical-axis turbine with its bearing-supported shaft and generator drive"></a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine.png" alt="Two-stage vertical-axis turbine with its bearing-supported shaft and generator drive"></a><br>
 <b>Vertical-axis turbine</b><br>
 Two Savonius stages on a bearing-supported shaft, driving a generator through a 4:1 drive.
 </td>
 </tr>
 <tr>
 <td align="center">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>Watch</b></a>
-· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">Open recipe</a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#garden-bench"><b>Watch</b></a>
+· <a href="https://limo-cad.github.io/Limo-CAD/open.html#garden-bench">Open recipe</a><br>
 <a href="examples/scripts/garden-bench.limo.jsonc">Source</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/bench-loop.gif">Build loop</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
 <td align="center">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>Watch</b></a>
-· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">Open recipe</a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>Watch</b></a>
+· <a href="https://limo-cad.github.io/Limo-CAD/open.html#d-screw-vise">Open recipe</a><br>
 <a href="examples/scripts/d-screw-vise.limo.jsonc">Source</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/vise-loop.gif">Build loop</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
 <td align="center">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>Watch</b></a>
-· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">Open recipe</a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>Watch</b></a>
+· <a href="https://limo-cad.github.io/Limo-CAD/open.html#vertical-axis-turbine">Open recipe</a><br>
 <a href="examples/scripts/vertical-axis-turbine.limo.jsonc">Source</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">Build loop</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>
 </tr>
 </table>
@@ -160,7 +160,7 @@ improvement. [Contributing](CONTRIBUTING.md) · [Developer setup](docs/DEVELOPME
 · [Documentation](docs/INDEX.md)
 
 Questions, ideas, or something you made? Start a thread in
-[Discussions](https://github.com/jackControls/Limo-CAD/discussions). If Limo CAD
+[Discussions](https://github.com/limo-cad/Limo-CAD/discussions). If Limo CAD
 is useful to you, a star helps other people find it.
 
 We are working toward guided design lessons and conversational wizards, and

@@ -27,7 +27,7 @@ or drawing sheets and without changing source geometry.
    drawing exports already supply most ingredients. Add a shared review layout
    with model-revision provenance, multiple views and diagrams. Do not recreate
    those primitives in bespoke Python as an application feature.
-5. **Structural analysis ([issue #336](https://github.com/jackControls/Limo-CAD/issues/336)).** No production structural solver
+5. **Structural analysis ([issue #336](https://github.com/limo-cad/Limo-CAD/issues/336)).** No production structural solver
    was found. Require material provenance, boundary conditions, mesh convergence
    and benchmark validation before presenting force/strain predictions.
 

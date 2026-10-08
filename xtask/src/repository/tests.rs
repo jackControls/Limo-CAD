@@ -1,24 +1,6 @@
 use super::*;
 
 #[test]
-fn transferred_api_owner_requires_the_same_repository_id() {
-    assert_eq!(
-        api_slug(Some(id().into()), Some("limo-cad/Limo-CAD".into())),
-        "limo-cad/Limo-CAD"
-    );
-    for repository_id in [None, Some("1313334316".into()), Some("01313334315".into())] {
-        assert_eq!(
-            api_slug(repository_id, Some("limo-cad/Limo-CAD".into())),
-            slug()
-        );
-    }
-    assert_eq!(
-        api_slug(Some(id().into()), Some("another/repo".into())),
-        slug()
-    );
-}
-
-#[test]
 fn ci_guards_retarget_exact_repository_literals_without_relaxing_conditions() {
     let from = "jackControls/noBS-CAD";
     let to = "new-owner/new-cad";

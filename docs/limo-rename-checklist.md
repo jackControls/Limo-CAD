@@ -2,9 +2,9 @@
 
 Checkpoint: **2026-10-05 UTC**. The name was accepted in
 [ADR 0007](adr/0007-limo-name.md). The repository is
-[`jackControls/Limo-CAD`](https://github.com/jackControls/Limo-CAD).
+[`limo-cad/Limo-CAD`](https://github.com/limo-cad/Limo-CAD).
 The complete native runtime migration is on `feat/bevy-interface`, tracked by
-[PR #124](https://github.com/jackControls/Limo-CAD/pull/124), and awaits review
+[PR #124](https://github.com/limo-cad/Limo-CAD/pull/124), and awaits review
 before merging into `main`.
 
 ## Completed on the Bevy branch
