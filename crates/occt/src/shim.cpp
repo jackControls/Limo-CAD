@@ -3841,17 +3841,54 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
   // Certify a simple discrete polygon independently of FaceChecker's small-
   // angle/loop-area exemptions. Endpoints remain the shared CAD mesh nodes.
-  static bool simple_strip_boundary(IMeshData::IFacePtr face, double& signed_area,bool strict=false) {
+  static bool certified_strip_pair(const gp_Pnt2d& a,const gp_Pnt2d& b,
+                                   const gp_Pnt2d& c,const gp_Pnt2d& d,bool adjacent) {
+    const auto orientation=[](const gp_Pnt2d& p,const gp_Pnt2d& q,const gp_Pnt2d& r) {
+      const double x=q.X()-p.X(),y=q.Y()-p.Y(),u=r.X()-p.X(),v=r.Y()-p.Y();
+      const double scale=std::abs(p.X())+std::abs(p.Y())+std::abs(q.X())+std::abs(q.Y())+
+          std::abs(r.X())+std::abs(r.Y());
+      const double error=64.0*std::numeric_limits<double>::epsilon()*(std::abs(x*v)+std::abs(y*u)+
+          scale*(std::abs(x)+std::abs(y)+std::abs(u)+std::abs(v)));
+      const double value=x*v-y*u;
+      return std::isfinite(value) && std::isfinite(error) ? (value>error ? 1 : value<-error ? -1 : 0) : 0;
+    };
+    if (adjacent) {
+      gp_Pnt2d before,shared,after;
+      if (b.X()==c.X() && b.Y()==c.Y()) { before=a;shared=b;after=d; }
+      else if (d.X()==a.X() && d.Y()==a.Y()) { before=c;shared=d;after=b; }
+      else return false;
+      if (orientation(before,shared,after)!=0) return true;
+      const auto incoming=shared.Coord()-before.Coord(),outgoing=after.Coord()-shared.Coord();
+      const double value=incoming.Dot(outgoing);
+      const double scale=std::abs(before.X())+std::abs(before.Y())+std::abs(shared.X())+std::abs(shared.Y())+
+          std::abs(after.X())+std::abs(after.Y());
+      const double error=64.0*std::numeric_limits<double>::epsilon()*(
+          std::abs(incoming.X()*outgoing.X())+std::abs(incoming.Y()*outgoing.Y())+
+          scale*(std::abs(incoming.X())+std::abs(incoming.Y())+std::abs(outgoing.X())+std::abs(outgoing.Y())));
+      // Even if the turn is numerically unresolved, rays directed away from
+      // their common vertex cannot overlap when this dot product is positive.
+      return std::isfinite(value) && std::isfinite(error) && value>error;
+    }
+    if (std::max(a.X(),b.X())<std::min(c.X(),d.X()) || std::max(c.X(),d.X())<std::min(a.X(),b.X()) ||
+        std::max(a.Y(),b.Y())<std::min(c.Y(),d.Y()) || std::max(c.Y(),d.Y())<std::min(a.Y(),b.Y())) return true;
+    const int first=orientation(a,b,c),second=orientation(a,b,d);
+    if (first!=0 && first==second) return true;
+    const int third=orientation(c,d,a),fourth=orientation(c,d,b);
+    return third!=0 && third==fourth;
+  }
+
+  static bool simple_strip_boundary(IMeshData::IFacePtr face, double& signed_area,bool strict=false,std::string* failure=nullptr) {
+    const auto reject=[&](const std::string& reason) { if (failure) *failure=reason;return false; };
     std::vector<gp_Pnt2d> polygon;
-    if (face->WiresNb() != 1) return false;
+    if (face->WiresNb() != 1) return reject("wire count");
     const auto& wire = face->GetWire(0);
     for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
       const auto& edge = wire->GetEdge(ei);
       const auto& pc = edge->GetPCurve(face, wire->GetEdgeOrientation(ei));
-      if (pc.IsNull() || pc->ParametersNb() < 2 || polygon.size() + pc->ParametersNb() > 1024) return false;
+      if (pc.IsNull() || pc->ParametersNb() < 2 || polygon.size() + pc->ParametersNb() > 1024) return reject("PCurve/sample budget");
       for (int i = 0; i < pc->ParametersNb() - 1; ++i) {
         const int index = wire->GetEdgeOrientation(ei) == TopAbs_REVERSED ? pc->ParametersNb() - 1 - i : i;
-        if (!strip_finite(pc->GetPoint(index))) return false;
+        if (!strip_finite(pc->GetPoint(index))) return reject("nonfinite UV sample");
         polygon.push_back(pc->GetPoint(index));
       }
       const int end = wire->GetEdgeOrientation(ei) == TopAbs_REVERSED ? 0 : pc->ParametersNb() - 1;
@@ -3860,26 +3897,41 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       const auto& next_pc = next_edge->GetPCurve(face, next_orientation);
       if (next_pc.IsNull() || next_pc->ParametersNb() < 2 || pc->GetPoint(end).Distance(
               next_pc->GetPoint(next_orientation == TopAbs_REVERSED ? next_pc->ParametersNb() - 1 : 0)) >
-          Precision::PConfusion()) return false;
+          Precision::PConfusion()) return reject("native wire UV endpoint correspondence edge "+std::to_string(ei));
     }
     signed_area = 0.0;
-    if (polygon.size() < 3) return false;
+    if (polygon.size() < 3) return reject("polygon station count");
     const auto origin = polygon.front().Coord();
     for (std::size_t i = 0; i < polygon.size(); ++i) {
       const auto& a = polygon[i]; const auto& b = polygon[(i + 1) % polygon.size()];
-      if (a.Distance(b) <= Precision::PConfusion()) return false;
+      if (a.Distance(b) <= Precision::PConfusion()) return reject("UV segment below PConfusion index "+std::to_string(i));
       signed_area += 0.5 * (a.Coord() - origin).Crossed(b.Coord() - origin);
       for (std::size_t j = i + (strict ? 1 : 2); j < polygon.size(); ++j) {
         const bool adjacent=j==i+1 || (i==0 && j+1==polygon.size());
         if (!strict && adjacent) continue;
         gp_Pnt2d intersection;
+        if (strict) {
+          const auto& c=polygon[j];const auto& d=polygon[(j+1)%polygon.size()];
+          // OCCT classifyPoint uses an unscaled cross-product cutoff. For a
+          // tiny cap that can report Glued for genuinely separated segments.
+          // Prove separation from stored coordinates instead; unresolved
+          // predicates and every true nonadjacent contact remain rejected.
+          if (certified_strip_pair(a,b,c,d,adjacent)) continue;
+          const auto status=BRepMesh_GeomTool::IntSegSeg(a.Coord(),b.Coord(),c.Coord(),d.Coord(),true,true,intersection);
+          std::ostringstream reason;reason.precision(9);
+          reason << "uncertified boundary pair " << i << '/' << j << " SDK-status " << static_cast<int>(status) <<
+              " adjacent " << adjacent << " lengths " << a.Distance(b) << '/' << c.Distance(d) <<
+              " cross " << (b.Coord()-a.Coord()).Crossed(c.Coord()-a.Coord()) << '/' <<
+              (b.Coord()-a.Coord()).Crossed(d.Coord()-a.Coord()) << " UV " <<
+              a.X() << ',' << a.Y() << ':' << b.X() << ',' << b.Y() << ':' << c.X() << ',' << c.Y() << ':' << d.X() << ',' << d.Y();
+          return reject(reason.str());
+        }
         const auto status=BRepMesh_GeomTool::IntSegSeg(a.Coord(), b.Coord(), polygon[j].Coord(),
-                polygon[(j + 1) % polygon.size()].Coord(), strict, strict, intersection);
-        if (strict ? (status!=BRepMesh_GeomTool::NoIntersection && !(adjacent && status==BRepMesh_GeomTool::EndPointTouch)) :
-            status==BRepMesh_GeomTool::Cross) return false;
+                polygon[(j + 1) % polygon.size()].Coord(), false, false, intersection);
+        if (status==BRepMesh_GeomTool::Cross) return reject("crossing segments "+std::to_string(i)+'/'+std::to_string(j));
       }
     }
-    return std::isfinite(signed_area) && signed_area > 0.0;
+    return std::isfinite(signed_area) && signed_area > 0.0 ? true : reject("nonpositive/nonfinite signed area "+std::to_string(signed_area));
   }
 
   bool prepare_spherical_strip(const IMeshData::IFaceHandle& face,
@@ -4363,7 +4415,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         if (!checker.Perform()) return reject("adjacent FaceChecker rejected regularized boundary");
       }
       double area;
-      if (!simple_strip_boundary(face.get(), area,trial.connector>=0)) return reject("regularized strip remains nonsimple or unoriented");
+      std::string boundary_stop;
+      if (!simple_strip_boundary(face.get(), area,trial.connector>=0,&boundary_stop))
+        return reject(("regularized strip boundary: "+boundary_stop).c_str());
       return true;
     } catch (const StripRollbackFailure&) { throw; }
       catch (const Standard_Failure&) { return reject("OCCT exception preparing regularized strip"); }
