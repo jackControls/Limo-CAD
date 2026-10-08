@@ -3064,27 +3064,108 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         if (!other_wire_failure) intersection_failures.insert(face.get());
       }
     }
-    const auto check_repaired_faces = [&]() {
-      for (int fi = 0; fi < model->FacesNb(); ++fi) {
-        const auto& face = model->GetFace(fi);
-        if (affected_faces.count(face.get()) == 0 &&
-            !face->IsSet(IMeshData_SelfIntersectingWire)) continue;
-        BRepMesh_FaceChecker checker(face, GetParameters());
-        if (!checker.Perform()) {
-          face->SetStatus(IMeshData_SelfIntersectingWire);
-          face->SetStatus(IMeshData_Failure);
+    const auto rebuild_pcurves = [&](IMeshData::IEdgePtr edge) {
+      struct Endpoints {
+        IMeshData::IPCurveHandle pcurve;
+        gp_Pnt2d first;
+        gp_Pnt2d last;
+        double first_parameter;
+        double last_parameter;
+        TopAbs_Orientation orientation;
+      };
+      std::vector<Endpoints> endpoints;
+      edge->SetStatus(IMeshData_Outdated);
+      for (int pi = 0; pi < edge->PCurvesNb(); ++pi) {
+        const auto& pcurve = edge->GetPCurve(pi);
+        const int count = pcurve->ParametersNb();
+        if (count >= 2)
+          endpoints.push_back({pcurve, pcurve->GetPoint(0), pcurve->GetPoint(count - 1),
+              pcurve->GetParameter(0), pcurve->GetParameter(count - 1),
+              pcurve->GetOrientation()});
+        pcurve->Clear(false);
+        const auto& affected = pcurve->GetFace();
+        affected->SetStatus(IMeshData_Outdated);
+        affected_faces.insert(affected);
+      }
+      BRepMesh_EdgeDiscret::Tessellate2d(edge, true);
+      // Preserve the healer's connected endpoints only when their parameter
+      // and orientation correspondence survived regeneration unchanged.
+      for (const auto& saved : endpoints) {
+        const int count = saved.pcurve->ParametersNb();
+        if (count < 2 || saved.pcurve->GetOrientation() != saved.orientation ||
+            saved.pcurve->GetParameter(0) != saved.first_parameter ||
+            saved.pcurve->GetParameter(count - 1) != saved.last_parameter)
           continue;
+        saved.pcurve->GetPoint(0) = saved.first;
+        saved.pcurve->GetPoint(count - 1) = saved.last;
+      }
+    };
+    const auto check_repaired_faces = [&]() {
+      constexpr int max_boundary_passes = 8;
+      constexpr int max_edge_points = 4096;
+      constexpr std::size_t max_added_points = 65536;
+      std::size_t added_points = 0;
+      for (int pass = 0; pass <= max_boundary_passes; ++pass) {
+        std::set<IMeshData::IEdgePtr> intersecting_edges;
+        for (int fi = 0; fi < model->FacesNb(); ++fi) {
+          const auto& face = model->GetFace(fi);
+          if (affected_faces.count(face.get()) == 0 &&
+              !face->IsSet(IMeshData_SelfIntersectingWire)) continue;
+          BRepMesh_FaceChecker checker(face, GetParameters());
+          if (!checker.Perform()) {
+            if (!face->IsSet(IMeshData_Failure) &&
+                (face->GetStatusMask() & unrelated_errors) == 0)
+              intersection_failures.insert(face.get());
+            face->SetStatus(IMeshData_SelfIntersectingWire);
+            face->SetStatus(IMeshData_Failure);
+            const auto& edges = checker.GetIntersectingEdges();
+            if (!edges.IsNull()) {
+              for (IMeshData::MapOfIEdgePtr::Iterator edge(*edges);
+                   edge.More(); edge.Next())
+                intersecting_edges.insert(edge.Value());
+            }
+            continue;
+          }
+          face->UnsetStatus(IMeshData_SelfIntersectingWire);
+          if (intersection_failures.count(face.get()) != 0)
+            face->UnsetStatus(IMeshData_Failure);
+          for (int wi = 0; wi < face->WiresNb(); ++wi) {
+            const auto& wire = face->GetWire(wi);
+            if (!wire->IsSet(IMeshData_SelfIntersectingWire)) continue;
+            wire->UnsetStatus(IMeshData_SelfIntersectingWire);
+            if ((wire->GetStatusMask() & unrelated_errors) == 0)
+              wire->UnsetStatus(IMeshData_Failure);
+          }
         }
-        face->UnsetStatus(IMeshData_SelfIntersectingWire);
-        if (intersection_failures.count(face.get()) != 0)
-          face->UnsetStatus(IMeshData_Failure);
-        for (int wi = 0; wi < face->WiresNb(); ++wi) {
-          const auto& wire = face->GetWire(wi);
-          if (!wire->IsSet(IMeshData_SelfIntersectingWire)) continue;
-          wire->UnsetStatus(IMeshData_SelfIntersectingWire);
-          if ((wire->GetStatusMask() & unrelated_errors) == 0)
-            wire->UnsetStatus(IMeshData_Failure);
+        if (intersecting_edges.empty() || pass == max_boundary_passes)
+          break;
+        bool inserted = false;
+        for (auto edge : intersecting_edges) {
+          if (!edge->GetSameParam() || !edge->GetSameRange()) continue;
+          const auto& points = edge->GetCurve();
+          const int count = points->ParametersNb();
+          if (count < 2 || count > (max_edge_points + 1) / 2 ||
+              static_cast<std::size_t>(count - 1) > max_added_points - added_points)
+            continue;
+          BRepAdaptor_Curve curve(edge->GetEdge());
+          bool edge_inserted = false;
+          // Refine exact curve samples without replacing the samples already
+          // needed by adjacent faces or the circular-boundary repair.
+          for (int index = count - 1; index > 0; --index) {
+            const double first = points->GetParameter(index - 1);
+            const double last = points->GetParameter(index);
+            const double middle = first + (last - first) * 0.5;
+            if (!std::isfinite(middle) || middle == first || middle == last)
+              continue;
+            points->InsertPoint(index, curve.Value(middle), middle);
+            ++added_points;
+            inserted = true;
+            edge_inserted = true;
+          }
+          if (!edge_inserted) continue;
+          rebuild_pcurves(edge);
         }
+        if (!inserted) break;
       }
       return Standard_True;
     };
@@ -3233,15 +3314,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           edge_inserted = true;
         }
         if (!edge_inserted) continue;
-        edge->SetStatus(IMeshData_Outdated);
-        for (int pi = 0; pi < edge->PCurvesNb(); ++pi) {
-          const auto& pcurve = edge->GetPCurve(pi);
-          pcurve->Clear(false);
-          const auto& affected = pcurve->GetFace();
-          affected->SetStatus(IMeshData_Outdated);
-          affected_faces.insert(affected);
-        }
-        BRepMesh_EdgeDiscret::Tessellate2d(edge, true);
+        rebuild_pcurves(edge);
       }
       if (!inserted) {
         throw std::runtime_error("OCCT could not refine crossing tangential face boundaries" + crossing_detail);

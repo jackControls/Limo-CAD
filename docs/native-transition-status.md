@@ -70,7 +70,15 @@ runs OCCT's standard healer before its custom circular-boundary sampling, then
 checks affected boundaries before clearing intersection-specific failure flags.
 Generic failures and strict nonzero-face triangulation checks remain. Additional
 diagnostics report the failed face's own status, surface and bounded wire/sample
-counts. This next correction awaits native build and a physical import retry.
+counts. Clean `75a04561` built and was retried through guarded physical input;
+the same face still failed. Its own status was 6, its surface was B-spline, and
+its three boundary edges had 22, 11 and 18 samples. The next correction refines
+only edges reported by OCCT's boundary-intersection checker, evaluates added
+points on the exact curves, preserves healed UV endpoints and rechecks adjacent
+faces. It is bounded to eight passes, 4,096 points per edge and 65,536 added
+points per model. Strict rejection of unresolved nonzero faces remains. This
+candidate awaits a native build and physical import retry; successful Medix
+import is not yet established.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
