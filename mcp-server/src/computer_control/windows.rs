@@ -164,6 +164,24 @@ impl ComputerControl {
             } else {
                 None
             };
+            if let (Some(captured), Some(client)) = (&captured, bounds) {
+                let image = captured.screen_bounds;
+                // A dialog's first compositor frame can contain only its title
+                // bar. Qualify coordinates and edit focus only after its entire
+                // current client area is visible in the captured frame.
+                if image[0] > client[0]
+                    || image[1] > client[1]
+                    || i64::from(image[0]) + i64::from(image[2])
+                        < i64::from(client[0]) + i64::from(client[2])
+                    || i64::from(image[1]) + i64::from(image[3])
+                        < i64::from(client[1]) + i64::from(client[3])
+                {
+                    return Err(
+                        "Native dialog capture does not cover its client area; observe again"
+                            .into(),
+                    );
+                }
+            }
             static NEXT: AtomicU64 = AtomicU64::new(0);
             let token = format!(
                 "computer-{}-{}-{}",
