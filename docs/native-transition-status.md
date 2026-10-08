@@ -28,13 +28,16 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `69f1ee6b` opens the complete
+Current October 8 Medix qualification: clean matched `d2ba9017` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
-536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused, now with 86 unmatched
-boundary links and no multiply used links. Conforming source-interior refinement
-has resolved the previous largest boundary group while preserving the original
-STEP and document. All 70 installed payload hashes match. No successful 3MF or
+536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused: the seven source
+witnesses now expose a 1.540435 radian facet-normal error on sphere face 3779,
+beyond the requested angular limit. The earlier `69f1ee6b`/`7c235990` trials
+reported 86 unmatched boundary links and no multiply used links. Conforming
+source-interior refinement resolved their previous largest boundary group while
+preserving the original STEP and document. All 70 installed payload hashes
+match. No successful 3MF or
 native-precision-qualified STL is claimed. The Medix notes below record earlier
 trials chronologically; they do not supersede this current qualification.
 
@@ -45,8 +48,11 @@ trim samples are missing from their mesh. Their crossing chords correspond to
 nearly coincident source curves, with approximately 1.407e-7 mm native separation
 and recorded tolerances of approximately 0.0483 mm. This observation alone does
 not prove continuous curves are disjoint. `96b567a7` adds export-only continuous
-intersection qualification and f64 strip witnesses; actual GUI qualification
-of that repair remains pending. Export is still blocked; no mesh guard is waived.
+intersection qualification and f64 strip witnesses. Its actual guarded GUI
+qualification at `d2ba9017` exposed the source-normal failure described above;
+the initial three proposed strip repairs were all rejected. Matching strip
+boundary stations and facet connectivity are being investigated while retaining
+the seven source witnesses. Export is still blocked; no mesh guard is waived.
 
 The clean matched `7c235990` bench session now has a separate preserved
 [lower-clearance checkpoint](../examples/checkpoints/garden-bench-lower-clearances-human-ui.limo)
