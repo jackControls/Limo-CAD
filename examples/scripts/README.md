@@ -276,6 +276,19 @@ geometry and references.
     four post pilot patterns are complete; remaining geometry, joints, drawings
     and print layouts remain unfinished.
 
+31. On clean matched `fc275793`, hide the seven stock bodies, create a sketch on
+    the XY origin plane and draw a Rectangle from the origin. Type width 28 mm
+    and height 415 mm, then finish the sketch. Its saved origin coincidence,
+    horizontal/vertical edges and driving dimensions retain the exact profile.
+    Select the closed profile in Extrude and create an independent body at
+    distance 90 mm, zero taper and no flip. Name the sketch **Center seat bearer /
+    stock from A-B-C** and the extrusion **Center seat bearer / stock from A-B-C /
+    Stock 90 mm**. Hide its finished sketch, restore all eight Browser eyes and
+    save. The [center-stock checkpoint](../checkpoints/garden-bench-center-stock-human-ui.limo)
+    has twenty-nine features, eight definitions, eleven occurrences and five
+    named views; exact live/archive comparison passed. Its appearance, placement
+    and support blocks remain unfinished.
+
 Use the saved **Named Views** for a demonstration:
 
 1. Recall **01 / Front frame assembly**, **03 / Seat support frame** and

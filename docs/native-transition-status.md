@@ -52,7 +52,10 @@ the shared apex after native vertex/world identity, coordinate-roundoff and
 source-precision certificates qualifies both rail repairs and all affected
 owners: two accepted transactions insert 22 native stations, reducing 16 links
 to 8. Only native face groups 7146/7147/7279 and 7236/7237/7254 remain. Their
-connectivity recovery is still under investigation.
+connectivity recovery is still under investigation. The next copied trial seeds
+a complete constrained native-boundary disk before the existing conformal
+source-precision refinement; every native station and final source/pole/domain/
+closure check remains. GUI qualification is pending.
 All 70 installed payload hashes match the clean manifest. No successful 3MF or
 native-precision-qualified STL is claimed. The Medix notes below record earlier
 trials; they do not supersede this current qualification.
@@ -219,6 +222,16 @@ has twenty-seven features, seven definitions, ten occurrences and five named
 views. All Browser eyes are restored; saved parameters and exact live/archive
 comparison passed. The four post pilot patterns are complete. Remaining bench
 geometry, joints, drawings and print layouts are unfinished.
+
+On clean matched `fc275793`, physical Rectangle input added the center seat
+bearer's 28 × 415 mm XY profile. Its saved constraints retain an origin-coincident
+point, horizontal/vertical edges and driving dimensions. Physical Extrude input
+created independent 90 mm stock with zero taper and no flip. Both features were
+named through the UI; all eight Browser eyes were restored. The saved
+[center-stock checkpoint](../examples/checkpoints/garden-bench-center-stock-human-ui.limo)
+has twenty-nine features, eight definitions, eleven occurrences and five views,
+and matches the live model exactly. The center stock remains at the source
+origin; its appearance, assembly placement and support blocks are unfinished.
 
 On clean matched `08efc3e7`, physical top-face selection and the Hole dialog
 added the lower rail's two Ø3.5 mm, 32 mm deep, flat-bottom stretcher pilots at

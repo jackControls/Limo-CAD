@@ -3205,6 +3205,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       recover_export_internal_diagonals();
       recover_export_longest_faces();
       recover_export_chord_boundaries();
+      recover_export_longest_faces(false,true);
       recover_export_longest_faces(true);
     }
     if (!range.More()) {
@@ -5518,6 +5519,14 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       TopExp::MapShapes(GetModel()->GetShape(),TopAbs_EDGE,native_edges);
       TopExp::MapShapes(GetModel()->GetShape(),TopAbs_VERTEX,vertices);
       const int original=strip_original_faces_.FindIndex(face->GetFace())-1;
+      double u0,u1,v0,v1;BRepTools::UVBounds(face->GetFace(),u0,u1,v0,v1);
+      std::fprintf(stderr,"Native export source chart face %d surface-type %d wire-edges %d U/V %.12g/%.12g:%.12g/%.12g\n",
+          original,static_cast<int>(face->GetSurface()->GetType()),face->GetWire(0)->EdgesNb(),u0,u1,v0,v1);
+      if (face->GetSurface()->GetType()==GeomAbs_BSplineSurface) {
+        const auto source=face->GetSurface()->BSpline();
+        if (!source.IsNull()) std::fprintf(stderr,"Native export source chart face %d U/V degree %d/%d poles %d/%d rational %d/%d\n",
+            original,source->UDegree(),source->VDegree(),source->NbUPoles(),source->NbVPoles(),source->IsURational(),source->IsVRational());
+      }
       struct Rail { double span;IMeshData::IPCurveHandle pc;Handle(Geom2d_Curve) source;int edge; };
       std::vector<Rail> rails;const auto wire=face->GetWire(0);
       for (int ei=0;ei<wire->EdgesNb();++ei) {
@@ -5592,7 +5601,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
   // Try geometric span contraction only after every earlier strategy and the
   // shared-curve transaction. Fresh snapshots protect all accepted repairs.
-  void recover_export_longest_faces(bool allow_flips=false) {
+  void recover_export_longest_faces(bool allow_flips=false,bool boundary_ears=false) {
     int attempts=0,repaired=0,added=0;
     for (int fi=0;fi<GetModel()->FacesNb() && export_boundary_attempts_<128 && export_boundary_work_<2097152;++fi) {
       const auto face=GetModel()->GetFace(fi).get();
@@ -5649,7 +5658,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         ++attempts;++export_boundary_attempts_;bool accepted=false;
         try {
           restore_spherical_strip(trial);
-          const bool complete=restore_complete_export_face(trial,choice,true,true,allow_flips);
+          if (boundary_ears && choice==0) diagnose_export_rails(face);
+          const bool complete=restore_complete_export_face(trial,choice,true,true,allow_flips,boundary_ears);
           accepted=complete && validate_spherical_strip(trial,true);
           reason=std::string(complete ? "domain: " : "star: ")+strip_stop_;
         } catch (const StripRollbackFailure&) { throw; }
@@ -5658,22 +5668,102 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         if (accepted) {
           TopLoc_Location location;const auto mesh=BRep_Tool::Triangulation(face->GetFace(),location);
           ++repaired;added+=mesh->NbTriangles()-trial.faces.front().triangulation->NbTriangles();
-          rejection->second=std::string(allow_flips ? "deferred flip" : "longest-edge")+" native boundary restored and full domain certified";break;
+          rejection->second=std::string(boundary_ears ? "boundary ears" : allow_flips ? "deferred flip" : "longest-edge")+" native boundary restored and full domain certified";break;
         }
         restore_spherical_strip(trial);
         rejection->second=prior.substr(0,1300)+(allow_flips ? "; deferred flip choice " : "; longest choice ")+std::to_string(choice)+' '+reason.substr(0,650);
         std::fprintf(stderr,"Native export boundary face %d choice %d policy %s: %s\n",original,choice,
-            allow_flips ? "deferred-flip" : "longest",reason.substr(0,3000).c_str());
+            boundary_ears ? "boundary-ears" : allow_flips ? "deferred-flip" : "longest",reason.substr(0,3000).c_str());
       }
     }
-    export_boundary_stop_+=std::string(allow_flips ? "; deferred flip" : "; longest")+" attempts/repaired/added "+std::to_string(attempts)+'/'+std::to_string(repaired)+'/'+std::to_string(added);
+    export_boundary_stop_+=std::string(boundary_ears ? "; boundary ears" : allow_flips ? "; deferred flip" : "; longest")+" attempts/repaired/added "+std::to_string(attempts)+'/'+std::to_string(repaired)+'/'+std::to_string(added);
+  }
+
+  // This is only a different initial triangulation of the same certified disk,
+  // not a precision acceptance. Quality orders ears by actual source witnesses;
+  // every resulting cell still enters the unchanged conformal refinement and
+  // must satisfy all seven source witnesses before installation.
+  bool build_export_boundary_ears(IMeshData::IFacePtr face,const Handle(Poly_Triangulation)& mesh,
+                                 const TopLoc_Location& location,const std::vector<int>& boundary,
+                                 double winding,double d,double angle,std::vector<std::array<int,3>>& seed) {
+    if (boundary.size()<3 || boundary.size()>256 || !std::isfinite(d) || d<=0.0 || !std::isfinite(angle) || angle<=0.0) {
+      strip_stop_="boundary-ear source/count budget";return false;
+    }
+    const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
+    const auto quality=[&](const std::array<int,3>& ids,double& score) {
+      gp_Pnt2d uv[3];gp_Pnt p[3];
+      for (int i=0;i<3;++i) {
+        uv[i]=mesh->UVNode(ids[i]);p[i]=mesh->Node(ids[i]).Transformed(location.Transformation());
+        if (!strip_finite(uv[i]) || !strip_finite(p[i])) return false;
+      }
+      const auto normal=gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2]));
+      if (!std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude()<=0.0) return false;
+      score=0.0;
+      for (const auto& w : weights) {
+        if (++export_boundary_work_>2097152) return false;
+        const gp_Pnt2d at(uv[0].Coord()*w[0]+uv[1].Coord()*w[1]+uv[2].Coord()*w[2]);
+        const gp_Pnt affine(p[0].XYZ()*w[0]+p[1].XYZ()*w[1]+p[2].XYZ()*w[2]);gp_Pnt source;gp_Dir source_normal;
+        if (!BRepMesh_GeomTool::Normal(face->GetSurface(),at.X(),at.Y(),source,source_normal) || !strip_finite(source)) return false;
+        const double error=affine.Distance(source),angular=normal.Angle(gp_Vec(source_normal)*winding);
+        if (!std::isfinite(error) || !std::isfinite(angular)) return false;
+        score=std::max(score,std::max(error/d,angular/angle));
+      }
+      return std::isfinite(score);
+    };
+    struct Ear { std::size_t index;std::array<int,3> ids;double score,aspect; };
+    int states=0;
+    const auto search=[&](auto&& self,const std::vector<int>& polygon)->bool {
+      if (++states>512 || ++export_boundary_work_>2097152) return false;
+      std::vector<Ear> ears;
+      for (std::size_t i=0;i<polygon.size();++i) {
+        const auto previous=(i+polygon.size()-1)%polygon.size(),next=(i+1)%polygon.size();
+        const std::array<int,3> ids{polygon[previous],polygon[i],polygon[next]};
+        const auto a=mesh->UVNode(ids[0]),b=mesh->UVNode(ids[1]),c=mesh->UVNode(ids[2]);
+        if (winding*certified_strip_orientation(a,b,c)<=0.0) continue;
+        bool valid=true;
+        for (std::size_t j=0;j<polygon.size() && valid;++j) {
+          if (++export_boundary_work_>2097152) return false;
+          if (j!=previous && j!=i && j!=next) {
+            const auto p=mesh->UVNode(polygon[j]);
+            valid=winding*certified_strip_orientation(a,b,p)<0.0 || winding*certified_strip_orientation(b,c,p)<0.0 ||
+                winding*certified_strip_orientation(c,a,p)<0.0;
+          }
+          const auto end=(j+1)%polygon.size();
+          if (valid && j!=previous && j!=next && end!=previous && end!=next)
+            valid=certified_strip_pair(a,c,mesh->UVNode(polygon[j]),mesh->UVNode(polygon[end]),false);
+        }
+        double score;
+        if (!valid || !quality(ids,score)) continue;
+        const double area=std::abs((b.Coord()-a.Coord()).Crossed(c.Coord()-a.Coord()));
+        const double length2=a.SquareDistance(b)+b.SquareDistance(c)+c.SquareDistance(a);
+        const double aspect=area/length2;
+        if (!std::isfinite(aspect) || aspect<=0.0) continue;
+        ears.push_back({i,ids,score,aspect});
+      }
+      std::stable_sort(ears.begin(),ears.end(),[](const Ear& a,const Ear& b) {
+        return a.score!=b.score ? a.score<b.score : a.aspect>b.aspect;
+      });
+      for (const auto& ear : ears) {
+        seed.push_back(ear.ids);
+        if (polygon.size()==3) return true;
+        auto remainder=polygon;remainder.erase(remainder.begin()+ear.index);
+        if (self(self,remainder)) return true;
+        seed.pop_back();
+        if (states>=512 || export_boundary_work_>2097152) return false;
+      }
+      return false;
+    };
+    if (!search(search,boundary) || seed.size()+2!=boundary.size()) {
+      strip_stop_="boundary-ear complete disk seed unavailable; states "+std::to_string(states);return false;
+    }
+    return true;
   }
 
   // Rebuild the COMPLETE authoritative mapped wire rather than an incomplete
   // old facet union. Original PCurves/native nodes and pole witnesses remain.
-  bool restore_complete_export_face(const StripTrial& trial,int pole_choice,bool lookahead=false,bool longest=false,bool allow_flips=false) {
+  bool restore_complete_export_face(const StripTrial& trial,int pole_choice,bool lookahead=false,bool longest=false,bool allow_flips=false,bool boundary_ears=false) {
     strip_stop_="whole-face preparation";
-    const char* policy=allow_flips ? "deferred-flip" : longest ? "longest" : lookahead ? "lookahead" : "original";
+    const char* policy=boundary_ears ? "boundary-ears" : allow_flips ? "deferred-flip" : longest ? "longest" : lookahead ? "lookahead" : "original";
     try {
       if (trial.faces.size()!=1) { strip_stop_="whole-face requires one owner"; return false; }
       const auto& saved=trial.faces.front(); const auto face=saved.face;
@@ -5871,7 +5961,13 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
       double best=std::numeric_limits<double>::infinity(),rejected=best,error_at_rejected=best;
       int worst_child=-1,worst_sample=-1;gp_Pnt2d selected,worst_uv;gp_Pnt selected_local;
+      std::vector<std::array<int,3>> seed;
+      if (boundary_ears) {
+        if (!build_export_boundary_ears(face,mesh,location,boundary,winding,d,angle,seed)) return false;
+        best=0.0;
+      }
       for (const auto& candidate : candidates) {
+        if (boundary_ears) break;
         if (!strip_finite(candidate) || BRepClass_FaceClassifier(face->GetFace(),candidate,Precision::PConfusion()).State()!=TopAbs_IN) continue;
         if (++export_boundary_work_>2097152) { strip_stop_="whole-face centre evaluation budget";return false; }
         const auto source_point=face->GetSurface()->Value(candidate.X(),candidate.Y());
@@ -5910,8 +6006,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             std::to_string(worst_uv.X())+"/"+std::to_string(worst_uv.Y());return false;
       }
       const auto replacement=mesh->Copy();const int node=mesh->NbNodes()+1;
-      replacement->ResizeNodes(node,true);replacement->SetUVNode(node,selected);
-      replacement->SetNode(node,selected_local);
+      if (!boundary_ears) {
+        replacement->ResizeNodes(node,true);replacement->SetUVNode(node,selected);
+        replacement->SetNode(node,selected_local);
+      }
       std::set<std::pair<int,int>> native_boundary_links;
       for (std::size_t i=0;i<boundary.size();++i) native_boundary_links.emplace(
           std::min(boundary[i],boundary[(i+1)%boundary.size()]),std::max(boundary[i],boundary[(i+1)%boundary.size()]));
@@ -5931,8 +6029,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (found!=incidence.end()) { found->second.erase(index);if (found->second.empty()) incidence.erase(found); }
         }
       };
-      for (std::size_t i=0;i<boundary.size();++i) add_cell({boundary[i],boundary[(i+1)%boundary.size()],node},0);
-      int inspected=0,inserted=1,max_depth=0,flips=0;
+      if (boundary_ears) for (const auto& triangle : seed) add_cell(triangle,0);
+      else for (std::size_t i=0;i<boundary.size();++i) add_cell({boundary[i],boundary[(i+1)%boundary.size()],node},0);
+      int inspected=0,inserted=boundary_ears ? 0 : 1,max_depth=0,flips=0;
       std::set<std::pair<Link,Link>> flipped_diagonals;
       std::vector<std::string> recent_splits;
       // Bisect an unconstrained interior edge in BOTH incident cells. Retire
