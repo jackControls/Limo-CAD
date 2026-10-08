@@ -28,12 +28,15 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `d2ba9017` opens the complete
+Current October 8 Medix qualification: clean matched `eeb0aa05` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
-536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused: the seven source
-witnesses now expose a 1.540435 radian facet-normal error on sphere face 3779,
-beyond the requested angular limit. The earlier `69f1ee6b`/`7c235990` trials
+536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 86 unmatched
+boundary links and no multiply used links. The copied-mesh station repair now
+gets past the earlier sphere-strip meshing failures; extra native wire edges on
+sphere faces 3794/3796 prevent the existing two-edge recovery certificate from
+applying. The earlier `d2ba9017` trial exposed a 1.540435 radian facet-normal error
+on sphere face 3779. The earlier `69f1ee6b`/`7c235990` trials
 reported 86 unmatched boundary links and no multiply used links. Conforming
 source-interior refinement resolved their previous largest boundary group while
 preserving the original STEP and document. All 70 installed payload hashes
@@ -43,7 +46,9 @@ native-precision-qualified STL is claimed. The subsequent clean matched
 the paired-strip candidate: sphere faces 3779 and 3792 report **consecutive native
 strip stations collapsed**. The next candidate reconstructs distinct station
 indices on copied owner meshes while preserving every native parameter,
-junction endpoint, source witness and closure guard; it is not yet qualified.
+junction endpoint, source witness and closure guard. The subsequent `eeb0aa05`
+physical export reaches the native topology guard described above; no successful
+export is claimed.
 The Medix notes below record earlier
 trials chronologically; they do not supersede this current qualification.
 

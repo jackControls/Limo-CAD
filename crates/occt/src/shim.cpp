@@ -7090,6 +7090,8 @@ class NativeExportIndex {
       details << ' ' << type.first.first << '/' << type.first.second << ':' << type.second;
       if (++types==8) { if (invalid_types.size()>8) details << " [further types]"; break; }
     }
+    const std::size_t catalog_position=details.str().size();
+    std::string wire_catalog;
     int multi_examples=0;
     details << ". Multi-use incident face/tri/native-nodes";
     for (const auto& use : uses) if (use.second.count>2) {
@@ -7109,7 +7111,7 @@ class NativeExportIndex {
       for (const auto& edge : edge_groups) worst_edges.emplace_back(edge.second,edge.first);
       std::sort(worst_edges.begin(),worst_edges.end(),[](const auto& a,const auto& b) { return a>b; });
       std::set<int> selected_edges;
-      for (std::size_t i=0;i<std::min<std::size_t>(3,worst_edges.size());++i) selected_edges.insert(worst_edges[i].second+1);
+      for (std::size_t i=0;i<std::min<std::size_t>(6,worst_edges.size());++i) selected_edges.insert(worst_edges[i].second+1);
       for (int edge : four_use_edges) { if (selected_edges.size()>=6) break; selected_edges.insert(edge); }
       struct NativeOwner { int face,orientation,nodes;std::string stage,physical; };
       struct NativeUse { int count=0,balance=0; std::set<int> faces; std::vector<NativeOwner> owners; };
@@ -7198,6 +7200,52 @@ class NativeExportIndex {
           }
         }
       }
+      // Put distinct spherical owner constraints before repeated edge stories,
+      // so the bounded UI error identifies extra edges blocking strip recovery.
+      std::set<int> catalog_faces;
+      std::ostringstream catalog;catalog.precision(8);
+      for (const auto& entry : native_uses) for (const auto& owner : entry.second.owners) {
+        if (catalog_faces.count(owner.face) || catalog_faces.size()>=3) continue;
+        try {
+        const auto face=TopoDS::Face(native_faces.FindKey(owner.face+1));
+        if (BRepAdaptor_Surface(face).GetType()!=GeomAbs_Sphere) continue;
+        catalog_faces.insert(owner.face);
+        const auto mesh=face_meshes_.at(owner.face);TopLoc_Location location;
+        BRep_Tool::Triangulation(face,location);
+        double u0,u1,v0,v1;BRepTools::UVBounds(face,u0,u1,v0,v1);
+        catalog << " [face " << owner.face << " sphere R " << BRepAdaptor_Surface(face).Sphere().Radius() <<
+            " UV " << u0 << '/' << u1 << ':' << v0 << '/' << v1;
+        int wi=0,edge_count=0;
+        for (TopExp_Explorer wires(face,TopAbs_WIRE);wires.More();wires.Next(),++wi) {
+          catalog << " wire " << wi;
+          for (BRepTools_WireExplorer occurrence(TopoDS::Wire(wires.Current()),face);occurrence.More();occurrence.Next()) {
+            if (++edge_count>6) { catalog << " [edge cap]";break; }
+            const auto edge=occurrence.Current();TopoDS_Vertex first,last;TopExp::Vertices(edge,first,last,true);
+            const auto polygon=BRep_Tool::PolygonOnTriangulation(edge,mesh,location);
+            const bool degenerate=BRep_Tool::Degenerated(edge);
+            catalog << " {e" << edges_.FindIndex(edge)-1 << " o" << static_cast<int>(edge.Orientation()) <<
+                " deg" << degenerate << " v" << vertices_.FindIndex(first)-1 << '/' << vertices_.FindIndex(last)-1 <<
+                " tol" << BRep_Tool::Tolerance(edge) << " N" << (polygon.IsNull() ? 0 : polygon->NbNodes());
+            if (!degenerate) catalog << " type" << static_cast<int>(BRepAdaptor_Curve(edge).GetType());
+            if (!polygon.IsNull() && mesh->HasUVNodes() && polygon->NbNodes()<=256) {
+              const int ai=edge.Orientation()==TopAbs_REVERSED ? polygon->NbNodes() : 1;
+              const int bi=edge.Orientation()==TopAbs_REVERSED ? 1 : polygon->NbNodes();
+              const int a=polygon->Node(ai),b=polygon->Node(bi);
+              if (a>=1 && b>=1 && a<=mesh->NbNodes() && b<=mesh->NbNodes()) {
+                const auto x=mesh->UVNode(a),y=mesh->UVNode(b);
+                catalog << " ids" << a << '/' << b << " uv" << x.X() << '/' << x.Y() << ':' << y.X() << '/' << y.Y();
+                if (polygon->HasParameters()) catalog << " t" << polygon->Parameter(ai) << '/' << polygon->Parameter(bi);
+              }
+            }
+            catalog << '}';
+          }
+          if (edge_count>6 || wi>=1) break;
+        }
+        catalog << ']';
+        } catch (const Standard_Failure&) { catalog << " [face " << owner.face << " catalog OCCT exception]"; }
+          catch (const std::exception&) { catalog << " [face " << owner.face << " catalog unavailable]"; }
+      }
+      wire_catalog=catalog.str().substr(0,2400);
       details << ". Worst native edge ownership";
       std::set<int> reported_owner_stages;
       for (const auto& edge : worst_edges) {
@@ -7289,7 +7337,9 @@ class NativeExportIndex {
       }
       if (++examples==8) break;
     }
-    throw std::runtime_error(details.str().substr(0,4800));
+    auto failure=details.str();
+    if (!wire_catalog.empty()) failure.insert(catalog_position,". Spherical constraint catalog"+wire_catalog);
+    throw std::runtime_error(failure.substr(0,4800));
   }
  private:
   [[noreturn]] void fail(int face_index,const std::string& message) const {
