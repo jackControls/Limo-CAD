@@ -4186,33 +4186,63 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         struct Split { int triangle; std::vector<int> chain; };
         std::map<Link,Split> splits;
         std::set<int> scheduled;
-        for (const auto& shared : trial.edges) {
-          for (const auto& boundary : shared.pcurves) {
-            const auto pc = boundary.curve;
-            if (pc->GetFace() != saved.face) continue;
-            if (pc->ParametersNb() > 256 || pc->ParametersNb() != shared.edge->GetCurve()->ParametersNb()) {
-              strip_stop_ = "shared-node chain exceeds its sample budget"; return false;
+        struct BoundaryPoint { int id; gp_Pnt2d uv; gp_Pnt native; };
+        std::vector<std::vector<BoundaryPoint>> wire_chains;
+        for (int wi = 0; wi < saved.face->WiresNb(); ++wi) {
+          const auto wire = saved.face->GetWire(wi);
+          std::vector<BoundaryPoint> chain;
+          bool eligible_wire = true;
+          for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
+            const auto edge = wire->GetEdge(ei);
+            const auto orientation = wire->GetEdgeOrientation(ei);
+            const auto pc = edge->GetPCurve(saved.face,orientation);
+            if ((orientation != TopAbs_FORWARD && orientation != TopAbs_REVERSED) || pc.IsNull() ||
+                pc->ParametersNb() < 2 || pc->ParametersNb() > 256 ||
+                pc->ParametersNb() != edge->GetCurve()->ParametersNb() || chain.size()+pc->ParametersNb() > 4096) {
+              eligible_wire = false; break;
             }
+            const auto next_edge = wire->GetEdge((ei+1)%wire->EdgesNb());
+            const auto next_orientation = wire->GetEdgeOrientation((ei+1)%wire->EdgesNb());
+            const auto next_pc = next_edge->GetPCurve(saved.face,next_orientation);
+            const int last = orientation == TopAbs_REVERSED ? 0 : pc->ParametersNb()-1;
+            if (next_pc.IsNull() || next_pc->ParametersNb() < 2) { eligible_wire = false; break; }
+            const int next_first = next_orientation == TopAbs_REVERSED ? next_pc->ParametersNb()-1 : 0;
+            if (pc->GetIndex(last) != next_pc->GetIndex(next_first) ||
+                pc->GetPoint(last).Distance(next_pc->GetPoint(next_first)) > Precision::PConfusion()) {
+              eligible_wire = false; break;
+            }
+            for (int i = 0; i+1 < pc->ParametersNb(); ++i) {
+              const int index = orientation == TopAbs_REVERSED ? pc->ParametersNb()-1-i : i;
+              const int id = pc->GetIndex(index);
+              if (id < 1 || id > mesh->NbNodes()) { eligible_wire = false; break; }
+              const BoundaryPoint point{id,pc->GetPoint(index),edge->GetCurve()->GetPoint(index)};
+              if (!chain.empty() && chain.back().id == id) {
+                if (point.uv.Distance(chain.back().uv) > Precision::PConfusion() ||
+                    point.native.Distance(chain.back().native) > Precision::Confusion()) { eligible_wire = false; break; }
+              } else chain.push_back(point);
+            }
+            if (!eligible_wire) break;
+          }
+          if (eligible_wire && chain.size() > 2) wire_chains.push_back(std::move(chain));
+        }
+        for (const auto& chain : wire_chains) {
             std::map<int,int> positions;
-            for (int i = 0; i < pc->ParametersNb(); ++i) {
-              const int id = pc->GetIndex(i);
-              if (id < 1 || id > mesh->NbNodes() || !positions.emplace(id,i).second) {
-                strip_stop_ = "shared-node chain has ambiguous mapped indices"; return false;
-              }
-            }
+            std::set<int> ambiguous;
+            for (int i = 0; i < static_cast<int>(chain.size()); ++i)
+              if (!positions.emplace(chain[i].id,i).second) ambiguous.insert(chain[i].id);
             for (const auto& entry : links) {
               if (++work > 2097152) { strip_stop_ = "shared-node refinement work budget exhausted"; return false; }
               if (entry.second.count != 1 || !positions.count(entry.first.first) ||
-                  !positions.count(entry.first.second)) continue;
-              const int start = positions.at(entry.first.first), end = positions.at(entry.first.second);
-              if (std::abs(end-start) <= 1) continue;
-              if (splits.count(entry.first)) { strip_stop_ = "coarse boundary edge has multiple shared chains"; return false; }
+                  !positions.count(entry.first.second) || ambiguous.count(entry.first.first) ||
+                  ambiguous.count(entry.first.second)) continue;
               const auto& ids = triangles[entry.second.triangle];
               int cyclic = -1;
               for (int i = 0; i < 3; ++i) if (link(ids[i],ids[(i+1)%3]) == entry.first) cyclic = i;
               if (cyclic < 0) { strip_stop_ = "coarse boundary triangle correspondence failed"; return false; }
               const int from = positions.at(ids[cyclic]), to = positions.at(ids[(cyclic+1)%3]);
-              const int step = to > from ? 1 : -1;
+              const int distance = (to-from+static_cast<int>(chain.size()))%static_cast<int>(chain.size());
+              if (distance <= 1 || distance > 256) continue;
+              if (splits.count(entry.first)) { strip_stop_ = "coarse boundary edge has multiple wire chains"; return false; }
               const auto a = mesh->UVNode(ids[cyclic]), b = mesh->UVNode(ids[(cyclic+1)%3]);
               const auto delta = b.Coord()-a.Coord(); const double length2 = delta.SquareModulus();
               if (!strip_finite(a) || !strip_finite(b) || !std::isfinite(length2) || length2 <= 0.0) {
@@ -4220,21 +4250,23 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               }
               Split split{entry.second.triangle,{}};
               double previous_fraction = -1.0;
-              for (int i = from;; i += step) {
-                const int id = pc->GetIndex(i); const auto uv = mesh->UVNode(id);
-                const auto native_uv = pc->GetPoint(i);
+              for (int offset = 0; offset <= distance; ++offset) {
+                const int i = (from+offset)%static_cast<int>(chain.size());
+                const int id = chain[i].id; const auto uv = mesh->UVNode(id);
+                const auto native_uv = chain[i].uv;
                 const double uv_gap = uv.Distance(native_uv);
                 const double fraction = (uv.Coord()-a.Coord()).Dot(delta)/length2;
                 const double line_gap = std::abs((uv.Coord()-a.Coord()).Crossed(delta))/std::sqrt(length2);
                 const double roundoff = 64.0 * std::numeric_limits<double>::epsilon() *
                     (std::abs(a.X())+std::abs(a.Y())+std::abs(b.X())+std::abs(b.Y())+std::sqrt(length2));
-                const double correspondence_bound = uv_gap + mesh->UVNode(ids[cyclic]).Distance(pc->GetPoint(from)) +
-                    mesh->UVNode(ids[(cyclic+1)%3]).Distance(pc->GetPoint(to)) + roundoff;
+                const double correspondence_bound = uv_gap + mesh->UVNode(ids[cyclic]).Distance(chain[from].uv) +
+                    mesh->UVNode(ids[(cyclic+1)%3]).Distance(chain[to].uv) + roundoff;
                 const auto point = mesh->Node(id).Transformed(location.Transformation());
                 if (!strip_finite(uv) || !strip_finite(point) || !std::isfinite(fraction) || !std::isfinite(line_gap) ||
                     uv_gap > Precision::PConfusion() || line_gap > correspondence_bound ||
-                    fraction <= previous_fraction || (i != from && i != to && (fraction <= 0.0 || fraction >= 1.0 || used.count(id))) ||
-                    point.Distance(shared.edge->GetCurve()->GetPoint(i)) > Precision::Confusion()) {
+                    fraction <= previous_fraction || (offset > 0 && offset < distance &&
+                        (fraction <= 0.0 || fraction >= 1.0 || used.count(id) || ambiguous.count(id))) ||
+                    point.Distance(chain[i].native) > Precision::Confusion()) {
                   std::ostringstream diagnostic; diagnostic.precision(6);
                   diagnostic << "adjacent face " << strip_original_faces_.FindIndex(saved.face->GetFace())-1 <<
                       " skipped node " << id << " edge " << ids[cyclic] << '/' << ids[(cyclic+1)%3] <<
@@ -4243,26 +4275,26 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                   strip_stop_ = diagnostic.str(); return false;
                 }
                 previous_fraction = fraction; split.chain.push_back(id);
-                if (i == to) break;
               }
               // The measured source UV chain must itself be collinear; the
               // node correspondence bound above only accounts for legal UV
               // reconciliation, never an arbitrary curved boundary shortcut.
-              const auto source_a = pc->GetPoint(from), source_b = pc->GetPoint(to);
+              const auto source_a = chain[from].uv, source_b = chain[to].uv;
               const auto source_delta = source_b.Coord()-source_a.Coord();
               if (!std::isfinite(source_delta.SquareModulus()) || source_delta.SquareModulus() <= 0.0) {
                 strip_stop_ = "skipped source chain has degenerate UV extent"; return false;
               }
-              for (int i = from + step; i != to; i += step) {
-                const double error = std::abs((pc->GetPoint(i).Coord()-source_a.Coord()).Crossed(source_delta));
-                const auto middle = pc->GetPoint(i);
+              for (int offset = 1; offset < distance; ++offset) {
+                const int i = (from+offset)%static_cast<int>(chain.size());
+                const double error = std::abs((chain[i].uv.Coord()-source_a.Coord()).Crossed(source_delta));
+                const auto middle = chain[i].uv;
                 const double scale = (std::abs(source_a.X())+std::abs(source_a.Y())+std::abs(source_b.X())+
                     std::abs(source_b.Y())+std::abs(middle.X())+std::abs(middle.Y())+source_delta.Modulus())*
                     source_delta.Modulus();
                 if (!std::isfinite(error) || error > 64.0*std::numeric_limits<double>::epsilon()*scale) {
                   std::ostringstream diagnostic; diagnostic.precision(6);
                   diagnostic << "adjacent face " << strip_original_faces_.FindIndex(saved.face->GetFace())-1 <<
-                      " node " << pc->GetIndex(i) << " source UV collinearity error/bound " << error << '/' <<
+                      " node " << chain[i].id << " source UV collinearity error/bound " << error << '/' <<
                       64.0*std::numeric_limits<double>::epsilon()*scale;
                   strip_stop_ = diagnostic.str(); return false;
                 }
@@ -4273,7 +4305,6 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 }
               splits.emplace(entry.first,std::move(split));
             }
-          }
         }
         if (splits.empty()) continue;
         std::map<int,std::vector<Triangle>> replacements;
@@ -4332,6 +4363,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         std::map<std::pair<int,int>, int> links;
         std::map<std::pair<int,int>, int> directions, boundary_directions;
         std::map<std::pair<int,int>, std::vector<int>> boundary_orientations;
+        std::map<int,std::vector<std::array<int,3>>> boundary_owners;
         std::set<std::pair<int,int>> boundary;
         const auto link = [](int a, int b) { return std::make_pair(std::min(a,b), std::max(a,b)); };
         const auto direction = [](int a, int b) { return a < b ? 1 : -1; };
@@ -4358,6 +4390,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               if (id < 1 || id > mesh->NbNodes() || mesh->Node(id).Transformed(location.Transformation()).Distance(curve->GetPoint(i)) >
                     Precision::Confusion() || mesh->UVNode(id).Distance(pc->GetPoint(i)) > Precision::PConfusion()) return false;
               max_uv_gap = std::max(max_uv_gap, mesh->UVNode(id).Distance(pc->GetPoint(i)));
+              if (boundary_owners[id].size() < 2) boundary_owners[id].push_back({wi,ei,i});
               if (i && id != pc->GetIndex(i-1)) {
                 const int previous = pc->GetIndex(i-1);
                 const auto key = link(previous, id);
@@ -4439,10 +4472,18 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           const int expected_direction = boundary.count(entry.first) ? boundary_directions[entry.first] : 0;
           if (entry.second != expected_count || directions[entry.first] != expected_direction) {
             std::ostringstream diagnostic;
-            diagnostic << "adjacent face " << face_index << " link " << entry.first.first << '/' << entry.first.second <<
-                " count " << entry.second << '/' << expected_count << " direction " << directions[entry.first] << '/' <<
-                expected_direction << " boundary orientations";
-            for (int orientation : boundary_orientations[entry.first]) diagnostic << ' ' << orientation;
+            diagnostic << "face " << face_index << " link " << entry.first.first << '/' << entry.first.second <<
+                " count " << entry.second << '/' << expected_count << " dir " << directions[entry.first] << '/' << expected_direction;
+            if (boundary.count(entry.first) == 0) {
+              for (int id : {entry.first.first,entry.first.first+1,entry.first.second}) {
+                if (id > entry.first.second) continue;
+                diagnostic << " node" << id << '=';
+                for (const auto& owner : boundary_owners[id]) diagnostic << owner[0] << '/' << owner[1] << '/' << owner[2] << ',';
+              }
+            } else {
+              diagnostic << " orientations";
+              for (int orientation : boundary_orientations[entry.first]) diagnostic << ' ' << orientation;
+            }
             strip_stop_ = diagnostic.str(); return false;
           }
         }
