@@ -3237,9 +3237,17 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   Standard_Boolean HealModel() override {
     const auto& model = GetModel();
     if (model.IsNull()) return false;
-    // The default healer can rediscretize edges, so run it before preserving
-    // the additional circular-boundary samples below.
+    // Prepare compatible circular chords before OCCT amplifies intersecting
+    // edges. Then repair any remaining crossings without replacing the
+    // boundary joins produced by the standard healer.
+    if (!RefineBoundaries(false)) return false;
     if (!BRepMesh_Context::HealModel()) return false;
+    return RefineBoundaries(true);
+  }
+
+ private:
+  Standard_Boolean RefineBoundaries(bool healed) {
+    const auto& model = GetModel();
     std::set<IMeshData::IFacePtr> affected_faces;
     std::set<IMeshData::IFacePtr> intersection_failures;
     constexpr int unrelated_errors = IMeshData_OpenWire | IMeshData_TooFewPoints |
@@ -3272,7 +3280,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       for (int pi = 0; pi < edge->PCurvesNb(); ++pi) {
         const auto& pcurve = edge->GetPCurve(pi);
         const int count = pcurve->ParametersNb();
-        if (count >= 2)
+        if (healed && count >= 2)
           endpoints.push_back({pcurve, pcurve->GetPoint(0), pcurve->GetPoint(count - 1),
               pcurve->GetParameter(0), pcurve->GetParameter(count - 1),
               pcurve->GetOrientation()});
@@ -3280,6 +3288,11 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         const auto& affected = pcurve->GetFace();
         affected->SetStatus(IMeshData_Outdated);
         affected_faces.insert(affected);
+        if (!healed && affected->IsSet(IMeshData_SelfIntersectingWire) &&
+            (affected->GetStatusMask() & unrelated_errors) == 0) {
+          affected->UnsetStatus(IMeshData_SelfIntersectingWire);
+          affected->UnsetStatus(IMeshData_Failure);
+        }
       }
       BRepMesh_EdgeDiscret::Tessellate2d(edge, true);
       // Preserve the healer's connected endpoints only when their parameter
@@ -3645,7 +3658,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       std::string crossing_detail;
       for (int fi = 0; fi < model->FacesNb(); ++fi) {
         const auto& face = model->GetFace(fi);
-        if (face->GetSurface()->GetType() != GeomAbs_Plane) continue;
+        // After standard healing, leave accepted planes alone: further
+        // refinement can introduce tiny slivers on otherwise valid thread ends.
+        if (face->GetSurface()->GetType() != GeomAbs_Plane ||
+            (healed && intersection_failures.count(face.get()) == 0)) continue;
         for (int wi = 0; wi < face->WiresNb(); ++wi) {
           const auto& wire = face->GetWire(wi);
           for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
@@ -3756,7 +3772,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
 
 
-      if (!crossing) return check_repaired_faces();
+      if (!crossing) return healed ? check_repaired_faces() : Standard_True;
       if (additions.empty() || pass == max_refinement_passes) {
         throw std::runtime_error("OCCT could not discretize tangential face boundaries without crossing chords" + crossing_detail);
       }
