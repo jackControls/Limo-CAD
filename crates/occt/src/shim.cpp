@@ -4304,6 +4304,17 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           const bool restored=restore_skipped_strip_nodes(trial,true,choice);
           accepted=restored && validate_spherical_strip(trial,true);
           if (!accepted) why=std::string(restored ? "domain: " : "fan: ")+strip_stop_.substr(0,330);
+          if (!accepted) {
+            // A used skipped boundary node cannot be inserted into an isolated
+            // ear without overlapping its existing facets. Rebuild the entire
+            // certified native chart on the original disposable mesh instead.
+            BRep_Builder().UpdateFace(face->GetFace(),mesh);
+            const std::string local_rejection=why;
+            const bool complete=restore_complete_export_face(trial,choice);
+            accepted=complete && validate_spherical_strip(trial,true);
+            if (!accepted) why="whole-face "+std::string(complete ? "domain: " : "star: ")+strip_stop_.substr(0,240)+
+                "; local "+local_rejection.substr(0,70);
+          }
         } catch (const Standard_Failure&) { why="OCCT exception qualifying restored native boundary"; }
           catch (const std::exception&) { why="exception qualifying restored native boundary"; }
         if (!accepted) {
@@ -4320,6 +4331,159 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     }
     export_boundary_stop_="export boundary attempts/repaired/added triangles "+std::to_string(attempts)+"/"+
         std::to_string(repaired)+"/"+std::to_string(added);
+  }
+
+  // A native trim can be only partially represented by the original mesh.
+  // This bounded alternative uses the COMPLETE authoritative mapped wire,
+  // rather than treating an incomplete old facet union as the source domain.
+  // The original PCurves and native nodes stay intact, including the omitted
+  // UV representative witnessed by the post-install native pole certificate.
+  bool restore_complete_export_face(const StripTrial& trial,int pole_choice) {
+    strip_stop_="whole-face preparation";
+    try {
+      if (trial.faces.size()!=1) { strip_stop_="whole-face requires one owner"; return false; }
+      const auto& saved=trial.faces.front(); const auto face=saved.face;
+      TopLoc_Location location; const auto mesh=BRep_Tool::Triangulation(face->GetFace(),location);
+      if (face->WiresNb()!=1 || mesh.IsNull() || !mesh->HasUVNodes() || mesh->NbNodes()>65535 ||
+          (face->GetStatusMask() & ~IMeshData_Outdated)!=0) { strip_stop_="whole-face unsupported chart/status"; return false; }
+      std::map<int,int> aliases; IMeshData::IEdgePtr pole_edge=nullptr;
+      if (!qualify_native_pole(saved,mesh,location,aliases,pole_edge,true,true,pole_choice)) return false;
+      const auto canonical=[&](int id) { const auto found=aliases.find(id); return found==aliases.end() ? id : found->second; };
+      const auto wire=face->GetWire(0); std::vector<int> boundary;
+      if (wire->GetStatusMask()!=0) { strip_stop_="whole-face wire status"; return false; }
+      for (int ei=0;ei<wire->EdgesNb();++ei) {
+        const auto edge=wire->GetEdge(ei); const auto orientation=wire->GetEdgeOrientation(ei);
+        const auto pc=edge->GetPCurve(face,orientation); const auto curve=edge->GetCurve();
+        if ((orientation!=TopAbs_FORWARD && orientation!=TopAbs_REVERSED) || pc.IsNull() || pc->ParametersNb()<2 ||
+            pc->ParametersNb()>256 || pc->ParametersNb()!=curve->ParametersNb() ||
+            (BRep_Tool::Degenerated(edge->GetEdge()) && edge!=pole_edge) ||
+            (edge->GetDegenerated() && !BRep_Tool::Degenerated(edge->GetEdge()))) {
+          strip_stop_="whole-face unsupported native constraint"; return false;
+        }
+        const int start=orientation==TopAbs_REVERSED ? pc->ParametersNb()-1 : 0;
+        const int step=orientation==TopAbs_REVERSED ? -1 : 1;
+        const auto next=wire->GetEdge((ei+1)%wire->EdgesNb())->GetPCurve(face,wire->GetEdgeOrientation((ei+1)%wire->EdgesNb()));
+        const int end=start+step*(pc->ParametersNb()-1);
+        if (next.IsNull() || next->ParametersNb()<2) { strip_stop_="whole-face missing next constraint"; return false; }
+        const int next_start=wire->GetEdgeOrientation((ei+1)%wire->EdgesNb())==TopAbs_REVERSED ? next->ParametersNb()-1 : 0;
+        if (canonical(pc->GetIndex(end))!=canonical(next->GetIndex(next_start)) ||
+            pc->GetPoint(end).Distance(next->GetPoint(next_start))>Precision::PConfusion()) {
+          strip_stop_="whole-face native wire junction"; return false;
+        }
+        for (int i=0;i<pc->ParametersNb();++i) {
+          const int j=start+step*i,original=pc->GetIndex(j),id=canonical(original);
+          if (++export_boundary_work_>2097152) { strip_stop_="whole-face work budget"; return false; }
+          if (original<1 || original>mesh->NbNodes() || id<1 || id>mesh->NbNodes() ||
+              !strip_finite(pc->GetPoint(j)) || !strip_finite(curve->GetPoint(j)) ||
+              !strip_finite(mesh->UVNode(original)) || !strip_finite(mesh->Node(original)) ||
+              mesh->UVNode(original).Distance(pc->GetPoint(j))>Precision::PConfusion() ||
+              mesh->Node(original).Transformed(location.Transformation()).Distance(curve->GetPoint(j))>Precision::Confusion()) {
+            strip_stop_="whole-face source node correspondence"; return false;
+          }
+          if (i+1==pc->ParametersNb()) continue;
+          if (boundary.empty() || boundary.back()!=id) boundary.push_back(id);
+          if (boundary.size()>256) { strip_stop_="whole-face boundary cap"; return false; }
+        }
+      }
+      if (boundary.size()>1 && boundary.front()==boundary.back()) boundary.pop_back();
+      if (boundary.size()<3 || std::set<int>(boundary.begin(),boundary.end()).size()!=boundary.size()) {
+        strip_stop_="whole-face ambiguous quotient wire"; return false;
+      }
+      double area=0.0,xmin=std::numeric_limits<double>::infinity(),ymin=xmin,xmax=-xmin,ymax=-xmin;
+      for (std::size_t i=0;i<boundary.size();++i) {
+        const auto u=mesh->UVNode(boundary[i]),v=mesh->UVNode(boundary[(i+1)%boundary.size()]);
+        if (!strip_finite(u) || !strip_finite(v) || u.Distance(v)==0.0) { strip_stop_="whole-face zero/nonfinite UV link"; return false; }
+        area+=u.Coord().Crossed(v.Coord());
+        xmin=std::min(xmin,u.X());xmax=std::max(xmax,u.X());ymin=std::min(ymin,u.Y());ymax=std::max(ymax,u.Y());
+        for (std::size_t j=i+1;j<boundary.size();++j) {
+          if (++export_boundary_work_>2097152) { strip_stop_="whole-face simplicity budget"; return false; }
+          gp_Pnt2d hit;
+          const auto flag=BRepMesh_GeomTool::IntSegSeg(u.Coord(),v.Coord(),mesh->UVNode(boundary[j]).Coord(),
+              mesh->UVNode(boundary[(j+1)%boundary.size()]).Coord(),true,true,hit);
+          const bool adjacent=j==i+1 || (i==0 && j+1==boundary.size());
+          if (flag!=BRepMesh_GeomTool::NoIntersection && !(adjacent && flag==BRepMesh_GeomTool::EndPointTouch)) {
+            strip_stop_="whole-face quotient is not simple segments "+std::to_string(i)+"/"+std::to_string(j); return false;
+          }
+        }
+      }
+      if (!std::isfinite(area) || area==0.0) { strip_stop_="whole-face zero/nonfinite domain area"; return false; }
+      const double winding=area>0.0 ? 1.0 : -1.0;
+      std::vector<gp_Pnt2d> kernel={{xmin,ymin},{xmax,ymin},{xmax,ymax},{xmin,ymax}};
+      for (std::size_t i=0;i<boundary.size();++i) {
+        const auto u=mesh->UVNode(boundary[i]),v=mesh->UVNode(boundary[(i+1)%boundary.size()]);
+        const auto delta=v.Coord()-u.Coord();std::vector<gp_Pnt2d> clipped;
+        for (std::size_t j=0;j<kernel.size();++j) {
+          if (++export_boundary_work_>2097152) { strip_stop_="whole-face kernel budget";return false; }
+          const auto x=kernel[j],y=kernel[(j+1)%kernel.size()];
+          const double sx=winding*delta.Crossed(x.Coord()-u.Coord()),sy=winding*delta.Crossed(y.Coord()-u.Coord());
+          if (!std::isfinite(sx) || !std::isfinite(sy)) { strip_stop_="whole-face nonfinite kernel"; return false; }
+          if (sx>=0.0) clipped.push_back(x);
+          if ((sx>=0.0)!=(sy>=0.0)) {
+            const double fraction=sx/(sx-sy);
+            if (!std::isfinite(fraction) || fraction<0.0 || fraction>1.0) { strip_stop_="whole-face kernel interpolation"; return false; }
+            clipped.emplace_back(x.Coord()*(1.0-fraction)+y.Coord()*fraction);
+          }
+        }
+        kernel=std::move(clipped);
+        if (kernel.size()<3 || kernel.size()>64) { strip_stop_="whole-face no bounded star kernel"; return false; }
+      }
+      gp_XY center(0,0);for (const auto& u : kernel) center+=u.Coord();center/=static_cast<double>(kernel.size());
+      std::vector<gp_Pnt2d> candidates={gp_Pnt2d(center)};
+      for (std::size_t i=0;i<kernel.size() && candidates.size()<17;++i) {
+        candidates.emplace_back(center*.75+kernel[i].Coord()*.25);
+        if (candidates.size()<17) candidates.emplace_back(center*.5+kernel[i].Coord()*.5);
+      }
+      const double d=GetParameters().Deflection,angle=GetParameters().AngleInterior>0.0 ? GetParameters().AngleInterior : GetParameters().Angle;
+      if (!std::isfinite(d) || d<=0.0 || !std::isfinite(angle) || angle<=0.0) { strip_stop_="whole-face invalid precision"; return false; }
+      const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
+      double best=std::numeric_limits<double>::infinity(),rejected=best,error_at_rejected=best;
+      int worst_child=-1,worst_sample=-1;gp_Pnt2d selected,worst_uv;gp_Pnt selected_local;
+      for (const auto& candidate : candidates) {
+        if (!strip_finite(candidate) || BRepClass_FaceClassifier(face->GetFace(),candidate,Precision::PConfusion()).State()!=TopAbs_IN) continue;
+        const auto source_point=face->GetSurface()->Value(candidate.X(),candidate.Y());
+        if (!strip_finite(source_point)) continue;
+        const auto local_point=source_point.Transformed(location.Transformation().Inverted());
+        const auto point=local_point.Transformed(location.Transformation());
+        if (!strip_finite(local_point) || !strip_finite(point)) continue;
+        bool valid=true;double max_angle=0.0,max_error=0.0;int ci=-1,si=-1;gp_Pnt2d failing_uv;
+        for (std::size_t i=0;i<boundary.size() && valid;++i) {
+          const gp_Pnt2d u[3]={mesh->UVNode(boundary[i]),mesh->UVNode(boundary[(i+1)%boundary.size()]),candidate};
+          const gp_Pnt p[3]={mesh->Node(boundary[i]).Transformed(location.Transformation()),
+              mesh->Node(boundary[(i+1)%boundary.size()]).Transformed(location.Transformation()),point};
+          const auto normal=gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2]));
+          const double child_area=winding*(u[1].Coord()-u[0].Coord()).Crossed(u[2].Coord()-u[0].Coord());
+          if (!std::isfinite(child_area) || child_area<=0.0 || !std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude()<=0.0) { valid=false;break; }
+          int index=0;
+          for (const auto& w : weights) {
+            if (++export_boundary_work_>2097152) { strip_stop_="whole-face precision search budget";return false; }
+            const gp_Pnt2d uv(u[0].Coord()*w[0]+u[1].Coord()*w[1]+u[2].Coord()*w[2]);
+            const gp_Pnt affine(p[0].XYZ()*w[0]+p[1].XYZ()*w[1]+p[2].XYZ()*w[2]);gp_Pnt source;gp_Dir source_normal;
+            if (!BRepMesh_GeomTool::Normal(face->GetSurface(),uv.X(),uv.Y(),source,source_normal) || !strip_finite(source)) { valid=false;break; }
+            const double error=affine.Distance(source),angular=normal.Angle(gp_Vec(source_normal)*winding);
+            if (!std::isfinite(error) || !std::isfinite(angular)) { valid=false;break; }
+            max_error=std::max(max_error,error);
+            if (angular>max_angle) { max_angle=angular;ci=static_cast<int>(i);si=index;failing_uv=uv; }++index;
+          }
+        }
+        if (!valid) continue;
+        if (max_angle<rejected) { rejected=max_angle;error_at_rejected=max_error;worst_child=ci;worst_sample=si;worst_uv=failing_uv; }
+        if (max_angle<=angle && max_error<=d && max_angle<best) { best=max_angle;selected=candidate;selected_local=local_point; }
+      }
+      if (!std::isfinite(best)) {
+        strip_stop_="whole-face no precise star D/angle "+std::to_string(error_at_rejected)+"/"+std::to_string(rejected)+
+            " child/sample "+std::to_string(worst_child)+"/"+std::to_string(worst_sample)+" UV "+
+            std::to_string(worst_uv.X())+"/"+std::to_string(worst_uv.Y());return false;
+      }
+      const auto replacement=mesh->Copy();const int node=mesh->NbNodes()+1;
+      replacement->ResizeNodes(node,true);replacement->SetUVNode(node,selected);
+      replacement->SetNode(node,selected_local);
+      replacement->ResizeTriangles(static_cast<int>(boundary.size()),false);
+      for (std::size_t i=0;i<boundary.size();++i) replacement->SetTriangle(static_cast<int>(i)+1,
+          Poly_Triangle(boundary[i],boundary[(i+1)%boundary.size()],node));
+      replacement->RemoveNormals();replacement->ComputeNormals();BRep_Builder().UpdateFace(face->GetFace(),replacement);
+      strip_stop_="whole-face native star installed for full source certificate";return true;
+    } catch (const Standard_Failure&) { strip_stop_="OCCT exception proposing whole-face star";return false; }
+      catch (const std::exception&) { strip_stop_="exception proposing whole-face star";return false; }
   }
 
   // Two curved face owners can triangulate the same boundary-node ear. Their

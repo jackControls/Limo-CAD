@@ -273,6 +273,12 @@ its replacement child at 0.810 radians against the unchanged 0.700 interior
 angle budget. No export artifact is accepted by either trial. Source geometry
 and the complete Medix checkpoint remain preserved.
 
+Matched `d724917f` resolves both multiply used links through the certified larger
+UV patch and centre search: actual GUI 3MF preflight now reports 105 unmatched
+boundary links, with no multiply used links. One internal patch is accepted;
+the boundary recovery count remains unchanged. Export is still refused and no
+successful 3MF is claimed. The remaining boundary gaps are under investigation.
+
 The bench Hole dialog was reopened through physical input on matched `3b61ad80`
 without reproducing the earlier unexpected process exit. Enter in a position
 field accepted the dialog; physical Undo removed that premature hole and restored
