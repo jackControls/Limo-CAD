@@ -65,6 +65,15 @@ checkpoint remains unchanged. The lower rail remains unplaced source stock,
 with no appearance or separate component definition yet; upper and lower rail
 definitions must remain separate. This does not complete the bench walkthrough.
 
+On clean matched `d2ba9017`, physical File/Open reopened the saved four-bore
+bench. Its lower stock now has the upper rail's same deep-green timber appearance
+and a separate named **Lower side rail** definition, with one named **Left lower
+side rail** instance at the source origin. Ctrl+S and read-only archive comparison
+qualified the saved [lower-component checkpoint](../examples/checkpoints/garden-bench-lower-component-human-ui.limo):
+seven definitions and nine occurrences, with existing upper/apron shared
+definitions and placements preserved. Lower-rail placements, its shared right
+instance and the remaining bench geometry are unfinished.
+
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled
 native control and all installed payload hashes without rebuilding, promoting or

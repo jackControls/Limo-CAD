@@ -169,6 +169,16 @@ geometry and references.
     its live model matches the archive. The original stock checkpoint remains
     preserved. Lower-rail appearance, its separate definition and placements,
     remaining pilots, joints, drawing sheets and print layouts remain unfinished.
+21. Reopen the lower-clearance checkpoint through the native Open dialog. On
+    clean matched `d2ba9017`, select Body7 and apply the existing upper rail's
+    appearance: `#41544D`, **Deep green**, **Painted timber (visual designation)**,
+    family **Painted timber**, brand **Generic**. In Assembly, use **Make component**
+    and name the separate reusable definition **Lower side rail** and its instance
+    **Left lower side rail**. Save with Ctrl+S. The preserved
+    [lower-component checkpoint](../checkpoints/garden-bench-lower-component-human-ui.limo)
+    has seven definitions and nine occurrences, and its archive matches the live
+    model. The new instance is still at the source origin; its placement and
+    shared right instance remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 
