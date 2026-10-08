@@ -3189,7 +3189,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         }
       }
     }
-    if (native_export_recovery_) recover_export_boundaries();
+    if (native_export_recovery_) {
+      recover_export_boundaries();
+      recover_export_internal_diagonals();
+    }
     if (!range.More()) {
       for (const auto& trial : strip_trials) restore_spherical_strip(trial);
       return false;
@@ -4301,6 +4304,209 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     }
     export_boundary_stop_="export boundary attempts/repaired/added triangles "+std::to_string(attempts)+"/"+
         std::to_string(repaired)+"/"+std::to_string(added);
+  }
+
+  // Two curved face owners can triangulate the same boundary-node ear. Their
+  // otherwise legitimate internal diagonal then receives four global uses.
+  // Refine that interior link with a face-owned exact surface sample, retaining
+  // every original positive UV region and all shared native boundary samples.
+  void recover_export_internal_diagonals() {
+    struct RollbackFailure : std::runtime_error { using std::runtime_error::runtime_error; };
+    int attempts=0,repaired=0;
+    try {
+    using Link=std::pair<int,int>;
+    struct Incidence { int count=0,balance=0; std::array<int,2> triangles; };
+    struct FaceLinks { Handle(Poly_Triangulation) mesh; TopLoc_Location location; std::map<Link,Incidence> links; };
+    std::map<IMeshData::IFacePtr,FaceLinks> cache;
+    std::size_t work=0;
+    const auto link=[](int a,int b) { return std::make_pair(std::min(a,b),std::max(a,b)); };
+    const auto obtain=[&](IMeshData::IFacePtr face)->FaceLinks* {
+      const auto found=cache.find(face); if (found!=cache.end()) return &found->second;
+      if ((face->GetStatusMask() & ~IMeshData_Outdated)!=0) return nullptr;
+      FaceLinks value; value.mesh=BRep_Tool::Triangulation(face->GetFace(),value.location);
+      if (value.mesh.IsNull() || !value.mesh->HasUVNodes() || value.mesh->NbNodes()>4096 ||
+          value.mesh->NbTriangles()<1 || value.mesh->NbTriangles()>4096 ||
+          work+3*static_cast<std::size_t>(value.mesh->NbTriangles())>2097152) return nullptr;
+      for (int ti=1;ti<=value.mesh->NbTriangles();++ti) {
+        int ids[3]; value.mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+        for (int id : ids) if (id<1 || id>value.mesh->NbNodes()) return nullptr;
+        for (int i=0;i<3;++i) {
+          ++work; auto& use=value.links[link(ids[i],ids[(i+1)%3])];
+          if (use.count<2) use.triangles[use.count]=ti;
+          ++use.count; use.balance+=ids[i]<ids[(i+1)%3] ? 1 : -1;
+        }
+      }
+      return &cache.emplace(face,std::move(value)).first->second;
+    };
+    struct Candidate { IMeshData::IEdgePtr edge; IMeshData::IPCurveHandle first,second; int from,to; };
+    std::vector<Candidate> candidates;
+    const auto& model=GetModel();
+    for (int ei=0;ei<model->EdgesNb() && candidates.size()<16 && work<2097152;++ei) {
+      const auto edge=model->GetEdge(ei);
+      if (edge->PCurvesNb()!=2 || BRep_Tool::Degenerated(edge->GetEdge()) || edge->GetDegenerated() ||
+          !edge->GetSameParam() || !edge->GetSameRange()) continue;
+      auto first=edge->GetPCurve(0),second=edge->GetPCurve(1);
+      if (first->GetFace()==second->GetFace() || first->ParametersNb()<3 || first->ParametersNb()>64 ||
+          first->ParametersNb()!=second->ParametersNb() || first->ParametersNb()!=edge->GetCurve()->ParametersNb()) continue;
+      const int fi=strip_original_faces_.FindIndex(first->GetFace()->GetFace());
+      const int si=strip_original_faces_.FindIndex(second->GetFace()->GetFace());
+      if (fi<1 || si<1) continue;
+      if (si<fi) std::swap(first,second);
+      const auto oriented=[&](const IMeshData::IPCurveHandle& pc) {
+        const auto orientation=pc->GetOrientation();
+        const auto face_orientation=strip_original_faces_.FindKey(strip_original_faces_.FindIndex(pc->GetFace()->GetFace())).Orientation();
+        if ((orientation!=TopAbs_FORWARD && orientation!=TopAbs_REVERSED) ||
+            (face_orientation!=TopAbs_FORWARD && face_orientation!=TopAbs_REVERSED)) return 0;
+        return (orientation==TopAbs_FORWARD ? 1 : -1)*(face_orientation==TopAbs_FORWARD ? 1 : -1);
+      };
+      if (!oriented(first) || oriented(first)+oriented(second)!=0) continue;
+      auto* a=obtain(first->GetFace()); auto* b=obtain(second->GetFace()); if (!a || !b) continue;
+      std::map<int,int> slots;
+      std::set<int> ambiguous;
+      for (int i=0;i<first->ParametersNb();++i) if (!slots.emplace(first->GetIndex(i),i).second) ambiguous.insert(first->GetIndex(i));
+      for (const auto& entry : a->links) {
+        if (entry.second.count!=2 || entry.second.balance!=0 || !slots.count(entry.first.first) || !slots.count(entry.first.second) ||
+            ambiguous.count(entry.first.first) || ambiguous.count(entry.first.second)) continue;
+        const int from=std::min(slots.at(entry.first.first),slots.at(entry.first.second));
+        const int to=std::max(slots.at(entry.first.first),slots.at(entry.first.second));
+        if (to-from<2) continue;
+        const auto other=b->links.find(link(second->GetIndex(from),second->GetIndex(to)));
+        if (other==b->links.end() || other->second.count!=2 || other->second.balance!=0) continue;
+        candidates.push_back({edge.get(),first,second,from,to});
+        if (candidates.size()==16) break;
+      }
+    }
+    TopTools_IndexedMapOfShape native_edges; TopExp::MapShapes(model->GetShape(),TopAbs_EDGE,native_edges);
+    for (const auto& candidate : candidates) {
+      auto* face=candidate.first->GetFace();
+      const int original=strip_original_faces_.FindIndex(face->GetFace());
+      if (original<1) throw std::runtime_error("internal diagonal face lacks original topology mapping");
+      auto& why=export_boundary_rejections_[original-1];
+      const auto* source=obtain(face);
+      const auto* other=obtain(candidate.second->GetFace());
+      if (!source || !other) { why="internal diagonal incidence/work budget"; continue; }
+      const int a=candidate.first->GetIndex(candidate.from),b=candidate.first->GetIndex(candidate.to);
+      const auto use=source->links.find(link(a,b));
+      const auto opposite=other->links.find(link(candidate.second->GetIndex(candidate.from),candidate.second->GetIndex(candidate.to)));
+      if (use==source->links.end() || opposite==other->links.end() || use->second.count!=2 || opposite->second.count!=2 ||
+          use->second.balance || opposite->second.balance) continue;
+      bool located_alias=false;
+      for (int fi=1;fi<=strip_original_faces_.Extent();++fi) {
+        const auto& f=strip_original_faces_.FindKey(fi);
+        if (f.IsPartner(face->GetFace()) && !f.IsSame(face->GetFace())) { located_alias=true; break; }
+      }
+      if (located_alias) { why="internal diagonal has located face aliases"; continue; }
+      const auto mesh=source->mesh; const auto location=source->location;
+      StripFace saved{face,face->GetStatusMask(),{},mesh,{}};
+      saved.original_orientation=strip_original_faces_.FindKey(original).Orientation();
+      StripTrial trial; trial.faces.push_back(saved);
+      ++attempts;
+      bool accepted=false;
+      std::string stage="preparing source interior sample";
+      try {
+        const gp_Pnt2d uv((mesh->UVNode(a).Coord()+mesh->UVNode(b).Coord())/2.0);
+        if (!strip_finite(uv) || BRepClass_FaceClassifier(face->GetFace(),uv,Precision::PConfusion()).State()!=TopAbs_IN)
+          throw std::runtime_error("interior sample is not in the exact native trim");
+        const auto point=face->GetSurface()->Value(uv.X(),uv.Y());
+        if (!strip_finite(point)) throw std::runtime_error("interior surface sample is nonfinite");
+        const auto replacement=mesh->Copy(); const int node=mesh->NbNodes()+1;
+        replacement->ResizeNodes(node,true); replacement->SetUVNode(node,uv);
+        replacement->SetNode(node,point.Transformed(location.Transformation().Inverted()));
+        std::vector<std::array<int,3>> children;
+        std::map<Link,int> old_links,new_links,old_directions,new_directions;
+        double old_area=0.0,new_area=0.0,area_scale=0.0;
+        for (int ti : use->second.triangles) {
+          int ids[3]; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+          int cyclic=-1;
+          for (int i=0;i<3;++i) {
+            const auto key=link(ids[i],ids[(i+1)%3]); ++old_links[key]; old_directions[key]+=ids[i]<ids[(i+1)%3] ? 1 : -1;
+            if (key==link(a,b)) cyclic=i;
+          }
+          if (cyclic<0) throw std::runtime_error("native internal diagonal lost incident correspondence");
+          const auto x=mesh->UVNode(ids[0]),y=mesh->UVNode(ids[1]),z=mesh->UVNode(ids[2]);
+          const double area=.5*(y.Coord()-x.Coord()).Crossed(z.Coord()-x.Coord());
+          if (!std::isfinite(area) || area<=0.0) throw std::runtime_error("old internal patch has nonpositive UV area");
+          const auto px=mesh->Node(ids[0]).Transformed(location.Transformation());
+          const auto py=mesh->Node(ids[1]).Transformed(location.Transformation());
+          const auto pz=mesh->Node(ids[2]).Transformed(location.Transformation());
+          const double native_area=gp_Vec(px,py).Crossed(gp_Vec(px,pz)).SquareMagnitude();
+          if (!strip_finite(px) || !strip_finite(py) || !strip_finite(pz) || !std::isfinite(native_area) || native_area<=0.0)
+            throw std::runtime_error("old internal patch has zero/nonfinite native area");
+          old_area+=area;
+          children.push_back({ids[cyclic],node,ids[(cyclic+2)%3]});
+          children.push_back({node,ids[(cyclic+1)%3],ids[(cyclic+2)%3]});
+        }
+        stage="qualifying all four source children";
+        const double d=GetParameters().Deflection;
+        const double angle=GetParameters().AngleInterior>0.0 ? GetParameters().AngleInterior : GetParameters().Angle;
+        if (!std::isfinite(d) || d<=0.0 || !std::isfinite(angle) || angle<=0.0) throw std::runtime_error("invalid native precision");
+        for (const auto& child : children) {
+          gp_Pnt p[3]; gp_Pnt2d u[3];
+          for (int i=0;i<3;++i) {
+            p[i]=replacement->Node(child[i]).Transformed(location.Transformation()); u[i]=replacement->UVNode(child[i]);
+            if (!strip_finite(p[i]) || !strip_finite(u[i])) throw std::runtime_error("nonfinite native child");
+            const auto key=link(child[i],child[(i+1)%3]); ++new_links[key]; new_directions[key]+=child[i]<child[(i+1)%3] ? 1 : -1;
+            area_scale+=std::pow(std::abs(u[i].X())+std::abs(u[i].Y()),2);
+          }
+          const double area=.5*(u[1].Coord()-u[0].Coord()).Crossed(u[2].Coord()-u[0].Coord());
+          const auto normal=gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2]));
+          if (!std::isfinite(area) || area<=0.0 || !std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude()<=0.0)
+            throw std::runtime_error("internal child has zero/inverted native or UV area");
+          new_area+=area;
+          const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
+          for (const auto& w : weights) {
+            const gp_Pnt2d sample(u[0].Coord()*w[0]+u[1].Coord()*w[1]+u[2].Coord()*w[2]);
+            const gp_Pnt affine(p[0].XYZ()*w[0]+p[1].XYZ()*w[1]+p[2].XYZ()*w[2]);
+            gp_Pnt on_surface; gp_Dir source_normal;
+            if (!BRepMesh_GeomTool::Normal(face->GetSurface(),sample.X(),sample.Y(),on_surface,source_normal) || !strip_finite(on_surface))
+              throw std::runtime_error("undefined child source normal");
+            const double error=affine.Distance(on_surface),angular=normal.Angle(gp_Vec(source_normal));
+            if (!std::isfinite(error) || error>d || !std::isfinite(angular) || angular>angle)
+              throw std::runtime_error("child source D/angle "+std::to_string(error)+"/"+std::to_string(angular));
+          }
+        }
+        stage="proving identical oriented UV patch";
+        if (!std::isfinite(area_scale) || std::abs(old_area-new_area)>256*std::numeric_limits<double>::epsilon()*area_scale)
+          throw std::runtime_error("internal patch area changed");
+        for (const auto& entry : old_links) if (entry.first!=link(a,b)) {
+          if (entry.second!=1 || new_links[entry.first]!=1 || new_directions[entry.first]!=old_directions[entry.first])
+            throw std::runtime_error("internal patch outer links changed");
+        }
+        for (const auto& entry : new_links) if (!old_links.count(entry.first)) {
+          if (entry.second!=2 || new_directions[entry.first]!=0) throw std::runtime_error("child internal incidence is not opposite-two");
+        }
+        if (new_links.count(link(a,b))) throw std::runtime_error("original shared internal diagonal remains");
+        replacement->ResizeTriangles(mesh->NbTriangles()+2,true);
+        replacement->SetTriangle(use->second.triangles[0],Poly_Triangle(children[0][0],children[0][1],children[0][2]));
+        replacement->SetTriangle(use->second.triangles[1],Poly_Triangle(children[2][0],children[2][1],children[2][2]));
+        replacement->SetTriangle(mesh->NbTriangles()+1,Poly_Triangle(children[1][0],children[1][1],children[1][2]));
+        replacement->SetTriangle(mesh->NbTriangles()+2,Poly_Triangle(children[3][0],children[3][1],children[3][2]));
+        replacement->RemoveNormals(); replacement->ComputeNormals();
+        BRep_Builder().UpdateFace(face->GetFace(),replacement);
+        stage="full native face domain/incidence";
+        accepted=validate_spherical_strip(trial,true);
+        if (!accepted) stage += ": "+strip_stop_;
+      } catch (const Standard_Failure&) { stage += ": OCCT exception"; }
+        catch (const std::exception& e) { stage += ": "+std::string(e.what()).substr(0,180); }
+      if (!accepted) {
+        try { BRep_Builder().UpdateFace(face->GetFace(),mesh); }
+        catch (...) { throw RollbackFailure("OCCT could not restore internal export diagonal"); }
+        why="internal edge "+std::to_string(native_edges.FindIndex(candidate.edge->GetEdge())-1)+" slots "+
+            std::to_string(candidate.from)+"/"+std::to_string(candidate.to)+" "+stage;
+      } else {
+        ++repaired; cache.erase(face);
+        why="native internal diagonal refined and full domain certified";
+      }
+    }
+    export_boundary_stop_ += "; internal diagonal attempts/repaired "+std::to_string(attempts)+"/"+std::to_string(repaired);
+    } catch (const RollbackFailure&) { throw; }
+      catch (const Standard_Failure&) {
+        export_boundary_stop_ += "; internal diagonal attempts/repaired "+std::to_string(attempts)+"/"+
+            std::to_string(repaired)+" precheck OCCT exception";
+      } catch (const std::exception& e) {
+        export_boundary_stop_ += "; internal diagonal attempts/repaired "+std::to_string(attempts)+"/"+
+            std::to_string(repaired)+" precheck "+std::string(e.what()).substr(0,160);
+      }
   }
 
   // Some native triangulators omit collinear UV constraint samples even
@@ -6379,6 +6585,9 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   mesher.SetShape(shape);
   mesher.ChangeParameters().Deflection = linear;
   mesher.ChangeParameters().Angle = angular;
+  // Native local edge-size scaling refines small export curves without
+  // changing the requested linear/angular precision or display defaults.
+  mesher.ChangeParameters().AdjustMinSize = native_export_precision;
   mesher.ChangeParameters().InParallel = true;
   auto* boundary_context = new TangentBoundaryMeshContext();
   boundary_context->EnableNativeExportRecovery(native_export_precision);
