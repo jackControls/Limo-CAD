@@ -4446,7 +4446,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             }
           }
         }
-        if (patch.size()==2 && (inverted(*patch.begin()) || inverted(*patch.rbegin()))) {
+        bool has_inversion=false;
+        for (int ti : patch) has_inversion=has_inversion || inverted(ti);
+        if (patch.size()<8 && has_inversion) {
           int best=0; double best_area=0.0;
           for (int ti : patch) {
             int ids[3]; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
@@ -4533,19 +4535,71 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (kernel.size()<3 || kernel.size()>64) throw std::runtime_error("expanded patch has no bounded star kernel");
         }
         gp_XY center(0,0); for (const auto& u : kernel) center+=u.Coord(); center/=static_cast<double>(kernel.size());
-        const gp_Pnt2d uv(center);
-        if (!strip_finite(uv) || BRepClass_FaceClassifier(face->GetFace(),uv,Precision::PConfusion()).State()!=TopAbs_IN)
-          throw std::runtime_error("star sample is not in the exact native trim");
+        const double d=GetParameters().Deflection;
+        const double angle=GetParameters().AngleInterior>0.0 ? GetParameters().AngleInterior : GetParameters().Angle;
+        if (!std::isfinite(d) || d<=0.0 || !std::isfinite(angle) || angle<=0.0) throw std::runtime_error("invalid native precision");
+        // The kernel mean need not minimize source-normal error on a distorted
+        // imported chart. Convex combinations with kernel vertices stay in the
+        // same certified star domain; try a bounded set without moving any
+        // original node or accepting a child beyond the requested precision.
+        std::vector<gp_Pnt2d> star_samples={gp_Pnt2d(center)};
+        for (std::size_t i=0;i<kernel.size() && star_samples.size()<17;++i) {
+          star_samples.emplace_back(center*.75+kernel[i].Coord()*.25);
+          if (star_samples.size()<17) star_samples.emplace_back(center*.5+kernel[i].Coord()*.5);
+        }
+        const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
+        gp_Pnt2d uv; double best_angle=std::numeric_limits<double>::infinity(),best_error=best_angle;
+        double rejected_angle=best_angle,rejected_error=best_angle; int examined=0,rejected_child=-1,rejected_sample=-1;
+        gp_Pnt2d rejected_uv;
+        for (const auto& proposed : star_samples) {
+          ++examined;
+          if (!strip_finite(proposed) || BRepClass_FaceClassifier(face->GetFace(),proposed,Precision::PConfusion()).State()!=TopAbs_IN) continue;
+          const auto proposed_point=face->GetSurface()->Value(proposed.X(),proposed.Y());
+          if (!strip_finite(proposed_point)) continue;
+          double max_angle=0.0,max_error=0.0; bool valid=true; int worst_child=-1,worst_sample=-1;
+          gp_Pnt2d worst_uv;
+          for (std::size_t i=0;i<boundary.size() && valid;++i) {
+            const gp_Pnt2d u[3]={mesh->UVNode(boundary[i]),mesh->UVNode(boundary[(i+1)%boundary.size()]),proposed};
+            const gp_Pnt p[3]={mesh->Node(boundary[i]).Transformed(location.Transformation()),
+                mesh->Node(boundary[(i+1)%boundary.size()]).Transformed(location.Transformation()),proposed_point};
+            const double area=(u[1].Coord()-u[0].Coord()).Crossed(u[2].Coord()-u[0].Coord());
+            const auto normal=gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2]));
+            if (!std::isfinite(area) || area<=0.0 || !std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude()<=0.0) { valid=false; break; }
+            int sample_index=0;
+            for (const auto& w : weights) {
+              if (++work>2097152) throw std::runtime_error("star precision search work budget");
+              const gp_Pnt2d sample(u[0].Coord()*w[0]+u[1].Coord()*w[1]+u[2].Coord()*w[2]);
+              const gp_Pnt affine(p[0].XYZ()*w[0]+p[1].XYZ()*w[1]+p[2].XYZ()*w[2]);
+              gp_Pnt on_surface; gp_Dir source_normal;
+              if (!BRepMesh_GeomTool::Normal(face->GetSurface(),sample.X(),sample.Y(),on_surface,source_normal) || !strip_finite(on_surface)) { valid=false; break; }
+              const double error=affine.Distance(on_surface),angular=normal.Angle(gp_Vec(source_normal));
+              if (!std::isfinite(error) || !std::isfinite(angular)) { valid=false; break; }
+              if (angular>max_angle) { max_angle=angular; worst_child=static_cast<int>(i); worst_sample=sample_index; worst_uv=sample; }
+              max_error=std::max(max_error,error); ++sample_index;
+            }
+          }
+          if (!valid) continue;
+          if (max_angle<rejected_angle) {
+            rejected_angle=max_angle; rejected_error=max_error; rejected_child=worst_child;
+            rejected_sample=worst_sample; rejected_uv=worst_uv;
+          }
+          if (max_angle<=angle && max_error<=d && max_angle<best_angle) {
+            uv=proposed; best_angle=max_angle; best_error=max_error;
+          }
+        }
+        stage="star search patch/candidates "+std::to_string(patch.size())+"/"+std::to_string(examined);
+        if (!std::isfinite(best_angle)) throw std::runtime_error("no precise source star; best D/angle "+
+            std::to_string(rejected_error)+"/"+std::to_string(rejected_angle)+" child/sample "+
+            std::to_string(rejected_child)+"/"+std::to_string(rejected_sample)+" UV "+
+            std::to_string(rejected_uv.X())+"/"+std::to_string(rejected_uv.Y()));
         const auto point=face->GetSurface()->Value(uv.X(),uv.Y());
         if (!strip_finite(point)) throw std::runtime_error("star surface sample is nonfinite");
         const auto replacement=mesh->Copy(); const int node=mesh->NbNodes()+1;
         replacement->ResizeNodes(node,true); replacement->SetUVNode(node,uv);
         replacement->SetNode(node,point.Transformed(location.Transformation().Inverted()));
         for (std::size_t i=0;i<boundary.size();++i) children.push_back({boundary[i],boundary[(i+1)%boundary.size()],node});
-        stage="qualifying source star children patch/cells "+std::to_string(patch.size())+"/"+std::to_string(children.size());
-        const double d=GetParameters().Deflection;
-        const double angle=GetParameters().AngleInterior>0.0 ? GetParameters().AngleInterior : GetParameters().Angle;
-        if (!std::isfinite(d) || d<=0.0 || !std::isfinite(angle) || angle<=0.0) throw std::runtime_error("invalid native precision");
+        stage="qualifying source star children patch/cells "+std::to_string(patch.size())+"/"+std::to_string(children.size())+
+            " search D/angle "+std::to_string(best_error)+"/"+std::to_string(best_angle);
         for (const auto& child : children) {
           gp_Pnt p[3]; gp_Pnt2d u[3];
           for (int i=0;i<3;++i) {
@@ -4559,7 +4613,6 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (!std::isfinite(area) || area<=0.0 || !std::isfinite(normal.SquareMagnitude()) || normal.SquareMagnitude()<=0.0)
             throw std::runtime_error("internal child has zero/inverted native or UV area");
           new_area+=area;
-          const double weights[7][3]={{1,0,0},{0,1,0},{0,0,1},{.5,.5,0},{0,.5,.5},{.5,0,.5},{1.0/3,1.0/3,1.0/3}};
           for (const auto& w : weights) {
             const gp_Pnt2d sample(u[0].Coord()*w[0]+u[1].Coord()*w[1]+u[2].Coord()*w[2]);
             const gp_Pnt affine(p[0].XYZ()*w[0]+p[1].XYZ()*w[1]+p[2].XYZ()*w[2]);
