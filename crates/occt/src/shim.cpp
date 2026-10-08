@@ -4801,7 +4801,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         const int curve_count=edge->GetCurve()->ParametersNb();
         const bool native_degenerate=BRep_Tool::Degenerated(edge->GetEdge());
         const char* gate=(orientation!=TopAbs_FORWARD && orientation!=TopAbs_REVERSED) ? "orientation" :
-            native_degenerate && edge!=pole_edge ? "native-degenerate" :
+            native_degenerate && !certified_pole_edge(edge,pc,pole_aliases) ? "native-degenerate" :
             edge->GetDegenerated() && !native_degenerate ? "discrete-degenerate" : pc.IsNull() ? "missing-pcurve" :
             pc_count<2 ? "too-few-samples" : pc_count>256 ? "sample-cap" : pc_count!=curve_count ? "sample-mismatch" : nullptr;
         if (gate) {
@@ -4865,12 +4865,15 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       StripTrial trial;
       trial.faces.push_back(saved);
       bool accepted=false;
-      bool both_unused=!pole_aliases.empty();
-      for (const auto& entry : actual) for (const auto& pole : pole_aliases)
-        if (entry.first.first==pole.first || entry.first.second==pole.first ||
-            entry.first.first==pole.second || entry.first.second==pole.second) both_unused=false;
+      int unused_groups=0;
+      for (const auto& pole : pole_aliases) {
+        bool used=false;
+        for (const auto& entry : actual) if (entry.second>0 && (entry.first.first==pole.first || entry.first.second==pole.first ||
+            entry.first.first==pole.second || entry.first.second==pole.second)) { used=true;break; }
+        if (!used) ++unused_groups;
+      }
       std::string first_rejection;
-      for (int choice=0;choice<(both_unused ? 2 : 1);++choice) {
+      for (int choice=0;choice<(1<<unused_groups);++choice) {
         if (attempts>=128 || export_boundary_work_>=2097152) { why="export restoration attempt/work budget exhausted"; break; }
         ++attempts;
         try {
@@ -4894,7 +4897,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           try { BRep_Builder().UpdateFace(face->GetFace(),mesh); }
           catch (...) { throw std::runtime_error("OCCT could not restore an export boundary triangulation"); }
           if (!choice) first_rejection=why;
-          else why="unused-pole choices: 0 "+first_rejection.substr(0,180)+"; 1 "+why.substr(0,180);
+          else why="unused-pole choices: 0 "+first_rejection.substr(0,180)+"; "+std::to_string(choice)+' '+why.substr(0,180);
         } else {
           const auto replacement=BRep_Tool::Triangulation(face->GetFace(),location);
           ++repaired; added+=replacement->NbTriangles()-mesh->NbTriangles();
@@ -4935,7 +4938,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         const auto pc=edge->GetPCurve(face,orientation); const auto curve=edge->GetCurve();
         if ((orientation!=TopAbs_FORWARD && orientation!=TopAbs_REVERSED) || pc.IsNull() || pc->ParametersNb()<2 ||
             pc->ParametersNb()>256 || pc->ParametersNb()!=curve->ParametersNb() ||
-            (BRep_Tool::Degenerated(edge->GetEdge()) && edge!=pole_edge) ||
+            (BRep_Tool::Degenerated(edge->GetEdge()) && !certified_pole_edge(edge,pc,aliases)) ||
             (edge->GetDegenerated() && !BRep_Tool::Degenerated(edge->GetEdge()))) {
           strip_stop_="whole-face unsupported native constraint"; return false;
         }
@@ -5702,7 +5705,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               strip_degenerate_details_[face_index] += detail.str().substr(0,650);
             }
             if ((orientation != TopAbs_FORWARD && orientation != TopAbs_REVERSED) || pc.IsNull() ||
-                (BRep_Tool::Degenerated(edge->GetEdge()) && (!native_export || edge!=pole_edge)) ||
+                (BRep_Tool::Degenerated(edge->GetEdge()) && (!native_export || !certified_pole_edge(edge,pc,pole_aliases))) ||
                 pc->ParametersNb() < 2 || pc->ParametersNb() > 256 ||
                 pc->ParametersNb() != edge->GetCurve()->ParametersNb() || chain.size()+pc->ParametersNb() > 4096) {
               eligible_wire = false; break;
@@ -6033,9 +6036,82 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   // A native degenerate edge can use distinct UV representatives of one
   // physical vertex. Certify this particular quotient and its omitted chart
   // wedge at native sampling precision; never merge merely short edges.
-  bool qualify_native_pole(const StripFace& saved, const Handle(Poly_Triangulation)& mesh,
+  static bool certified_pole_edge(IMeshData::IEdgePtr edge,const IMeshData::IPCurveHandle& pc,
+                                  const std::map<int,int>& aliases) {
+    if (!BRep_Tool::Degenerated(edge->GetEdge()) || pc.IsNull() || pc->ParametersNb()!=2) return false;
+    const int a=pc->GetIndex(0),b=pc->GetIndex(1);
+    const auto first=aliases.find(a),second=aliases.find(b);
+    return (first!=aliases.end() && first->second==b) || (second!=aliases.end() && second->second==a);
+  }
+
+  bool qualify_native_pole(const StripFace& saved,const Handle(Poly_Triangulation)& mesh,
+                          const TopLoc_Location& location,std::map<int,int>& aliases,
+                          IMeshData::IEdgePtr& pole_edge,bool native_export=false,bool identity_only=false,int unused_choice=0) {
+    try {
+      struct Pole { IMeshData::IEdgePtr edge;IMeshData::IPCurveHandle pc;TopoDS_Vertex vertex;int first,last; };
+      std::vector<Pole> poles;
+      for (int wi=0;wi<saved.face->WiresNb();++wi) {
+        const auto wire=saved.face->GetWire(wi);
+        for (int ei=0;ei<wire->EdgesNb();++ei) {
+          const auto edge=wire->GetEdge(ei);
+          if (BRep_Tool::Degenerated(edge->GetEdge())) poles.push_back({edge,edge->GetPCurve(saved.face,wire->GetEdgeOrientation(ei)),{},0,0});
+        }
+      }
+      if (!native_export || poles.size()<2) return qualify_native_pole_group(saved,mesh,location,aliases,pole_edge,
+          native_export,identity_only,unused_choice);
+      if (poles.size()!=2 || saved.face->WiresNb()!=1 || mesh.IsNull() || !mesh->HasUVNodes()) {
+        strip_stop_="multiple pole composition requires two independent poles in one chart";return false;
+      }
+      std::map<int,int> identity_pairs;std::set<int> pair_nodes;
+      for (auto& pole : poles) {
+        TopoDS_Vertex last;TopExp::Vertices(pole.edge->GetEdge(),pole.vertex,last);
+        if (pole.vertex.IsNull() || last.IsNull() || !pole.vertex.IsSame(last) || pole.pc.IsNull() ||
+            pole.pc->ParametersNb()!=2 || pole.edge->GetCurve()->ParametersNb()!=2) {
+          strip_stop_="multiple pole lacks exact native vertex/sample identity";return false;
+        }
+        pole.first=pole.pc->GetIndex(0);pole.last=pole.pc->GetIndex(1);
+        for (int id : {pole.first,pole.last}) if (id<1 || id>mesh->NbNodes() || !pair_nodes.insert(id).second) {
+          strip_stop_="multiple pole mapped pairs overlap or lose indices";return false;
+        }
+        const auto a=pole.edge->GetCurve()->GetPoint(0),b=pole.edge->GetCurve()->GetPoint(1);
+        const auto x=mesh->Node(pole.first).Transformed(location.Transformation()),y=mesh->Node(pole.last).Transformed(location.Transformation());
+        if (!strip_finite(a) || !strip_finite(b) || !strip_finite(x) || !strip_finite(y) || a.Distance(b)!=0.0 ||
+            x.Distance(y)!=0.0 || x.Distance(a)>Precision::Confusion() || y.Distance(b)>Precision::Confusion()) {
+          strip_stop_="multiple pole native/mapped world points do not coincide";return false;
+        }
+        identity_pairs[pole.last]=pole.first;
+      }
+      if (poles[0].vertex.IsSame(poles[1].vertex)) { strip_stop_="multiple poles share a native vertex graph";return false; }
+      std::set<int> used;
+      for (int ti=1;ti<=mesh->NbTriangles();++ti) {
+        if (++pole_certificate_work_>2097152) { strip_stop_="multiple pole identity work budget";return false; }
+        int ids[3];mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+        for (int id : ids) if (id<1 || id>mesh->NbNodes()) { strip_stop_="multiple pole triangle index";return false; }
+        if (certified_zero_pole_cell(mesh,location,ids,identity_pairs)) continue;
+        for (int id : ids) used.insert(id);
+      }
+      int choice_bit=0;aliases.clear();pole_edge=poles.front().edge;
+      for (const auto& pole : poles) {
+        const bool unused=!used.count(pole.first) && !used.count(pole.last);
+        std::map<int,int> group;IMeshData::IEdgePtr selected=nullptr;
+        if (!qualify_native_pole_group(saved,mesh,location,group,selected,true,true,
+            unused ? ((unused_choice>>choice_bit++)&1) : 0,pole.edge,&identity_pairs)) return false;
+        aliases.insert(group.begin(),group.end());
+      }
+      if (identity_only) return true;
+      for (const auto& pole : poles) {
+        std::map<int,int> group;IMeshData::IEdgePtr selected=nullptr;
+        if (!qualify_native_pole_group(saved,mesh,location,group,selected,true,false,0,pole.edge,&aliases)) return false;
+      }
+      return true;
+    } catch (const Standard_Failure&) { strip_stop_="OCCT exception composing native pole certificates";return false; }
+      catch (const std::exception&) { strip_stop_="exception composing native pole certificates";return false; }
+  }
+
+  bool qualify_native_pole_group(const StripFace& saved, const Handle(Poly_Triangulation)& mesh,
                            const TopLoc_Location& location, std::map<int,int>& aliases,
-                           IMeshData::IEdgePtr& pole_edge, bool native_export=false, bool identity_only=false,int unused_choice=0) {
+                           IMeshData::IEdgePtr& pole_edge, bool native_export=false, bool identity_only=false,int unused_choice=0,
+                           IMeshData::IEdgePtr selected=nullptr,const std::map<int,int>* composition=nullptr) {
     pole_edge = nullptr;
     try {
       IMeshData::IPCurveHandle pole_pc;
@@ -6044,6 +6120,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
           const auto edge = wire->GetEdge(ei);
           if (!BRep_Tool::Degenerated(edge->GetEdge())) continue;
+          if (selected && selected!=edge) continue;
           if (pole_edge) { strip_stop_ = "multiple native poles exceed local certificate scope"; return false; }
           pole_edge = edge; pole_pc = edge->GetPCurve(saved.face,wire->GetEdgeOrientation(ei));
         }
@@ -6096,7 +6173,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         // this native vertex. They have no physical facet; their source UV
         // image still belongs to the separately certified signed wedge.
         if (native_export) {
-          const bool contains_pair = std::find(ids,ids+3,id0)!=ids+3 && std::find(ids,ids+3,id1)!=ids+3;
+          bool contains_pair = std::find(ids,ids+3,id0)!=ids+3 && std::find(ids,ids+3,id1)!=ids+3;
+          if (composition) for (const auto& pair : *composition)
+            contains_pair |= std::find(ids,ids+3,pair.first)!=ids+3 && std::find(ids,ids+3,pair.second)!=ids+3;
           const auto normal=gp_Vec(world(ids[0]),world(ids[1])).Crossed(gp_Vec(world(ids[0]),world(ids[2])));
           if (!std::isfinite(normal.SquareMagnitude())) {
             strip_stop_ = "export pole incident cell has nonfinite physical area"; return false;
@@ -6117,7 +6196,12 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       // This only proposes connectivity on a disposable export mesh. The
       // complete chart/wedge/precision certificate is repeated after repair.
       if (identity_only) return true;
-      const auto canonical = [&](int id) { return id == omitted ? representative : id; };
+      const auto& all_aliases=composition ? *composition : aliases;
+      const auto own_alias=all_aliases.find(omitted);
+      if (own_alias==all_aliases.end() || own_alias->second!=representative) {
+        strip_stop_="native pole composition disagrees with physical representative";return false;
+      }
+      const auto canonical = [&](int id) { const auto found=all_aliases.find(id);return found==all_aliases.end() ? id : found->second; };
       std::vector<int> original, quotient;
       const auto wire = saved.face->GetWire(0);
       for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
@@ -6159,17 +6243,50 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         }
       }
       if (pole_segment==-1) { strip_stop_ = "native pole trace is absent from oriented boundary"; return false; }
-      const int incoming=(pole_segment+count-1)%count,outgoing=(pole_segment+1)%count;
-      const auto local_pair=std::minmax(incoming,outgoing);
       int local_crossings=0;
       gp_Pnt2d local_crossing;
-      const auto in_witnessed_wedge = [&](const gp_Pnt2d& point) {
+      struct Wedge { int omitted,incoming,outgoing;std::array<gp_Pnt2d,3> uv;double area;int crossings=0;gp_Pnt2d crossing; };
+      std::vector<Wedge> wedges;double summed_wedges=0.0;
+      for (const auto& alias : all_aliases) {
+        const auto found=std::find(original.begin(),original.end(),alias.first);
+        if (found==original.end() || std::count(original.begin(),original.end(),alias.first)!=1) {
+          strip_stop_="composed pole omitted node has ambiguous original ownership";return false;
+        }
+        const int index=static_cast<int>(found-original.begin());
+        const int before=original[(index+count-1)%count],after=original[(index+1)%count];
+        if (before!=alias.second && after!=alias.second) { strip_stop_="composed pole pair is not consecutive";return false; }
+        for (const auto& other : all_aliases) if (other.first!=alias.first &&
+            (before==other.first || before==other.second || after==other.first || after==other.second)) {
+          strip_stop_="composed pole wedge touches another pole neighborhood";return false;
+        }
+        int trace=-1;
+        for (int i=0;i<count;++i) if ((original[i]==alias.first && original[(i+1)%count]==alias.second) ||
+            (original[i]==alias.second && original[(i+1)%count]==alias.first)) {
+          if (trace!=-1) { strip_stop_="composed pole trace ownership is ambiguous";return false; }trace=i;
+        }
+        if (trace<0) { strip_stop_="composed pole trace is absent";return false; }
+        const std::array<gp_Pnt2d,3> points{mesh->UVNode(before),mesh->UVNode(alias.first),mesh->UVNode(after)};
+        const double area=.5*(points[1].Coord()-points[0].Coord()).Crossed(points[2].Coord()-points[0].Coord());
+        if (!std::isfinite(area)) { strip_stop_="composed pole wedge has nonfinite area";return false; }
+        summed_wedges+=area;wedges.push_back({alias.first,(trace+count-1)%count,(trace+1)%count,points,area});
+      }
+      if (wedges.size()>1) {
+        const auto bounds=[](const Wedge& wedge) {
+          std::array<double,4> box{wedge.uv[0].X(),wedge.uv[0].X(),wedge.uv[0].Y(),wedge.uv[0].Y()};
+          for (const auto& uv : wedge.uv) { box[0]=std::min(box[0],uv.X());box[1]=std::max(box[1],uv.X());
+            box[2]=std::min(box[2],uv.Y());box[3]=std::max(box[3],uv.Y()); }return box;
+        };
+        const auto x=bounds(wedges[0]),y=bounds(wedges[1]);
+        if (!(x[1]<y[0] || y[1]<x[0] || x[3]<y[2] || y[3]<x[2])) {
+          strip_stop_="composed pole UV wedges are not certified disjoint";return false;
+        }
+      }
+      const auto in_witnessed_wedge = [&](const gp_Pnt2d& point,const Wedge& wedge) {
         if (!strip_finite(point)) return false;
-        const double twice_area=(buv.Coord()-auv.Coord()).Crossed(cuv.Coord()-auv.Coord());
+        const double twice_area=2.0*wedge.area;
         if (!std::isfinite(twice_area) || twice_area==0.0) return false;
-        const gp_Pnt2d vertices[3]={auv,buv,cuv};
         for (int i=0;i<3;++i) {
-          const auto from=vertices[i],to=vertices[(i+1)%3];
+          const auto from=wedge.uv[i],to=wedge.uv[(i+1)%3];
           const double cross=(to.Coord()-from.Coord()).Crossed(point.Coord()-from.Coord());
           const double coordinates=std::abs(from.X())+std::abs(from.Y())+std::abs(to.X())+
               std::abs(to.Y())+std::abs(point.X())+std::abs(point.Y());
@@ -6202,13 +6319,15 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 mesh->UVNode(polygon[(j+1)%polygon.size()]).Coord(),true,true,intersection);
             const bool adjacent = j==i+1 || (i==0 && j+1==polygon.size());
             if (flag!=BRepMesh_GeomTool::NoIntersection && !(adjacent && flag==BRepMesh_GeomTool::EndPointTouch)) {
-              if (source_chart && flag==BRepMesh_GeomTool::Cross &&
-                  static_cast<int>(i)==local_pair.first && static_cast<int>(j)==local_pair.second &&
-                  local_crossings==0 && in_witnessed_wedge(intersection)) {
+              bool allowed=false;
+              if (source_chart && flag==BRepMesh_GeomTool::Cross) for (auto& wedge : wedges) {
+                const auto pair=std::minmax(wedge.incoming,wedge.outgoing);
+                if (static_cast<int>(i)!=pair.first || static_cast<int>(j)!=pair.second || wedge.crossings ||
+                    !in_witnessed_wedge(intersection,wedge)) continue;
                 // Cross must lie strictly inside both native-adjacent source
                 // segments, not describe another endpoint or backtracking.
                 bool interior=true;
-                for (int index : {incoming,outgoing}) {
+                for (int index : {wedge.incoming,wedge.outgoing}) {
                   const auto from=mesh->UVNode(original[index]),to=mesh->UVNode(original[(index+1)%count]);
                   const auto delta=to.Coord()-from.Coord();
                   const double length2=delta.SquareModulus();
@@ -6216,8 +6335,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                   const double fraction=(intersection.Coord()-from.Coord()).Dot(delta)/length2;
                   interior &= std::isfinite(fraction) && fraction>0.0 && fraction<1.0;
                 }
-                if (interior) { ++local_crossings; local_crossing=intersection; continue; }
+                if (interior) { ++wedge.crossings;wedge.crossing=intersection;allowed=true;break; }
               }
+              if (allowed) continue;
               std::ostringstream detail; detail.precision(9);
               detail << "intersection status " << static_cast<int>(flag) << " segments " << polygon[i] << '/' <<
                   polygon[(i+1)%polygon.size()] << " and " << polygon[j] << '/' << polygon[(j+1)%polygon.size()] <<
@@ -6231,6 +6351,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       };
       double source_area,quotient_area;
       if (!simple_area(original,source_area,"source",true) || !simple_area(quotient,quotient_area,"quotient",false)) return false;
+      for (const auto& wedge : wedges) if (wedge.omitted==omitted) { local_crossings=wedge.crossings;local_crossing=wedge.crossing; }
       if (std::signbit(source_area)!=std::signbit(quotient_area)) {
         strip_stop_ = "native pole quotient reverses the source chart winding"; return false;
       }
@@ -6238,15 +6359,16 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       const double wedge_area = 0.5*(buv.Coord()-auv.Coord()).Crossed(cuv.Coord()-auv.Coord());
       // Bound subtraction and polygon accumulation using the stored chart's
       // coordinate scale, including rounding before the origin subtraction.
-      double area_scale = std::abs(source_area)+std::abs(quotient_area)+std::abs(wedge_area);
+      double area_scale = std::abs(source_area)+std::abs(quotient_area);
+      for (const auto& wedge : wedges) area_scale+=std::abs(wedge.area);
       for (int id : original) {
         const auto parameter = mesh->UVNode(id);
         area_scale += std::pow(std::abs(parameter.X())+std::abs(parameter.Y())+
             std::abs(auv.X())+std::abs(auv.Y()),2);
       }
-      if (!std::isfinite(wedge_area) || std::abs(source_area-quotient_area-wedge_area) >
+      if (!std::isfinite(wedge_area) || !std::isfinite(summed_wedges) || std::abs(source_area-quotient_area-summed_wedges) >
           256.0*std::numeric_limits<double>::epsilon()*area_scale) {
-        strip_stop_ = "native pole chart difference is not exactly the witnessed local wedge"; return false;
+        strip_stop_ = "native pole chart difference is not exactly the sum of original witnessed wedges"; return false;
       }
       // Find the sole oriented physical boundary triangle spanning that wedge.
       const int ca = canonical(a), cc = canonical(c);
@@ -6436,7 +6558,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                   // Only a certified native degenerate edge may disappear in
                   // the physical boundary quotient. Other shared edges retain
                   // every original nondegenerate segment.
-                  if (edge != pole_edge || !BRep_Tool::Degenerated(edge->GetEdge())) {
+                  if (!certified_pole_edge(edge,pc,pole_aliases)) {
                     strip_stop_ = "native pole alias collapses a nondegenerate boundary edge"; return false;
                   }
                 } else {

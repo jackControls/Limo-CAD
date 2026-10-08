@@ -67,6 +67,15 @@ checks positive disjoint ears and seven source precision witnesses, and bounds
 backtracking to 512 states. It awaits GUI qualification; no successful
 native-precision export is claimed.
 
+Actual guarded GUI export on clean matched `0226ec9f` qualifies those connector
+caps and reduces invalid boundary links from 86 to 53 across the same 33 native
+shells, with no multiply used links. Remaining groups include a source-angle
+refinement failure on face 2449, curved trim crossings on 8033/8014, and two-pole
+faces 7236/7146. A bounded two-pole export extension now certifies each independent
+native vertex and original wedge against the final composed quotient, with at
+most four representative choices; it awaits GUI qualification. Export is still
+refused, and the saved Medix model remains unchanged.
+
 The actual guarded GUI export on clean matched `7c235990` still reports 86
 unmatched links. Native curve diagnostics rule out zero-area incidence loss on
 the leading sphere faces: all ten existing facets have positive area, but native
@@ -127,6 +136,16 @@ twenty-one features, seven definitions and ten occurrences. Upper and lower
 rails retain separate definitions and their correct shared pilot patterns.
 Saved parameters and exact live/archive comparison passed; the full frame was
 captured. Remaining post pilots, geometry, joints and drawings are unfinished.
+
+On clean matched `0226ec9f`, guarded physical Hole input added the left-front
+post's six Ø3.5 mm, 39 mm deep, flat-bottom rail/arm pilots at stock
+X 0 mm, Y 32.5 mm, Z 365/400/170/205/590/615 mm. The named feature, restored
+all-body visibility, Isometric/Fit and Ctrl+S produced the
+[left-front pilot checkpoint](../examples/checkpoints/garden-bench-left-front-pilots-human-ui.limo):
+twenty-two features, seven definitions and ten occurrences. Saved parameters,
+previous hole patterns and assembly preservation, and exact live/archive
+comparison passed. Right-front apron and both rear-post pilot patterns,
+remaining geometry, joints and drawings are unfinished.
 
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled
