@@ -3087,6 +3087,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   };
   struct StripTrial {
     IMeshData::IFacePtr target = nullptr;
+    std::array<int,2> target_edges{0,1};
+    int connector=-1;
     std::vector<StripEdge> edges;
     std::vector<StripFace> faces;
     double shift = 0.0, angular = 0.0, coverage = 0.0, neighbor_gap = 0.0;
@@ -3140,7 +3142,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         strip_face_rejections_[original_index] = "prior face/wire status prevents strip trial";
         continue;
       }
-      if (face->WiresNb() != 1 || face->GetWire(0)->EdgesNb() != 2) {
+      if (face->WiresNb() != 1 || (face->GetWire(0)->EdgesNb() != 2 &&
+          !(native_export_recovery_ && face->GetWire(0)->EdgesNb()==3))) {
         strip_face_rejections_[original_index] = "sphere is not a one-wire/two-edge strip";
         continue;
       }
@@ -3838,7 +3841,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
   // Certify a simple discrete polygon independently of FaceChecker's small-
   // angle/loop-area exemptions. Endpoints remain the shared CAD mesh nodes.
-  static bool simple_strip_boundary(IMeshData::IFacePtr face, double& signed_area) {
+  static bool simple_strip_boundary(IMeshData::IFacePtr face, double& signed_area,bool strict=false) {
     std::vector<gp_Pnt2d> polygon;
     if (face->WiresNb() != 1) return false;
     const auto& wire = face->GetWire(0);
@@ -3866,12 +3869,14 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       const auto& a = polygon[i]; const auto& b = polygon[(i + 1) % polygon.size()];
       if (a.Distance(b) <= Precision::PConfusion()) return false;
       signed_area += 0.5 * (a.Coord() - origin).Crossed(b.Coord() - origin);
-      for (std::size_t j = i + 2; j < polygon.size(); ++j) {
-        if (i == 0 && j + 1 == polygon.size()) continue;
+      for (std::size_t j = i + (strict ? 1 : 2); j < polygon.size(); ++j) {
+        const bool adjacent=j==i+1 || (i==0 && j+1==polygon.size());
+        if (!strict && adjacent) continue;
         gp_Pnt2d intersection;
-        if (BRepMesh_GeomTool::IntSegSeg(a.Coord(), b.Coord(), polygon[j].Coord(),
-                polygon[(j + 1) % polygon.size()].Coord(), false, false, intersection) ==
-            BRepMesh_GeomTool::Cross) return false;
+        const auto status=BRepMesh_GeomTool::IntSegSeg(a.Coord(), b.Coord(), polygon[j].Coord(),
+                polygon[(j + 1) % polygon.size()].Coord(), strict, strict, intersection);
+        if (strict ? (status!=BRepMesh_GeomTool::NoIntersection && !(adjacent && status==BRepMesh_GeomTool::EndPointTouch)) :
+            status==BRepMesh_GeomTool::Cross) return false;
       }
     }
     return std::isfinite(signed_area) && signed_area > 0.0;
@@ -3895,7 +3900,25 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       const auto& wire = face->GetWire(0);
       const auto& surface = face->GetSurface();
       const double radius = surface->Sphere().Radius(), deflection = GetParameters().Deflection;
-      const auto e0 = wire->GetEdge(0), e1 = wire->GetEdge(1);
+      if (wire->EdgesNb()==3) {
+        std::vector<std::pair<double,int>> spans;
+        for (int ei=0;ei<3;++ei) {
+          const auto edge=wire->GetEdge(ei);const auto pc=edge->GetPCurve(face.get(),wire->GetEdgeOrientation(ei));
+          if (pc.IsNull() || pc->ParametersNb()<2 || pc->ParametersNb()>128 || BRep_Tool::Degenerated(edge->GetEdge()) ||
+              BRepAdaptor_Curve(edge->GetEdge()).GetType()!=GeomAbs_Circle || !edge->GetSameParam() || !edge->GetSameRange())
+            return reject("three-edge strip lacks precise native circle constraints");
+          spans.emplace_back(std::abs(pc->GetPoint(pc->ParametersNb()-1).X()-pc->GetPoint(0).X()),ei);
+        }
+        std::sort(spans.begin(),spans.end(),[](const auto& a,const auto& b) { return a>b; });
+        trial.target_edges={spans[0].second,spans[1].second};trial.connector=spans[2].second;
+        if (!std::isfinite(spans[2].first) || spans[2].first<=0.0 || spans[2].first>=spans[1].first/64.0 ||
+            radius*spans[2].first>deflection/16.0) return reject("connector is not a bounded small source cap");
+        const auto connector=wire->GetEdge(trial.connector);
+        const auto pc=connector->GetPCurve(face.get(),wire->GetEdgeOrientation(trial.connector));
+        if (pc->ParametersNb()>16 || pc->ParametersNb()!=connector->GetCurve()->ParametersNb())
+          return reject("connector native sample correspondence/budget");
+      }
+      const auto e0 = wire->GetEdge(trial.target_edges[0]), e1 = wire->GetEdge(trial.target_edges[1]);
       if (e0 == e1) return reject("same edge occurs twice in strip");
       if (!e0->GetSameParam() || !e1->GetSameParam() || !e0->GetSameRange() || !e1->GetSameRange()) {
         const std::string flags = "native SameParam/Range e0 " + std::to_string(e0->GetSameParam()) + '/' +
@@ -3903,8 +3926,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             std::to_string(e1->GetSameRange());
         return reject(flags.c_str());
       }
-      const auto p0 = e0->GetPCurve(face.get(), wire->GetEdgeOrientation(0));
-      const auto p1 = e1->GetPCurve(face.get(), wire->GetEdgeOrientation(1));
+      const auto p0 = e0->GetPCurve(face.get(), wire->GetEdgeOrientation(trial.target_edges[0]));
+      const auto p1 = e1->GetPCurve(face.get(), wire->GetEdgeOrientation(trial.target_edges[1]));
       BRepAdaptor_Curve native0(e0->GetEdge()), native1(e1->GetEdge());
       if (p0.IsNull() || p1.IsNull() || native0.GetType() != GeomAbs_Circle ||
           native1.GetType() != GeomAbs_Circle || p0->ParametersNb() < 3 || p1->ParametersNb() < 3 ||
@@ -3918,13 +3941,30 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           radius * (v1 - v0) > std::min(deflection, edge_tol) / 16.0) return reject("source UV band or recorded-tolerance gate");
       TopoDS_Vertex a0, a1, b0, b1;
       TopExp::Vertices(e0->GetEdge(), a0, a1); TopExp::Vertices(e1->GetEdge(), b0, b1);
-      if (a0.IsNull() || a1.IsNull() || b0.IsNull() || b1.IsNull() || a0.IsSame(a1) ||
-          !((a0.IsSame(b0) && a1.IsSame(b1)) || (a0.IsSame(b1) && a1.IsSame(b0))))
-        return reject("two distinct shared topological endpoints were not established");
+      if (a0.IsNull() || a1.IsNull() || b0.IsNull() || b1.IsNull() || a0.IsSame(a1) || b0.IsSame(b1))
+        return reject("distinct native side endpoints were not established");
+      if (trial.connector<0) {
+        if (!((a0.IsSame(b0) && a1.IsSame(b1)) || (a0.IsSame(b1) && a1.IsSame(b0))))
+          return reject("two distinct shared topological endpoints were not established");
+      } else {
+        TopoDS_Vertex shared;if (!TopExp::CommonVertex(e0->GetEdge(),e1->GetEdge(),shared))
+          return reject("connector strip lacks its shared native endpoint");
+        const auto other0=a0.IsSame(shared) ? a1 : a0,other1=b0.IsSame(shared) ? b1 : b0;
+        TopoDS_Vertex c0,c1;TopExp::Vertices(wire->GetEdge(trial.connector)->GetEdge(),c0,c1);
+        if (other0.IsSame(other1) || c0.IsNull() || c1.IsNull() ||
+            !((c0.IsSame(other0) && c1.IsSame(other1)) || (c1.IsSame(other0) && c0.IsSame(other1))))
+          return reject("unchanged connector does not join both native side ends");
+        const double low0=std::min(p0->GetPoint(0).X(),p0->GetPoint(p0->ParametersNb()-1).X());
+        const double low1=std::min(p1->GetPoint(0).X(),p1->GetPoint(p1->ParametersNb()-1).X());
+        const auto low_vertex0=p0->GetPoint(0).X()<p0->GetPoint(p0->ParametersNb()-1).X() ? a0 : a1;
+        const auto low_vertex1=p1->GetPoint(0).X()<p1->GetPoint(p1->ParametersNb()-1).X() ? b0 : b1;
+        if (!low_vertex0.IsSame(shared) || !low_vertex1.IsSame(shared) || std::abs(low0-low1)>Precision::PConfusion())
+          return reject("connector strip is not an upper cap on a shared U extent");
+      }
       const double direction0 = p0->GetPoint(p0->ParametersNb()-1).X() - p0->GetPoint(0).X();
       const double direction1 = p1->GetPoint(p1->ParametersNb()-1).X() - p1->GetPoint(0).X();
-      const double traversal0 = direction0 * (wire->GetEdgeOrientation(0) == TopAbs_REVERSED ? -1.0 : 1.0);
-      const double traversal1 = direction1 * (wire->GetEdgeOrientation(1) == TopAbs_REVERSED ? -1.0 : 1.0);
+      const double traversal0 = direction0 * (wire->GetEdgeOrientation(trial.target_edges[0]) == TopAbs_REVERSED ? -1.0 : 1.0);
+      const double traversal1 = direction1 * (wire->GetEdgeOrientation(trial.target_edges[1]) == TopAbs_REVERSED ? -1.0 : 1.0);
       if (!std::isfinite(traversal0) || !std::isfinite(traversal1) || traversal0 * traversal1 >= 0.0)
         return reject("opposed monotone wire traversal was not established");
       // Require a real coincident native-curve crossing, not an arbitrary thin face.
@@ -3994,9 +4034,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       trial.target = face.get();
       double errors[2] = {}, width = 0.0;
       std::set<IMeshData::IFacePtr> neighbors;
-      for (int ei = 0; ei < 2; ++ei) {
-        const auto edge = wire->GetEdge(ei);
-        const auto pc = ei == 0 ? p0 : p1;
+      for (int ei = 0; ei < (trial.connector>=0 ? 3 : 2); ++ei) {
+        const int index=ei<2 ? trial.target_edges[ei] : trial.connector;
+        const auto edge = wire->GetEdge(index);
+        const auto pc = ei<2 ? (ei == 0 ? p0 : p1) : edge->GetPCurve(face.get(),wire->GetEdgeOrientation(index));
         const auto curve = edge->GetCurve();
         if (curve->ParametersNb() != pc->ParametersNb() || edge->PCurvesNb() != 2 ||
             edge->GetPCurve(0)->GetFace() == edge->GetPCurve(1)->GetFace())
@@ -4010,7 +4051,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (!strip_finite(point) || !strip_finite(uv) || (i > 0 &&
                   (uv.X() - pc->GetPoint(i-1).X()) * direction <= 0.0)) return reject("nonmonotone source U");
           saved.points.push_back(point); saved.parameters.push_back(curve->GetParameter(i));
-          if (i > 0 && i + 1 < curve->ParametersNb())
+          if (ei<2 && i > 0 && i + 1 < curve->ParametersNb())
             errors[ei] = std::max(errors[ei], native.Value(curve->GetParameter(i)).Distance(surface->Value(uv.X(), uv.Y())));
           // Separate the opposing float rounding balls, with one additional
           // rounding radius for cross-product arithmetic. No fixed CAD offset.
@@ -4020,7 +4061,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             const double ulp = std::abs(static_cast<double>(std::nextafter(f, std::numeric_limits<float>::infinity())) - f);
             squared_ulp += ulp * ulp;
           }
-          width = std::max(width, 8.0 * std::sqrt(squared_ulp) / radius);
+          if (ei<2) width = std::max(width, 8.0 * std::sqrt(squared_ulp) / radius);
         }
         for (int pi = 0; pi < edge->PCurvesNb(); ++pi) {
           const auto& adjacent = edge->GetPCurve(pi);
@@ -4070,7 +4111,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       const auto reference = moved == 0 ? p1 : p0;
       const auto moved_pc = moved == 0 ? p0 : p1;
       const double traversal = (moved_pc->GetPoint(moved_pc->ParametersNb()-1).X() - moved_pc->GetPoint(0).X()) *
-          (wire->GetEdgeOrientation(moved) == TopAbs_REVERSED ? -1.0 : 1.0);
+          (wire->GetEdgeOrientation(trial.target_edges[moved]) == TopAbs_REVERSED ? -1.0 : 1.0);
       const double side = traversal < 0.0 ? 1.0 : -1.0;
       const auto interpolate = [](const std::vector<double>& parameters, const std::vector<gp_Pnt2d>& points, double t) {
         for (std::size_t i = 1; i < parameters.size(); ++i) {
@@ -4086,7 +4127,19 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if ((u - a.X()) * (u - b.X()) > 0.0) continue;
           return a.Y() + (b.Y() - a.Y()) * (u - a.X()) / (b.X() - a.X());
         }
+        if (trial.connector>=0) return std::abs(u-reference->GetPoint(0).X())<
+            std::abs(u-reference->GetPoint(reference->ParametersNb()-1).X()) ? reference->GetPoint(0).Y() :
+            reference->GetPoint(reference->ParametersNb()-1).Y();
         throw std::runtime_error("Spherical mesh U leaves the shared strip");
+      };
+      const auto corrected_boundary=[&](double u) {
+        double scale=1.0;
+        if (trial.connector>=0) {
+          const double lo=std::min(moved_pc->GetPoint(0).X(),moved_pc->GetPoint(moved_pc->ParametersNb()-1).X());
+          const double hi=std::max(moved_pc->GetPoint(0).X(),moved_pc->GetPoint(moved_pc->ParametersNb()-1).X());
+          scale=std::min(1.0,std::max(0.0,std::min(u-lo,hi-u))*GetParameters().Angle/(16.0*width));
+        }
+        return reference_v(u)+side*width*scale;
       };
       double new_v0 = v0, new_v1 = v1, max_sag = 0.0;
       std::array<std::vector<gp_Pnt>, 2> points;
@@ -4095,7 +4148,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       for (int ei = 0; ei < 2; ++ei) {
         const auto& saved = trial.edges[ei];
         BRepAdaptor_Curve native(saved.edge->GetEdge());
-        const auto native_pc = saved.edge->GetPCurve(face.get(), wire->GetEdgeOrientation(ei));
+        const auto native_pc = saved.edge->GetPCurve(face.get(), wire->GetEdgeOrientation(trial.target_edges[ei]));
         const auto pc_saved = std::find_if(saved.pcurves.begin(), saved.pcurves.end(),
             [&](const StripPCurve& pc) { return pc.curve == native_pc; });
         if (pc_saved == saved.pcurves.end()) return reject("missing target PCurve snapshot");
@@ -4116,7 +4169,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               point = i == 0 ? saved.points.front() : saved.points.back();
               uv = i == 0 ? pc_saved->points.front() : pc_saved->points.back();
             } else if (ei == moved) {
-              const double boundary = reference_v(uv.X()) + side * width;
+              const double boundary = corrected_boundary(uv.X());
               uv.SetY(side > 0.0 ? std::max(uv.Y(), boundary) : std::min(uv.Y(), boundary));
               point = surface->Value(uv.X(), uv.Y());
             }
@@ -4161,8 +4214,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               (i && (uv.X() - target_uv[ei][i-1].X()) * direction <= 0.0))
             return reject("new samples leave monotone source U extent");
         }
-        if (std::abs(std::min(target_uv[ei].front().X(), target_uv[ei].back().X()) - u0) > Precision::PConfusion() ||
-            std::abs(std::max(target_uv[ei].front().X(), target_uv[ei].back().X()) - u1) > Precision::PConfusion())
+        if (trial.connector<0 && (std::abs(std::min(target_uv[ei].front().X(), target_uv[ei].back().X()) - u0) > Precision::PConfusion() ||
+            std::abs(std::max(target_uv[ei].front().X(), target_uv[ei].back().X()) - u1) > Precision::PConfusion()))
           return reject("shared endpoints do not cover exact source U extent");
         for (const auto& uv : target_uv[ei]) { new_v0 = std::min(new_v0, uv.Y()); new_v1 = std::max(new_v1, uv.Y()); }
       }
@@ -4175,7 +4228,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         if (stations.size()<3 || stations.size()>256) return reject("matched U station budget exhausted");
         for (int ei=0;ei<2;++ei) {
           const auto& saved=trial.edges[ei];BRepAdaptor_Curve native(saved.edge->GetEdge());
-          const auto native_pc=saved.edge->GetPCurve(face.get(),wire->GetEdgeOrientation(ei));
+          const auto native_pc=saved.edge->GetPCurve(face.get(),wire->GetEdgeOrientation(trial.target_edges[ei]));
           const auto pc_saved=std::find_if(saved.pcurves.begin(),saved.pcurves.end(),
               [&](const StripPCurve& pc) { return pc.curve==native_pc; });
           double first,last;
@@ -4190,6 +4243,11 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             if (!strip_finite(uv)) throw std::runtime_error("nonfinite matched source UV");return uv;
           };
           auto ordered=stations;
+          if (trial.connector>=0) {
+            const double lo=std::min(original_uv.front().X(),original_uv.back().X());
+            const double hi=std::max(original_uv.front().X(),original_uv.back().X());
+            ordered.erase(std::remove_if(ordered.begin(),ordered.end(),[&](double u) { return u<lo || u>hi; }),ordered.end());
+          }
           if (original_uv.front().X()>original_uv.back().X()) std::reverse(ordered.begin(),ordered.end());
           std::vector<double> matched_parameters;std::vector<gp_Pnt2d> matched_uv;std::vector<gp_Pnt> matched_points;
           for (double station : ordered) {
@@ -4218,7 +4276,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 return reject("matched source inverse did not converge");
               uv.SetX(station);
               if (ei==moved) {
-                const double boundary=reference_v(station)+side*width;
+                const double boundary=corrected_boundary(station);
                 uv.SetY(side>0.0 ? std::max(uv.Y(),boundary) : std::min(uv.Y(),boundary));point=surface->Value(uv.X(),uv.Y());
               }
             }
@@ -4249,10 +4307,25 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           parameters[ei]=std::move(matched_parameters);points[ei]=std::move(matched_points);target_uv[ei]=std::move(matched_uv);
         }
       }
-      // Both regions have the same monotone-U extent in a nonperiodic chart.
+      // The full regions cover the same monotone-U extent in a nonperiodic
+      // chart, including the unchanged connector and unmatched side tails.
       // Latitude-band distance plus chord interpolation bounds both directions,
-      // including the old crossing's narrow lobe, without assuming equal area.
+      // including the original crossing lobes, without assuming equal area.
       trial.coverage = radius * (new_v1 - new_v0) + max_sag;
+      if (trial.connector>=0) {
+        const auto pc=wire->GetEdge(trial.connector)->GetPCurve(face.get(),wire->GetEdgeOrientation(trial.connector));
+        double lower=std::numeric_limits<double>::infinity(),upper=-lower;
+        for (const auto& samples : target_uv) for (const auto& uv : samples) { lower=std::min(lower,uv.X());upper=std::max(upper,uv.X()); }
+        const double direction=pc->GetPoint(pc->ParametersNb()-1).X()-pc->GetPoint(0).X();
+        for (int i=0;i<pc->ParametersNb();++i) {
+          const auto uv=pc->GetPoint(i);
+          if (!strip_finite(uv) || uv.Y()<v0-Precision::PConfusion() || uv.Y()>v1+Precision::PConfusion() ||
+              (i && (uv.X()-pc->GetPoint(i-1).X())*direction<=0.0)) return reject("connector leaves monotone original source band");
+          lower=std::min(lower,uv.X());upper=std::max(upper,uv.X());
+        }
+        if (std::abs(lower-u0)>Precision::PConfusion() || std::abs(upper-u1)>Precision::PConfusion())
+          return reject("complete connector strip does not cover source U extent");
+      }
       if (!std::isfinite(trial.coverage) || trial.coverage > deflection) return reject("two-way strip coverage exceeds deflection");
       mutated = true;
       for (int ei = 0; ei < 2; ++ei) {
@@ -4290,7 +4363,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         if (!checker.Perform()) return reject("adjacent FaceChecker rejected regularized boundary");
       }
       double area;
-      if (!simple_strip_boundary(face.get(), area)) return reject("regularized strip remains nonsimple or unoriented");
+      if (!simple_strip_boundary(face.get(), area,trial.connector>=0)) return reject("regularized strip remains nonsimple or unoriented");
       return true;
     } catch (const StripRollbackFailure&) { throw; }
       catch (const Standard_Failure&) { return reject("OCCT exception preparing regularized strip"); }
@@ -4396,6 +4469,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
   bool triangulate_synchronized_strip(const StripTrial& trial) {
     try {
+      if (trial.connector>=0) return triangulate_connector_strip(trial);
       if (!trial.target || trial.target->WiresNb()!=1 || trial.target->GetWire(0)->EdgesNb()!=2) {
         strip_stop_="matched strip has no two-edge target";return false;
       }
@@ -4439,6 +4513,100 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       return true;
     } catch (const Standard_Failure&) { strip_stop_="OCCT exception rebuilding matched strip";return false; }
       catch (const std::exception&) { strip_stop_="exception rebuilding matched strip";return false; }
+  }
+
+  // Pair the common interval of two long sides, then retain every unchanged
+  // connector/tail station in a positive cap fan. The complete wire/domain and
+  // seven source precision witnesses still qualify all installed cells.
+  bool triangulate_connector_strip(const StripTrial& trial) {
+    try {
+      if (!trial.target || trial.target->WiresNb()!=1 || trial.target->GetWire(0)->EdgesNb()!=3) {
+        strip_stop_="connector target is not a three-edge native wire";return false;
+      }
+      const auto wire=trial.target->GetWire(0);TopLoc_Location location;
+      const auto mesh=BRep_Tool::Triangulation(trial.target->GetFace(),location);
+      if (mesh.IsNull() || !mesh->HasUVNodes()) { strip_stop_="connector target lacks a UV mesh";return false; }
+      std::array<IMeshData::IPCurveHandle,2> sides;
+      std::array<std::vector<std::pair<double,int>>,2> stations;
+      for (int ei=0;ei<2;++ei) {
+        const int index=trial.target_edges[ei];sides[ei]=wire->GetEdge(index)->GetPCurve(trial.target,wire->GetEdgeOrientation(index));
+        if (sides[ei].IsNull() || sides[ei]->ParametersNb()>256) { strip_stop_="connector side station budget";return false; }
+        const auto pc=sides[ei];
+        for (int i=0;i<pc->ParametersNb();++i) stations[ei].emplace_back(pc->GetPoint(i).X(),pc->GetIndex(i));
+        if (stations[ei].front().first>stations[ei].back().first) std::reverse(stations[ei].begin(),stations[ei].end());
+      }
+      std::vector<std::array<int,3>> cells;
+      const auto append=[&](std::array<int,3> cell) {
+        if (cell[0]==cell[1] || cell[1]==cell[2] || cell[2]==cell[0]) return false;
+        for (int id : cell) if (id<1 || id>mesh->NbNodes()) return false;
+        const auto a=mesh->UVNode(cell[0]),b=mesh->UVNode(cell[1]),c=mesh->UVNode(cell[2]);
+        const double area=(b.Coord()-a.Coord()).Crossed(c.Coord()-a.Coord());
+        if (!std::isfinite(area) || area==0.0) return false;
+        if (area<0.0) std::swap(cell[1],cell[2]);cells.push_back(cell);return cells.size()<=1024;
+      };
+      std::vector<std::pair<int,int>> matched;
+      std::size_t a=0,b=0;
+      while (a<stations[0].size() && b<stations[1].size()) {
+        if (stations[0][a].first<stations[1][b].first) { ++a;continue; }
+        if (stations[1][b].first<stations[0][a].first) { ++b;continue; }
+        matched.emplace_back(static_cast<int>(a),static_cast<int>(b));++a;++b;
+      }
+      if (matched.size()<3 || matched.front()!=std::pair<int,int>{0,0} || stations[0][0].second!=stations[1][0].second) {
+        strip_stop_="connector common U stations/native junction mismatch";return false;
+      }
+      for (std::size_t i=1;i<matched.size();++i) {
+        if (matched[i].first!=matched[i-1].first+1 || matched[i].second!=matched[i-1].second+1) {
+          strip_stop_="connector common interval contains unmatched original station";return false;
+        }
+        const int pa=stations[0][matched[i-1].first].second,pb=stations[1][matched[i-1].second].second;
+        const int na=stations[0][matched[i].first].second,nb=stations[1][matched[i].second].second;
+        if (!append({pa,na,nb}) || (pa!=pb && !append({pa,nb,pb}))) {
+          strip_stop_="connector common zipper cell is degenerate";return false;
+        }
+      }
+      const int ca=stations[0][matched.back().first].second,cb=stations[1][matched.back().second].second;
+      std::vector<int> boundary;
+      for (int ei=0;ei<wire->EdgesNb();++ei) {
+        const auto pc=wire->GetEdge(ei)->GetPCurve(trial.target,wire->GetEdgeOrientation(ei));
+        if (pc.IsNull() || pc->ParametersNb()>256) { strip_stop_="connector full boundary station budget";return false; }
+        for (int i=0;i+1<pc->ParametersNb();++i) boundary.push_back(pc->GetIndex(
+            wire->GetEdgeOrientation(ei)==TopAbs_REVERSED ? pc->ParametersNb()-1-i : i));
+      }
+      if (boundary.size()>528 || std::count(boundary.begin(),boundary.end(),ca)!=1 ||
+          std::count(boundary.begin(),boundary.end(),cb)!=1) { strip_stop_="connector cap junction ownership";return false; }
+      std::vector<int> cap;
+      const auto trace=[&](int start,int stop) {
+        std::vector<int> path;auto position=std::find(boundary.begin(),boundary.end(),start)-boundary.begin();
+        for (std::size_t i=0;i<boundary.size();++i) {
+          const int id=boundary[(position+i)%boundary.size()];path.push_back(id);
+          if (id==stop && i) return path;
+        }
+        return std::vector<int>{};
+      };
+      auto first=trace(ca,cb),second=trace(cb,ca);
+      const auto contains_shared=[&](const std::vector<int>& path) { return std::find(path.begin(),path.end(),stations[0][0].second)!=path.end(); };
+      if (contains_shared(first)==contains_shared(second)) { strip_stop_="connector unique cap traversal";return false; }
+      cap=contains_shared(first) ? second : first;
+      if (cap.size()<3 || cap.size()>32) { strip_stop_="connector native cap constraint budget";return false; }
+      // Preserve the cap's oriented boundary. A non-star cap is rejected;
+      // no native connector node is dropped or replaced by a shortcut.
+      double cap_area=0.0;const auto origin=mesh->UVNode(cap.front()).Coord();
+      for (std::size_t i=0;i<cap.size();++i) cap_area+=(mesh->UVNode(cap[i]).Coord()-origin).Crossed(
+          mesh->UVNode(cap[(i+1)%cap.size()]).Coord()-origin);
+      if (!std::isfinite(cap_area) || cap_area<=0.0) { strip_stop_="connector cap UV area/winding";return false; }
+      for (std::size_t i=1;i+1<cap.size();++i) {
+        const auto x=mesh->UVNode(cap[i]),y=mesh->UVNode(cap[i+1]);
+        if ((x.Coord()-origin).Crossed(y.Coord()-origin)*cap_area<=0.0 || !append({cap[0],cap[i],cap[i+1]})) {
+          strip_stop_="connector cap lacks a positive source fan";return false;
+        }
+      }
+      if (cells.size()!=boundary.size()-2) { strip_stop_="connector complete wire facet coverage";return false; }
+      const auto replacement=mesh->Copy();replacement->ResizeTriangles(static_cast<int>(cells.size()),false);
+      for (std::size_t i=0;i<cells.size();++i) replacement->SetTriangle(static_cast<int>(i)+1,Poly_Triangle(cells[i][0],cells[i][1],cells[i][2]));
+      replacement->RemoveNormals();replacement->ComputeNormals();BRep_Builder().UpdateFace(trial.target->GetFace(),replacement);
+      return true;
+    } catch (const Standard_Failure&) { strip_stop_="OCCT exception qualifying connector zipper";return false; }
+      catch (const std::exception&) { strip_stop_="exception qualifying connector zipper";return false; }
   }
 
   // Connectivity may ignore an exactly zero physical cell only when it
