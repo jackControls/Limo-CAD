@@ -102,10 +102,25 @@ impl Driver {
         self.check_process()?;
         request["session_id"] = observed["owner"]["session_id"].clone();
         request["observation"] = observed["observation"].clone();
-        let receipt = self
+        let action = request["action"].clone();
+        let result = self
             .client
             .borrow_mut()
-            .call("cad_computer_control", request)?;
+            .call("cad_computer_control", request);
+        let receipt = match result {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                self.record(
+                    "computer-control",
+                    &json!({"status":"failed","action":action,
+                    "error":format!("{error:#}"),"observed_owner":observed["owner"],
+                    "observed_foreground":observed["foreground"],
+                    "observed_window_handle":observed["window_handle"],
+                    "native_window_diagnostics":observed["native_window_diagnostics"]}),
+                )?;
+                return Err(error);
+            }
+        };
         self.record("computer-control", &receipt)?;
         ensure!(
             matches!(receipt["status"].as_str(), Some("input_sent" | "focused")),
