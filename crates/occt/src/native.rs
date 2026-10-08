@@ -1451,7 +1451,7 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
         .zip(&raw.display_warning_messages)
         .map(|(index, message)| limo_cad_solid::DisplayMeshWarningDto {
             face_key: format!("face:{index}"),
-            message: message.chars().take(250).collect(),
+            message: message.chars().take(1024).collect(),
         })
         .collect();
     if raw.face_first_indices.len() != raw.face_index_counts.len()

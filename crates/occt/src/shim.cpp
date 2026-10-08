@@ -3097,7 +3097,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   std::string StripRepairStop(int face_index) const {
     const auto found = strip_face_rejections_.find(face_index);
     return strip_repair_stop_ + "; " + (found == strip_face_rejections_.end() ?
-        "no strip rejection recorded for this face" : found->second.substr(0, 180));
+        "no strip rejection recorded for this face" : found->second.substr(0, 700));
   }
 
   Standard_Boolean DiscretizeFaces(const Message_ProgressRange& range) override {
@@ -3164,7 +3164,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         trial.accepted = true;
       } else {
         strip_face_rejections_[strip_original_faces_.FindIndex(trial.target->GetFace()) - 1] =
-            "after meshing: " + strip_stop_;
+            "after meshing: " + strip_stop_ + strip_corner_detail_.substr(0, 550);
         strip_rejections += " face " + std::to_string(strip_original_faces_.FindIndex(trial.target->GetFace()) - 1) +
             " after meshing: " + strip_stop_.substr(0, 200);
         restore_spherical_strip(trial);
@@ -4156,6 +4156,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   // though their mapped nodes and shared 3D curve samples remain available.
   // Reinsert only those existing nodes into the sole incident triangle.
   bool restore_skipped_strip_nodes(const StripTrial& trial) {
+    strip_corner_detail_.clear();
     try {
       std::size_t work = 0;
       for (const auto& saved : trial.faces) {
@@ -4186,7 +4187,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         struct Split { int triangle; std::vector<int> chain; };
         std::map<Link,Split> splits;
         std::set<int> scheduled;
-        struct BoundaryPoint { int id; gp_Pnt2d uv; gp_Pnt native; };
+        struct BoundaryPoint { int id; gp_Pnt2d uv; gp_Pnt native; double tolerance; };
         std::vector<std::vector<BoundaryPoint>> wire_chains;
         for (int wi = 0; wi < saved.face->WiresNb(); ++wi) {
           const auto wire = saved.face->GetWire(wi);
@@ -4197,6 +4198,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             const auto orientation = wire->GetEdgeOrientation(ei);
             const auto pc = edge->GetPCurve(saved.face,orientation);
             if ((orientation != TopAbs_FORWARD && orientation != TopAbs_REVERSED) || pc.IsNull() ||
+                BRep_Tool::Degenerated(edge->GetEdge()) ||
                 pc->ParametersNb() < 2 || pc->ParametersNb() > 256 ||
                 pc->ParametersNb() != edge->GetCurve()->ParametersNb() || chain.size()+pc->ParametersNb() > 4096) {
               eligible_wire = false; break;
@@ -4215,7 +4217,17 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               const int index = orientation == TopAbs_REVERSED ? pc->ParametersNb()-1-i : i;
               const int id = pc->GetIndex(index);
               if (id < 1 || id > mesh->NbNodes()) { eligible_wire = false; break; }
-              const BoundaryPoint point{id,pc->GetPoint(index),edge->GetCurve()->GetPoint(index)};
+              double tolerance = BRep_Tool::Tolerance(edge->GetEdge());
+              if (index == 0 || index+1 == pc->ParametersNb()) {
+                TopoDS_Vertex first_vertex,last_vertex; TopExp::Vertices(edge->GetEdge(),first_vertex,last_vertex);
+                const auto vertex = index == 0 ? first_vertex : last_vertex;
+                if (!vertex.IsNull()) tolerance = std::max(tolerance,BRep_Tool::Tolerance(vertex));
+              }
+              const BoundaryPoint point{id,pc->GetPoint(index),edge->GetCurve()->GetPoint(index),tolerance};
+              if (!strip_finite(point.uv) || !strip_finite(point.native) ||
+                  !std::isfinite(point.tolerance) || point.tolerance < 0.0) {
+                eligible_wire = false; break;
+              }
               if (!chain.empty() && chain.back().id == id) {
                 if (point.uv.Distance(chain.back().uv) > Precision::PConfusion() ||
                     point.native.Distance(chain.back().native) > Precision::Confusion()) { eligible_wire = false; break; }
@@ -4225,6 +4237,35 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           }
           if (eligible_wire && chain.size() > 2) wire_chains.push_back(std::move(chain));
         }
+        bool simple_boundary_proved = false;
+        const auto prove_simple_outer = [&]() {
+          if (saved.face->WiresNb() != 1 || wire_chains.size() != 1) {
+            strip_stop_ = "trim-corner restoration requires one certified nondegenerate outer wire"; return false;
+          }
+          const auto& boundary = wire_chains.front();
+          double area = 0.0;
+          const auto origin = mesh->UVNode(boundary.front().id).Coord();
+          for (std::size_t i = 0; i < boundary.size(); ++i) {
+            const auto a = mesh->UVNode(boundary[i].id), b = mesh->UVNode(boundary[(i+1)%boundary.size()].id);
+            if (!strip_finite(a) || !strip_finite(b) || a.Distance(b) <= Precision::PConfusion()) {
+              strip_stop_ = "trim-corner outer boundary has unresolved UV segment"; return false;
+            }
+            area += 0.5*(a.Coord()-origin).Crossed(b.Coord()-origin);
+            for (std::size_t j = i+1; j < boundary.size(); ++j) {
+              if (++work > 2097152) { strip_stop_ = "trim-boundary simplicity work budget exhausted"; return false; }
+              gp_Pnt2d intersection;
+              const auto flag = BRepMesh_GeomTool::IntSegSeg(a.Coord(),b.Coord(),mesh->UVNode(boundary[j].id).Coord(),
+                  mesh->UVNode(boundary[(j+1)%boundary.size()].id).Coord(),true,true,intersection);
+              const bool adjacent = j == i+1 || (i == 0 && j+1 == boundary.size());
+              if (flag != BRepMesh_GeomTool::NoIntersection && !(adjacent && flag == BRepMesh_GeomTool::EndPointTouch)) {
+                strip_stop_ = "trim-corner outer boundary is not simple: segments " + std::to_string(i) + '/' +
+                    std::to_string(j) + " intersection status " + std::to_string(static_cast<int>(flag)); return false;
+              }
+            }
+          }
+          if (!std::isfinite(area) || area <= 0.0) { strip_stop_ = "trim-corner outer wire has incorrect winding"; return false; }
+          simple_boundary_proved = true; return true;
+        };
         for (const auto& chain : wire_chains) {
             std::map<int,int> positions;
             std::set<int> ambiguous;
@@ -4250,6 +4291,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               }
               Split split{entry.second.triangle,{}};
               double previous_fraction = -1.0;
+              bool corner = false;
               for (int offset = 0; offset <= distance; ++offset) {
                 const int i = (from+offset)%static_cast<int>(chain.size());
                 const int id = chain[i].id; const auto uv = mesh->UVNode(id);
@@ -4262,8 +4304,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 const double correspondence_bound = uv_gap + mesh->UVNode(ids[cyclic]).Distance(chain[from].uv) +
                     mesh->UVNode(ids[(cyclic+1)%3]).Distance(chain[to].uv) + roundoff;
                 const auto point = mesh->Node(id).Transformed(location.Transformation());
-                if (!strip_finite(uv) || !strip_finite(point) || !std::isfinite(fraction) || !std::isfinite(line_gap) ||
-                    uv_gap > Precision::PConfusion() || line_gap > correspondence_bound ||
+                if (!strip_finite(uv) || !strip_finite(native_uv) || !strip_finite(chain[i].native) ||
+                    !strip_finite(point) || !std::isfinite(uv_gap) || !std::isfinite(fraction) || !std::isfinite(line_gap) ||
+                    uv_gap > Precision::PConfusion() ||
                     fraction <= previous_fraction || (offset > 0 && offset < distance &&
                         (fraction <= 0.0 || fraction >= 1.0 || used.count(id) || ambiguous.count(id))) ||
                     point.Distance(chain[i].native) > Precision::Confusion()) {
@@ -4274,11 +4317,18 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                       correspondence_bound << " used " << used.count(id);
                   strip_stop_ = diagnostic.str(); return false;
                 }
+                const auto on_surface = saved.face->GetSurface()->Value(uv.X(),uv.Y());
+                const double source_gap = point.Distance(on_surface);
+                if (!strip_finite(on_surface) || !std::isfinite(source_gap) ||
+                    source_gap > std::min(GetParameters().Deflection,chain[i].tolerance+BRep_Tool::Tolerance(saved.face->GetFace()))) {
+                  strip_stop_ = "trim-corner native boundary surface discrepancy exceeds recorded tolerance"; return false;
+                }
+                corner |= line_gap > correspondence_bound;
                 previous_fraction = fraction; split.chain.push_back(id);
               }
-              // The measured source UV chain must itself be collinear; the
-              // node correspondence bound above only accounts for legal UV
-              // reconciliation, never an arbitrary curved boundary shortcut.
+              // Separate true native trim corners from collinear subdivision;
+              // their new fan requires the complete simple-boundary proof,
+              // never an enlarged collinearity tolerance.
               const auto source_a = chain[from].uv, source_b = chain[to].uv;
               const auto source_delta = source_b.Coord()-source_a.Coord();
               if (!std::isfinite(source_delta.SquareModulus()) || source_delta.SquareModulus() <= 0.0) {
@@ -4291,13 +4341,23 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 const double scale = (std::abs(source_a.X())+std::abs(source_a.Y())+std::abs(source_b.X())+
                     std::abs(source_b.Y())+std::abs(middle.X())+std::abs(middle.Y())+source_delta.Modulus())*
                     source_delta.Modulus();
-                if (!std::isfinite(error) || error > 64.0*std::numeric_limits<double>::epsilon()*scale) {
-                  std::ostringstream diagnostic; diagnostic.precision(6);
-                  diagnostic << "adjacent face " << strip_original_faces_.FindIndex(saved.face->GetFace())-1 <<
-                      " node " << chain[i].id << " source UV collinearity error/bound " << error << '/' <<
-                      64.0*std::numeric_limits<double>::epsilon()*scale;
-                  strip_stop_ = diagnostic.str(); return false;
+                if (!std::isfinite(error) || !std::isfinite(scale)) {
+                  strip_stop_ = "trim-corner source UV scale is nonfinite"; return false;
                 }
+                if (error > 64.0*std::numeric_limits<double>::epsilon()*scale) {
+                  corner = true;
+                }
+              }
+              if (corner) {
+                std::ostringstream detail; detail.precision(11);
+                detail << "; trim corner face " << strip_original_faces_.FindIndex(saved.face->GetFace())-1 <<
+                    " surface type " << static_cast<int>(saved.face->GetSurface()->GetType());
+                for (int id : {split.chain.front(),split.chain[1],split.chain.back(),ids[(cyclic+2)%3]}) {
+                  const auto uv = mesh->UVNode(id); const auto p = mesh->Node(id).Transformed(location.Transformation());
+                  detail << " node " << id << " UV(" << uv.X() << ',' << uv.Y() << ") XYZ(" << p.X() << ',' << p.Y() << ',' << p.Z() << ')';
+                }
+                strip_corner_detail_ = detail.str();
+                if (!simple_boundary_proved && !prove_simple_outer()) return false;
               }
               for (std::size_t i = 1; i + 1 < split.chain.size(); ++i)
                 if (!scheduled.insert(split.chain[i]).second) {
@@ -4334,6 +4394,57 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           else result.insert(result.end(),found->second.begin(),found->second.end());
           if (result.size() > 131072) { strip_stop_ = "conforming triangle budget exhausted"; return false; }
         }
+        // Qualify each new child on its own source-surface samples, including
+        // boundary midpoints omitted by BRepLib's native interior estimator.
+        // This is the native sampling contract, not an all-point error proof.
+        const double deflection = GetParameters().Deflection;
+        const double angular = GetParameters().AngleInterior > 0.0 ?
+            GetParameters().AngleInterior : GetParameters().Angle;
+        if (!std::isfinite(deflection) || deflection <= 0.0 || !std::isfinite(angular) || angular <= 0.0) {
+          strip_stop_ = "restored trim fan has invalid precision request"; return false;
+        }
+        for (const auto& replacement : replacements) for (const auto& child : replacement.second) {
+          gp_Pnt point[3]; gp_Pnt2d uv[3]; gp_Dir normals[3]; bool have_normal[3];
+          for (int i = 0; i < 3; ++i) {
+            point[i] = mesh->Node(child[i]).Transformed(location.Transformation()); uv[i] = mesh->UVNode(child[i]);
+            gp_Pnt normal_point;
+            have_normal[i] = BRepMesh_GeomTool::Normal(saved.face->GetSurface(),uv[i].X(),uv[i].Y(),normal_point,normals[i]);
+            if (!have_normal[i] || !std::isfinite(normals[i].X()) || !std::isfinite(normals[i].Y()) ||
+                !std::isfinite(normals[i].Z())) {
+              strip_stop_ = "restored trim fan source normal is undefined at node " + std::to_string(child[i]); return false;
+            }
+          }
+          const double signed_area = (uv[1].Coord()-uv[0].Coord()).Crossed(uv[2].Coord()-uv[0].Coord());
+          if (!std::isfinite(signed_area) || signed_area <= 0.0) {
+            strip_stop_ = "restored trim fan has inverted or degenerate UV child"; return false;
+          }
+          for (int i = 0; i < 3; ++i) {
+            const int next = (i+1)%3;
+            const gp_Pnt2d middle((uv[i].Coord()+uv[next].Coord())/2.0);
+            const gp_Pnt affine((point[i].XYZ()+point[next].XYZ())/2.0);
+            const auto source = saved.face->GetSurface()->Value(middle.X(),middle.Y());
+            const double deviation = affine.Distance(source);
+            if (!strip_finite(source) || !std::isfinite(deviation) || deviation > deflection) {
+              strip_stop_ = "restored trim fan edge deflection " + std::to_string(deviation) +
+                  " exceeds " + std::to_string(deflection); return false;
+            }
+            if (have_normal[i] && have_normal[next]) {
+              const double angle = normals[i].Angle(normals[next]);
+              if (!std::isfinite(angle) || angle > angular) {
+                strip_stop_ = "restored trim fan source normal angle " + std::to_string(angle) +
+                    " exceeds " + std::to_string(angular); return false;
+              }
+            }
+          }
+          const gp_Pnt2d middle((uv[0].Coord()+uv[1].Coord()+uv[2].Coord())/3.0);
+          const gp_Pnt affine((point[0].XYZ()+point[1].XYZ()+point[2].XYZ())/3.0);
+          const auto source = saved.face->GetSurface()->Value(middle.X(),middle.Y());
+          const double deviation = affine.Distance(source);
+          if (!strip_finite(source) || !std::isfinite(deviation) || deviation > deflection) {
+            strip_stop_ = "restored trim fan centroid deflection " + std::to_string(deviation) +
+                " exceeds " + std::to_string(deflection); return false;
+          }
+        }
         // Copy before changing connectivity so rollback handles never alias
         // the trial. All node coordinates, UVs and mapped indices are retained.
         const auto repaired = mesh->Copy();
@@ -4342,6 +4453,11 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           repaired->SetTriangle(static_cast<int>(ti)+1,Poly_Triangle(result[ti][0],result[ti][1],result[ti][2]));
         repaired->RemoveNormals(); repaired->ComputeNormals();
         BRep_Builder().UpdateFace(saved.face->GetFace(),repaired);
+        BRepLib::UpdateDeflection(saved.face->GetFace());
+        if (!std::isfinite(repaired->Deflection()) || repaired->Deflection() > deflection) {
+          strip_stop_ = "restored face native deflection " + std::to_string(repaired->Deflection()) +
+              " exceeds " + std::to_string(deflection); return false;
+        }
       }
       return true;
     } catch (const Standard_Failure&) { strip_stop_ = "OCCT exception refining shared boundary nodes"; return false; }
@@ -4711,6 +4827,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   std::string boundary_repair_stop_ = "not run";
   std::string spherical_retry_stop_;
   std::string strip_stop_;
+  std::string strip_corner_detail_;
   std::string strip_repair_stop_ = "strip repair not run";
   std::map<int, std::string> strip_face_rejections_;
   std::size_t strip_comparisons_ = 0;
