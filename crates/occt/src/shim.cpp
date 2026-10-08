@@ -3895,7 +3895,7 @@ static std::string spherical_boundary_failure_detail(const IMeshData::IFaceHandl
           }
           samples << ']';
           if (i > 0) segments.push_back({pc->GetPoint(i - 1), uv, edge_count, i - 1,
-              edge.get(), pc->GetParameter(i - 1), parameter});
+              edge, pc->GetParameter(i - 1), parameter});
         }
         summary << ", sphere edge " << ei << " max mesh/source error mm "
                 << maximum_mesh_error << '/' << maximum_source_error;
