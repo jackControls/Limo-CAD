@@ -134,6 +134,7 @@
 #include <cmath>
 #include <optional>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <map>
 #include <limits>
@@ -4762,6 +4763,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
   void recover_export_boundaries() {
     int attempts=0,repaired=0,added=0;
+    export_curve_diagnostics_=0;
+    struct DeferredBoundary { StripTrial trial;int original;int choices; };
+    std::vector<DeferredBoundary> deferred;
     std::size_t inspected=0;
     const auto& model=GetModel();
     TopTools_IndexedMapOfShape native_edges;
@@ -4783,6 +4787,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       const auto link=[](int a,int b) { return std::make_pair(std::min(a,b),std::max(a,b)); };
       StripFace saved{face.get(),face->GetStatusMask(),{},mesh,{}};
       saved.original_orientation=strip_original_faces_.FindKey(original+1).Orientation();
+      saved.wire_statuses.push_back(wire->GetStatusMask());
       std::map<int,int> pole_aliases;
       IMeshData::IEdgePtr pole_edge=nullptr;
       if (!qualify_native_pole(saved,mesh,location,pole_aliases,pole_edge,true,true)) {
@@ -4816,6 +4821,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           why=detail.str(); eligible=false; break;
         }
         if ((inspected+=pc->ParametersNb())>8000000) { why="export boundary inspection budget exhausted"; eligible=false; break; }
+        std::vector<int> saved_indices;
+        for (int i=0;i<pc->ParametersNb();++i) saved_indices.push_back(pc->GetIndex(i));
+        saved.boundary_indices.emplace_back(pc,std::move(saved_indices));
         for (int i=0;i<pc->ParametersNb();++i) {
           const int id=pc->GetIndex(i);
           if (id<1 || id>mesh->NbNodes()) { why="native boundary index is unavailable"; eligible=false; break; }
@@ -4877,6 +4885,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         if (attempts>=128 || export_boundary_work_>=2097152) { why="export restoration attempt/work budget exhausted"; break; }
         ++attempts;
         try {
+          restore_spherical_strip(trial);
           const bool restored=restore_skipped_strip_nodes(trial,true,choice);
           accepted=restored && validate_spherical_strip(trial,true);
           if (!accepted) why=std::string(restored ? "domain: " : "fan: ")+strip_stop_.substr(0,330);
@@ -4884,20 +4893,21 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             // A used skipped boundary node cannot be inserted into an isolated
             // ear without overlapping its existing facets. Rebuild the entire
             // certified native chart on the original disposable mesh instead.
-            BRep_Builder().UpdateFace(face->GetFace(),mesh);
+            restore_spherical_strip(trial);
             const std::string local_rejection=why;
             const bool complete=restore_complete_export_face(trial,choice);
             accepted=complete && validate_spherical_strip(trial,true);
             if (!accepted) why="whole-face "+std::string(complete ? "domain: " : "star: ")+strip_stop_.substr(0,1300)+
                 "; local "+local_rejection.substr(0,70);
           }
-        } catch (const Standard_Failure&) { why="OCCT exception qualifying restored native boundary"; }
+        } catch (const StripRollbackFailure&) { throw; }
+          catch (const Standard_Failure&) { why="OCCT exception qualifying restored native boundary"; }
           catch (const std::exception&) { why="exception qualifying restored native boundary"; }
         if (!accepted) {
-          try { BRep_Builder().UpdateFace(face->GetFace(),mesh); }
-          catch (...) { throw std::runtime_error("OCCT could not restore an export boundary triangulation"); }
+          restore_spherical_strip(trial);
           if (!choice) first_rejection=why;
-          else why="unused-pole choices: 0 "+first_rejection.substr(0,180)+"; "+std::to_string(choice)+' '+why.substr(0,180);
+          else why="unused-pole choices: 0 "+first_rejection.substr(0,650)+"; "+std::to_string(choice)+' '+why.substr(0,650);
+          std::fprintf(stderr,"Native export boundary face %d choice %d policy original: %s\n",original,choice,why.substr(0,3000).c_str());
         } else {
           const auto replacement=BRep_Tool::Triangulation(face->GetFace(),location);
           ++repaired; added+=replacement->NbTriangles()-mesh->NbTriangles();
@@ -4905,8 +4915,40 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         }
       }
       if (!accepted) {
+        deferred.push_back({trial,original,1<<unused_groups});
         const auto strip=strip_face_rejections_.find(original);
         if (strip!=strip_face_rejections_.end()) why="strip: "+strip->second.substr(0,350)+"; "+why;
+      }
+    }
+    // Exhaust the previously qualified policy before spending any shared work
+    // on an alternate. Each independent alternate starts from the original
+    // mesh, index arrays and status masks, never a failed candidate's state.
+    for (const auto& pending : deferred) {
+      const auto& trial=pending.trial;const auto& saved=trial.faces.front();
+      auto& why=export_boundary_rejections_[pending.original];
+      const std::string original_reason=why;
+      std::string alternate_reason;
+      for (int choice=0;choice<pending.choices;++choice) {
+        if (attempts>=128 || export_boundary_work_>=2097152) break;
+        ++attempts;bool accepted=false;
+        try {
+          restore_spherical_strip(trial);
+          const bool complete=restore_complete_export_face(trial,choice,true);
+          accepted=complete && validate_spherical_strip(trial,true);
+          alternate_reason=std::string(complete ? "domain: " : "star: ")+strip_stop_;
+        } catch (const StripRollbackFailure&) { throw; }
+          catch (const Standard_Failure&) { alternate_reason="OCCT exception qualifying lookahead native boundary"; }
+          catch (const std::exception&) { alternate_reason="exception qualifying lookahead native boundary"; }
+        if (accepted) {
+          TopLoc_Location location;
+          const auto mesh=BRep_Tool::Triangulation(saved.face->GetFace(),location);
+          ++repaired;added+=mesh->NbTriangles()-saved.triangulation->NbTriangles();
+          why="lookahead native boundary restored and full domain certified";break;
+        }
+        restore_spherical_strip(trial);
+        std::fprintf(stderr,"Native export boundary face %d choice %d policy lookahead: %s\n",
+            pending.original,choice,alternate_reason.substr(0,3000).c_str());
+        why=original_reason.substr(0,1300)+"; lookahead choice "+std::to_string(choice)+' '+alternate_reason.substr(0,650);
       }
     }
     export_boundary_stop_="export boundary attempts/repaired/added triangles "+std::to_string(attempts)+"/"+
@@ -4918,7 +4960,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   // rather than treating an incomplete old facet union as the source domain.
   // The original PCurves and native nodes stay intact, including the omitted
   // UV representative witnessed by the post-install native pole certificate.
-  bool restore_complete_export_face(const StripTrial& trial,int pole_choice) {
+  bool restore_complete_export_face(const StripTrial& trial,int pole_choice,bool lookahead=false) {
     strip_stop_="whole-face preparation";
     try {
       if (trial.faces.size()!=1) { strip_stop_="whole-face requires one owner"; return false; }
@@ -5000,6 +5042,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             diagnostic << "chart intersection " << static_cast<int>(flag) << " segments " << i << '/' << j << " UV " << hit.X() << '/' << hit.Y();
             TopTools_IndexedMapOfShape native_edges;TopExp::MapShapes(GetModel()->GetShape(),TopAbs_EDGE,native_edges);
             std::vector<IMeshData::IEdgePtr> crossed_edges;std::vector<gp_Pnt> native_points;
+            std::vector<Handle(Geom2d_Curve)> source_intervals;
+            std::ostringstream continuous;continuous.precision(9);
             for (std::size_t segment : {i,j}) {
               const int a=boundary[segment],b=boundary[(segment+1)%boundary.size()];
               const auto found=chart_segments.find({std::min(a,b),std::max(a,b)});
@@ -5013,6 +5057,31 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                   " same-param/range " << curve.edge->GetSameParam() << '/' << curve.edge->GetSameRange() <<
                   " interval " << curve.pc->GetParameter(curve.first) << '/' << curve.pc->GetParameter(curve.last) <<
                   " UVends " << first.X() << '/' << first.Y() << ':' << last.X() << '/' << last.Y();
+              // Inspect the exact oriented PCurve over this sample interval;
+              // chord-derived unequal samples alone do not establish whether
+              // the continuous source boundaries intersect.
+              try {
+                const double t0=curve.pc->GetParameter(curve.first),t1=curve.pc->GetParameter(curve.last);
+                double low,high;
+                const auto source=BRep_Tool::CurveOnSurface(TopoDS::Edge(curve.edge->GetEdge().Oriented(curve.pc->GetOrientation())),
+                    face->GetFace(),low,high);
+                if (!source.IsNull() && std::isfinite(t0) && std::isfinite(t1) && std::isfinite(low) && std::isfinite(high) &&
+                    t0!=t1 && std::min(t0,t1)>=low && std::max(t0,t1)<=high && export_curve_diagnostics_<16) {
+                  source_intervals.push_back(new Geom2d_TrimmedCurve(source,std::min(t0,t1),std::max(t0,t1),true,false));
+                  BRepAdaptor_Curve adaptor(TopoDS::Edge(curve.edge->GetEdge().Oriented(curve.pc->GetOrientation())),face->GetFace());
+                  continuous << " source edge " << native_edges.FindIndex(curve.edge->GetEdge())-1 << " type/periodic " <<
+                      static_cast<int>(adaptor.CurveOnSurface().GetCurve()->GetType()) << '/' << source->IsPeriodic() << " quarter chord-mm";
+                  for (double fraction : {.25,.5,.75}) {
+                    if (++export_boundary_work_>2097152) { continuous << " budget";break; }
+                    const auto uv=source->Value(t0+(t1-t0)*fraction);
+                    const gp_Pnt2d chord(first.Coord()*(1.0-fraction)+last.Coord()*fraction);
+                    const auto exact=face->GetSurface()->Value(uv.X(),uv.Y()),sample=face->GetSurface()->Value(chord.X(),chord.Y());
+                    if (!strip_finite(uv) || !strip_finite(exact) || !strip_finite(sample)) { continuous << " nonfinite";break; }
+                    continuous << '/' << exact.Distance(sample);
+                  }
+                }
+              } catch (const Standard_Failure&) { continuous << " source interval OCCT exception"; }
+                catch (const std::exception&) { continuous << " source interval exception"; }
               if (flag!=BRepMesh_GeomTool::Cross || !std::isfinite(length2) || length2<=0.0 || !strip_finite(hit)) continue;
               const double fraction=delta.Dot(hit.Coord()-first.Coord())/length2;
               const double parameter=curve.pc->GetParameter(curve.first)+(curve.pc->GetParameter(curve.last)-curve.pc->GetParameter(curve.first))*fraction;
@@ -5034,13 +5103,27 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 edge_details << " source/native/chord-gap " << exact_point.Distance(native) << '/' << gp_Pnt(sampled).Distance(native);
               }
             }
+            if (source_intervals.size()==2 && export_curve_diagnostics_<16 && export_boundary_work_<=2097152) {
+              ++export_curve_diagnostics_;
+              try {
+                Geom2dAPI_InterCurveCurve exact(source_intervals[0],source_intervals[1],Precision::PConfusion());
+                const auto& result=exact.Intersector();
+                diagnostic << "; continuous source intervals done/points/overlaps " << result.IsDone();
+                if (result.IsDone()) diagnostic << '/' << result.NbPoints() << '/' << result.NbSegments();
+              } catch (const Standard_Failure&) { diagnostic << "; continuous source interval OCCT exception"; }
+                catch (const std::exception&) { diagnostic << "; continuous source interval exception"; }
+            }
+            diagnostic << continuous.str();
             if (native_points.size()==2) diagnostic << "; native-cross-distance " << native_points[0].Distance(native_points[1]);
             if (crossed_edges.size()==2 && flag==BRepMesh_GeomTool::Cross) {
               TopoDS_Vertex common;
               if (TopExp::CommonVertex(crossed_edges[0]->GetEdge(),crossed_edges[1]->GetEdge(),common))
                 diagnostic << " common-vertex-cross-distance/tol " << face->GetSurface()->Value(hit.X(),hit.Y()).Distance(BRep_Tool::Pnt(common)) << '/' << BRep_Tool::Tolerance(common);
             }
-            diagnostic << edge_details.str();strip_stop_=diagnostic.str().substr(0,1300);return false;
+            diagnostic << edge_details.str();
+            std::fprintf(stderr,"Native export source chart face %d: %s\n",strip_original_faces_.FindIndex(face->GetFace())-1,
+                diagnostic.str().substr(0,3000).c_str());
+            strip_stop_=diagnostic.str().substr(0,1300);return false;
           }
         }
       }
@@ -5178,7 +5261,27 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (error>d || angular>angle) failing_sample=index;++index;
         }
         if (max_error<=d && max_angle<=angle) { cells[cell_index].qualified=true;continue; }
-        int chosen=-1,interior_candidates=0;double best_edge=std::numeric_limits<double>::infinity(),best_length=-1.0;
+        const auto emit_precision_trace=[&](const std::string& reason) {
+          std::ostringstream detail;detail.precision(12);
+          detail << "Native export refinement face " << strip_original_faces_.FindIndex(face->GetFace())-1 <<
+              " policy " << (lookahead ? "lookahead" : "original") << " rejected " << reason;
+          for (int j=0;j<3;++j) {
+            const int next=(j+1)%3;
+            const auto edge=gp_Vec(p[j],p[next]);const double length=edge.Magnitude();
+            detail << "; node " << cell.ids[j] << " UV " << u[j].X() << '/' << u[j].Y() <<
+                " XYZ " << p[j].X() << '/' << p[j].Y() << '/' << p[j].Z() << " source-normal " <<
+                endpoint_normals[j].X() << '/' << endpoint_normals[j].Y() << '/' << endpoint_normals[j].Z() <<
+                " source-gap " << endpoint_errors[j] << " next-edge XYZ/UV " << length << '/' << u[j].Distance(u[next]) <<
+                " midpoint-D " << midpoint_errors[j] << " normal-separation " << endpoint_normals[j].Angle(endpoint_normals[next]) <<
+                " native-constraint " << native_boundary_links.count(link(cell.ids[j],cell.ids[next]));
+            if (std::isfinite(length) && length>0.0) detail << " minimum-angle " <<
+                std::max(std::asin(std::min(1.0,std::abs((edge/length).Dot(endpoint_normals[j])))),
+                    std::asin(std::min(1.0,std::abs((edge/length).Dot(endpoint_normals[next])))));
+          }
+          std::fprintf(stderr,"%s\n",detail.str().substr(0,5000).c_str());
+        };
+        int chosen=-1,interior_candidates=0;
+        double best_edge=lookahead ? std::numeric_limits<double>::infinity() : -1.0,best_length=-1.0;
         std::vector<int> owners={cell_index};int depth=cell.depth;
         gp_Pnt2d selected_midpoint;gp_Pnt selected_midpoint_local;
         std::ostringstream alternatives;alternatives.precision(7);
@@ -5234,6 +5337,18 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               balance+=cells[owner].ids[i]<cells[owner].ids[(i+1)%3] ? 1 : -1;
           }
           if (balance!=0) { strip_stop_="whole-face split owners are not oppositely oriented";return false; }
+          if (!lookahead) {
+            const double score=std::max(midpoint_errors[i]/d,endpoint_normals[i].Angle(endpoint_normals[next])/angle);
+            const double length=p[i].Distance(p[next]);
+            if (!std::isfinite(score) || !std::isfinite(length)) { strip_stop_="whole-face nonfinite interior edge metric";return false; }
+            alternatives << " [edge " << a << '/' << b << " owner-depths " << cells[trial_owners[0]].depth << '/' <<
+                cells[trial_owners[1]].depth << " score " << score << " XYZ/UV-length " << length << '/' << u[i].Distance(u[next]) <<
+                " midpoint-D " << midpoint_errors[i] << " normal-separation " << endpoint_normals[i].Angle(endpoint_normals[next]) << ']';
+            if (score>best_edge || (score==best_edge && length>best_length)) {
+              chosen=i;best_edge=score;best_length=length;owners=trial_owners;depth=trial_depth;
+            }
+            continue;
+          }
           alternatives << " [edge " << a << '/' << b << " owner-depths " << cells[trial_owners[0]].depth << '/' <<
               cells[trial_owners[1]].depth << " xyz/UV-length " << p[i].Distance(p[next]) << '/' << u[i].Distance(u[next]) <<
               " midpoint-error " << midpoint_errors[i];
@@ -5268,26 +5383,33 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         }
         if (chosen<0 && interior_candidates) {
           strip_stop_="cell "+std::to_string(cell.ids[0])+"/"+std::to_string(cell.ids[1])+"/"+std::to_string(cell.ids[2])+
-              " no certified two-owner split; D/angle "+std::to_string(max_error)+"/"+std::to_string(max_angle)+alternatives.str();
+              " no certified two-owner split policy "+(lookahead ? "lookahead" : "original")+"; D/angle "+
+              std::to_string(max_error)+"/"+std::to_string(max_angle)+alternatives.str();
           for (const auto& split : recent_splits) strip_stop_+="; "+split;
+          emit_precision_trace(strip_stop_);
           return false;
         }
         if (depth>=8 || inserted>=4096 || replacement->NbNodes()>=65536 || active_count+2>4096 || cells.size()+4>16384) {
           strip_stop_="cell "+std::to_string(cell.ids[0])+"/"+std::to_string(cell.ids[1])+"/"+std::to_string(cell.ids[2])+
-              " depth/nodes "+std::to_string(depth)+"/"+std::to_string(inserted)+" D/angle "+
+              " policy "+(lookahead ? "lookahead" : "original")+" depth/nodes "+std::to_string(depth)+"/"+
+              std::to_string(inserted)+" D/angle "+
               std::to_string(max_error)+"/"+std::to_string(max_angle)+" sample "+std::to_string(failing_sample)+
               " split "+(chosen>=0 ? std::to_string(cell.ids[chosen])+"/"+std::to_string(cell.ids[(chosen+1)%3]) : "centroid")+
               " endpoint source-gaps "+std::to_string(endpoint_errors[0])+"/"+std::to_string(endpoint_errors[1])+"/"+std::to_string(endpoint_errors[2])+
-              alternatives.str();
+              " owner-depths "+std::to_string(cells[owners.front()].depth)+"/"+std::to_string(cells[owners.back()].depth)+
+              " split score "+std::to_string(best_edge)+alternatives.str();
           for (const auto& split : recent_splits) strip_stop_+="; "+split;
+          emit_precision_trace(strip_stop_);
           return false;
         }
-        const gp_Pnt2d uv(chosen>=0 ? selected_midpoint : gp_Pnt2d((u[0].Coord()+u[1].Coord()+u[2].Coord())/3.0));
+        const gp_Pnt2d uv(chosen>=0 ? (lookahead ? selected_midpoint : gp_Pnt2d((u[chosen].Coord()+u[(chosen+1)%3].Coord())*.5)) :
+            gp_Pnt2d((u[0].Coord()+u[1].Coord()+u[2].Coord())/3.0));
         if (!strip_finite(uv) || BRepClass_FaceClassifier(face->GetFace(),uv,Precision::PConfusion()).State()!=TopAbs_IN) {
           strip_stop_="whole-face refinement centroid outside source trim";return false;
         }
         if (++export_boundary_work_>2097152) { strip_stop_="whole-face refinement centre budget";return false; }
-        const auto local=chosen>=0 ? selected_midpoint_local : face->GetSurface()->Value(uv.X(),uv.Y()).Transformed(location.Transformation().Inverted());
+        const auto local=chosen>=0 && lookahead ? selected_midpoint_local :
+            face->GetSurface()->Value(uv.X(),uv.Y()).Transformed(location.Transformation().Inverted());
         if (!strip_finite(local) || !strip_finite(local.Transformed(location.Transformation()))) { strip_stop_="whole-face refinement nonfinite source point";return false; }
         const int next=replacement->NbNodes()+1;replacement->ResizeNodes(next,true);
         replacement->SetUVNode(next,uv);replacement->SetNode(next,local);++inserted;max_depth=std::max(max_depth,depth+1);
@@ -5297,11 +5419,12 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         if (recent_splits.size()>8) recent_splits.erase(recent_splits.begin());
         for (int owner : owners) {
           const auto old=cells[owner];retire(owner);
-          if (chosen<0) { for (int i=0;i<3;++i) add_cell({old.ids[i],old.ids[(i+1)%3],next},old.depth+1);continue; }
+          const int child_depth=(lookahead ? old.depth : depth)+1;
+          if (chosen<0) { for (int i=0;i<3;++i) add_cell({old.ids[i],old.ids[(i+1)%3],next},child_depth);continue; }
           const auto key=link(cell.ids[chosen],cell.ids[(chosen+1)%3]);bool found=false;
           for (int i=0;i<3;++i) if (link(old.ids[i],old.ids[(i+1)%3])==key) {
-            add_cell({old.ids[i],next,old.ids[(i+2)%3]},old.depth+1);
-            add_cell({next,old.ids[(i+1)%3],old.ids[(i+2)%3]},old.depth+1);found=true;break;
+            add_cell({old.ids[i],next,old.ids[(i+2)%3]},child_depth);
+            add_cell({next,old.ids[(i+1)%3],old.ids[(i+2)%3]},child_depth);found=true;break;
           }
           if (!found) { strip_stop_="whole-face split lost its native owner edge";return false; }
         }
@@ -7005,6 +7128,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   std::size_t pole_certificate_work_ = 0;
   bool native_export_recovery_=false;
   std::size_t export_boundary_work_=0;
+  int export_curve_diagnostics_=0;
   std::string export_boundary_stop_;
   std::map<int,std::string> export_boundary_rejections_;
   TopTools_IndexedMapOfShape strip_original_faces_;

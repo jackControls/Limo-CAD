@@ -28,29 +28,18 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `8ee3a909` opens the complete
+Current October 8 Medix qualification: clean matched `64472748` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
-536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 86 unmatched
-boundary links and no multiply used links. The copied-mesh station repair now
-gets past the earlier sphere-strip meshing failures. Three-edge recovery now
-qualifies the source crossing and polygon simplicity; the connector cap is still
-refused because its fixed-root fan is not positive. The earlier `d2ba9017` trial exposed a 1.540435 radian facet-normal error
-on sphere face 3779. The earlier `69f1ee6b`/`7c235990` trials
-reported 86 unmatched boundary links and no multiply used links. Conforming
-source-interior refinement resolved their previous largest boundary group while
-preserving the original STEP and document. All 70 installed payload hashes
-match. No successful 3MF or
-native-precision-qualified STL is claimed. The subsequent clean matched
-`19ca11c7` GUI opens the same complete saved import, but export still refuses
-the paired-strip candidate: sphere faces 3779 and 3792 report **consecutive native
-strip stations collapsed**. The next candidate reconstructs distinct station
-indices on copied owner meshes while preserving every native parameter,
-junction endpoint, source witness and closure guard. The subsequent `eeb0aa05`
-physical export reaches the native topology guard described above; no successful
-export is claimed.
-The Medix notes below record earlier
-trials chronologically; they do not supersede this current qualification.
+536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused: the `cb464867`
+trial reduced invalid boundary links to 49, while the latest split-strategy
+trial regressed to 72, both with no multiply used links. Connector caps and
+independent pole proposals now qualify. A bounded fallback to the earlier
+split strategy now retains its primary trajectory and defers alternate trials;
+remaining source-angle failures and curved trim crossings are under investigation.
+All 70 installed payload hashes match the clean manifest. No successful 3MF or
+native-precision-qualified STL is claimed. The Medix notes below record earlier
+trials; they do not supersede this current qualification.
 
 The subsequent clean matched `35722a50` GUI export still reports 86 unmatched
 links. Three continuous source intersections are now qualified, but the thin
@@ -86,6 +75,15 @@ at seven source witnesses before selecting an interior split, and each child
 inherits its own parent's depth. Original precision, work/depth/node limits,
 native boundaries and final closure checks remain unchanged. GUI qualification
 is pending; native-precision export remains refused.
+
+The actual clean matched `64472748` lookahead trial regresses from 49 to 72
+invalid links, with 35 repaired faces instead of the previous 37. The next
+candidate restores the exact original metric and max-owner depth policy before
+any alternate is attempted. Deferred lookahead begins from fully restored mesh,
+wire/face status and boundary-index snapshots within the same cumulative caps.
+Bounded stderr diagnostics include failed triangle coordinates and source
+normals, plus exact trimmed source-PCurve intersection status/counts and quarter
+chord errors; they change no precision or topology acceptance checks.
 
 The actual guarded GUI export on clean matched `7c235990` still reports 86
 unmatched links. Native curve diagnostics rule out zero-area incidence loss on
