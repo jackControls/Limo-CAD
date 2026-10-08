@@ -4165,6 +4165,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     int attempts=0,repaired=0,added=0;
     std::size_t inspected=0;
     const auto& model=GetModel();
+    TopTools_IndexedMapOfShape native_edges;
+    TopExp::MapShapes(model->GetShape(),TopAbs_EDGE,native_edges);
     for (int fi=0;fi<model->FacesNb();++fi) {
       const auto& face=model->GetFace(fi);
       const int original=strip_original_faces_.FindIndex(face->GetFace())-1;
@@ -4186,10 +4188,22 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         const auto edge=wire->GetEdge(ei);
         const auto orientation=wire->GetEdgeOrientation(ei);
         const auto pc=edge->GetPCurve(face.get(),orientation);
-        if ((orientation!=TopAbs_FORWARD && orientation!=TopAbs_REVERSED) ||
-            BRep_Tool::Degenerated(edge->GetEdge()) || edge->GetDegenerated() || pc.IsNull() ||
-            pc->ParametersNb()<2 || pc->ParametersNb()>256 || pc->ParametersNb()!=edge->GetCurve()->ParametersNb()) {
-          why="native degenerate/internal edge or unsupported sample correspondence"; eligible=false; break;
+        const int pc_count=pc.IsNull() ? 0 : pc->ParametersNb();
+        const int curve_count=edge->GetCurve()->ParametersNb();
+        const bool native_degenerate=BRep_Tool::Degenerated(edge->GetEdge());
+        const char* gate=(orientation!=TopAbs_FORWARD && orientation!=TopAbs_REVERSED) ? "orientation" :
+            native_degenerate ? "native-degenerate" : edge->GetDegenerated() ? "discrete-degenerate" : pc.IsNull() ? "missing-pcurve" :
+            pc_count<2 ? "too-few-samples" : pc_count>256 ? "sample-cap" : pc_count!=curve_count ? "sample-mismatch" : nullptr;
+        if (gate) {
+          TopoDS_Vertex first,last; TopExp::Vertices(edge->GetEdge(),first,last,false);
+          std::ostringstream detail;
+          detail << "edge " << native_edges.FindIndex(edge->GetEdge())-1 << " gate " << gate << " native/discrete-deg " <<
+              native_degenerate << '/' << edge->GetDegenerated() << " orient " << static_cast<int>(orientation) <<
+              " samples pc/3D " << pc_count << '/' << curve_count << " same-param/range " << edge->GetSameParam() << '/' <<
+              edge->GetSameRange() << " endpoints ";
+          if (first.IsNull() || last.IsNull()) detail << "missing";
+          else detail << (first.IsSame(last) ? "same" : "distinct") << " XYZ-gap " << BRep_Tool::Pnt(first).Distance(BRep_Tool::Pnt(last));
+          why=detail.str(); eligible=false; break;
         }
         if ((inspected+=pc->ParametersNb())>8000000) { why="export boundary inspection budget exhausted"; eligible=false; break; }
         for (int i=0;i<pc->ParametersNb();++i) {
@@ -4394,11 +4408,16 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         for (const auto& chain : wire_chains) {
             std::map<int,int> positions;
             std::set<int> ambiguous;
+            std::set<Link> native_links;
+            for (std::size_t i=0;i<chain.size();++i) native_links.insert(link(chain[i].id,chain[(i+1)%chain.size()].id));
             for (int i = 0; i < static_cast<int>(chain.size()); ++i)
               if (!positions.emplace(chain[i].id,i).second) ambiguous.insert(chain[i].id);
             for (const auto& entry : links) {
               if (++work > 2097152) { strip_stop_ = "shared-node refinement work budget exhausted"; return false; }
-              if (entry.second.count != 1 || !positions.count(entry.first.first) ||
+              // A reversed existing boundary link is not a shortcut through
+              // the wire's long complement. The final direction guard still
+              // rejects incorrect orientation without inventing a fan.
+              if (entry.second.count != 1 || native_links.count(entry.first) || !positions.count(entry.first.first) ||
                   !positions.count(entry.first.second) || ambiguous.count(entry.first.first) ||
                   ambiguous.count(entry.first.second)) continue;
               const auto& ids = triangles[entry.second.triangle];
@@ -5883,11 +5902,14 @@ class NativeExportIndex {
     details << "Native export topology is not a closed oriented mesh: " << invalid <<
         " invalid links; " << shells_.Extent() << " native shells; " << recovery_ << ". Restoration stages";
     int stages=0;
-    for (const auto& face : face_groups) {
-      const auto rejection=rejections_.find(face.first);
+    std::vector<std::pair<int,int>> stage_faces;
+    for (const auto& face : face_groups) stage_faces.emplace_back(face.second,face.first);
+    std::sort(stage_faces.begin(),stage_faces.end(),[](const auto& a,const auto& b) { return a>b; });
+    for (const auto& face : stage_faces) {
+      const auto rejection=rejections_.find(face.second);
       if (rejection==rejections_.end() || rejection->second=="no mapped-native boundary shortcut" ||
           rejection->second=="native boundary restored and full domain certified") continue;
-      details << " [face " << face.first << ' ' << rejection->second.substr(0,140) << ']';
+      details << " [face " << face.second << " bad uses " << face.first << ' ' << rejection->second.substr(0,220) << ']';
       if (++stages==10) break;
     }
     details << ". Source face/link-use groups";
