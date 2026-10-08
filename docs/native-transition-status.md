@@ -248,6 +248,22 @@ edges at the largest failing face groups, with coincident native endpoints but
 distinct surface-coordinate representatives. Pole-aware recovery remains open;
 the native precision, domain and closure guards have not been relaxed.
 
+Matched `04cc231f` reduces the actual UI export refusal to 107 invalid links:
+105 unmatched boundary links and two links used four times. Native edge ownership
+is valid at the largest failing groups; the remaining gaps belong to the copied
+export triangulation. Four positive boundary facets were restored with source
+checks. The two multiply used links are internal diagonals on curved native
+faces, whose incident UV regions classify inside their source trims.
+
+Clean `175f571f` builds and installs without errors; all 70 payload hashes match
+its manifest. Actual GUI 3MF preflight still refuses those 107 links. Both tested
+surface-point diagonal refinements were rolled back after the complete face
+winding guard rejected them. The live Medix document matches the saved complete
+checkpoint and reports zero scene errors and display warnings, with 8,908 faces
+and dimensions 536 × 327.47 × 48 mm. No native-precision-qualified STL or 3MF is
+claimed. The foreground GUI/MCP pair is matched; unique GUI output/error logs
+are retained for the previously unexplained process exit.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,
