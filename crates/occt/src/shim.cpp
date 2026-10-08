@@ -3201,8 +3201,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     if (native_export_recovery_) {
       recover_export_boundaries();
       recover_export_internal_diagonals();
-      recover_export_chord_boundaries();
       recover_export_longest_faces();
+      recover_export_chord_boundaries();
+      recover_export_longest_faces(true);
     }
     if (!range.More()) {
       for (const auto& trial : strip_trials) restore_spherical_strip(trial);
@@ -5164,11 +5165,38 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         }
         if (!restore_strip_station_nodes(trial)) throw std::runtime_error(strip_stop_);
         for (const auto& saved : trial.faces) {
-          StripTrial single;single.faces.push_back(saved);
-          if (!restore_skipped_strip_nodes(single,true) || !validate_spherical_strip(single,true,true)) {
-            if (!restore_complete_export_face(single,0) || !validate_spherical_strip(single,true,true))
-              throw std::runtime_error("chord owner complete source qualification: "+strip_stop_);
+          // These indices include the inserted stations. Independent owner
+          // strategies restore this POST-insertion state; the outer transaction
+          // alone restores its original pre-insertion snapshots on rejection.
+          TopLoc_Location location;
+          StripFace current{saved.face,saved.face->GetStatusMask(),{},BRep_Tool::Triangulation(saved.face->GetFace(),location),{}};
+          current.original_orientation=saved.original_orientation;
+          for (int wi=0;wi<saved.face->WiresNb();++wi) {
+            const auto wire=saved.face->GetWire(wi);current.wire_statuses.push_back(wire->GetStatusMask());
+            for (int ei=0;ei<wire->EdgesNb();++ei) {
+              const auto pc=wire->GetEdge(ei)->GetPCurve(saved.face,wire->GetEdgeOrientation(ei));
+              if (pc.IsNull()) throw std::runtime_error("chord owner retry lacks its inserted PCurve");
+              std::vector<int> indices;
+              for (int i=0;i<pc->ParametersNb();++i) indices.push_back(pc->GetIndex(i));
+              current.boundary_indices.push_back({pc,std::move(indices)});
+            }
           }
+          StripTrial single;single.faces.push_back(std::move(current));
+          bool qualified=restore_skipped_strip_nodes(single,true) && validate_spherical_strip(single,true,true);
+          std::string owner_stop=strip_stop_;
+          for (int strategy=0;strategy<4 && !qualified;++strategy) {
+            restore_spherical_strip(single);
+            if (strategy>0) {
+              if (export_boundary_attempts_>=128 || export_boundary_work_>=2097152) { owner_stop="chord owner alternate attempt/work cap";break; }
+              ++export_boundary_attempts_;
+            }
+            const bool complete=restore_complete_export_face(single,0,strategy>0,strategy>=2,strategy==3);
+            qualified=complete && validate_spherical_strip(single,true,true);
+            owner_stop="owner "+std::to_string(strip_original_faces_.FindIndex(saved.face->GetFace())-1)+
+                " strategy "+std::to_string(strategy)+' '+strip_stop_;
+            if (!qualified) std::fprintf(stderr,"Native export chord target %d %s\n",original,owner_stop.substr(0,3000).c_str());
+          }
+          if (!qualified) { restore_spherical_strip(single);throw std::runtime_error("chord owner complete source qualification: "+owner_stop); }
         }
         if (!validate_spherical_strip(trial,true,true)) throw std::runtime_error("chord all-owner shared qualification: "+strip_stop_);
         success=true;++accepted;inserted+=added;
@@ -5187,7 +5215,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
   // Try geometric span contraction only after every earlier strategy and the
   // shared-curve transaction. Fresh snapshots protect all accepted repairs.
-  void recover_export_longest_faces() {
+  void recover_export_longest_faces(bool allow_flips=false) {
     int attempts=0,repaired=0,added=0;
     for (int fi=0;fi<GetModel()->FacesNb() && export_boundary_attempts_<128 && export_boundary_work_<2097152;++fi) {
       const auto face=GetModel()->GetFace(fi).get();
@@ -5244,7 +5272,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         ++attempts;++export_boundary_attempts_;bool accepted=false;
         try {
           restore_spherical_strip(trial);
-          const bool complete=restore_complete_export_face(trial,choice,true,true);
+          const bool complete=restore_complete_export_face(trial,choice,true,true,allow_flips);
           accepted=complete && validate_spherical_strip(trial,true);
           reason=std::string(complete ? "domain: " : "star: ")+strip_stop_;
         } catch (const StripRollbackFailure&) { throw; }
@@ -5253,21 +5281,22 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         if (accepted) {
           TopLoc_Location location;const auto mesh=BRep_Tool::Triangulation(face->GetFace(),location);
           ++repaired;added+=mesh->NbTriangles()-trial.faces.front().triangulation->NbTriangles();
-          rejection->second="longest-edge native boundary restored and full domain certified";break;
+          rejection->second=std::string(allow_flips ? "deferred flip" : "longest-edge")+" native boundary restored and full domain certified";break;
         }
         restore_spherical_strip(trial);
-        rejection->second=prior.substr(0,1300)+"; longest choice "+std::to_string(choice)+' '+reason.substr(0,650);
-        std::fprintf(stderr,"Native export boundary face %d choice %d policy longest: %s\n",original,choice,reason.substr(0,3000).c_str());
+        rejection->second=prior.substr(0,1300)+(allow_flips ? "; deferred flip choice " : "; longest choice ")+std::to_string(choice)+' '+reason.substr(0,650);
+        std::fprintf(stderr,"Native export boundary face %d choice %d policy %s: %s\n",original,choice,
+            allow_flips ? "deferred-flip" : "longest",reason.substr(0,3000).c_str());
       }
     }
-    export_boundary_stop_+="; longest attempts/repaired/added "+std::to_string(attempts)+'/'+std::to_string(repaired)+'/'+std::to_string(added);
+    export_boundary_stop_+=std::string(allow_flips ? "; deferred flip" : "; longest")+" attempts/repaired/added "+std::to_string(attempts)+'/'+std::to_string(repaired)+'/'+std::to_string(added);
   }
 
   // Rebuild the COMPLETE authoritative mapped wire rather than an incomplete
   // old facet union. Original PCurves/native nodes and pole witnesses remain.
-  bool restore_complete_export_face(const StripTrial& trial,int pole_choice,bool lookahead=false,bool longest=false) {
+  bool restore_complete_export_face(const StripTrial& trial,int pole_choice,bool lookahead=false,bool longest=false,bool allow_flips=false) {
     strip_stop_="whole-face preparation";
-    const char* policy=longest ? "longest" : lookahead ? "lookahead" : "original";
+    const char* policy=allow_flips ? "deferred-flip" : longest ? "longest" : lookahead ? "lookahead" : "original";
     try {
       if (trial.faces.size()!=1) { strip_stop_="whole-face requires one owner"; return false; }
       const auto& saved=trial.faces.front(); const auto face=saved.face;
@@ -5623,7 +5652,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           return true;
         };
         bool flipped=false;
-        if (longest && flips<32 && cells.size()+2<=16384) for (int i=0;i<3 && !flipped;++i) {
+        if (longest && allow_flips && flips<32 && cells.size()+2<=16384) for (int i=0;i<3 && !flipped;++i) {
           const int a=cell.ids[i],b=cell.ids[(i+1)%3],c=cell.ids[(i+2)%3];const auto old_link=link(a,b);
           if (native_boundary_links.count(old_link)) continue;
           const auto found=incidence.find(old_link);

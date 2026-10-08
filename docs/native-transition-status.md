@@ -28,10 +28,10 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `0528a7db` opens the complete
+Current October 8 Medix qualification: clean matched `31c9a6ba` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
-536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 16 invalid
+536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 24 invalid
 boundary links and no multiply used links across 33 native shells. Restoring
 the original split policy recovers the 37 repaired faces lost by the earlier
 lookahead regression to 72 links. Connector caps and
@@ -39,9 +39,11 @@ independent pole proposals now qualify. A bounded fallback to the earlier
 split strategy retains its primary trajectory and defers alternate trials.
 FIFO processing of the alternate queue repairs one further face, reducing 49
 links to 45; a last longest-interior-edge strategy repairs seven more faces and
-reduces the count to 16. Shared native curve sampling is rejected by an owner
-eligibility gate. Certified periodic chart sampling and a bounded conforming
-interior edge flip are the next candidate; GUI qualification is pending.
+reduces the count to 16 on `0528a7db`. The next trial reaches shared-curve owner
+qualification but rolls it back for source-angle failures; inserting flips into
+the longest strategy regresses the result to 24. The next candidate restores
+the exact no-flip longest trajectory before deferred sampler and flip trials.
+GUI qualification is pending.
 All 70 installed payload hashes match the clean manifest. No successful 3MF or
 native-precision-qualified STL is claimed. The Medix notes below record earlier
 trials; they do not supersede this current qualification.
@@ -128,6 +130,17 @@ facets qualify outright at all seven source accuracy witnesses. Bounds, native
 constraints, final domain and closure checks remain unchanged. Read-only scene
 inspection remains at zero errors and zero display warnings; the saved archive
 matches exactly. Export is still refused; no successful STL or 3MF is claimed.
+
+Actual guarded GUI export on clean matched `31c9a6ba` regresses from 16 to 24
+invalid links. Both periodic sampler transactions reach owner meshing but fail
+source-angle qualification and restore their pre-insertion baselines; zero
+sampler transactions are accepted. Interleaved flips change the previous
+successful longest-edge trajectory: five repaired faces instead of seven.
+The next candidate restores the exact no-flip strategy before all later work,
+then uses independent post-insertion owner snapshots for sampler alternatives
+and separately deferred flip trials. The original 16-link qualification remains
+the best result. Scene inspection remains at zero errors and zero display
+warnings and the live model still matches the saved archive exactly.
 
 The actual guarded GUI export on clean matched `7c235990` still reports 86
 unmatched links. Native curve diagnostics rule out zero-area incidence loss on
