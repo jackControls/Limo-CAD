@@ -279,8 +279,8 @@ pub(super) fn run(args: impl Iterator<Item = String>) -> Result<()> {
             let mut max = [f64::NEG_INFINITY; 3];
             for point in volume.positions.as_chunks::<3>().0 {
                 for axis in 0..3 {
-                    min[axis] = min[axis].min(f64::from(point[axis]));
-                    max[axis] = max[axis].max(f64::from(point[axis]));
+                    min[axis] = min[axis].min(point[axis]);
+                    max[axis] = max[axis].max(point[axis]);
                 }
             }
             let dimensions = std::array::from_fn(|axis| max[axis] - min[axis]);

@@ -664,10 +664,7 @@ impl OcctKernel {
                 ));
             }
             let body = from_ffi_mesh(raw)?;
-            let mut mesh = TriangleMesh::from_kernel_body(
-                &body,
-                format!("Body{}", body_id),
-            );
+            let mut mesh = TriangleMesh::from_kernel_body(&body, format!("Body{}", body_id));
             mesh.positions = export_positions;
             meshes.push(mesh);
         }
