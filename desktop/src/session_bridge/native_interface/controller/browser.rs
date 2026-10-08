@@ -168,10 +168,11 @@ pub(crate) fn reduce(
     let node = action_node(engine, id)?;
     world.init_resource::<Browser>();
     let input = &action.control.input;
-    if matches!(command, BrowserCommand::Select(_))
-        && node.kind == Kind::Sketch
-        && (matches!(input, ControlInput::ContextMenu)
-            || matches!(input, ControlInput::Key(key) if key.key == "ContextMenu" || (key.key == "F10" && key.shift)))
+    let context_gesture = matches!(input, ControlInput::ContextMenu)
+        || matches!(input, ControlInput::Key(key) if key.key == "ContextMenu" || (key.key == "F10" && key.shift));
+    let body_context =
+        matches!(command, BrowserCommand::Select(_)) && node.kind == Kind::Body && context_gesture;
+    if matches!(command, BrowserCommand::Select(_)) && node.kind == Kind::Sketch && context_gesture
     {
         let feature_id = engine.with_document(|document| {
             document
@@ -213,7 +214,7 @@ pub(crate) fn reduce(
             return Ok(json!({"node_id":id}));
         }
     }
-    if !super::super::is_activation(input) {
+    if !super::super::is_activation(input) && !body_context {
         return Err("Unsupported browser input".into());
     }
     if matches!(command, BrowserCommand::Edit(_))
@@ -301,9 +302,14 @@ pub(crate) fn reduce(
             } else {
                 NativeCommand::ClearSelection
             };
-            bridge.with_native_document_receipt(engine, &action.context, |revision| {
-                view::apply(engine, world, &action.context, revision, command)
-            })
+            let mut result =
+                bridge.with_native_document_receipt(engine, &action.context, |revision| {
+                    view::apply(engine, world, &action.context, revision, command)
+                })?;
+            if body_context {
+                result["status_message"] = json!("Use Design History for feature actions.");
+            }
+            Ok(result)
         }
         BrowserCommand::Expand(_) => {
             let mut state = world.resource_mut::<Browser>();
@@ -447,7 +453,7 @@ fn button(
             .document
             .as_ref()
             .and_then(|document| find(&document.browser, id))
-            .is_some_and(|node| node.kind == Kind::Sketch)
+            .is_some_and(|node| matches!(node.kind, Kind::Sketch | Kind::Body))
         {
             control.owned_keys.push(KeyChord::plain("ContextMenu"));
             control.owned_keys.push(KeyChord {
