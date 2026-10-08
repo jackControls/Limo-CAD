@@ -4310,7 +4310,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             const std::string local_rejection=why;
             const bool complete=restore_complete_export_face(trial,choice);
             accepted=complete && validate_spherical_strip(trial,true);
-            if (!accepted) why="whole-face "+std::string(complete ? "domain: " : "star: ")+strip_stop_.substr(0,240)+
+            if (!accepted) why="whole-face "+std::string(complete ? "domain: " : "star: ")+strip_stop_.substr(0,1300)+
                 "; local "+local_rejection.substr(0,70);
           }
         } catch (const Standard_Failure&) { why="OCCT exception qualifying restored native boundary"; }
@@ -4348,6 +4348,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       if (!qualify_native_pole(saved,mesh,location,aliases,pole_edge,true,true,pole_choice)) return false;
       const auto canonical=[&](int id) { const auto found=aliases.find(id); return found==aliases.end() ? id : found->second; };
       const auto wire=face->GetWire(0); std::vector<int> boundary;std::map<int,double> boundary_tolerances;
+      struct ChartSegment { IMeshData::IEdgePtr edge;IMeshData::IPCurveHandle pc;int first,last; };
+      std::map<std::pair<int,int>,std::vector<ChartSegment>> chart_segments;
       if (wire->GetStatusMask()!=0) { strip_stop_="whole-face wire status"; return false; }
       for (int ei=0;ei<wire->EdgesNb();++ei) {
         const auto edge=wire->GetEdge(ei); const auto orientation=wire->GetEdgeOrientation(ei);
@@ -4386,6 +4388,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           }
           if (!std::isfinite(tolerance) || tolerance<0.0) { strip_stop_="whole-face invalid boundary tolerance";return false; }
           boundary_tolerances[id]=std::max(boundary_tolerances[id],tolerance);
+          if (i) {
+            const int previous=canonical(pc->GetIndex(j-step));
+            if (previous!=id) chart_segments[{std::min(previous,id),std::max(previous,id)}].push_back({edge,pc,j-step,j});
+          }
           if (i+1==pc->ParametersNb()) continue;
           if (boundary.empty() || boundary.back()!=id) boundary.push_back(id);
           if (boundary.size()>256) { strip_stop_="whole-face boundary cap"; return false; }
@@ -4408,7 +4414,51 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               mesh->UVNode(boundary[(j+1)%boundary.size()]).Coord(),true,true,hit);
           const bool adjacent=j==i+1 || (i==0 && j+1==boundary.size());
           if (flag!=BRepMesh_GeomTool::NoIntersection && !(adjacent && flag==BRepMesh_GeomTool::EndPointTouch)) {
-            strip_stop_="whole-face quotient is not simple segments "+std::to_string(i)+"/"+std::to_string(j); return false;
+            std::ostringstream diagnostic,edge_details;diagnostic.precision(12);edge_details.precision(12);
+            diagnostic << "chart intersection " << static_cast<int>(flag) << " segments " << i << '/' << j << " UV " << hit.X() << '/' << hit.Y();
+            TopTools_IndexedMapOfShape native_edges;TopExp::MapShapes(GetModel()->GetShape(),TopAbs_EDGE,native_edges);
+            std::vector<IMeshData::IEdgePtr> crossed_edges;std::vector<gp_Pnt> native_points;
+            for (std::size_t segment : {i,j}) {
+              const int a=boundary[segment],b=boundary[(segment+1)%boundary.size()];
+              const auto found=chart_segments.find({std::min(a,b),std::max(a,b)});
+              if (found==chart_segments.end() || found->second.size()!=1) { edge_details << " ambiguous native segment " << a << '/' << b;continue; }
+              const auto& curve=found->second.front();crossed_edges.push_back(curve.edge);
+              const auto first=mesh->UVNode(canonical(curve.pc->GetIndex(curve.first)));
+              const auto last=mesh->UVNode(canonical(curve.pc->GetIndex(curve.last)));
+              const auto delta=last.Coord()-first.Coord();const double length2=delta.SquareModulus();
+              edge_details << "; edge " << native_edges.FindIndex(curve.edge->GetEdge())-1 << " samples " << curve.first << '/' << curve.last <<
+                  " tol " << BRep_Tool::Tolerance(curve.edge->GetEdge()) << " owners " << curve.edge->PCurvesNb() <<
+                  " same-param/range " << curve.edge->GetSameParam() << '/' << curve.edge->GetSameRange() <<
+                  " interval " << curve.pc->GetParameter(curve.first) << '/' << curve.pc->GetParameter(curve.last) <<
+                  " UVends " << first.X() << '/' << first.Y() << ':' << last.X() << '/' << last.Y();
+              if (flag!=BRepMesh_GeomTool::Cross || !std::isfinite(length2) || length2<=0.0 || !strip_finite(hit)) continue;
+              const double fraction=delta.Dot(hit.Coord()-first.Coord())/length2;
+              const double parameter=curve.pc->GetParameter(curve.first)+(curve.pc->GetParameter(curve.last)-curve.pc->GetParameter(curve.first))*fraction;
+              if (!std::isfinite(fraction) || fraction<0.0 || fraction>1.0 || !std::isfinite(parameter)) continue;
+              BRepAdaptor_Curve source_pc(TopoDS::Edge(curve.edge->GetEdge().Oriented(curve.pc->GetOrientation())),face->GetFace());
+              const auto exact=source_pc.CurveOnSurface().GetCurve()->Value(parameter);
+              if (!strip_finite(exact)) continue;
+              const auto exact_point=face->GetSurface()->Value(exact.X(),exact.Y());
+              const auto chord_point=face->GetSurface()->Value(hit.X(),hit.Y());
+              if (!strip_finite(exact_point) || !strip_finite(chord_point)) continue;
+              edge_details << " t " << parameter << " sourceUV " << exact.X() << '/' << exact.Y() <<
+                  " chord-source-mm " << exact_point.Distance(chord_point);
+              if (curve.edge->GetSameParam() && curve.edge->GetSameRange()) {
+                const auto native=BRepAdaptor_Curve(curve.edge->GetEdge()).Value(parameter);
+                if (!strip_finite(native)) continue;
+                native_points.push_back(native);
+                const auto sampled=curve.edge->GetCurve()->GetPoint(curve.first).XYZ()*(1.0-fraction)+
+                    curve.edge->GetCurve()->GetPoint(curve.last).XYZ()*fraction;
+                edge_details << " source/native/chord-gap " << exact_point.Distance(native) << '/' << gp_Pnt(sampled).Distance(native);
+              }
+            }
+            if (native_points.size()==2) diagnostic << "; native-cross-distance " << native_points[0].Distance(native_points[1]);
+            if (crossed_edges.size()==2 && flag==BRepMesh_GeomTool::Cross) {
+              TopoDS_Vertex common;
+              if (TopExp::CommonVertex(crossed_edges[0]->GetEdge(),crossed_edges[1]->GetEdge(),common))
+                diagnostic << " common-vertex-cross-distance/tol " << face->GetSurface()->Value(hit.X(),hit.Y()).Distance(BRep_Tool::Pnt(common)) << '/' << BRep_Tool::Tolerance(common);
+            }
+            diagnostic << edge_details.str();strip_stop_=diagnostic.str().substr(0,1300);return false;
           }
         }
       }
@@ -6753,7 +6803,7 @@ class NativeExportIndex {
       std::set<int> selected_edges;
       for (std::size_t i=0;i<std::min<std::size_t>(3,worst_edges.size());++i) selected_edges.insert(worst_edges[i].second+1);
       for (int edge : four_use_edges) { if (selected_edges.size()>=6) break; selected_edges.insert(edge); }
-      struct NativeOwner { int face,orientation,nodes;std::string physical; };
+      struct NativeOwner { int face,orientation,nodes;std::string stage,physical; };
       struct NativeUse { int count=0,balance=0; std::set<int> faces; std::vector<NativeOwner> owners; };
       std::map<std::pair<int,int>,NativeUse> native_uses;
       TopTools_IndexedMapOfShape native_faces; TopExp::MapShapes(shape_,TopAbs_FACE,native_faces);
@@ -6797,7 +6847,7 @@ class NativeExportIndex {
                 BRep_Tool::PolygonOnTriangulation(edge,mesh,location);
             std::ostringstream physical;physical.precision(9);
             const auto rejection=rejections_.find(face_index);
-            if (rejection!=rejections_.end()) physical << " stage:" << rejection->second.substr(0,180);
+            const std::string owner_stage=rejection==rejections_.end() ? "unrecorded" : rejection->second.substr(0,1300);
             if (!mesh.IsNull() && !polygon.IsNull()) {
               std::map<std::pair<int,int>,std::array<int,2>> raw;
               int zero=0,positive=0;std::string zero_example;
@@ -6836,11 +6886,12 @@ class NativeExportIndex {
               }
               physical << zero_example;
             }
-            use.owners.push_back({face_index,static_cast<int>(orientation),polygon.IsNull() ? 0 : polygon->NbNodes(),physical.str()});
+            use.owners.push_back({face_index,static_cast<int>(orientation),polygon.IsNull() ? 0 : polygon->NbNodes(),owner_stage,physical.str()});
           }
         }
       }
       details << ". Worst native edge ownership";
+      std::set<int> reported_owner_stages;
       for (const auto& edge : worst_edges) {
         if (!selected_edges.count(edge.second+1)) continue;
         for (const auto& entry : native_uses) if (entry.first.second==edge.second+1) {
@@ -6848,7 +6899,12 @@ class NativeExportIndex {
           details << " [edge " << edge.second << " shell " << entry.first.first-1 << " native-deg " <<
               BRep_Tool::Degenerated(TopoDS::Edge(edges_.FindKey(edge.second+1))) << " occurrences/balance/unique-faces " <<
               use.count << '/' << use.balance << '/' << use.faces.size() << " face/orient/POT-nodes";
-          for (const auto& owner : use.owners) details << " {" << owner.face << '/' << owner.orientation << '/' << owner.nodes << owner.physical << '}';
+          for (const auto& owner : use.owners) {
+            details << " {" << owner.face << '/' << owner.orientation << '/' << owner.nodes;
+            if (reported_owner_stages.insert(owner.face).second) details << " stage:" << owner.stage;
+            else details << " stage:previous owner";
+            details << owner.physical << '}';
+          }
           details << ']';
         }
       }
