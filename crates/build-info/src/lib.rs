@@ -12,6 +12,11 @@ pub fn repository_slug() -> &'static str {
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../REPOSITORY")).trim()
 }
 
+/// Stable repository identity for hosted diagnostics across an ownership move.
+pub fn repository_id() -> &'static str {
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../REPOSITORY_ID")).trim()
+}
+
 pub fn build_info() -> BuildInfo {
     BuildInfo {
         version: env!("CARGO_PKG_VERSION"),

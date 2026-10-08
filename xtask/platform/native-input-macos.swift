@@ -93,7 +93,7 @@ func requireDisposableIME() throws {
     let env = ProcessInfo.processInfo.environment
     try imeRequire(env["LIMO_CAD_NATIVE_IME_TEST"] == "macos-japanese" &&
         env["GITHUB_ACTIONS"] == "true" && env["RUNNER_OS"] == "macOS" &&
-        env["RUNNER_ENVIRONMENT"] == "github-hosted" && env["GITHUB_REPOSITORY"] == "jackControls/Limo-CAD" &&
+        env["RUNNER_ENVIRONMENT"] == "github-hosted" && env["GITHUB_REPOSITORY_ID"] == "1313334315" &&
         env["GITHUB_RUN_ID"]?.range(of: "^[0-9]+$", options: .regularExpression) != nil,
         "Disposable GitHub macOS IME runner required")
 }

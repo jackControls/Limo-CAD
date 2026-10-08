@@ -1,6 +1,7 @@
 # Owned Bevy macOS IME check
 
-Run only on the disposable GitHub-hosted macOS job for `jackControls/Limo-CAD`.
+Run only on the disposable GitHub-hosted macOS job for repository ID `1313334315`.
+The ID remains the same when the repository moves to the limo-cad organization.
 The ordinary platform keyboard/clipboard check and Linux libpinyin path remain
 unchanged. The explicit Japanese fixture requires
 `LIMO_CAD_NATIVE_IME_TEST=macos-japanese`, `--desktop-input`, `--ime-japanese`, and

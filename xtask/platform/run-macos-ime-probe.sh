@@ -2,7 +2,7 @@
 set -euo pipefail
 [[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_OS:-} == macOS &&
    ${RUNNER_ENVIRONMENT:-} == github-hosted &&
-   ${GITHUB_REPOSITORY:-} == jackControls/Limo-CAD &&
+   ${GITHUB_REPOSITORY_ID:-} == 1313334315 &&
    ${GITHUB_RUN_ID:-} =~ ^[0-9]+$ ]] || { echo 'Disposable GitHub macOS runner required' >&2; exit 1; }
 [[ $# == 1 ]] || { echo 'Expected a fresh absolute evidence directory' >&2; exit 1; }
 probe_out=$1

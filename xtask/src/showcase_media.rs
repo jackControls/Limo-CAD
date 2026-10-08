@@ -19,6 +19,21 @@ const NAMES: [&str; 3] = [
 const MAX_MEDIA: u64 = 128 * 1024 * 1024;
 const MAX_JSON: u64 = 1024 * 1024;
 
+fn same_release_url(actual: &Value, expected: &str) -> bool {
+    if actual == expected {
+        return true;
+    }
+    let prefix = "https://github.com/jackControls/Limo-CAD/releases/download/";
+    crate::repository::slug() == "jackControls/Limo-CAD"
+        && expected.strip_prefix(prefix).is_some_and(|suffix| {
+            actual.as_str()
+                == Some(
+                    format!("https://github.com/limo-cad/Limo-CAD/releases/download/{suffix}")
+                        .as_str(),
+                )
+        })
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct Input {
     pub name: String,
@@ -224,7 +239,7 @@ fn assets(
             );
             ensure!(
                 published["size"].as_u64() == Some(bytes)
-                    && published["browser_download_url"] == input.url,
+                    && same_release_url(&published["browser_download_url"], &input.url),
                 "published media differs from manifest: {}",
                 input.name
             );
@@ -273,7 +288,7 @@ fn resolve_release(network: &impl Network, inputs: &[Input]) -> Result<(Value, V
         release["assets"].as_array().is_some_and(|assets| assets
             .iter()
             .filter(|a| a["name"] == "release-manifest.json"
-                && a["browser_download_url"] == manifest_url)
+                && same_release_url(&a["browser_download_url"], &manifest_url))
             .count()
             == 1),
         "missing public release manifest"
@@ -487,6 +502,41 @@ mod tests {
                 length: Some(bytes.len() as u64),
                 reader: Box::new(Cursor::new(bytes)),
             })
+        }
+    }
+    #[test]
+    fn planned_transfer_preserves_pinned_public_verification_and_staging() {
+        let mut network = Fixture::new();
+        for asset in network.release["assets"].as_array_mut().unwrap() {
+            asset["browser_download_url"] = json!(asset["browser_download_url"]
+                .as_str()
+                .unwrap()
+                .replace("jackControls/Limo-CAD/", "limo-cad/Limo-CAD/"));
+        }
+        resolve_release(&network, &inputs(&network.html()).unwrap()).unwrap();
+        let site = tempfile::tempdir().unwrap();
+        stage(&network, &network.html(), site.path()).unwrap();
+        for name in NAMES {
+            assert_eq!(
+                fs::read(site.path().join("media").join(name)).unwrap(),
+                network.media
+            );
+        }
+    }
+
+    #[test]
+    fn transfer_alias_rejects_other_repositories_tags_and_files() {
+        let network = Fixture::new();
+        let input = inputs(&network.html()).unwrap();
+        for url in [
+            "https://github.com/other/Limo-CAD/releases/download/preview-test/bench-build-full.mp4",
+            "https://github.com/limo-cad/Limo-CAD-fork/releases/download/preview-test/bench-build-full.mp4",
+            "https://github.com/limo-cad/Limo-CAD/releases/download/other-tag/bench-build-full.mp4",
+            "https://github.com/limo-cad/Limo-CAD/releases/download/preview-test/other.mp4",
+        ] {
+            let mut release = network.release.clone();
+            release["assets"][0]["browser_download_url"] = json!(url);
+            assert!(assets(&network.manifest, &input, &release, &json!({"sha":"a".repeat(40)})).is_err());
         }
     }
     #[test]

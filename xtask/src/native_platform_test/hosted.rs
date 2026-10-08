@@ -13,7 +13,7 @@ pub(super) fn enabled(
             ("GITHUB_ACTIONS", "true"),
             ("RUNNER_OS", runner),
             ("RUNNER_ENVIRONMENT", "github-hosted"),
-            ("GITHUB_REPOSITORY", crate::repository::slug()),
+            ("GITHUB_REPOSITORY_ID", crate::repository::id()),
         ]
         .into_iter()
         .all(|(key, expected)| read(key).as_deref() == Some(expected))
@@ -90,7 +90,7 @@ mod tests {
                         "GITHUB_ACTIONS" => "true".into(),
                         "RUNNER_OS" => runner.into(),
                         "RUNNER_ENVIRONMENT" => "github-hosted".into(),
-                        "GITHUB_REPOSITORY" => crate::repository::slug().into(),
+                        "GITHUB_REPOSITORY_ID" => crate::repository::id().into(),
                         "GITHUB_RUN_ID" => "123".into(),
                         _ => return None,
                     }
@@ -103,7 +103,7 @@ mod tests {
                 "GITHUB_ACTIONS",
                 "RUNNER_OS",
                 "RUNNER_ENVIRONMENT",
-                "GITHUB_REPOSITORY",
+                "GITHUB_REPOSITORY_ID",
                 "GITHUB_RUN_ID",
             ] {
                 assert!(
@@ -122,8 +122,8 @@ mod tests {
                 ("GITHUB_ACTIONS", "false"),
                 ("RUNNER_OS", "Linux"),
                 ("RUNNER_ENVIRONMENT", "self-hosted"),
-                ("GITHUB_REPOSITORY", "another/repo"),
-                ("GITHUB_REPOSITORY", "jackControls/noBS-CAD"),
+                ("GITHUB_REPOSITORY_ID", "1313334316"),
+                ("GITHUB_REPOSITORY_ID", "01313334315"),
                 ("GITHUB_RUN_ID", ""),
                 ("GITHUB_RUN_ID", "local"),
                 ("GITHUB_RUN_ID", "12 34"),

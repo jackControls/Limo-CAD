@@ -72,7 +72,7 @@ fn hosted() -> Result<()> {
         ("GITHUB_ACTIONS", "true"),
         ("RUNNER_ENVIRONMENT", "github-hosted"),
         ("RUNNER_OS", "Linux"),
-        ("GITHUB_REPOSITORY", crate::repository::slug()),
+        ("GITHUB_REPOSITORY_ID", crate::repository::id()),
     ] {
         ensure!(
             env::var(name).as_deref() == Ok(expected),
