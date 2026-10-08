@@ -40,10 +40,11 @@ pending foreground ownership.
 
 The Windows focus source now synchronizes with the window queue for at most one
 second after an accepted activation request, then rechecks process/document/window
-ownership and actual foreground state. Its native-control build check passes.
-This change has not been deployed or qualified against a live GUI; existing
-documents and workers remain on the verified installed build. Genuine Windows
-foreground restrictions still prevent input.
+ownership and actual foreground state. Its native-control build check and full
+native desktop build pass. The fixes were deployed from clean `2e98c2f5`; the
+reopened bench reports a matched GUI/MCP pair. Genuine Windows foreground denials
+remain correctly rejected; the accepted-activation branch and physical pointer
+qualification still need live UI verification.
 
 The user-reported `Medix_KW22_v4.STEP` import reached OCCT transfer, then failed
 with "could not discretize tangential face boundaries without crossing chords".
@@ -52,9 +53,13 @@ faces. The custom mesher now recognizes crossings inside a real shared vertex's
 OCCT vertex/edge tolerance instead of refining those tolerated junctions until
 failure. Crossings outside that tolerance retain refinement and rejection;
 remaining errors identify the face, wire, edges, curve types and tolerance.
-The STEP source is unchanged. This correction still requires native build and
-physical UI import qualification; it does not yet establish successful Medix
-import or broader geometry qualification.
+The STEP source is unchanged. The native desktop build passed and the correction
+is installed in `2e98c2f5`; physical UI import qualification still requires
+foreground ownership. This does not yet establish successful Medix import or
+broader geometry qualification. Before deployment, the prior bench's published
+model was compared semantically with its saved archive and matched exactly; its
+second tab contained no features after the failed import. Recovery and session
+data were preserved.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
