@@ -165,18 +165,33 @@ impl Driver {
                 let request: Value = serde_json::from_str(input.context("Gesture required")?)?;
                 self.gesture(operation, &request)?
             }
-            _ => {
+            "focus" => {
                 let observed = self.observe()?;
-                let request = match operation {
-                    "focus" => json!({"action":"focus"}),
-                    "select-all" => json!({"action":"key","key":"Ctrl+A"}),
-                    "copy" => json!({"action":"key","key":"Ctrl+C"}),
-                    "paste" => json!({"action":"key","key":"Ctrl+V"}),
-                    "right" => json!({"action":"key","key":"ArrowRight"}),
-                    "backspace" => json!({"action":"key","key":"Backspace"}),
+                self.send(&observed, json!({"action":"focus"}))?
+            }
+            _ => {
+                let key = match operation {
+                    "select-all" => "Ctrl+A",
+                    "copy" => "Ctrl+C",
+                    "paste" => "Ctrl+V",
+                    "right" => "ArrowRight",
+                    "backspace" => "Backspace",
                     _ => bail!("Unknown Windows input operation {operation}"),
                 };
-                self.send(&observed, request)?
+                super::keyboard::send_key(
+                    key,
+                    || self.observe(),
+                    |observed, request| {
+                        if request["action"] == "focus" {
+                            self.record(
+                                "focus-before-key",
+                                &json!({"observed_owner":observed["owner"],
+                                    "foreground_window":foreground_diagnostics()}),
+                            )?;
+                        }
+                        self.send(observed, request)
+                    },
+                )?
             }
         };
         self.record(operation, &result)?;
@@ -492,6 +507,33 @@ impl Driver {
         self.check_process()?;
         output(&mut stdout)
     }
+}
+
+// Diagnostic identity of the window that took foreground. It never qualifies
+// that window for input or permits closing it.
+fn foreground_diagnostics() -> Value {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClassNameW, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
+    };
+    let hwnd = unsafe { GetForegroundWindow() };
+    let mut pid = 0;
+    let mut title = [0u16; 512];
+    let mut class = [0u16; 512];
+    let (title_len, class_len) = unsafe {
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        (
+            GetWindowTextW(hwnd, &mut title),
+            GetClassNameW(hwnd, &mut class),
+        )
+    };
+    let process = match process_identity(pid) {
+        Ok((image, start_time)) => json!({"executable":image,"start_time":start_time}),
+        Err(error) => json!({"identity_error":format!("{error:#}")}),
+    };
+    json!({"diagnostics_only":true,"hwnd":hwnd.0 as usize,"pid":pid,
+        "title":String::from_utf16_lossy(&title[..title_len.max(0) as usize]),
+        "class":String::from_utf16_lossy(&class[..class_len.max(0) as usize]),
+        "process":process,"still_foreground":unsafe { GetForegroundWindow() == hwnd }})
 }
 
 // Runner shell windows can become foreground after startup. This preparation

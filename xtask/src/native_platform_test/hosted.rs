@@ -38,7 +38,7 @@ mod tests {
             ),
             (
                 "arm-runner-shell-preflight.test.ps1",
-                "PASS: 23 managed shell-preflight cases",
+                "PASS: 27 managed shell-preflight cases",
             ),
         ] {
             let output = std::process::Command::new("powershell.exe")
@@ -59,7 +59,11 @@ mod tests {
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             );
-            assert!(String::from_utf8_lossy(&output.stdout).contains(marker));
+            assert!(
+                String::from_utf8_lossy(&output.stdout).contains(marker),
+                "{script} omitted {marker}: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
         }
     }
 

@@ -20,6 +20,8 @@ use std::{io::Write, process::Stdio};
 
 mod hosted;
 mod japanese_ime;
+#[cfg(any(all(windows, feature = "native-control-harness"), test))]
+mod keyboard;
 mod print_cancel;
 #[cfg(all(windows, feature = "native-control-harness"))]
 mod windows;
