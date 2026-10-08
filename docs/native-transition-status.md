@@ -179,6 +179,22 @@ coincide, while the imported surface-coordinate endpoints differ by about
 remain visible. A tolerance-bounded treatment of those collapsed native edges
 is still under development; successful complete mesh exports are not claimed.
 
+Clean matched `367dfbfb` qualifies the native pole's localized chart crossing
+and its sampled source-to-mesh precision without changing the STEP geometry.
+Both reopening the prior checkpoint and a fresh physical File > Import STEP
+from Downloads report zero scene errors and zero display warnings, with all
+8,908 face identities and 453,491 triangles. Escape dismissed the import's
+appearance panel; a physical Fit and native Save As created
+`D:/limo-cad-maintenance/ui-models/Medix KW22 v4 - complete human UI.limo`.
+Its embedded 42,065,951-byte STEP has the original SHA256 and the live model
+matches its saved archive. This is complete display qualification, not complete
+export qualification: actual STL export contains 27 triangles collapsed by
+f32 coordinates, and actual 3MF export refuses a degenerate welded triangle.
+The initial STL is retained as diagnostic evidence; it is not a qualified mesh.
+Source-aware export precision work remains open. The 536 mm imported model
+also exceeds the default printer envelope; portable export does not qualify
+physical printing or its unchanged source placement.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,

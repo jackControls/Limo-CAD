@@ -5610,7 +5610,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
                           double angular_deflection,
                           bool imported_display = false,
                           const SectionMeshBudget* budget = nullptr,
-                          const Message_ProgressRange& range = Message_ProgressRange());
+                          const Message_ProgressRange& range = Message_ProgressRange(),
+                          bool strict_float_precision = false);
 
 // Shared exact clipping for drawing projections and disposable 3D inspection.
 static TopoDS_Shape retain_half_space(const TopoDS_Shape& source,
@@ -5767,7 +5768,7 @@ FfiMesh Kernel::mesh_with_deflection(
     throw std::runtime_error("OCCT export shape copy failed");
   }
   return mesh_shape(body_id, copy.Shape(), linear_deflection,
-                    angular_deflection);
+                    angular_deflection, false, nullptr, Message_ProgressRange(), true);
 }
 
 static FfiMesh mesh_shape(std::uint64_t body_id,
@@ -5776,7 +5777,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
                           double angular_deflection,
                           bool imported_display,
                           const SectionMeshBudget* budget,
-                          const Message_ProgressRange& range) {
+                          const Message_ProgressRange& range,
+                          bool strict_float_precision) {
   const double linear =
       linear_deflection > 0.0 ? linear_deflection : 0.15;
   const double angular =
@@ -5873,6 +5875,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   context->ChangeParameters().CleanModel = true;
   context->Clean();
   context.Nullify();
+  std::size_t collapsed_float_triangles = 0, nonfinite_float_triangles = 0, unsafe_float_faces = 0;
+  std::vector<std::string> float_face_groups, first_float_failures, last_float_failures;
   output.face_edge_offsets.push_back(0);
   for (int face_index = 1; face_index <= face_map.Extent(); ++face_index) {
     if (budget) budget->progress->check("mesh extraction");
@@ -5918,6 +5922,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
     }
     output.face_first_indices.push_back(
         static_cast<std::uint32_t>(output.indices.size()));
+    std::size_t face_float_failures = 0;
     const gp_Trsf transform = location.Transformation();
     for (int triangle_index = 1;
          triangle_index <= triangulation->NbTriangles(); ++triangle_index) {
@@ -5934,6 +5939,36 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
       triangle_normal.Cross(gp_Vec(points[0], points[2]));
       if (triangle_normal.SquareMagnitude() <= 1e-24) {
         continue;
+      }
+      if (strict_float_precision) {
+        gp_Pnt represented[3]; bool finite = true;
+        for (int i=0;i<3;++i) {
+          represented[i] = gp_Pnt(static_cast<float>(points[i].X()),static_cast<float>(points[i].Y()),
+              static_cast<float>(points[i].Z()));
+          finite &= std::isfinite(represented[i].X()) && std::isfinite(represented[i].Y()) &&
+              std::isfinite(represented[i].Z());
+        }
+        const double represented_area2 = finite ?
+            gp_Vec(represented[0],represented[1]).Crossed(gp_Vec(represented[0],represented[2])).SquareMagnitude() :
+            std::numeric_limits<double>::quiet_NaN();
+        if (!std::isfinite(represented_area2) || represented_area2 == 0.0) {
+          ++face_float_failures;
+          if (std::isfinite(represented_area2)) ++collapsed_float_triangles; else ++nonfinite_float_triangles;
+          std::ostringstream detail; detail.precision(17);
+          detail << "face " << face_index-1 << " tri " << triangle_index << " export facet " << output.indices.size()/3 <<
+              " nodes " << indices[0] << '/' << indices[1] << '/' << indices[2] << " native area " <<
+              0.5*std::sqrt(triangle_normal.SquareMagnitude()) << " pair distances " << points[0].Distance(points[1]) << '/' <<
+              points[1].Distance(points[2]) << '/' << points[2].Distance(points[0]) << " native XYZ";
+          for (const auto& p : points) detail << " (" << p.X() << ',' << p.Y() << ',' << p.Z() << ')';
+          detail.precision(9); detail << " f32 XYZ";
+          for (const auto& p : represented) detail << " (" << p.X() << ',' << p.Y() << ',' << p.Z() << ')';
+          const auto failure = detail.str().substr(0,800);
+          if (first_float_failures.size()<2) first_float_failures.push_back(failure);
+          else {
+            if (last_float_failures.size()==2) last_float_failures.erase(last_float_failures.begin());
+            last_float_failures.push_back(failure);
+          }
+        }
       }
       for (int vertex = 0; vertex < 3; ++vertex) {
         gp_Dir normal = triangulation->Normal(indices[vertex]);
@@ -5952,6 +5987,15 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
     output.face_index_counts.push_back(
         static_cast<std::uint32_t>(output.indices.size()) -
         output.face_first_indices.back());
+    if (face_float_failures) {
+      ++unsafe_float_faces;
+      if (float_face_groups.size()<64) {
+        std::ostringstream group;
+        group << face_index-1 << ':' << face_float_failures << '/' << output.face_index_counts.back()/3 <<
+            "(surface " << static_cast<int>(surface.GetType()) << ')';
+        float_face_groups.push_back(group.str());
+      }
+    }
     if (output.face_index_counts.back() == 0) {
       GProp_GProps properties;
       BRepGProp::SurfaceProperties(face, properties);
@@ -5966,6 +6010,18 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
     }
   }
 
+  if (collapsed_float_triangles || nonfinite_float_triangles) {
+    std::ostringstream diagnostic; diagnostic.precision(9);
+    diagnostic << "Export precision error for body " << body_id << ": " << collapsed_float_triangles <<
+        " native triangles collapse in f32; " << nonfinite_float_triangles << " become nonfinite; " << unsafe_float_faces <<
+        " source faces affected. Requested linear/angular " << linear << '/' << angular <<
+        ". Face groups (zero-based face:unsafe/total usable triangles, OCCT surface type):";
+    for (const auto& group : float_face_groups) diagnostic << ' ' << group;
+    if (unsafe_float_faces>float_face_groups.size()) diagnostic << " [" << unsafe_float_faces-float_face_groups.size() << " further faces]";
+    for (const auto& detail : first_float_failures) diagnostic << "; " << detail;
+    for (const auto& detail : last_float_failures) diagnostic << "; " << detail;
+    throw std::runtime_error(diagnostic.str());
+  }
   output.edge_point_offsets.push_back(0);
   if (imported_display && output.indices.empty())
     throw std::runtime_error("Imported STEP has no valid display triangles; exact geometry cannot be displayed");
