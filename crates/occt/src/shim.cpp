@@ -91,7 +91,6 @@
 #include <STEPControl_Writer.hxx>
 #include <ShapeFix_Shape.hxx>
 #include <ShapeFix_Solid.hxx>
-#include <ShapeAnalysis_Surface.hxx>
 #include <StepData_StepModel.hxx>
 #include <TCollection_HAsciiString.hxx>
 #include <TopAbs_Orientation.hxx>
@@ -3087,7 +3086,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     IMeshData::IFacePtr target = nullptr;
     std::vector<StripEdge> edges;
     std::vector<StripFace> faces;
-    double shift = 0.0, angular = 0.0, coverage = 0.0;
+    double shift = 0.0, angular = 0.0, coverage = 0.0, neighbor_gap = 0.0;
     bool accepted = false;
   };
   struct StripRollbackFailure : std::runtime_error {
@@ -3200,7 +3199,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       if (!trial.accepted) continue;
       std::ostringstream certificate;
       certificate.precision(6);
-      certificate << " shift/angular/band mm,rad,mm " << trial.shift << '/' << trial.angular << '/' << trial.coverage;
+      certificate << " shift/angular/band/neighbor-gap mm,rad,mm,mm " << trial.shift << '/' << trial.angular << '/' <<
+          trial.coverage << '/' << trial.neighbor_gap;
       boundary_repair_stop_ += certificate.str();
     }
     if (!strip_rejections.empty()) boundary_repair_stop_ += strip_rejections.substr(0, 800);
@@ -3868,7 +3868,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     const auto reject = [&](const char* reason) {
       std::ostringstream certificate;
       certificate.precision(6);
-      certificate << reason << " shift/angular/band " << trial.shift << '/' << trial.angular << '/' << trial.coverage;
+      certificate << reason << " shift/angular/band/gap " << trial.shift << '/' << trial.angular << '/' <<
+          trial.coverage << '/' << trial.neighbor_gap;
       strip_stop_ = certificate.str();
       if (mutated) restore_spherical_strip(trial);
       return false;
@@ -4116,48 +4117,21 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         saved.edge->SetStatus(IMeshData_Outdated);
         for (const auto& pc : saved.pcurves) {
           const auto adjacent = pc.curve->GetFace();
-          const auto type = adjacent->GetSurface()->GetType();
-          // Analytic inverse charts are unambiguous locally after periodic
-          // unwrapping and normal checks. Do not accept a global spline-sheet
-          // jump merely because NextValueOfUV returned a small spatial residual.
-          if (type != GeomAbs_Plane && type != GeomAbs_Cylinder && type != GeomAbs_Cone &&
-              type != GeomAbs_Sphere && type != GeomAbs_Torus)
-            return reject("adjacent inverse chart is not certified analytic");
-          TopLoc_Location location;
-          const auto local_surface = BRep_Tool::Surface(adjacent->GetFace(), location);
-          if (local_surface.IsNull()) return reject("missing adjacent projection surface");
-          ShapeAnalysis_Surface projector(local_surface);
-          const auto inverse = location.Transformation().Inverted();
           pc.curve->Clear(false);
           for (std::size_t i = 0; i < parameters[ei].size(); ++i) {
             auto uv = interpolate(pc.parameters, pc.points, parameters[ei][i]);
             if (i == 0 || i + 1 == parameters[ei].size()) uv = i == 0 ? pc.points.front() : pc.points.back();
             else if (adjacent == face.get()) uv = target_uv[ei][i];
-            else {
-              const auto seed = uv;
-              uv = projector.NextValueOfUV(seed, points[ei][i].Transformed(inverse), Precision::Confusion());
-              if (local_surface->IsUPeriodic()) {
-                const double period = local_surface->UPeriod();
-                uv.SetX(uv.X() + std::round((seed.X() - uv.X()) / period) * period);
-                if (std::abs(uv.X() - seed.X()) >= period / 4.0) return reject("ambiguous periodic U projection");
-              }
-              if (local_surface->IsVPeriodic()) {
-                const double period = local_surface->VPeriod();
-                uv.SetY(uv.Y() + std::round((seed.Y() - uv.Y()) / period) * period);
-                if (std::abs(uv.Y() - seed.Y()) >= period / 4.0) return reject("ambiguous periodic V projection");
-              }
-              gp_Pnt before, after; gp_Vec bu, bv, au, av;
-              adjacent->GetSurface()->D1(seed.X(), seed.Y(), before, bu, bv);
-              adjacent->GetSurface()->D1(uv.X(), uv.Y(), after, au, av);
-              const auto bn = bu.Crossed(bv), an = au.Crossed(av);
-              if (!std::isfinite(bn.SquareMagnitude()) || !std::isfinite(an.SquareMagnitude()) ||
-                  bn.SquareMagnitude() <= 0.0 || an.SquareMagnitude() <= 0.0 || bn.Dot(an) <= 0.0)
-                return reject("adjacent projection crosses a singularity or normal branch");
-            }
-            if (!strip_finite(uv)) return reject("nonfinite projected UV");
+            // On every other face retain its healed discrete UV polygon.
+            // Inserted native parameters only subdivide those saved segments;
+            // no inverse projection can jump sheets or undo junction repairs.
+            // The shared 3D point may differ from that surface point only within
+            // the recorded CAD tolerance and a quarter of the mesh error budget.
+            if (!strip_finite(uv)) return reject("nonfinite retained boundary UV");
             const auto on_surface = adjacent->GetSurface()->Value(uv.X(), uv.Y());
             const double gap = on_surface.Distance(points[ei][i]);
-            if (!strip_finite(on_surface) || !std::isfinite(gap) || gap > std::min(deflection,
+            if (std::isfinite(gap)) trial.neighbor_gap = std::max(trial.neighbor_gap, gap);
+            if (!strip_finite(on_surface) || !std::isfinite(gap) || gap > std::min(deflection / 4.0,
                     BRep_Tool::Tolerance(saved.edge->GetEdge()) + BRep_Tool::Tolerance(adjacent->GetFace())))
               return reject("adjacent surface mismatch exceeds recorded tolerance");
             pc.curve->AddPoint(uv, parameters[ei][i]);
