@@ -198,7 +198,7 @@ Required: route all preview paths through the tool policy and test hover/preview
 
 ### 7. [P2] Preserve projected circular-edge direction in the native renderer
 
-[platform.rs:5498](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/desktop/src/native_viewport/platform.rs#L5498)
+[platform.rs:5498](https://github.com/limo-cad/Limo-CAD/blob/126b75bc984e141ad6283cfeb9106500727d4986/src-tauri/src/native_viewport/platform.rs#L5498)
 
 The native projection renderer reconstructs every partial circular edge as a positive counter-clockwise sweep using only its first/last sample. Body-edge samples can project clockwise, particularly when the sketch basis normal is reversed. Forcing a positive sweep draws the complementary arc. Browser drawing, snapping, and profile extraction instead follow the actual sample polyline, so desktop users see a reference boundary different from the one used for geometry.
 
