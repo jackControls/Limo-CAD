@@ -191,8 +191,32 @@ impl Driver {
                 self.gesture(operation, &request)?
             }
             "focus" => {
-                let observed = self.observe()?;
-                self.send(&observed, json!({"action":"focus"}))?
+                let (activated, receipt) = super::keyboard::focus_target(
+                    || self.observe_key_target(),
+                    |observed, request| self.send(observed, request),
+                )?;
+                self.record(
+                    "prepared-field-focus",
+                    &json!({"owner":activated["owner"],"foreground":activated["foreground"],
+                        "focused_control":activated["inspection"]["ui"]["focused_control"],
+                        "foreground_window":foreground_diagnostics()}),
+                )?;
+                receipt
+            }
+            "diagnose-focus" => {
+                // Read only. A setup failure can occur before the first key's
+                // preparation, so preserve the foreign window at that point.
+                let foreground = foreground_diagnostics();
+                let observation = self.observe();
+                self.record(
+                    "field-focus-failure",
+                    &json!({"foreground_window":foreground,
+                        "observation":observation.as_ref().ok().map(|observed| json!({
+                            "owner":observed["owner"],"foreground":observed["foreground"],
+                            "focused_control":observed["inspection"]["ui"]["focused_control"]})),
+                        "observation_error":observation.err().map(|error| format!("{error:#}"))}),
+                )?;
+                return Ok(String::new());
             }
             _ => {
                 let key = match operation {

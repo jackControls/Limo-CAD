@@ -2,6 +2,33 @@
 use anyhow::{ensure, Result};
 use serde_json::{json, Value};
 
+pub(super) fn focus_target(
+    mut observe: impl FnMut() -> Result<Value>,
+    mut send: impl FnMut(&Value, Value) -> Result<Value>,
+) -> Result<(Value, Value)> {
+    let observed = observe()?;
+    activate_target(&observed, &mut observe, &mut send)
+}
+
+fn activate_target(
+    observed: &Value,
+    observe: &mut impl FnMut() -> Result<Value>,
+    send: &mut impl FnMut(&Value, Value) -> Result<Value>,
+) -> Result<(Value, Value)> {
+    let receipt = send(observed, json!({"action":"focus"}))?;
+    ensure!(
+        receipt["status"] == "focused" && receipt["owner"] == observed["owner"],
+        "Owned CAD activation did not complete; no key was sent: {receipt}"
+    );
+    let activated = observe()?;
+    require_same_target(observed, &activated)?;
+    ensure!(
+        activated["foreground"] == true,
+        "CAD lost foreground after activation; no key was sent"
+    );
+    Ok((activated, receipt))
+}
+
 pub(super) fn send_key(
     key: &str,
     mut observe: impl FnMut() -> Result<Value>,
@@ -14,18 +41,7 @@ pub(super) fn send_key(
     if !foreground {
         // Nothing has been typed. Activation consumes its own observation;
         // the key must use a new observation of the same document and window.
-        let focused = send(&observed, json!({"action":"focus"}))?;
-        ensure!(
-            focused["status"] == "focused" && focused["owner"] == observed["owner"],
-            "Owned CAD activation did not complete; no key was sent: {focused}"
-        );
-        let activated = observe()?;
-        require_same_target(&observed, &activated)?;
-        ensure!(
-            activated["foreground"] == true,
-            "CAD lost foreground after activation; no key was sent"
-        );
-        observed = activated;
+        observed = activate_target(&observed, &mut observe, &mut send)?.0;
     }
     // Any denial or partial receipt remains fatal. Repeating a key could edit
     // twice or act on a different control, even if the next observation looks OK.
@@ -85,6 +101,57 @@ mod tests {
 
     fn focused() -> Result<Value> {
         Ok(json!({"status":"focused","owner":observation(false, "old")["owner"]}))
+    }
+
+    #[test]
+    fn explicit_field_preparation_reobserves_the_same_target_without_sending_keys() {
+        let mut observations =
+            VecDeque::from([observation(false, "old"), observation(true, "prepared")]);
+        let calls = RefCell::new(Vec::new());
+        let (prepared, receipt) = focus_target(
+            || {
+                calls.borrow_mut().push("observe");
+                Ok(observations.pop_front().expect("Unexpected observation"))
+            },
+            |observed, request| {
+                assert_eq!(observed["observation"], "old");
+                assert_eq!(request, json!({"action":"focus"}));
+                calls.borrow_mut().push("focus");
+                focused()
+            },
+        )
+        .unwrap();
+        assert_eq!(prepared["observation"], "prepared");
+        assert_eq!(receipt["status"], "focused");
+        assert_eq!(calls.into_inner(), ["observe", "focus", "observe"]);
+    }
+
+    #[test]
+    fn explicit_field_preparation_rejects_denial_and_changed_owner_or_foreground() {
+        for change in ["denied", "document", "foreground"] {
+            let mut prepared = observation(true, "prepared");
+            match change {
+                "document" => prepared["owner"]["document_id"] = json!("other-document"),
+                "foreground" => prepared["foreground"] = json!(false),
+                _ => (),
+            }
+            let mut observations = VecDeque::from([observation(false, "old"), prepared]);
+            let mut activations = 0;
+            let result = focus_target(
+                || Ok(observations.pop_front().expect("Unexpected observation")),
+                |_, request| {
+                    assert_eq!(request["action"], "focus");
+                    activations += 1;
+                    if change == "denied" {
+                        Ok(json!({"status":"failed"}))
+                    } else {
+                        focused()
+                    }
+                },
+            );
+            assert!(result.is_err(), "{change}");
+            assert_eq!(activations, 1, "{change}");
+        }
     }
 
     #[test]
