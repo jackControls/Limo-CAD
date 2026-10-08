@@ -216,19 +216,20 @@ pub(crate) fn reduce(
     let input = &action.control.input;
     if let HistoryCommand::RenameValue(id) = *command {
         let receipt = bridge.native_document_receipt(engine, &action.context)?;
-        let mut state = world.resource_mut::<History>();
-        let rename = state
-            .rename
-            .as_mut()
-            .filter(|rename| rename.target.id == id && rename.target.receipt == receipt)
-            .ok_or("The design changed; start Rename again")?;
-        if let ControlInput::SetValue(value) = input {
-            rename.name.clone_from(value);
-            state.error = None;
-            return Ok(json!({"edited":true}));
+        {
+            let mut state = world.resource_mut::<History>();
+            let rename = state
+                .rename
+                .as_mut()
+                .filter(|rename| rename.target.id == id && rename.target.receipt == receipt)
+                .ok_or("The design changed; start Rename again")?;
+            if let ControlInput::SetValue(value) = input {
+                rename.name.clone_from(value);
+                state.error = None;
+                return Ok(json!({"edited":true}));
+            }
         }
         if matches!(input, ControlInput::Key(key) if key == &KeyChord::plain("Enter")) {
-            drop(state);
             return reduce(
                 world,
                 handle,
@@ -239,7 +240,6 @@ pub(crate) fn reduce(
             );
         }
         if matches!(input, ControlInput::Key(key) if key == &KeyChord::plain("Escape")) {
-            drop(state);
             escape(world);
             return Ok(json!({"cancelled":true}));
         }
