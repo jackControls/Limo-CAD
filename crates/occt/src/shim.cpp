@@ -5040,9 +5040,13 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         }
         if (owners.size()>4) throw std::runtime_error("chord owner cap");
         for (const auto owner : owners) {
-          if ((owner->GetStatusMask() & ~IMeshData_Outdated)!=0 || owner->WiresNb()!=1 ||
-              owner->GetSurface()->IsUPeriodic() || owner->GetSurface()->IsVPeriodic())
-            throw std::runtime_error("chord owner status/wire/periodic chart is unsupported");
+          if ((owner->GetStatusMask() & ~IMeshData_Outdated)!=0 || owner->WiresNb()!=1) {
+            std::ostringstream why;
+            why << "chord owner " << strip_original_faces_.FindIndex(owner->GetFace())-1 << " status/wires/type/Uperiodic/Vperiodic " <<
+                owner->GetStatusMask() << '/' << owner->WiresNb() << '/' << static_cast<int>(owner->GetSurface()->GetType()) << '/' <<
+                owner->GetSurface()->IsUPeriodic() << '/' << owner->GetSurface()->IsVPeriodic();
+            throw std::runtime_error(why.str());
+          }
           for (int oi=1;oi<=strip_original_faces_.Extent();++oi) if (
               strip_original_faces_.FindKey(oi).IsPartner(owner->GetFace()) && !strip_original_faces_.FindKey(oi).IsSame(owner->GetFace()))
             throw std::runtime_error("chord owner has an uncertified located alias");
@@ -5097,11 +5101,42 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               const auto pc=segment.edge->GetPCurve(pi);const auto owner=pc->GetFace();double low,high;
               const auto source=BRep_Tool::CurveOnSurface(TopoDS::Edge(segment.edge->GetEdge().Oriented(pc->GetOrientation())),owner->GetFace(),low,high);
               if (pc->ParametersNb()!=curve->ParametersNb() || pc->GetParameter(index-1)!=a || pc->GetParameter(index)!=b ||
-                  source.IsNull() || !std::isfinite(low) || !std::isfinite(high) || parameter<low || parameter>high ||
+                  source.IsNull() || !std::isfinite(low) || !std::isfinite(high) || std::min(a,b)<low || std::max(a,b)>high ||
                   ++export_boundary_work_>2097152) throw std::runtime_error("chord owner source parameter/work gate");
-              const auto sample=source->Value(parameter);const auto surface=owner->GetSurface()->Value(sample.X(),sample.Y());
+              auto sample=source->Value(parameter);
               const double budget=std::min(GetParameters().Deflection/4.0,
                   BRep_Tool::Tolerance(segment.edge->GetEdge())+BRep_Tool::Tolerance(owner->GetFace()));
+              if (owner->GetSurface()->IsUPeriodic() || owner->GetSurface()->IsVPeriodic()) {
+                const auto first=source->Value(a),last=source->Value(b);
+                const auto old_first=pc->GetPoint(index-1),old_last=pc->GetPoint(index);
+                if (!strip_finite(first) || !strip_finite(last) || !strip_finite(sample))
+                  throw std::runtime_error("chord periodic source interval is nonfinite");
+                const auto branch=[&](double start,double end,double middle,double saved_start,double saved_end,double period) {
+                  if (!std::isfinite(period) || period<=0.0) throw std::runtime_error("chord surface period is invalid");
+                  const double first_shift=std::round((saved_start-start)/period),last_shift=std::round((saved_end-end)/period);
+                  if (!std::isfinite(first_shift) || first_shift!=last_shift || std::abs(first_shift)>1024.0)
+                    throw std::runtime_error("chord periodic interval has inconsistent whole-period endpoints");
+                  const double shift=first_shift*period,seed=(saved_start+saved_end)*.5;
+                  const double margin=64.0*std::numeric_limits<double>::epsilon()*(std::abs(start)+std::abs(end)+
+                      std::abs(middle)+std::abs(saved_start)+std::abs(saved_end)+std::abs(shift)+period);
+                  if (!std::isfinite(margin) || std::abs(start+shift-saved_start)>=period*.5-margin ||
+                      std::abs(end+shift-saved_end)>=period*.5-margin || std::abs(middle+shift-seed)>=period*.5-margin)
+                    throw std::runtime_error("chord periodic branch is not uniquely local to saved interval");
+                  return shift;
+                };
+                double u_shift=0.0,v_shift=0.0;
+                if (owner->GetSurface()->IsUPeriodic()) u_shift=branch(first.X(),last.X(),sample.X(),old_first.X(),old_last.X(),owner->GetSurface()->UPeriod());
+                if (owner->GetSurface()->IsVPeriodic()) v_shift=branch(first.Y(),last.Y(),sample.Y(),old_first.Y(),old_last.Y(),owner->GetSurface()->VPeriod());
+                const gp_Pnt2d aligned_first(first.X()+u_shift,first.Y()+v_shift),aligned_last(last.X()+u_shift,last.Y()+v_shift);
+                const auto endpoint_gap=[&](const gp_Pnt2d& exact,const gp_Pnt2d& saved) {
+                  const auto a=owner->GetSurface()->Value(exact.X(),exact.Y()),b=owner->GetSurface()->Value(saved.X(),saved.Y());
+                  return strip_finite(a) && strip_finite(b) && std::isfinite(budget) && budget>0.0 && a.Distance(b)<=budget;
+                };
+                if (!endpoint_gap(aligned_first,old_first) || !endpoint_gap(aligned_last,old_last))
+                  throw std::runtime_error("chord periodic source endpoint exceeds recorded tolerance/precision");
+                sample.SetCoord(sample.X()+u_shift,sample.Y()+v_shift);
+              }
+              const auto surface=owner->GetSurface()->Value(sample.X(),sample.Y());
               if (!strip_finite(sample) || !strip_finite(surface) || !std::isfinite(budget) || budget<=0.0 || point.Distance(surface)>budget)
                 throw std::runtime_error("chord owner exact source/native sample exceeds tolerance or precision");
               uv.push_back(sample);
@@ -5491,7 +5526,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         }
       };
       for (std::size_t i=0;i<boundary.size();++i) add_cell({boundary[i],boundary[(i+1)%boundary.size()],node},0);
-      int inspected=0,inserted=1,max_depth=0;
+      int inspected=0,inserted=1,max_depth=0,flips=0;
+      std::set<std::pair<Link,Link>> flipped_diagonals;
       std::vector<std::string> recent_splits;
       // Bisect an unconstrained interior edge in BOTH incident cells. Retire
       // any prior neighbor certificate, and qualify all new cells again;
@@ -5586,6 +5622,59 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           }
           return true;
         };
+        bool flipped=false;
+        if (longest && flips<32 && cells.size()+2<=16384) for (int i=0;i<3 && !flipped;++i) {
+          const int a=cell.ids[i],b=cell.ids[(i+1)%3],c=cell.ids[(i+2)%3];const auto old_link=link(a,b);
+          if (native_boundary_links.count(old_link)) continue;
+          const auto found=incidence.find(old_link);
+          if (found==incidence.end() || found->second.size()!=2 || !found->second.count(cell_index)) continue;
+          int other=-1;
+          for (int owner : found->second) if (owner!=cell_index) other=owner;
+          const auto neighbor=cells[other];int fourth=-1;
+          for (int j=0;j<3;++j) if (neighbor.ids[j]==b && neighbor.ids[(j+1)%3]==a) fourth=neighbor.ids[(j+2)%3];
+          if (fourth<0 || std::set<int>{a,b,c,fourth}.size()!=4) continue;
+          const auto new_link=link(c,fourth);
+          const auto pair=old_link<new_link ? std::make_pair(old_link,new_link) : std::make_pair(new_link,old_link);
+          if (native_boundary_links.count(new_link) || incidence.count(new_link) || flipped_diagonals.count(pair)) continue;
+          const int quad[4]={b,c,a,fourth};bool convex=true;
+          for (int j=0;j<4;++j) {
+            if (++export_boundary_work_>2097152) { strip_stop_="whole-face edge flip work cap";return false; }
+            convex &= winding*certified_strip_orientation(replacement->UVNode(quad[j]),
+                replacement->UVNode(quad[(j+1)%4]),replacement->UVNode(quad[(j+2)%4]))>0.0;
+          }
+          if (!convex) continue;
+          const std::array<int,3> first={c,a,fourth},second={fourth,b,c};
+          std::map<Link,int> old_boundary,new_boundary;
+          const auto accumulate=[&](std::map<Link,int>& boundary,const std::array<int,3>& ids) {
+            for (int j=0;j<3;++j) boundary[link(ids[j],ids[(j+1)%3])]+=ids[j]<ids[(j+1)%3] ? 1 : -1;
+            for (auto it=boundary.begin();it!=boundary.end();) if (it->second==0) it=boundary.erase(it);else ++it;
+          };
+          accumulate(old_boundary,cell.ids);accumulate(old_boundary,neighbor.ids);
+          accumulate(new_boundary,first);accumulate(new_boundary,second);
+          if (old_boundary!=new_boundary) continue;
+          const auto signed_area=[&](const std::array<int,3>& ids) {
+            const auto p=replacement->UVNode(ids[0]),q=replacement->UVNode(ids[1]),r=replacement->UVNode(ids[2]);
+            return (q.Coord()-p.Coord()).Crossed(r.Coord()-p.Coord());
+          };
+          double coordinate_scale=0.0;
+          for (int id : quad) { const auto uv=replacement->UVNode(id);coordinate_scale+=std::abs(uv.X())+std::abs(uv.Y()); }
+          const double area_delta=std::abs(signed_area(cell.ids)+signed_area(neighbor.ids)-signed_area(first)-signed_area(second));
+          if (!std::isfinite(area_delta) || area_delta>128.0*std::numeric_limits<double>::epsilon()*coordinate_scale*coordinate_scale) continue;
+          double error=0.0,angular=0.0;
+          const bool valid_first=evaluate_child(first,gp_Pnt2d(),gp_Pnt(),error,angular);
+          const bool valid_second=evaluate_child(second,gp_Pnt2d(),gp_Pnt(),error,angular);
+          if (export_boundary_work_>2097152) { strip_stop_="whole-face edge flip source cap";return false; }
+          // Both replacement cells qualify outright. A currently failing cell
+          // is eliminated, so no geometric acceptance comes from a quality
+          // heuristic or resetting its refinement lineage.
+          if (!valid_first || !valid_second || error>d || angular>angle) continue;
+          const int lineage=std::max(cell.depth,neighbor.depth);
+          retire(cell_index);retire(other);
+          add_cell(first,lineage);cells.back().qualified=true;
+          add_cell(second,lineage);cells.back().qualified=true;
+          flipped_diagonals.insert(pair);++flips;flipped=true;
+        }
+        if (flipped) continue;
         for (int i=0;i<3;++i) {
           const int next=(i+1)%3,a=cell.ids[i],b=cell.ids[next];
           const auto key=link(a,b);
@@ -5719,7 +5808,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           Poly_Triangle(complete[i][0],complete[i][1],complete[i][2]));
       replacement->RemoveNormals();replacement->ComputeNormals();BRep_Builder().UpdateFace(face->GetFace(),replacement);
       strip_stop_="whole-face refined star installed facets/nodes/depth "+std::to_string(complete.size())+"/"+
-          std::to_string(inserted)+"/"+std::to_string(max_depth)+" for full source certificate";return true;
+          std::to_string(inserted)+"/"+std::to_string(max_depth)+" flips "+std::to_string(flips)+" for full source certificate";return true;
     } catch (const Standard_Failure&) { strip_stop_="OCCT exception proposing whole-face star";return false; }
       catch (const std::exception&) { strip_stop_="exception proposing whole-face star";return false; }
   }
@@ -7972,6 +8061,28 @@ class NativeExportIndex {
       }
     }
     if (!invalid) return;
+    // Keep the complete small residual set available outside the UI's bounded
+    // error text, so unrelated rejected candidates are not mistaken for holes.
+    std::ostringstream residual;residual.precision(12);
+    residual << "Native export remaining links " << invalid << " native face:incident-use groups";
+    int group_count=0;
+    for (const auto& group : face_groups) { if (group_count++==32) { residual << " [further groups]";break; } residual << ' ' << group.first << ':' << group.second; }
+    std::fprintf(stderr,"%s\n",residual.str().substr(0,3000).c_str());
+    int link_count=0;
+    for (const auto& use : uses) if (use.second.count!=2 || use.second.balance!=0) {
+      if (link_count++==32) break;
+      std::ostringstream item;
+      item << "Native export residual " << use.first.first << '/' << use.first.second << " uses/balance " << use.second.count << '/' << use.second.balance;
+      for (const auto id : {use.first.first,use.first.second}) {
+        const auto& key=vertex_keys_.at(id);
+        item << " shell/kind/shape/slot " << key[0] << '/' << key[1] << '/' << key[2]-1 << '/' << key[3];
+      }
+      for (int i=0;i<std::min(4,use.second.count);++i) {
+        const auto& facet=facets_.at(use.second.incidents[i].first);
+        item << " face/tri " << facet.face << '/' << facet.triangle;
+      }
+      std::fprintf(stderr,"%s\n",item.str().substr(0,1500).c_str());
+    }
     std::ostringstream details; details.precision(12);
     details << "Native export topology is not a closed oriented mesh: " << invalid <<
         " invalid links; " << shells_.Extent() << " native shells; " << recovery_ << ". Invalid uses/balance:count";

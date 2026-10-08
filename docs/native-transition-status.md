@@ -28,19 +28,20 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `fe195308` opens the complete
+Current October 8 Medix qualification: clean matched `0528a7db` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
-536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 45 invalid
+536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 16 invalid
 boundary links and no multiply used links across 33 native shells. Restoring
 the original split policy recovers the 37 repaired faces lost by the earlier
 lookahead regression to 72 links. Connector caps and
 independent pole proposals now qualify. A bounded fallback to the earlier
 split strategy retains its primary trajectory and defers alternate trials.
 FIFO processing of the alternate queue repairs one further face, reducing 49
-links to 45. Shared native curve sampling and a last longest-interior-edge
-strategy are the next candidate; their GUI qualification is pending. Remaining
-source-angle failures and curved trim sampling are under investigation.
+links to 45; a last longest-interior-edge strategy repairs seven more faces and
+reduces the count to 16. Shared native curve sampling is rejected by an owner
+eligibility gate. Certified periodic chart sampling and a bounded conforming
+interior edge flip are the next candidate; GUI qualification is pending.
 All 70 installed payload hashes match the clean manifest. No successful 3MF or
 native-precision-qualified STL is claimed. The Medix notes below record earlier
 trials; they do not supersede this current qualification.
@@ -113,6 +114,20 @@ owners in one export-only transaction, then tries FIFO longest-interior-edge
 refinement from fresh snapshots. All source accuracy, domain, work/depth limits,
 native ownership and final closure checks remain mandatory; GUI qualification
 is pending.
+
+Actual guarded GUI export on clean matched `0528a7db` reports 16 invalid links
+across 33 native shells, with no multiply used links. Its longest-edge fallback
+repairs seven faces in 18 attempts and adds 491 triangles, including resolving
+the previously leading face 2449. The shared-curve sampler makes zero mutation
+attempts because an owner eligibility gate rejects both crossing faces. The
+remaining spherical refinement cells are curved UV slivers: consistent source
+normals but nearly reversed straight facet normals. The next candidate preserves
+a unique whole-period source chart branch for periodic owners and permits at
+most 32 conforming flips of unconstrained interior diagonals, only when both new
+facets qualify outright at all seven source accuracy witnesses. Bounds, native
+constraints, final domain and closure checks remain unchanged. Read-only scene
+inspection remains at zero errors and zero display warnings; the saved archive
+matches exactly. Export is still refused; no successful STL or 3MF is claimed.
 
 The actual guarded GUI export on clean matched `7c235990` still reports 86
 unmatched links. Native curve diagnostics rule out zero-area incidence loss on
@@ -201,6 +216,14 @@ Z 350/390 mm. Naming, restoring all Browser eyes and Ctrl+S produced the
 twenty-four features, seven definitions and ten occurrences. Its saved hole
 parameters and exact live/archive comparison passed. Rear rail/arm pilots,
 right-rear apron pilots, remaining geometry, joints and drawings are unfinished.
+
+On clean matched `0528a7db`, physical Hole input added the right-rear post's two
+Ø3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
+Z 350/390 mm. The named [rear apron checkpoint](../examples/checkpoints/garden-bench-rear-aprons-human-ui.limo)
+has twenty-five features, seven definitions and ten occurrences with all Browser
+eyes restored. Saved parameters and exact live/archive comparison passed.
+Both rear rail/arm pilot patterns, remaining geometry, joints and drawings remain
+unfinished.
 
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled
