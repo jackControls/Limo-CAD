@@ -3159,7 +3159,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       if (trial.target->IsSet(IMeshData_Failure) &&
           (trial.target->GetStatusMask() & ~(IMeshData_Outdated | IMeshData_Failure)) == 0)
         retry_spherical_face(trial.target, stages.Next());
-      if (validate_spherical_strip(trial)) {
+      if (restore_skipped_strip_nodes(trial) && validate_spherical_strip(trial)) {
         ++strip_successes;
         trial.accepted = true;
       } else {
@@ -4152,6 +4152,171 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       catch (const std::exception&) { return reject("exception preparing regularized strip"); }
   }
 
+  // Some native triangulators omit collinear UV constraint samples even
+  // though their mapped nodes and shared 3D curve samples remain available.
+  // Reinsert only those existing nodes into the sole incident triangle.
+  bool restore_skipped_strip_nodes(const StripTrial& trial) {
+    try {
+      std::size_t work = 0;
+      for (const auto& saved : trial.faces) {
+        TopLoc_Location location;
+        const auto mesh = BRep_Tool::Triangulation(saved.face->GetFace(), location);
+        if (mesh.IsNull() || !mesh->HasUVNodes() || mesh->NbTriangles() < 1 ||
+            mesh->NbTriangles() > 131072 || mesh->NbNodes() > 65536) {
+          strip_stop_ = "shared-node refinement has no bounded triangulation"; return false;
+        }
+        using Triangle = std::array<int,3>;
+        using Link = std::pair<int,int>;
+        const auto link = [](int a, int b) { return std::make_pair(std::min(a,b),std::max(a,b)); };
+        struct Incidence { int count = 0, triangle = 0; };
+        std::map<Link,Incidence> links;
+        std::set<int> used;
+        std::vector<Triangle> triangles;
+        for (int ti = 1; ti <= mesh->NbTriangles(); ++ti) {
+          Triangle ids; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+          for (int id : ids) if (id < 1 || id > mesh->NbNodes()) {
+            strip_stop_ = "shared-node refinement has invalid triangle index"; return false;
+          }
+          triangles.push_back(ids);
+          for (int i = 0; i < 3; ++i) {
+            used.insert(ids[i]); auto& entry = links[link(ids[i],ids[(i+1)%3])];
+            ++entry.count; entry.triangle = ti-1;
+          }
+        }
+        struct Split { int triangle; std::vector<int> chain; };
+        std::map<Link,Split> splits;
+        std::set<int> scheduled;
+        for (const auto& shared : trial.edges) {
+          for (const auto& boundary : shared.pcurves) {
+            const auto pc = boundary.curve;
+            if (pc->GetFace() != saved.face) continue;
+            if (pc->ParametersNb() > 256 || pc->ParametersNb() != shared.edge->GetCurve()->ParametersNb()) {
+              strip_stop_ = "shared-node chain exceeds its sample budget"; return false;
+            }
+            std::map<int,int> positions;
+            for (int i = 0; i < pc->ParametersNb(); ++i) {
+              const int id = pc->GetIndex(i);
+              if (id < 1 || id > mesh->NbNodes() || !positions.emplace(id,i).second) {
+                strip_stop_ = "shared-node chain has ambiguous mapped indices"; return false;
+              }
+            }
+            for (const auto& entry : links) {
+              if (++work > 2097152) { strip_stop_ = "shared-node refinement work budget exhausted"; return false; }
+              if (entry.second.count != 1 || !positions.count(entry.first.first) ||
+                  !positions.count(entry.first.second)) continue;
+              const int start = positions.at(entry.first.first), end = positions.at(entry.first.second);
+              if (std::abs(end-start) <= 1) continue;
+              if (splits.count(entry.first)) { strip_stop_ = "coarse boundary edge has multiple shared chains"; return false; }
+              const auto& ids = triangles[entry.second.triangle];
+              int cyclic = -1;
+              for (int i = 0; i < 3; ++i) if (link(ids[i],ids[(i+1)%3]) == entry.first) cyclic = i;
+              if (cyclic < 0) { strip_stop_ = "coarse boundary triangle correspondence failed"; return false; }
+              const int from = positions.at(ids[cyclic]), to = positions.at(ids[(cyclic+1)%3]);
+              const int step = to > from ? 1 : -1;
+              const auto a = mesh->UVNode(ids[cyclic]), b = mesh->UVNode(ids[(cyclic+1)%3]);
+              const auto delta = b.Coord()-a.Coord(); const double length2 = delta.SquareModulus();
+              if (!strip_finite(a) || !strip_finite(b) || !std::isfinite(length2) || length2 <= 0.0) {
+                strip_stop_ = "coarse shared boundary has degenerate UV segment"; return false;
+              }
+              Split split{entry.second.triangle,{}};
+              double previous_fraction = -1.0;
+              for (int i = from;; i += step) {
+                const int id = pc->GetIndex(i); const auto uv = mesh->UVNode(id);
+                const auto native_uv = pc->GetPoint(i);
+                const double uv_gap = uv.Distance(native_uv);
+                const double fraction = (uv.Coord()-a.Coord()).Dot(delta)/length2;
+                const double line_gap = std::abs((uv.Coord()-a.Coord()).Crossed(delta))/std::sqrt(length2);
+                const double roundoff = 64.0 * std::numeric_limits<double>::epsilon() *
+                    (std::abs(a.X())+std::abs(a.Y())+std::abs(b.X())+std::abs(b.Y())+std::sqrt(length2));
+                const double correspondence_bound = uv_gap + mesh->UVNode(ids[cyclic]).Distance(pc->GetPoint(from)) +
+                    mesh->UVNode(ids[(cyclic+1)%3]).Distance(pc->GetPoint(to)) + roundoff;
+                const auto point = mesh->Node(id).Transformed(location.Transformation());
+                if (!strip_finite(uv) || !strip_finite(point) || !std::isfinite(fraction) || !std::isfinite(line_gap) ||
+                    uv_gap > Precision::PConfusion() || line_gap > correspondence_bound ||
+                    fraction <= previous_fraction || (i != from && i != to && (fraction <= 0.0 || fraction >= 1.0 || used.count(id))) ||
+                    point.Distance(shared.edge->GetCurve()->GetPoint(i)) > Precision::Confusion()) {
+                  std::ostringstream diagnostic; diagnostic.precision(6);
+                  diagnostic << "adjacent face " << strip_original_faces_.FindIndex(saved.face->GetFace())-1 <<
+                      " skipped node " << id << " edge " << ids[cyclic] << '/' << ids[(cyclic+1)%3] <<
+                      " third " << ids[(cyclic+2)%3] << " fraction/gap/bound " << fraction << '/' << line_gap << '/' <<
+                      correspondence_bound << " used " << used.count(id);
+                  strip_stop_ = diagnostic.str(); return false;
+                }
+                previous_fraction = fraction; split.chain.push_back(id);
+                if (i == to) break;
+              }
+              // The measured source UV chain must itself be collinear; the
+              // node correspondence bound above only accounts for legal UV
+              // reconciliation, never an arbitrary curved boundary shortcut.
+              const auto source_a = pc->GetPoint(from), source_b = pc->GetPoint(to);
+              const auto source_delta = source_b.Coord()-source_a.Coord();
+              if (!std::isfinite(source_delta.SquareModulus()) || source_delta.SquareModulus() <= 0.0) {
+                strip_stop_ = "skipped source chain has degenerate UV extent"; return false;
+              }
+              for (int i = from + step; i != to; i += step) {
+                const double error = std::abs((pc->GetPoint(i).Coord()-source_a.Coord()).Crossed(source_delta));
+                const auto middle = pc->GetPoint(i);
+                const double scale = (std::abs(source_a.X())+std::abs(source_a.Y())+std::abs(source_b.X())+
+                    std::abs(source_b.Y())+std::abs(middle.X())+std::abs(middle.Y())+source_delta.Modulus())*
+                    source_delta.Modulus();
+                if (!std::isfinite(error) || error > 64.0*std::numeric_limits<double>::epsilon()*scale) {
+                  std::ostringstream diagnostic; diagnostic.precision(6);
+                  diagnostic << "adjacent face " << strip_original_faces_.FindIndex(saved.face->GetFace())-1 <<
+                      " node " << pc->GetIndex(i) << " source UV collinearity error/bound " << error << '/' <<
+                      64.0*std::numeric_limits<double>::epsilon()*scale;
+                  strip_stop_ = diagnostic.str(); return false;
+                }
+              }
+              for (std::size_t i = 1; i + 1 < split.chain.size(); ++i)
+                if (!scheduled.insert(split.chain[i]).second) {
+                  strip_stop_ = "skipped node belongs to multiple boundary chains"; return false;
+                }
+              splits.emplace(entry.first,std::move(split));
+            }
+          }
+        }
+        if (splits.empty()) continue;
+        std::map<int,std::vector<Triangle>> replacements;
+        for (const auto& entry : splits) {
+          const auto& split = entry.second;
+          auto& fan = replacements[split.triangle];
+          if (fan.empty()) fan.push_back(triangles[split.triangle]);
+          bool found = false;
+          for (std::size_t fi = 0; fi < fan.size(); ++fi) {
+            const auto old = fan[fi];
+            for (int ei = 0; ei < 3; ++ei) {
+              if (old[ei] != split.chain.front() || old[(ei+1)%3] != split.chain.back()) continue;
+              const int opposite = old[(ei+2)%3];
+              fan[fi] = {split.chain[0],split.chain[1],opposite};
+              for (std::size_t i = 2; i < split.chain.size(); ++i)
+                fan.push_back({split.chain[i-1],split.chain[i],opposite});
+              found = true; break;
+            }
+            if (found) break;
+          }
+          if (!found) { strip_stop_ = "coarse shared edge lost during fan subdivision"; return false; }
+        }
+        std::vector<Triangle> result;
+        for (std::size_t ti = 0; ti < triangles.size(); ++ti) {
+          const auto found = replacements.find(static_cast<int>(ti));
+          if (found == replacements.end()) result.push_back(triangles[ti]);
+          else result.insert(result.end(),found->second.begin(),found->second.end());
+          if (result.size() > 131072) { strip_stop_ = "conforming triangle budget exhausted"; return false; }
+        }
+        // Copy before changing connectivity so rollback handles never alias
+        // the trial. All node coordinates, UVs and mapped indices are retained.
+        const auto repaired = mesh->Copy();
+        repaired->ResizeTriangles(static_cast<int>(result.size()), false);
+        for (std::size_t ti = 0; ti < result.size(); ++ti)
+          repaired->SetTriangle(static_cast<int>(ti)+1,Poly_Triangle(result[ti][0],result[ti][1],result[ti][2]));
+        repaired->RemoveNormals(); repaired->ComputeNormals();
+        BRep_Builder().UpdateFace(saved.face->GetFace(),repaired);
+      }
+      return true;
+    } catch (const Standard_Failure&) { strip_stop_ = "OCCT exception refining shared boundary nodes"; return false; }
+      catch (const std::exception&) { strip_stop_ = "exception refining shared boundary nodes"; return false; }
+  }
+
   bool validate_spherical_strip(const StripTrial& trial) {
     strip_stop_ = "triangulation status";
     try {
@@ -4287,8 +4452,11 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           return false;
         }
         const double area_roundoff = 128.0 * std::numeric_limits<double>::epsilon() * uv_scale;
-        if (!std::isfinite(uv_area) || !std::isfinite(expected_area) ||
-            std::abs(uv_area-std::abs(expected_area)) > area_roundoff) {
+        // Every mapped boundary UV has already passed its independent source
+        // PCurve correspondence check. Coverage is of that actual accepted
+        // boundary, including legal native UV-node reconciliation.
+        if (!std::isfinite(uv_area) || !std::isfinite(expected_area) || !std::isfinite(mapped_area) ||
+            std::abs(uv_area-std::abs(mapped_area)) > area_roundoff) {
           std::ostringstream diagnostic; diagnostic.precision(7);
           diagnostic << "adjacent face " << face_index << " UV area delta " << std::abs(uv_area-std::abs(expected_area)) <<
               " bound " << area_roundoff << " mapped delta " << std::abs(uv_area-std::abs(mapped_area)) <<
