@@ -214,6 +214,16 @@ geometry and references.
     five seat-slat and two stretcher pilots. Saved parameters and exact live/archive
     comparison passed. Remaining post pilots, geometry, joints and drawings
     remain unfinished.
+25. On clean matched `0226ec9f`, isolate Body1 and select its outward −X face in
+    Left view. Its basis is origin `(0, 65, 0)`, U `(0, -1, 0)`, V `(0, 0, 1)`.
+    Add six simple Ø3.5 mm, 39 mm deep, flat-bottom pilots with no flip at U 32.5,
+    V 365/400/170/205/590/615 mm. Name the feature **Left front post / Rail and
+    arm pilots Ø3.5 x 39 / Six positions**. Restore all seven Browser eyes,
+    use Isometric/Fit and save. The
+    [left-front pilot checkpoint](../checkpoints/garden-bench-left-front-pilots-human-ui.limo)
+    has twenty-two features with the previous hole patterns and assembly intact;
+    exact live/archive comparison passed. Right-front apron and both rear-post
+    pilot patterns, remaining geometry, joints and drawings remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 
