@@ -28,7 +28,7 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `e7e0a775` opens the complete
+Current October 8 Medix qualification: clean matched `7a51d2e0` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
 536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 16 invalid
@@ -42,8 +42,12 @@ links to 45; a last longest-interior-edge strategy repairs seven more faces and
 reduces the count to 16 on `0528a7db`. The next trial reaches shared-curve owner
 qualification but rolls it back for source-angle failures; inserting flips into
 the longest strategy regressed the result to 24. Restoring the exact no-flip
-trajectory recovers 16 links. A bounded constrained-ear alternative retaining
-every native boundary station is the next candidate; GUI qualification is pending.
+trajectory recovers 16 links. The bounded constrained-ear alternative also leaves
+16 links. Source inspection identifies two thin, three-edge strips whose native
+rails use different U stations. Their measured source widths exceed the retained
+native endpoint offsets. The next candidate synchronizes stations on strictly
+monotone native source rails and qualifies every affected owner before accepting
+the copied export mesh. GUI qualification is pending.
 All 70 installed payload hashes match the clean manifest. No successful 3MF or
 native-precision-qualified STL is claimed. The Medix notes below record earlier
 trials; they do not supersede this current qualification.
@@ -202,8 +206,14 @@ flat-bottom left-rear rail/arm pilots at stock X 0 mm, Y 32.5 mm and Z
 [left-rear pilot checkpoint](../examples/checkpoints/garden-bench-left-rear-pilots-human-ui.limo)
 has twenty-six features, seven definitions and ten occurrences with all Browser
 eyes restored. Saved parameters and exact live/archive comparison passed.
-Only right-rear rail/arm pilots remain among the post patterns; remaining bench
-geometry, joints and drawings are unfinished.
+On clean matched `7a51d2e0`, physical Hole input completed the right-rear rail/arm
+pattern on the outward +X face: stock X 65 mm, Y 32.5 mm and the same six Z
+positions, with Ø3.5 mm, 39 mm deep, flat-bottom pilots. The named
+[post-pilot checkpoint](../examples/checkpoints/garden-bench-post-pilots-human-ui.limo)
+has twenty-seven features, seven definitions, ten occurrences and five named
+views. All Browser eyes are restored; saved parameters and exact live/archive
+comparison passed. The four post pilot patterns are complete. Remaining bench
+geometry, joints, drawings and print layouts are unfinished.
 
 On clean matched `08efc3e7`, physical top-face selection and the Hole dialog
 added the lower rail's two Ø3.5 mm, 32 mm deep, flat-bottom stretcher pilots at

@@ -5154,6 +5154,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           }
           if (pass==7) throw std::runtime_error("chord refinement pass cap");
         }
+        StripTrial synchronized;
+        const bool paired=synchronize_export_source_rails(face,trial,synchronized,added);
         BRepMesh_MeshAlgoFactory factory;
         for (const auto& saved : trial.faces) {
           double area=0.0;std::string why;
@@ -5183,7 +5185,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             }
           }
           StripTrial single;single.faces.push_back(std::move(current));
-          bool qualified=restore_skipped_strip_nodes(single,true) && validate_spherical_strip(single,true,true);
+          bool qualified=paired && saved.face==face ?
+              triangulate_connector_strip(synchronized) && validate_spherical_strip(single,true,true) :
+              restore_skipped_strip_nodes(single,true) && validate_spherical_strip(single,true,true);
           std::string owner_stop=strip_stop_;
           for (int strategy=0;strategy<5 && !qualified;++strategy) {
             restore_spherical_strip(single);
@@ -5216,6 +5220,152 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       }
     }
     export_boundary_stop_+="; chord attempts/accepted/points "+std::to_string(attempts)+'/'+std::to_string(accepted)+'/'+std::to_string(inserted);
+  }
+
+  // Synchronize only a certified native three-edge chart: two strictly
+  // monotone source rails share the same low-U native vertex, and their other
+  // endpoints are joined by the untouched connector. This adds source samples
+  // in the existing all-owner transaction; it never substitutes sphere bounds
+  // for the generic chart's complete source/domain precision certificates.
+  bool synchronize_export_source_rails(IMeshData::IFacePtr face,const StripTrial& trial,
+                                      StripTrial& synchronized,int& added) {
+    const auto skipped=[&](const char* reason) {
+      std::fprintf(stderr,"Native export paired source rails face %d skipped: %s\n",
+          strip_original_faces_.FindIndex(face->GetFace())-1,reason);return false;
+    };
+    if (face->WiresNb()!=1 || face->GetWire(0)->EdgesNb()!=3 || trial.edges.size()!=2) return skipped("native three-edge wire/two-rail gate");
+    const auto wire=face->GetWire(0);
+    std::array<IMeshData::IPCurveHandle,2> pcs;
+    std::array<Handle(Geom2d_Curve),2> sources;
+    std::array<TopoDS_Vertex,2> apex,outer;
+    std::array<double,2> low_u,high_u;
+    std::array<int,2> wire_indices{-1,-1};
+    const auto uv_roundoff=[](const gp_Pnt2d& a,const gp_Pnt2d& b) {
+      return 64.0*std::numeric_limits<double>::epsilon()*(std::abs(a.X())+std::abs(a.Y())+
+          std::abs(b.X())+std::abs(b.Y())+1.0);
+    };
+    for (int side=0;side<2;++side) {
+      const auto edge=trial.edges[side].edge;
+      for (int ei=0;ei<3;++ei) if (wire->GetEdge(ei)==edge) wire_indices[side]=ei;
+      if (wire_indices[side]<0) return skipped("shared rail is absent from native wire");
+      pcs[side]=edge->GetPCurve(face,wire->GetEdgeOrientation(wire_indices[side]));
+      const auto pc=pcs[side];
+      if (pc.IsNull() || pc->ParametersNb()<2 || pc->ParametersNb()>128 ||
+          pc->ParametersNb()!=edge->GetCurve()->ParametersNb()) return skipped("rail sample count/range gate");
+      double first,last;
+      sources[side]=BRep_Tool::CurveOnSurface(TopoDS::Edge(edge->GetEdge().Oriented(pc->GetOrientation())),face->GetFace(),first,last);
+      BRepAdaptor_Curve adaptor(TopoDS::Edge(edge->GetEdge().Oriented(pc->GetOrientation())),face->GetFace());
+      const auto curve=adaptor.CurveOnSurface().GetCurve();
+      if (sources[side].IsNull() || sources[side]->IsPeriodic() || curve->GetType()!=GeomAbs_BSplineCurve) return skipped("source nonperiodic B-spline gate");
+      const auto spline=curve->BSpline();
+      if (spline.IsNull() || spline->IsRational() || spline->IsPeriodic() || spline->Degree()<1 || spline->Degree()>8 ||
+          spline->NbPoles()<2 || spline->NbPoles()>128 || !std::isfinite(first) || !std::isfinite(last) || first>=last ||
+          pc->GetParameter(0)<first || pc->GetParameter(pc->ParametersNb()-1)>last) return skipped("nonrational spline degree/poles/native range gate");
+      const auto begin=sources[side]->Value(pc->GetParameter(0)),end=sources[side]->Value(pc->GetParameter(pc->ParametersNb()-1));
+      if (!strip_finite(begin) || !strip_finite(end) || begin.X()==end.X()) return skipped("finite distinct source-U endpoints gate");
+      const double direction=end.X()>begin.X() ? 1.0 : -1.0;
+      // Every derivative control coefficient has this strict sign; positive
+      // B-spline bases and valid knot denominators give a unique U root.
+      for (int i=2;i<=spline->NbPoles();++i) {
+        if (!strip_finite(spline->Pole(i)) || !strip_finite(spline->Pole(i-1)) ||
+            (spline->Pole(i).X()-spline->Pole(i-1).X())*direction<=0.0) return skipped("strict signed control-U derivative gate");
+      }
+      for (int i=1;i<=spline->NbKnots();++i) if (!std::isfinite(spline->Knot(i)) ||
+          (i>1 && spline->Knot(i)<=spline->Knot(i-1))) return skipped("finite ordered spline knot gate");
+      for (int i=0;i<pc->ParametersNb();++i) {
+        const auto exact=sources[side]->Value(pc->GetParameter(i));
+        if (!strip_finite(exact) || exact.Distance(pc->GetPoint(i))>uv_roundoff(exact,pc->GetPoint(i)) ||
+            (i && (pc->GetPoint(i).X()-pc->GetPoint(i-1).X())*direction<=0.0)) return skipped("retained source UV/strict station ordering gate");
+      }
+      TopoDS_Vertex native_first,native_last;TopExp::Vertices(edge->GetEdge(),native_first,native_last,false);
+      if (native_first.IsNull() || native_last.IsNull()) return skipped("native rail endpoint identity gate");
+      apex[side]=direction>0.0 ? native_first : native_last;
+      outer[side]=direction>0.0 ? native_last : native_first;
+      low_u[side]=std::min(begin.X(),end.X());high_u[side]=std::max(begin.X(),end.X());
+    }
+    if (!apex[0].IsSame(apex[1]) || outer[0].IsSame(outer[1]) || low_u[0]!=low_u[1]) return skipped("shared low-U apex/distinct outer endpoint gate");
+    const int connector=3-wire_indices[0]-wire_indices[1];
+    TopoDS_Vertex connector_first,connector_last;TopExp::Vertices(wire->GetEdge(connector)->GetEdge(),connector_first,connector_last,false);
+    if (connector_first.IsNull() || connector_last.IsNull() || !(
+        (connector_first.IsSame(outer[0]) && connector_last.IsSame(outer[1])) ||
+        (connector_first.IsSame(outer[1]) && connector_last.IsSame(outer[0])))) return skipped("native connector endpoint identity gate");
+    const double common_end=std::min(high_u[0],high_u[1]);
+    std::set<double> stations;
+    for (const auto& pc : pcs) for (int i=0;i<pc->ParametersNb();++i)
+      if (pc->GetPoint(i).X()<=common_end) stations.insert(pc->GetPoint(i).X());
+    if (stations.size()<3 || stations.size()>128 || *stations.begin()!=low_u[0] || *stations.rbegin()!=common_end) return skipped("common-U station budget/extent gate");
+    for (int side=0;side<2;++side) for (double u : stations) {
+      const auto edge=trial.edges[side].edge;const auto curve=edge->GetCurve();const auto pc=pcs[side];
+      bool present=false;
+      for (int i=0;i<pc->ParametersNb();++i) if (pc->GetPoint(i).X()==u) present=true;
+      if (present) continue;
+      int index=-1;
+      for (int i=1;i<pc->ParametersNb();++i) if (u>std::min(pc->GetPoint(i-1).X(),pc->GetPoint(i).X()) &&
+          u<std::max(pc->GetPoint(i-1).X(),pc->GetPoint(i).X())) { index=i;break; }
+      if (index<1 || curve->ParametersNb()>=256) throw std::runtime_error("paired source rail station range/count");
+      double a=curve->GetParameter(index-1),b=curve->GetParameter(index);
+      const bool increasing=pc->GetPoint(index).X()>pc->GetPoint(index-1).X();
+      for (int step=0;step<64;++step) {
+        if (++export_boundary_work_>2097152) throw std::runtime_error("paired source rail inversion work cap");
+        const double middle=a+(b-a)*.5;const auto at=sources[side]->Value(middle);
+        if (!strip_finite(at)) throw std::runtime_error("paired source rail inversion is nonfinite");
+        if ((at.X()<u)==increasing) a=middle;else b=middle;
+      }
+      const double parameter=a+(b-a)*.5;
+      if (!std::isfinite(parameter) || parameter<=curve->GetParameter(index-1) || parameter>=curve->GetParameter(index))
+        throw std::runtime_error("paired source rail root has no distinct native parameter");
+      const auto point=BRepAdaptor_Curve(edge->GetEdge()).Value(parameter);
+      auto target_uv=sources[side]->Value(parameter);const gp_Pnt2d matched(u,target_uv.Y());
+      if (!strip_finite(point) || !strip_finite(target_uv) || target_uv.Distance(matched)>uv_roundoff(target_uv,matched))
+        throw std::runtime_error("paired source rail root did not converge to coordinate roundoff");
+      std::vector<gp_Pnt2d> values;
+      for (int pi=0;pi<edge->PCurvesNb();++pi) {
+        const auto owner_pc=edge->GetPCurve(pi);const auto owner=owner_pc->GetFace();double first,last;
+        const auto source=BRep_Tool::CurveOnSurface(TopoDS::Edge(edge->GetEdge().Oriented(owner_pc->GetOrientation())),owner->GetFace(),first,last);
+        if (source.IsNull() || owner_pc->ParametersNb()!=curve->ParametersNb() || !std::isfinite(first) || !std::isfinite(last) ||
+            parameter<first || parameter>last || ++export_boundary_work_>2097152)
+          throw std::runtime_error("paired source rail owner parameter/work gate");
+        auto at=source->Value(parameter);const auto start=source->Value(curve->GetParameter(index-1)),end=source->Value(curve->GetParameter(index));
+        if (!strip_finite(at) || !strip_finite(start) || !strip_finite(end)) throw std::runtime_error("paired source rail owner chart is nonfinite");
+        const double budget=std::min(GetParameters().Deflection/4.0,BRep_Tool::Tolerance(edge->GetEdge())+BRep_Tool::Tolerance(owner->GetFace()));
+        if (!std::isfinite(budget) || budget<=0.0) throw std::runtime_error("paired source rail owner precision budget is invalid");
+        const auto branch=[&](double start,double end,double value,double old_start,double old_end,double period) {
+          const double first_shift=std::round((old_start-start)/period),last_shift=std::round((old_end-end)/period);
+          const double seed=(old_start+old_end)*.5;
+          const double margin=64.0*std::numeric_limits<double>::epsilon()*(std::abs(start)+std::abs(end)+std::abs(value)+
+              std::abs(old_start)+std::abs(old_end)+period+1.0);
+          if (!std::isfinite(period) || period<=0.0 || !std::isfinite(first_shift) || first_shift!=last_shift || std::abs(first_shift)>1024.0 ||
+              std::abs(start+first_shift*period-old_start)>=period*.5-margin ||
+              std::abs(end+first_shift*period-old_end)>=period*.5-margin ||
+              std::abs(value+first_shift*period-seed)>=period*.5-margin)
+            throw std::runtime_error("paired source rail owner periodic branch is not unique");
+          return first_shift*period;
+        };
+        double du=0.0,dv=0.0;
+        if (owner->GetSurface()->IsUPeriodic()) du=branch(start.X(),end.X(),at.X(),owner_pc->GetPoint(index-1).X(),owner_pc->GetPoint(index).X(),owner->GetSurface()->UPeriod());
+        if (owner->GetSurface()->IsVPeriodic()) dv=branch(start.Y(),end.Y(),at.Y(),owner_pc->GetPoint(index-1).Y(),owner_pc->GetPoint(index).Y(),owner->GetSurface()->VPeriod());
+        for (int endpoint=0;endpoint<2;++endpoint) {
+          const auto exact=endpoint ? end : start;const auto saved=owner_pc->GetPoint(index-1+endpoint);
+          const auto source_point=owner->GetSurface()->Value(exact.X()+du,exact.Y()+dv);
+          const auto saved_point=owner->GetSurface()->Value(saved.X(),saved.Y());
+          if (!strip_finite(source_point) || !strip_finite(saved_point) || source_point.Distance(saved_point)>budget)
+            throw std::runtime_error("paired source rail owner original chart branch exceeds precision");
+        }
+        at.SetCoord(at.X()+du,at.Y()+dv);
+        if (owner_pc==pc) at=matched;
+        const auto surface=owner->GetSurface()->Value(at.X(),at.Y());
+        if (!strip_finite(at) || !strip_finite(surface) || !std::isfinite(budget) || budget<=0.0 || point.Distance(surface)>budget)
+          throw std::runtime_error("paired source rail owner native/chart gap exceeds precision");
+        values.push_back(at);
+      }
+      curve->InsertPoint(index,point,parameter);
+      for (int pi=0;pi<edge->PCurvesNb();++pi) edge->GetPCurve(pi)->InsertPoint(index,values[pi],parameter);
+      ++added;
+    }
+    synchronized.target=face;synchronized.target_edges=wire_indices;synchronized.connector=connector;
+    std::fprintf(stderr,"Native export paired source rails face %d common stations %zu total native stations %d/%d connector preserved\n",
+        strip_original_faces_.FindIndex(face->GetFace())-1,stations.size(),pcs[0]->ParametersNb(),pcs[1]->ParametersNb());
+    return true;
   }
 
   // A constrained boundary ear avoids artificial centroid spokes. It replaces
