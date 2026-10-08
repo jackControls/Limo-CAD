@@ -4402,27 +4402,75 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       StripTrial trial; trial.faces.push_back(saved);
       ++attempts;
       bool accepted=false;
-      std::string stage="preparing source interior sample";
+      std::string stage="preparing complete source UV patch";
       try {
-        const gp_Pnt2d uv((mesh->UVNode(a).Coord()+mesh->UVNode(b).Coord())/2.0);
-        if (!strip_finite(uv) || BRepClass_FaceClassifier(face->GetFace(),uv,Precision::PConfusion()).State()!=TopAbs_IN)
-          throw std::runtime_error("interior sample is not in the exact native trim");
-        const auto point=face->GetSurface()->Value(uv.X(),uv.Y());
-        if (!strip_finite(point)) throw std::runtime_error("interior surface sample is nonfinite");
-        const auto replacement=mesh->Copy(); const int node=mesh->NbNodes()+1;
-        replacement->ResizeNodes(node,true); replacement->SetUVNode(node,uv);
-        replacement->SetNode(node,point.Transformed(location.Transformation().Inverted()));
+        std::set<Link> constraints;
+        for (int wi=0;wi<face->WiresNb();++wi) {
+          const auto wire=face->GetWire(wi);
+          for (int ei=0;ei<wire->EdgesNb();++ei) {
+            const auto pc=wire->GetEdge(ei)->GetPCurve(face,wire->GetEdgeOrientation(ei));
+            if (pc.IsNull() || pc->ParametersNb()>4096) throw std::runtime_error("patch lacks bounded native constraints");
+            for (int i=1;i<pc->ParametersNb();++i) constraints.insert(link(pc->GetIndex(i-1),pc->GetIndex(i)));
+          }
+        }
+        const auto inverted=[&](int ti) {
+          if (++work>2097152) throw std::runtime_error("patch source-normal inspection budget");
+          int ids[3]; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+          const auto u=mesh->UVNode(ids[0]),v=mesh->UVNode(ids[1]),w=mesh->UVNode(ids[2]);
+          const gp_Pnt2d center((u.Coord()+v.Coord()+w.Coord())/3.0);
+          gp_Pnt p; gp_Vec du,dv; face->GetSurface()->D1(center.X(),center.Y(),p,du,dv);
+          const auto source_normal=du.Crossed(dv);
+          const auto x=mesh->Node(ids[0]).Transformed(location.Transformation());
+          const auto y=mesh->Node(ids[1]).Transformed(location.Transformation());
+          const auto z=mesh->Node(ids[2]).Transformed(location.Transformation());
+          const double dot=gp_Vec(x,y).Crossed(gp_Vec(x,z)).Dot(source_normal);
+          return std::isfinite(source_normal.SquareMagnitude()) && source_normal.SquareMagnitude()>0.0 &&
+              std::isfinite(dot) && dot<0.0;
+        };
+        std::set<int> patch(use->second.triangles.begin(),use->second.triangles.end());
+        // An inverted ear cannot be fixed by subdividing its fixed boundary.
+        // Expand only through unconstrained interior links to connected bad
+        // cells and one adjacent positive cell supporting a larger boundary.
+        bool expanded=true;
+        while (expanded && patch.size()<8) {
+          expanded=false;
+          const auto current=patch;
+          for (int ti : current) {
+            int ids[3]; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+            for (int i=0;i<3 && patch.size()<8;++i) {
+              const auto key=link(ids[i],ids[(i+1)%3]); const auto neighbour=source->links.find(key);
+              if (constraints.count(key) || neighbour==source->links.end() || neighbour->second.count!=2 || neighbour->second.balance) continue;
+              for (int other_ti : neighbour->second.triangles) if (!patch.count(other_ti) && inverted(other_ti)) {
+                patch.insert(other_ti); expanded=true;
+              }
+            }
+          }
+        }
+        if (patch.size()==2 && (inverted(*patch.begin()) || inverted(*patch.rbegin()))) {
+          int best=0; double best_area=0.0;
+          for (int ti : patch) {
+            int ids[3]; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+            for (int i=0;i<3;++i) {
+              const auto key=link(ids[i],ids[(i+1)%3]); const auto neighbour=source->links.find(key);
+              if (constraints.count(key) || neighbour==source->links.end() || neighbour->second.count!=2 || neighbour->second.balance) continue;
+              for (int other_ti : neighbour->second.triangles) if (!patch.count(other_ti) && !inverted(other_ti)) {
+                int n[3]; mesh->Triangle(other_ti).Get(n[0],n[1],n[2]);
+                const auto u=mesh->UVNode(n[0]),v=mesh->UVNode(n[1]),w=mesh->UVNode(n[2]);
+                const double area=.5*(v.Coord()-u.Coord()).Crossed(w.Coord()-u.Coord());
+                if (std::isfinite(area) && area>best_area) { best_area=area; best=other_ti; }
+              }
+            }
+          }
+          if (best) patch.insert(best);
+        }
         std::vector<std::array<int,3>> children;
         std::map<Link,int> old_links,new_links,old_directions,new_directions;
         double old_area=0.0,new_area=0.0,area_scale=0.0;
-        for (int ti : use->second.triangles) {
+        for (int ti : patch) {
           int ids[3]; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
-          int cyclic=-1;
           for (int i=0;i<3;++i) {
             const auto key=link(ids[i],ids[(i+1)%3]); ++old_links[key]; old_directions[key]+=ids[i]<ids[(i+1)%3] ? 1 : -1;
-            if (key==link(a,b)) cyclic=i;
           }
-          if (cyclic<0) throw std::runtime_error("native internal diagonal lost incident correspondence");
           const auto x=mesh->UVNode(ids[0]),y=mesh->UVNode(ids[1]),z=mesh->UVNode(ids[2]);
           const double area=.5*(y.Coord()-x.Coord()).Crossed(z.Coord()-x.Coord());
           if (!std::isfinite(area) || area<=0.0) throw std::runtime_error("old internal patch has nonpositive UV area");
@@ -4433,10 +4481,68 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (!strip_finite(px) || !strip_finite(py) || !strip_finite(pz) || !std::isfinite(native_area) || native_area<=0.0)
             throw std::runtime_error("old internal patch has zero/nonfinite native area");
           old_area+=area;
-          children.push_back({ids[cyclic],node,ids[(cyclic+2)%3]});
-          children.push_back({node,ids[(cyclic+1)%3],ids[(cyclic+2)%3]});
         }
-        stage="qualifying all four source children";
+        std::map<int,int> next; std::set<int> incoming;
+        for (const auto& entry : old_links) {
+          if (entry.second==2 && old_directions[entry.first]==0) continue;
+          if (entry.second!=1 || std::abs(old_directions[entry.first])!=1) throw std::runtime_error("old patch is not an oriented disk");
+          const int from=old_directions[entry.first]>0 ? entry.first.first : entry.first.second;
+          const int to=old_directions[entry.first]>0 ? entry.first.second : entry.first.first;
+          if (!next.emplace(from,to).second || !incoming.insert(to).second) throw std::runtime_error("patch outer boundary branches");
+        }
+        if (next.size()<3 || next.size()>24) throw std::runtime_error("patch boundary exceeds bounded disk scope");
+        std::vector<int> boundary; int cursor=next.begin()->first;
+        do {
+          if (!next.count(cursor) || boundary.size()>=next.size()) throw std::runtime_error("patch has multiple boundary cycles");
+          boundary.push_back(cursor); cursor=next.at(cursor);
+        } while (cursor!=boundary.front());
+        if (boundary.size()!=next.size()) throw std::runtime_error("patch has a hole");
+        double xmin=std::numeric_limits<double>::infinity(),ymin=xmin,xmax=-xmin,ymax=-xmin;
+        for (std::size_t i=0;i<boundary.size();++i) {
+          const auto u=mesh->UVNode(boundary[i]),v=mesh->UVNode(boundary[(i+1)%boundary.size()]);
+          if (!strip_finite(u) || !strip_finite(v) || u.Distance(v)==0.0) throw std::runtime_error("patch UV boundary is degenerate");
+          xmin=std::min(xmin,u.X()); xmax=std::max(xmax,u.X()); ymin=std::min(ymin,u.Y()); ymax=std::max(ymax,u.Y());
+          for (std::size_t j=i+1;j<boundary.size();++j) {
+            gp_Pnt2d hit;
+            const auto flag=BRepMesh_GeomTool::IntSegSeg(u.Coord(),v.Coord(),mesh->UVNode(boundary[j]).Coord(),
+                mesh->UVNode(boundary[(j+1)%boundary.size()]).Coord(),true,true,hit);
+            const bool adjacent=j==i+1 || (i==0 && j+1==boundary.size());
+            if (flag!=BRepMesh_GeomTool::NoIntersection && !(adjacent && flag==BRepMesh_GeomTool::EndPointTouch))
+              throw std::runtime_error("expanded source UV patch is not simple");
+          }
+        }
+        // The intersection of oriented boundary half-planes is precisely the
+        // star kernel. A strictly positive fan at its center covers the same
+        // simple disk once, including the entire original inverted ear.
+        std::vector<gp_Pnt2d> kernel={{xmin,ymin},{xmax,ymin},{xmax,ymax},{xmin,ymax}};
+        for (std::size_t i=0;i<boundary.size();++i) {
+          const auto u=mesh->UVNode(boundary[i]),v=mesh->UVNode(boundary[(i+1)%boundary.size()]);
+          const auto delta=v.Coord()-u.Coord(); std::vector<gp_Pnt2d> clipped;
+          for (std::size_t j=0;j<kernel.size();++j) {
+            const auto x=kernel[j],y=kernel[(j+1)%kernel.size()];
+            const double sx=delta.Crossed(x.Coord()-u.Coord()),sy=delta.Crossed(y.Coord()-u.Coord());
+            if (!std::isfinite(sx) || !std::isfinite(sy)) throw std::runtime_error("patch kernel is nonfinite");
+            if (sx>=0.0) clipped.push_back(x);
+            if ((sx>=0.0)!=(sy>=0.0)) {
+              const double fraction=sx/(sx-sy);
+              if (!std::isfinite(fraction) || fraction<0.0 || fraction>1.0) throw std::runtime_error("invalid patch kernel intersection");
+              clipped.emplace_back(x.Coord()*(1.0-fraction)+y.Coord()*fraction);
+            }
+          }
+          kernel=std::move(clipped);
+          if (kernel.size()<3 || kernel.size()>64) throw std::runtime_error("expanded patch has no bounded star kernel");
+        }
+        gp_XY center(0,0); for (const auto& u : kernel) center+=u.Coord(); center/=static_cast<double>(kernel.size());
+        const gp_Pnt2d uv(center);
+        if (!strip_finite(uv) || BRepClass_FaceClassifier(face->GetFace(),uv,Precision::PConfusion()).State()!=TopAbs_IN)
+          throw std::runtime_error("star sample is not in the exact native trim");
+        const auto point=face->GetSurface()->Value(uv.X(),uv.Y());
+        if (!strip_finite(point)) throw std::runtime_error("star surface sample is nonfinite");
+        const auto replacement=mesh->Copy(); const int node=mesh->NbNodes()+1;
+        replacement->ResizeNodes(node,true); replacement->SetUVNode(node,uv);
+        replacement->SetNode(node,point.Transformed(location.Transformation().Inverted()));
+        for (std::size_t i=0;i<boundary.size();++i) children.push_back({boundary[i],boundary[(i+1)%boundary.size()],node});
+        stage="qualifying source star children patch/cells "+std::to_string(patch.size())+"/"+std::to_string(children.size());
         const double d=GetParameters().Deflection;
         const double angle=GetParameters().AngleInterior>0.0 ? GetParameters().AngleInterior : GetParameters().Angle;
         if (!std::isfinite(d) || d<=0.0 || !std::isfinite(angle) || angle<=0.0) throw std::runtime_error("invalid native precision");
@@ -4468,7 +4574,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         stage="proving identical oriented UV patch";
         if (!std::isfinite(area_scale) || std::abs(old_area-new_area)>256*std::numeric_limits<double>::epsilon()*area_scale)
           throw std::runtime_error("internal patch area changed");
-        for (const auto& entry : old_links) if (entry.first!=link(a,b)) {
+        for (const auto& entry : old_links) if (entry.second==1) {
           if (entry.second!=1 || new_links[entry.first]!=1 || new_directions[entry.first]!=old_directions[entry.first])
             throw std::runtime_error("internal patch outer links changed");
         }
@@ -4476,11 +4582,15 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (entry.second!=2 || new_directions[entry.first]!=0) throw std::runtime_error("child internal incidence is not opposite-two");
         }
         if (new_links.count(link(a,b))) throw std::runtime_error("original shared internal diagonal remains");
-        replacement->ResizeTriangles(mesh->NbTriangles()+2,true);
-        replacement->SetTriangle(use->second.triangles[0],Poly_Triangle(children[0][0],children[0][1],children[0][2]));
-        replacement->SetTriangle(use->second.triangles[1],Poly_Triangle(children[2][0],children[2][1],children[2][2]));
-        replacement->SetTriangle(mesh->NbTriangles()+1,Poly_Triangle(children[1][0],children[1][1],children[1][2]));
-        replacement->SetTriangle(mesh->NbTriangles()+2,Poly_Triangle(children[3][0],children[3][1],children[3][2]));
+        std::vector<std::array<int,3>> result;
+        for (int ti=1;ti<=mesh->NbTriangles();++ti) {
+          if (patch.count(ti)) continue;
+          int ids[3]; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]); result.push_back({ids[0],ids[1],ids[2]});
+        }
+        result.insert(result.end(),children.begin(),children.end());
+        replacement->ResizeTriangles(static_cast<int>(result.size()),false);
+        for (std::size_t ti=0;ti<result.size();++ti) replacement->SetTriangle(static_cast<int>(ti)+1,
+            Poly_Triangle(result[ti][0],result[ti][1],result[ti][2]));
         replacement->RemoveNormals(); replacement->ComputeNormals();
         BRep_Builder().UpdateFace(face->GetFace(),replacement);
         stage="full native face domain/incidence";
@@ -6614,10 +6724,6 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   // Native local edge-size scaling refines small export curves without
   // changing the requested linear/angular precision or display defaults.
   mesher.ChangeParameters().AdjustMinSize = native_export_precision;
-  // Export uses native doubles. Allow the standard interior optimizer to
-  // insert nodes down to its accepted kernel numerical floor; the default
-  // display minimum remains unchanged and requested D/Angle still apply.
-  if (native_export_precision) mesher.ChangeParameters().MinSize = Precision::Confusion();
   mesher.ChangeParameters().InParallel = true;
   auto* boundary_context = new TangentBoundaryMeshContext();
   boundary_context->EnableNativeExportRecovery(native_export_precision);
