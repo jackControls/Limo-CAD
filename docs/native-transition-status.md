@@ -52,6 +52,13 @@ export is claimed.
 The Medix notes below record earlier
 trials chronologically; they do not supersede this current qualification.
 
+The subsequent clean matched `35722a50` GUI export still reports 86 unmatched
+links. Three continuous source intersections are now qualified, but the thin
+three-edge strips are refused as nonsimple or unoriented. The next candidate
+replaces the scale-dependent UV segment classifier with conservative certified
+separation; ambiguous contacts and every existing source/domain/closure guard
+still reject. It is not yet qualified through the GUI.
+
 The actual guarded GUI export on clean matched `7c235990` still reports 86
 unmatched links. Native curve diagnostics rule out zero-area incidence loss on
 the leading sphere faces: all ten existing facets have positive area, but native
@@ -102,6 +109,16 @@ twenty features, seven definitions and ten occurrences, with both lower rails
 sharing the four side clearances and two top pilots. Read-only inspection of
 the saved parameters and exact live/archive comparison passed. Upper-rail top
 pilots and remaining post pilots, geometry, joints and drawings are unfinished.
+
+On clean matched `35722a50`, the physical Hole dialog added the upper rail's five
+Ø3.5 mm, 32 mm deep, flat-bottom seat-slat pilots at stock X 14 mm, Y
+12.5/102.5/192.5/282.5/372.5 mm, Z 90 mm. The named feature, all-body Browser
+visibility restoration and Ctrl+S produced the
+[rail-pilot checkpoint](../examples/checkpoints/garden-bench-rail-pilots-human-ui.limo):
+twenty-one features, seven definitions and ten occurrences. Upper and lower
+rails retain separate definitions and their correct shared pilot patterns.
+Saved parameters and exact live/archive comparison passed; the full frame was
+captured. Remaining post pilots, geometry, joints and drawings are unfinished.
 
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled

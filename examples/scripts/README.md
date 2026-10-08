@@ -201,6 +201,19 @@ geometry and references.
     share the new bores. Read-only archive inspection confirms every parameter
     and an exact live/saved match. Upper-rail top pilots and remaining post
     pilots, geometry, joints and drawing/layout work remain unfinished.
+24. On clean matched `35722a50`, isolate the upper stock and select its top face
+    through the viewport. Add five Ø3.5 mm, 32 mm deep, simple, flat-bottom pilots
+    with no flip at U/V `(0, -195)`, `(0, -105)`, `(0, -15)`, `(0, 75)`, `(0, 165)`.
+    Its centred face basis is the same as the lower stock; these are stock points
+    X 14 mm, Y 12.5/102.5/192.5/282.5/372.5 mm, Z 90 mm. Name the feature
+    **Upper side rail / Seat slat top pilots Ø3.5 x 32 / Five positions**.
+    Restore all seven bodies through their Browser eyes, use Isometric/Fit and
+    save. The [rail-pilot checkpoint](../checkpoints/garden-bench-rail-pilots-human-ui.limo)
+    has twenty-one features, seven definitions and ten occurrences. The upper
+    and lower definitions remain separate; their respective shared pairs show
+    five seat-slat and two stretcher pilots. Saved parameters and exact live/archive
+    comparison passed. Remaining post pilots, geometry, joints and drawings
+    remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 
