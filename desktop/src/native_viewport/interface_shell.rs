@@ -530,6 +530,51 @@ impl NativeInterfaceHandle {
             .map_err(|e| e.to_string())
     }
 
+    /// An already resolved worker action may race its own footer repaint.
+    /// Only status text may be pending; owner, layout, every other surface,
+    /// visibility, modal ownership and the original control stamp stay strict.
+    pub(crate) fn validate_dispatch_action(
+        &self,
+        action: &NativeInterfaceAction,
+    ) -> Result<(), String> {
+        let shared = self
+            .shared
+            .lock()
+            .map_err(|_| "Native interface lock poisoned")?;
+        let desired = shared
+            .desired_frame
+            .as_ref()
+            .ok_or("Native interface has no document")?;
+        let presented = shared
+            .presented_frame
+            .as_ref()
+            .ok_or("Native interface has not been laid out")?;
+        if desired.context != action.context || presented.context != action.context {
+            return Err("Native interface document changed".into());
+        }
+        if desired.client != presented.client
+            || desired.surface != presented.surface
+            || desired.canvases != presented.canvases
+            || desired.modal_stack != presented.modal_stack
+            || desired.document_visible != presented.document_visible
+            || desired.surfaces.len() != presented.surfaces.len()
+            || desired
+                .surfaces
+                .iter()
+                .zip(&presented.surfaces)
+                .any(|(new, old)| {
+                    new.name != old.name || (new.name != "document/status" && new.text != old.text)
+                })
+        {
+            return Err("Native interface transition is pending".into());
+        }
+        shared
+            .registry
+            .validate_resolved(&action.control, &action.context)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     /// Give a resolved direct/API action the same focus transition as a native
     /// press. The caller still performs the one authoritative reduction; this
     /// method does not enqueue or run the command a second time.
