@@ -27,6 +27,7 @@
 #include <BRepMesh_EdgeDiscret.hxx>
 #include <BRepMesh_FaceChecker.hxx>
 #include <BRepMesh_GeomTool.hxx>
+#include <BRepMesh_SphereRangeSplitter.hxx>
 #include <IMeshData_Model.hxx>
 #include <IMeshData_Face.hxx>
 #include <IMeshData_Wire.hxx>
@@ -80,6 +81,7 @@
 #include <Interface_Static.hxx>
 #include <Interface_HArray1OfHAsciiString.hxx>
 #include <Poly_Triangulation.hxx>
+#include <OSD_Environment.hxx>
 #include <STEPControl_StepModelType.hxx>
 #include <STEPControl_Reader.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
@@ -116,6 +118,7 @@
 #include <gp_Pnt.hxx>
 #include <gp_Pnt2d.hxx>
 #include <gp_Quaternion.hxx>
+#include <gp_Sphere.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
 
@@ -3604,6 +3607,132 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   std::string boundary_repair_stop_ = "not run";
 };
 
+// Optional diagnostics of a failed face's actual meshing domain. This does not
+// change its shared samples, exact geometry or failure status.
+static std::string face_mesh_failure_detail(
+    const IMeshData::IFaceHandle& face, const IMeshTools_Parameters& parameters) {
+  try {
+    std::ostringstream detail;
+    detail.precision(12);
+    TCollection_AsciiString algorithm = OSD_Environment("CSF_MeshAlgo").Value();
+    algorithm.LowerCase();
+    detail << ", default algorithm "
+           << ((algorithm == "delabella" || algorithm == "1") ? "Delabella" : "Watson")
+           << ", face orientation " << face->GetFace().Orientation()
+           << " tolerance/deflection mm " << BRep_Tool::Tolerance(face->GetFace())
+           << '/' << face->GetDeflection()
+           << ", requested deflection/min size mm " << parameters.Deflection
+           << '/' << parameters.MinSize << " angle " << parameters.Angle
+           << " adjust min size " << parameters.AdjustMinSize;
+    const auto& surface = face->GetSurface();
+    if (surface->GetType() == GeomAbs_Sphere)
+      detail << ", sphere radius mm " << surface->Sphere().Radius();
+    double u0, u1, v0, v1;
+    BRepTools::UVBounds(face->GetFace(), u0, u1, v0, v1);
+    if (!std::isfinite(u0) || !std::isfinite(u1) ||
+        !std::isfinite(v0) || !std::isfinite(v1))
+      return ", face mesh diagnostic found nonfinite UV bounds";
+    detail << ", source UV bounds " << u0 << ':' << u1 << '/' << v0 << ':' << v1;
+    BRepMesh_SphereRangeSplitter splitter;
+    splitter.Reset(face, parameters);
+    std::vector<gp_Pnt> points;
+    gp_Pnt2d uv_min(std::numeric_limits<double>::max(), std::numeric_limits<double>::max());
+    gp_Pnt2d uv_max(-std::numeric_limits<double>::max(), -std::numeric_limits<double>::max());
+    gp_Pnt xyz_min(std::numeric_limits<double>::max(), std::numeric_limits<double>::max(),
+                   std::numeric_limits<double>::max());
+    gp_Pnt xyz_max(-std::numeric_limits<double>::max(), -std::numeric_limits<double>::max(),
+                   -std::numeric_limits<double>::max());
+    int edge_count = 0;
+    bool complete = true;
+    for (int wi = 0; wi < face->WiresNb(); ++wi) {
+      const auto& wire = face->GetWire(wi);
+      std::vector<gp_Pnt2d> polygon;
+      for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
+        if (++edge_count > 6) { complete = false; break; }
+        const auto& edge = wire->GetEdge(ei);
+        const auto orientation = wire->GetEdgeOrientation(ei);
+        const auto& pc = edge->GetPCurve(face.get(), orientation);
+        if (pc.IsNull()) { complete = false; continue; }
+        const auto& curve = edge->GetCurve();
+        if (curve->ParametersNb() != pc->ParametersNb()) { complete = false; continue; }
+        const int count = pc->ParametersNb();
+        detail << "; edge " << ei << " kind " << BRepAdaptor_Curve(edge->GetEdge()).GetType()
+               << " orientation " << orientation << " tolerance mm "
+               << BRep_Tool::Tolerance(edge->GetEdge()) << " degenerate "
+               << BRep_Tool::Degenerated(edge->GetEdge());
+        for (int i = 0; i < count; ++i) {
+          if (points.size() >= 2048) { complete = false; break; }
+          const auto& uv = pc->GetPoint(i);
+          const auto& point = curve->GetPoint(i);
+          if (!std::isfinite(uv.X()) || !std::isfinite(uv.Y()) ||
+              !std::isfinite(point.X()) || !std::isfinite(point.Y()) ||
+              !std::isfinite(point.Z()))
+            return ", face mesh diagnostic found nonfinite boundary samples";
+          splitter.AddPoint(uv);
+          uv_min.SetX(std::min(uv_min.X(), uv.X()));
+          uv_min.SetY(std::min(uv_min.Y(), uv.Y()));
+          uv_max.SetX(std::max(uv_max.X(), uv.X()));
+          uv_max.SetY(std::max(uv_max.Y(), uv.Y()));
+          for (int axis = 1; axis <= 3; ++axis) {
+            xyz_min.SetCoord(axis, std::min(xyz_min.Coord(axis), point.Coord(axis)));
+            xyz_max.SetCoord(axis, std::max(xyz_max.Coord(axis), point.Coord(axis)));
+          }
+          points.push_back(point);
+          if (i == 0 || i == count / 2 || i == count - 1)
+            detail << " UV[" << i << "] " << uv.X() << ',' << uv.Y();
+        }
+        // The oriented wire polygon excludes each edge's duplicate ending node,
+        // matching NodeInsertionMeshAlgo's collection of boundary points.
+        for (int i = 0; i < count - 1 && polygon.size() < 2048; ++i)
+          polygon.push_back(pc->GetPoint(orientation == TopAbs_REVERSED ? count - 1 - i : i));
+        if (!complete) break;
+      }
+      if (polygon.size() >= 3) {
+        double twice_area = 0.0;
+        const auto origin = polygon.front().Coord();
+        for (std::size_t i = 0; i < polygon.size(); ++i)
+          twice_area += (polygon[i].Coord() - origin).Crossed(
+              polygon[(i + 1) % polygon.size()].Coord() - origin);
+        if (std::isfinite(twice_area))
+          detail << ", wire " << wi << " signed UV area " << 0.5 * twice_area;
+      }
+      if (!complete) break;
+    }
+    if (!points.empty()) {
+      double minimum_gap = std::numeric_limits<double>::max();
+      int coincident_pairs = 0;
+      for (std::size_t i = 0; i < points.size(); ++i) {
+        for (std::size_t j = i + 1; j < points.size(); ++j) {
+          const double gap = points[i].Distance(points[j]);
+          if (!std::isfinite(gap)) return ", face mesh diagnostic found nonfinite distance";
+          if (gap == 0.0) ++coincident_pairs;
+          else minimum_gap = std::min(minimum_gap, gap);
+        }
+      }
+      detail << ", sampled UV bounds " << uv_min.X() << ':' << uv_max.X()
+             << '/' << uv_min.Y() << ':' << uv_max.Y()
+             << ", boundary XYZ span mm " << xyz_max.X() - xyz_min.X() << ','
+             << xyz_max.Y() - xyz_min.Y() << ',' << xyz_max.Z() - xyz_min.Z();
+      if (minimum_gap != std::numeric_limits<double>::max())
+        detail << " min positive gap mm " << minimum_gap;
+      detail << " coincident pairs " << coincident_pairs;
+      if (complete && surface->GetType() == GeomAbs_Sphere) {
+        splitter.AdjustRange();
+        detail << ", sphere splitter valid " << splitter.IsValid()
+               << " UV tolerance " << splitter.GetToleranceUV().first << '/'
+               << splitter.GetToleranceUV().second << " delta "
+               << splitter.GetDelta().first << '/' << splitter.GetDelta().second;
+      }
+    }
+    if (!complete) detail << ", face mesh diagnostic scope limited";
+    return detail.str().substr(0, 2200);
+  } catch (const Standard_Failure&) {
+    return ", face mesh diagnostic unavailable (OCCT exception)";
+  } catch (const std::exception&) {
+    return ", face mesh diagnostic unavailable (exception)";
+  }
+}
+
 static std::string boundary_failure_detail(
     const IMeshData::IFaceHandle& face, const IMeshTools_Parameters& parameters) {
   try {
@@ -3990,7 +4119,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
                 diagnostic << ' ' << (pcurve.IsNull() ? 0 : pcurve->ParametersNb());
               }
             }
-            diagnostic << boundary_failure_detail(discrete_face, context->GetParameters());
+            diagnostic << face_mesh_failure_detail(discrete_face, context->GetParameters())
+                       << boundary_failure_detail(discrete_face, context->GetParameters());
             break;
           }
         }
