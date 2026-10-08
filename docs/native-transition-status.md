@@ -28,6 +28,16 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
+Current October 8 Medix qualification: clean matched `69f1ee6b` opens the complete
+saved import with zero scene errors and zero display warnings. Its live model
+matches the saved archive: one compound body, 8,908 face identities and dimensions
+536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused, now with 86 unmatched
+boundary links and no multiply used links. Conforming source-interior refinement
+has resolved the previous largest boundary group while preserving the original
+STEP and document. All 70 installed payload hashes match. No successful 3MF or
+native-precision-qualified STL is claimed. The Medix notes below record earlier
+trials chronologically; they do not supersede this current qualification.
+
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled
 native control and all installed payload hashes without rebuilding, promoting or
