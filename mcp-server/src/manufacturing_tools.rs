@@ -98,6 +98,9 @@ impl CadServer {
                 visible: pose.visible,
             })
             .collect();
+        self.manager
+            .solid_scene_ref()
+            .require_complete_display_mesh(&request.export.body_ids)?;
         let mut meshes = self
             .kernel
             .tessellate_bodies(&request.export)

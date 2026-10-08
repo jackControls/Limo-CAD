@@ -6673,6 +6673,7 @@ mod tests {
         let body = BodyDto {
             id: limo_cad_core::BodyId(1),
             topology_signature: String::new(),
+            display_warnings: Vec::new(),
             name: "Plate".into(),
             feature_id: limo_cad_core::FeatureId(2),
             mesh: limo_cad_solid::MeshDto {
@@ -7384,6 +7385,7 @@ mod tests {
     fn native_picker_exposes_a_virtual_circular_connector_at_a_cylinder_opening() {
         let body = limo_cad_solid::BodyDto {
             topology_signature: String::new(),
+            display_warnings: Vec::new(),
             id: limo_cad_core::BodyId(7),
             name: "Holed component".to_string(),
             feature_id: limo_cad_core::FeatureId(3),
@@ -7754,6 +7756,7 @@ mod tests {
                     bodies: vec![BodyDto {
                         id: limo_cad_core::BodyId(1),
                         topology_signature: String::new(),
+                        display_warnings: Vec::new(),
                         name: "Cache triangle".into(),
                         feature_id: limo_cad_core::FeatureId(1),
                         mesh: limo_cad_solid::MeshDto {

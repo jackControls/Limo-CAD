@@ -1057,6 +1057,7 @@ impl NativeEngineHost {
             return Err("Resolve timeline errors before exporting STL.".to_string());
         }
         let scene = inner.manager.solid_scene_ref();
+        scene.require_complete_display_mesh(&request.body_ids)?;
         let mut meshes = inner
             .kernel
             .tessellate_bodies(&request)
@@ -1126,6 +1127,7 @@ impl NativeEngineHost {
             return Err("Resolve timeline errors before exporting 3MF.".to_string());
         }
         let scene = inner.manager.solid_scene_ref();
+        scene.require_complete_display_mesh(&request.body_ids)?;
         let appearances = inner.manager.body_appearances();
         let mut meshes = inner
             .kernel
@@ -1480,6 +1482,10 @@ fn native_layout_inputs(
                 .map_err(|e| e.to_string())?,
         },
     };
+    inner
+        .manager
+        .solid_scene_ref()
+        .require_complete_display_mesh(&request.body_ids)?;
     let mut meshes = inner
         .kernel
         .tessellate_bodies(request)

@@ -53,6 +53,7 @@ fn face_body(body_id: BodyId) -> KernelBodyDto {
         .collect();
     KernelBodyDto {
         topology_signature: String::new(),
+        display_warnings: Vec::new(),
         body_id,
         positions: vec![
             0.0,

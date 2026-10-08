@@ -532,6 +532,7 @@ mod drawing_anchor_tests {
         let scene = SolidSceneDto {
             bodies: vec![BodyDto {
                 topology_signature: String::new(),
+                display_warnings: Vec::new(),
                 id: BodyId(3),
                 name: "Body1".to_string(),
                 feature_id: FeatureId(1),
@@ -638,6 +639,7 @@ mod drawing_anchor_tests {
         let scene = SolidSceneDto {
             bodies: vec![BodyDto {
                 topology_signature: String::new(),
+                display_warnings: Vec::new(),
                 id: BodyId(3),
                 name: "Body1".to_string(),
                 feature_id: FeatureId(1),
@@ -703,6 +705,7 @@ mod drawing_anchor_tests {
         let scene = SolidSceneDto {
             bodies: vec![BodyDto {
                 topology_signature: String::new(),
+                display_warnings: Vec::new(),
                 id: BodyId(9),
                 name: "Cylinder".to_string(),
                 feature_id: FeatureId(2),

@@ -1857,6 +1857,7 @@ impl CadServer {
                 .map_err(|e| e.to_string())?;
         }
         let scene = self.manager.solid_scene_ref();
+        scene.require_complete_display_mesh(&request.body_ids)?;
         let appearances = self.manager.body_appearances();
         let mut meshes = self
             .kernel
@@ -1937,6 +1938,7 @@ impl CadServer {
                 .map_err(|error| format!("bad tessellate arguments: {error}"))?
         };
         let scene = self.manager.solid_scene_ref();
+        scene.require_complete_display_mesh(&request.body_ids)?;
         let mut meshes = self
             .kernel
             .tessellate_bodies(&request)
@@ -2037,6 +2039,9 @@ impl CadServer {
         )
         .map_err(|e| e.to_string())?;
         if ok {
+            self.manager
+                .solid_scene_ref()
+                .require_complete_display_mesh(&request.body_ids)?;
             let meshes = self
                 .kernel
                 .tessellate_bodies(&request)

@@ -86,6 +86,7 @@ mod tests {
         let body = Arc::new(PreparedCutaway::new(KernelBodyDto {
             body_id: limo_cad_core::BodyId(1),
             topology_signature: String::new(),
+            display_warnings: Vec::new(),
             positions: vec![0., 0., 0., 1., 0., 0., 0., 1., 0.],
             normals: vec![0., 0., 1., 0., 0., 1., 0., 0., 1.],
             indices: vec![0, 1, 2],

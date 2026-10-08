@@ -21,6 +21,7 @@ fn scene(raw: &KernelBodyDto, owner: u64) -> SolidSceneDto {
         bodies: vec![BodyDto {
             id: raw.body_id,
             topology_signature: raw.topology_signature.clone(),
+            display_warnings: Vec::new(),
             name: "Native box".into(),
             feature_id: FeatureId(owner),
             mesh: MeshDto {

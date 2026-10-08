@@ -72,6 +72,10 @@ impl NativeEngineHost {
                     visible: pose.visible,
                 })
                 .collect();
+            inner
+                .manager
+                .solid_scene_ref()
+                .require_complete_display_mesh(&request.export.body_ids)?;
             let mut meshes = inner
                 .kernel
                 .tessellate_bodies(&request.export)

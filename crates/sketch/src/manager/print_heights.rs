@@ -721,6 +721,7 @@ mod tests {
         let bodies = vec![KernelBodyDto {
             body_id: body,
             topology_signature: String::new(),
+            display_warnings: Vec::new(),
             positions: vec![0., 0., 0., 10., 0., 0., 0., 10., 20.],
             normals: [0., 0., 1.].repeat(3),
             indices: vec![0, 1, 2],

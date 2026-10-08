@@ -135,6 +135,7 @@ mod tests {
         bodies.push(KernelBodyDto {
             body_id: pair.0,
             topology_signature: String::new(),
+            display_warnings: Vec::new(),
             positions: vec![0., 0., 0., 10., 0., 0., 0., 10., 0.],
             normals: [0., 0., 1.].repeat(3),
             indices: vec![0, 1, 2],

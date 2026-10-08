@@ -5404,6 +5404,7 @@ mod tests {
                 .into_iter()
                 .map(|id| BodyDto {
                     topology_signature: String::new(),
+                    display_warnings: Vec::new(),
                     id: BodyId(id),
                     name: format!("Body{id}"),
                     feature_id: FeatureId(id),
@@ -5638,6 +5639,7 @@ mod tests {
                 .into_iter()
                 .map(|id| BodyDto {
                     topology_signature: String::new(),
+                    display_warnings: Vec::new(),
                     id: BodyId(id),
                     name: format!("Body{id}"),
                     feature_id: FeatureId(id),

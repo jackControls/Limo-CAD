@@ -326,6 +326,7 @@ pub struct Summary {
     pub holes: Vec<Hole>,
     pub source: &'static str,
     pub errors: usize,
+    pub display_warnings: Vec<Value>,
 }
 
 pub fn summarize(scene: &SolidSceneDto, definitions: &[HoleDefinitionDto]) -> Summary {
@@ -340,6 +341,22 @@ pub fn summarize(scene: &SolidSceneDto, definitions: &[HoleDefinitionDto]) -> Su
         holes,
         source,
         errors: scene.errors.len(),
+        display_warnings: scene
+            .bodies
+            .iter()
+            .flat_map(|body| {
+                body.display_warnings.iter().map(|warning| {
+                    json!({
+                        "code": "imported_step_face_not_displayed",
+                        "body_id": body.id.0,
+                        "feature_id": body.feature_id.0,
+                        "face_key": warning.face_key,
+                        "message": warning.message,
+                        "exact_geometry_retained": true,
+                    })
+                })
+            })
+            .collect(),
     }
 }
 
@@ -373,6 +390,8 @@ impl Summary {
                 "faces": b.faces, "planar_faces": b.planar_faces, "cylindrical_faces": b.cylindrical_faces,
             })).collect::<Vec<_>>(),
             "scene_errors": self.errors,
+            "display_warning_count": self.display_warnings.len(),
+            "display_warnings": self.display_warnings,
             "hole_source": self.source,
             "hole_detection_scope": if self.source == "features" {
                 "authored_features"
@@ -401,7 +420,7 @@ pub fn warnings(
     definitions: &[HoleDefinitionDto],
     unused_bindings: &[String],
 ) -> Vec<Value> {
-    let mut warnings = Vec::new();
+    let mut warnings = summary.display_warnings.clone();
     for definition in definitions {
         if !definition.positions.is_empty()
             && !definition.positions.iter().any(|p| {

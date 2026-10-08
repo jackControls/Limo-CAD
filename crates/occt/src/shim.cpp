@@ -2104,14 +2104,21 @@ TopoDS_Shape blend_prismatic_corners(const TopoDS_Shape& shape,
 class Kernel::Impl {
  public:
   std::map<std::uint64_t, TopoDS_Shape> bodies;
+  std::set<std::uint64_t> imported_display_bodies;
 };
 
 Kernel::Kernel() : impl_(std::make_unique<Impl>()) {}
 Kernel::~Kernel() = default;
 
-void Kernel::reset() { impl_->bodies.clear(); }
+void Kernel::reset() {
+  impl_->bodies.clear();
+  impl_->imported_display_bodies.clear();
+}
 
 void Kernel::apply_job(const FfiJob& job) {
+  // Generated/replaced bodies do not inherit the original STEP display policy.
+  for (const auto body_id : job.result_body_ids)
+    impl_->imported_display_bodies.erase(body_id);
   if (job.kind == 12) {
     if (job.result_body_ids.size() != 1 || job.step_data.empty()) {
       throw std::runtime_error("STEP import buffers are malformed");
@@ -2134,6 +2141,7 @@ void Kernel::apply_job(const FfiJob& job) {
       throw std::runtime_error("STEP import produced a null shape");
     }
     impl_->bodies[job.result_body_ids[0]] = shape;
+    impl_->imported_display_bodies.insert(job.result_body_ids[0]);
     return;
   }
   if (job.kind == 5 || job.kind == 6) {
@@ -2180,6 +2188,7 @@ void Kernel::apply_job(const FfiJob& job) {
                                 found->second, selected, job.radius, true,
                                 "OCCT could not build the selected solid chamfer");
     }
+    impl_->imported_display_bodies.erase(job.target_body_ids[0]);
     return;
   }
   if (job.kind == 7) {
@@ -2337,6 +2346,7 @@ void Kernel::apply_job(const FfiJob& job) {
       }
     }
     found->second = result;
+    impl_->imported_display_bodies.erase(job.target_body_ids[0]);
     return;
   }
   if (job.kind == 13) {
@@ -2506,6 +2516,7 @@ void Kernel::apply_job(const FfiJob& job) {
             "OCCT modeled external thread did not remove material");
       }
       found->second = result;
+      impl_->imported_display_bodies.erase(job.target_body_ids[0]);
     }
     return;
   }
@@ -2553,6 +2564,7 @@ void Kernel::apply_job(const FfiJob& job) {
       throw std::runtime_error("Shell wall thickness leaves no valid hollow body");
     }
     found->second = result;
+    impl_->imported_display_bodies.erase(job.target_body_ids[0]);
     return;
   }
   if (job.kind == 9) {
@@ -2714,9 +2726,11 @@ void Kernel::apply_job(const FfiJob& job) {
       }
     }
     impl_->bodies[target_id] = result;
+    impl_->imported_display_bodies.erase(target_id);
     if (!job.keep_tools) {
       for (std::size_t index = 1; index < job.target_body_ids.size(); ++index) {
         impl_->bodies.erase(job.target_body_ids[index]);
+        impl_->imported_display_bodies.erase(job.target_body_ids[index]);
       }
     }
     return;
@@ -2982,6 +2996,7 @@ void Kernel::apply_job(const FfiJob& job) {
       throw std::runtime_error("boolean operation produced a null shape");
     }
     found->second = result;
+    impl_->imported_display_bodies.erase(body_id);
   }
 }
 
@@ -4237,6 +4252,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
                           const TopoDS_Shape& shape,
                           double linear_deflection,
                           double angular_deflection,
+                          bool imported_display = false,
                           const SectionMeshBudget* budget = nullptr,
                           const Message_ProgressRange& range = Message_ProgressRange());
 
@@ -4358,7 +4374,7 @@ FfiSectionGeometry Kernel::section_geometry(std::uint64_t body_id,
   output.outcome = splits_material ? 2 : 1;
   if (output.outcome == 2 && options.include_cutaway) {
     const SectionMeshBudget budget{options.vertices, options.edge_points, progress.get()};
-    output.cutaway = mesh_shape(body_id, clipped, options.deflection, 0.25, &budget, stages.Next());
+    output.cutaway = mesh_shape(body_id, clipped, options.deflection, 0.25, false, &budget, stages.Next());
     progress->check("meshing");
     if (output.cutaway.indices.empty()) {
       throw std::runtime_error("OCCT produced no triangles for the retained section solid");
@@ -4374,7 +4390,8 @@ FfiMesh Kernel::mesh(std::uint64_t body_id) const {
     throw std::runtime_error("body is missing");
   }
 
-  return mesh_shape(body_id, found->second, 0.15, 0.35);
+  return mesh_shape(body_id, found->second, 0.15, 0.35,
+      impl_->imported_display_bodies.count(body_id) != 0);
 }
 
 FfiMesh Kernel::mesh_with_deflection(
@@ -4401,6 +4418,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
                           const TopoDS_Shape& shape,
                           double linear_deflection,
                           double angular_deflection,
+                          bool imported_display,
                           const SectionMeshBudget* budget,
                           const Message_ProgressRange& range) {
   const double linear =
@@ -4434,7 +4452,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
     TopLoc_Location location;
     const Handle(Poly_Triangulation) triangulation =
         BRep_Tool::Triangulation(face, location);
-    if (triangulation.IsNull()) {
+    if (triangulation.IsNull() || triangulation->NbTriangles() == 0 || triangulation->NbNodes() < 3) {
       GProp_GProps properties;
       BRepGProp::SurfaceProperties(face, properties);
       if (!std::isfinite(properties.Mass()) || std::abs(properties.Mass()) > 1e-14) {
@@ -4479,15 +4497,20 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
                 diagnostic << ' ' << (pcurve.IsNull() ? 0 : pcurve->ParametersNb());
               }
             }
-            diagnostic << face_mesh_failure_detail(discrete_face, context->GetParameters())
+            if (!imported_display) diagnostic << face_mesh_failure_detail(discrete_face, context->GetParameters())
                        << spherical_boundary_failure_detail(discrete_face)
                        << boundary_failure_detail(discrete_face, context->GetParameters());
             break;
           }
         }
-        throw std::runtime_error("OCCT did not triangulate body " +
+        const std::string failure = "OCCT did not triangulate body " +
             std::to_string(body_id) + " face " + std::to_string(face_index - 1) +
-            " (" + diagnostic.str() + ")");
+            " (" + diagnostic.str() + ")";
+        if (!imported_display) throw std::runtime_error(failure);
+        output.display_warning_face_indices.push_back(static_cast<std::uint32_t>(face_index - 1));
+        output.display_warning_messages.push_back(rust::String(
+            "Imported STEP face has no display triangles; exact geometry is retained. " +
+            failure.substr(0, 1024)));
       }
     }
   }
@@ -4498,15 +4521,35 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   for (int face_index = 1; face_index <= face_map.Extent(); ++face_index) {
     if (budget) budget->progress->check("mesh extraction");
     const TopoDS_Face face = TopoDS::Face(face_map.FindKey(face_index));
+    // Exact face slots and boundary keys survive absent display triangles.
+    append_plane(output.face_plane_data, face);
+    append_face_signature(output.face_signature_data, face);
+    append_cylinder(output.face_cylinder_data, face);
+    BRepAdaptor_Surface surface(face, true);
+    if (surface.GetType() == GeomAbs_Cone) {
+      const gp_Cone cone = surface.Cone();
+      output.face_cone_data.push_back(1.0);
+      output.face_cone_data.push_back(cone.Axis().Direction().X());
+      output.face_cone_data.push_back(cone.Axis().Direction().Y());
+      output.face_cone_data.push_back(cone.Axis().Direction().Z());
+      output.face_cone_data.push_back(cone.SemiAngle());
+    } else {
+      for (int i = 0; i < 5; ++i) output.face_cone_data.push_back(0.0);
+    }
+    TopTools_IndexedMapOfShape boundary;
+    TopExp::MapShapes(face, TopAbs_EDGE, boundary);
+    for (int i = 1; i <= boundary.Extent(); ++i) {
+      const int index = edge_map.FindIndex(boundary.FindKey(i));
+      if (index <= 0) throw std::runtime_error("face boundary edge is absent from body topology");
+      output.face_edge_indices.push_back(static_cast<std::uint32_t>(index - 1));
+    }
+    output.face_edge_offsets.push_back(static_cast<std::uint32_t>(output.face_edge_indices.size()));
     TopLoc_Location location;
     const Handle(Poly_Triangulation) triangulation =
         BRep_Tool::Triangulation(face, location);
-    if (triangulation.IsNull()) {
+    if (triangulation.IsNull() || triangulation->NbTriangles() == 0 || triangulation->NbNodes() < 3) {
       output.face_first_indices.push_back(static_cast<std::uint32_t>(output.indices.size()));
       output.face_index_counts.push_back(0);
-      append_plane(output.face_plane_data, face);
-      append_face_signature(output.face_signature_data, face);
-      append_cylinder(output.face_cylinder_data, face);
       continue;
     }
     if (budget && (static_cast<std::size_t>(triangulation->NbNodes()) > budget->vertices ||
@@ -4553,31 +4596,23 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
     output.face_index_counts.push_back(
         static_cast<std::uint32_t>(output.indices.size()) -
         output.face_first_indices.back());
-    append_plane(output.face_plane_data, face);
-    append_face_signature(output.face_signature_data, face);
-    append_cylinder(output.face_cylinder_data, face);
-    BRepAdaptor_Surface surface(face, true);
-    if (surface.GetType() == GeomAbs_Cone) {
-      const gp_Cone cone = surface.Cone();
-      output.face_cone_data.push_back(1.0);
-      output.face_cone_data.push_back(cone.Axis().Direction().X());
-      output.face_cone_data.push_back(cone.Axis().Direction().Y());
-      output.face_cone_data.push_back(cone.Axis().Direction().Z());
-      output.face_cone_data.push_back(cone.SemiAngle());
-    } else {
-      for (int i = 0; i < 5; ++i) output.face_cone_data.push_back(0.0);
+    if (output.face_index_counts.back() == 0) {
+      GProp_GProps properties;
+      BRepGProp::SurfaceProperties(face, properties);
+      if (!std::isfinite(properties.Mass()) || std::abs(properties.Mass()) > 1e-14) {
+        const std::string failure = "OCCT triangulation has no usable triangles for body " +
+            std::to_string(body_id) + " face " + std::to_string(face_index - 1);
+        if (!imported_display) throw std::runtime_error(failure);
+        output.display_warning_face_indices.push_back(static_cast<std::uint32_t>(face_index - 1));
+        output.display_warning_messages.push_back(rust::String(
+            "Imported STEP face has no usable display triangles; exact geometry is retained. " + failure));
+      }
     }
-    TopTools_IndexedMapOfShape boundary;
-    TopExp::MapShapes(face, TopAbs_EDGE, boundary);
-    for (int i = 1; i <= boundary.Extent(); ++i) {
-      const int index = edge_map.FindIndex(boundary.FindKey(i));
-      if (index <= 0) throw std::runtime_error("face boundary edge is absent from body topology");
-      output.face_edge_indices.push_back(static_cast<std::uint32_t>(index - 1));
-    }
-    output.face_edge_offsets.push_back(static_cast<std::uint32_t>(output.face_edge_indices.size()));
   }
 
   output.edge_point_offsets.push_back(0);
+  if (imported_display && output.indices.empty())
+    throw std::runtime_error("Imported STEP has no valid display triangles; exact geometry cannot be displayed");
   TopTools_IndexedDataMapOfShapeListOfShape edge_faces;
   TopExp::MapShapesAndUniqueAncestors(shape, TopAbs_EDGE, TopAbs_FACE,
                                       edge_faces, false);

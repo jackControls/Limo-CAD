@@ -2141,6 +2141,43 @@ fn synchronize(
         10,
     );
     let playback_caption = presentation::caption(world);
+    let display_warning_count =
+        services
+            .bridge
+            .with_native_document_owner(&services.engine, &owner, || {
+                Ok(services
+                    .engine
+                    .solid_scene_snapshot()
+                    .bodies
+                    .iter()
+                    .map(|body| body.display_warnings.len())
+                    .sum::<usize>())
+            })?;
+    let display_warning = if display_warning_count == 0 {
+        String::new()
+    } else {
+        format!("{display_warning_count} imported STEP faces could not be displayed. Exact geometry is retained.")
+    };
+    decorate(
+        world,
+        state,
+        camera,
+        &assets,
+        theme,
+        "import-display-warning",
+        side + 16.,
+        top + 8.,
+        (width - side - 32.).max(0.),
+        if display_warning.is_empty() { 0. } else { 42. },
+        Some(&display_warning),
+        Some(Color::srgb(0.95, 0.72, 0.30)),
+        25,
+    );
+    let warning_entity = state.decoration["import-display-warning"];
+    world.entity_mut(warning_entity).insert((
+        TextColor(Color::srgb(0.12, 0.09, 0.03)),
+        TextLayout::new(Justify::Left, bevy::text::LineBreak::WordOrCharacter),
+    ));
     let status = if let Some(caption) = playback_caption {
         caption
     } else if state.status.is_empty() && files::print_message(world, &owner).is_some() {
@@ -2528,6 +2565,10 @@ fn synchronize(
             Surface {
                 name: "document/status".into(),
                 text: Some(status),
+            },
+            Surface {
+                name: "document/import-display-warning".into(),
+                text: (!display_warning.is_empty()).then_some(display_warning),
             },
             Surface {
                 name: "document/presentation".into(),

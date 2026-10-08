@@ -118,6 +118,8 @@ mod ffi {
     struct FfiMesh {
         body_id: u64,
         topology_signature: String,
+        display_warning_face_indices: Vec<u32>,
+        display_warning_messages: Vec<String>,
         positions: Vec<f32>,
         normals: Vec<f32>,
         indices: Vec<u32>,
@@ -1433,6 +1435,25 @@ fn combine_operation_code(operation: CombineOperation) -> u8 {
 }
 
 fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
+    if raw.display_warning_face_indices.len() != raw.display_warning_messages.len()
+        || raw.display_warning_face_indices.iter().any(|index| {
+            *index as usize >= raw.face_first_indices.len()
+                || raw.face_index_counts.get(*index as usize) != Some(&0)
+        })
+    {
+        return Err(OcctError(
+            "OCCT bridge returned malformed display warnings".into(),
+        ));
+    }
+    let display_warnings = raw
+        .display_warning_face_indices
+        .iter()
+        .zip(&raw.display_warning_messages)
+        .map(|(index, message)| limo_cad_solid::DisplayMeshWarningDto {
+            face_key: format!("face:{index}"),
+            message: message.chars().take(250).collect(),
+        })
+        .collect();
     if raw.face_first_indices.len() != raw.face_index_counts.len()
         || raw.face_plane_data.len() != raw.face_first_indices.len() * 13
         || raw.face_signature_data.len() != raw.face_first_indices.len() * 8
@@ -1581,6 +1602,7 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
     Ok(KernelBodyDto {
         body_id: limo_cad_core::BodyId(raw.body_id),
         topology_signature: raw.topology_signature,
+        display_warnings,
         positions: raw.positions,
         normals: raw.normals,
         indices: raw.indices,
