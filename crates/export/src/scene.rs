@@ -318,11 +318,7 @@ mod tests {
                     .iter()
                     .zip(meshes[0].positions.as_chunks::<3>().0.iter())
                 {
-                    let expected = transform.transform_point([
-                        source[0] as f64,
-                        source[1] as f64,
-                        source[2] as f64,
-                    ]);
+                    let expected = transform.transform_point([source[0], source[1], source[2]]);
                     assert!(
                         (0..3).all(|i| (actual[i] - expected[i]).abs() < 1e-5),
                         "{actual:?} != {expected:?}"
@@ -412,7 +408,7 @@ mod tests {
             .iter()
             .zip(meshes[0].positions.as_chunks::<3>().0.iter())
         {
-            assert!((0..3).all(|i| (actual[i] - source[i] as f64).abs() < 1e-5));
+            assert!((0..3).all(|i| (actual[i] - source[i]).abs() < 1e-5));
         }
         assert!(write_3mf_scene(
             &meshes,
@@ -464,7 +460,7 @@ mod tests {
                     .as_chunks::<3>()
                     .0
                     .iter()
-                    .map(|v| transform.transform_point([v[0] as f64, v[1] as f64, v[2] as f64]))
+                    .map(|v| transform.transform_point([v[0], v[1], v[2]]))
                     .collect();
                 let group = if p.occurrence_id == limo_cad_assembly::OccurrenceId(4) {
                     1
