@@ -4257,15 +4257,29 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       int pole_zero_cells=0;
       for (int ti=1;ti<=mesh->NbTriangles();++ti) {
         int ids[3]; mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+        for (int id : ids) if (id<1 || id>mesh->NbNodes()) { eligible=false;why="physical native incidence has invalid node";break; }
+        if (!eligible) break;
         if (certified_zero_pole_cell(mesh,location,ids,pole_aliases)) { ++pole_zero_cells; continue; }
+        gp_Pnt p[3];for (int i=0;i<3;++i) p[i]=mesh->Node(ids[i]).Transformed(location.Transformation());
+        const double area=gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2])).SquareMagnitude();
+        if (!strip_finite(p[0]) || !strip_finite(p[1]) || !strip_finite(p[2]) || !std::isfinite(area)) {
+          eligible=false;why="physical native incidence has nonfinite facet";break;
+        }
+        // Detection must use the same positive physical facets as extraction.
+        // This is no acceptance to omit their source UV regions: a complete
+        // native-domain remesh must pass before the repaired face is retained.
+        if (area==0.0) continue;
         for (int i=0;i<3;++i) ++actual[link(ids[i],ids[(i+1)%3])];
       }
+      if (!eligible) continue;
       bool shortcut=false;
       for (const auto& entry : actual) if (entry.second==1 && !expected.count(entry.first)) {
         if (boundary_nodes.count(entry.first.first) && boundary_nodes.count(entry.first.second)) shortcut=true;
         else why="unexpected boundary has a node outside native wire mapping";
       }
-      if (!shortcut && !pole_zero_cells) { if (why.empty()) why="no mapped-native boundary shortcut"; continue; }
+      bool boundary_deficit=false;
+      for (const auto& key : expected) if (actual.find(key)==actual.end()) boundary_deficit=true;
+      if (!shortcut && !pole_zero_cells && !boundary_deficit) { if (why.empty()) why="no mapped-native boundary shortcut"; continue; }
       if (attempts>=128 || export_boundary_work_>=2097152) { why="export restoration attempt/work budget exhausted"; continue; }
       bool alias=false;
       for (int oi=1;oi<=strip_original_faces_.Extent();++oi) {
@@ -6739,7 +6753,8 @@ class NativeExportIndex {
       std::set<int> selected_edges;
       for (std::size_t i=0;i<std::min<std::size_t>(3,worst_edges.size());++i) selected_edges.insert(worst_edges[i].second+1);
       for (int edge : four_use_edges) { if (selected_edges.size()>=6) break; selected_edges.insert(edge); }
-      struct NativeUse { int count=0,balance=0; std::set<int> faces; std::vector<std::array<int,3>> owners; };
+      struct NativeOwner { int face,orientation,nodes;std::string physical; };
+      struct NativeUse { int count=0,balance=0; std::set<int> faces; std::vector<NativeOwner> owners; };
       std::map<std::pair<int,int>,NativeUse> native_uses;
       TopTools_IndexedMapOfShape native_faces; TopExp::MapShapes(shape_,TopAbs_FACE,native_faces);
       const auto finite_uv=[](const gp_Pnt2d& p) { return std::isfinite(p.X()) && std::isfinite(p.Y()); };
@@ -6764,7 +6779,7 @@ class NativeExportIndex {
         details << ']';
         if (++chart_examples==2) break;
       }
-      std::size_t native_work=0;
+      std::size_t native_work=0,physical_work=0;
       for (int si=1;si<=shells_.Extent();++si) for (TopExp_Explorer fe(shells_.FindKey(si),TopAbs_FACE);fe.More();fe.Next()) {
         const auto face=TopoDS::Face(fe.Current());
         const int face_index=native_faces.FindIndex(face)-1;
@@ -6780,7 +6795,48 @@ class NativeExportIndex {
             const auto mesh=BRep_Tool::Triangulation(face,location);
             const auto polygon=mesh.IsNull() ? Handle(Poly_PolygonOnTriangulation)() :
                 BRep_Tool::PolygonOnTriangulation(edge,mesh,location);
-            use.owners.push_back({face_index,static_cast<int>(orientation),polygon.IsNull() ? 0 : polygon->NbNodes()});
+            std::ostringstream physical;physical.precision(9);
+            const auto rejection=rejections_.find(face_index);
+            if (rejection!=rejections_.end()) physical << " stage:" << rejection->second.substr(0,180);
+            if (!mesh.IsNull() && !polygon.IsNull()) {
+              std::map<std::pair<int,int>,std::array<int,2>> raw;
+              int zero=0,positive=0;std::string zero_example;
+              for (int ti=1;ti<=mesh->NbTriangles();++ti) {
+                if (++physical_work>2097152) throw std::runtime_error("physical owner diagnostic budget");
+                int ids[3];mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+                gp_Pnt p[3];for (int i=0;i<3;++i) {
+                  if (ids[i]<1 || ids[i]>mesh->NbNodes()) throw std::runtime_error("physical owner diagnostic node");
+                  p[i]=mesh->Node(ids[i]).Transformed(location.Transformation());
+                }
+                const double area=gp_Vec(p[0],p[1]).Crossed(gp_Vec(p[0],p[2])).SquareMagnitude();
+                if (!std::isfinite(area)) throw std::runtime_error("physical owner diagnostic area");
+                if (area==0.0) {
+                  ++zero;
+                  if (zero_example.empty() && mesh->HasUVNodes()) {
+                    const auto a=mesh->UVNode(ids[0]),b=mesh->UVNode(ids[1]),c=mesh->UVNode(ids[2]);
+                    std::ostringstream cell;cell.precision(9);
+                    cell << " zero tri/nodes/UVarea " << ti << ':' << ids[0] << '/' << ids[1] << '/' << ids[2] << ':' <<
+                        .5*(b.Coord()-a.Coord()).Crossed(c.Coord()-a.Coord());zero_example=cell.str();
+                  }
+                } else ++positive;
+                for (int i=0;i<3;++i) {
+                  auto& counts=raw[{std::min(ids[i],ids[(i+1)%3]),std::max(ids[i],ids[(i+1)%3])}];
+                  ++counts[0];if (area>0.0) ++counts[1];
+                }
+              }
+              physical << " facets positive/zero " << positive << '/' << zero << " deficient POT slot:nodes:raw/positive";
+              int shown=0;
+              for (int i=1;i<polygon->NbNodes();++i) {
+                const int a=polygon->Node(i),b=polygon->Node(i+1);
+                const auto found=raw.find({std::min(a,b),std::max(a,b)});
+                const auto counts=found==raw.end() ? std::array<int,2>{0,0} : found->second;
+                if (counts[1]==1) continue;
+                physical << ' ' << i-1 << ':' << a << '/' << b << ':' << counts[0] << '/' << counts[1];
+                if (++shown==3) break;
+              }
+              physical << zero_example;
+            }
+            use.owners.push_back({face_index,static_cast<int>(orientation),polygon.IsNull() ? 0 : polygon->NbNodes(),physical.str()});
           }
         }
       }
@@ -6792,7 +6848,7 @@ class NativeExportIndex {
           details << " [edge " << edge.second << " shell " << entry.first.first-1 << " native-deg " <<
               BRep_Tool::Degenerated(TopoDS::Edge(edges_.FindKey(edge.second+1))) << " occurrences/balance/unique-faces " <<
               use.count << '/' << use.balance << '/' << use.faces.size() << " face/orient/POT-nodes";
-          for (const auto& owner : use.owners) details << ' ' << owner[0] << '/' << owner[1] << '/' << owner[2];
+          for (const auto& owner : use.owners) details << " {" << owner.face << '/' << owner.orientation << '/' << owner.nodes << owner.physical << '}';
           details << ']';
         }
       }
