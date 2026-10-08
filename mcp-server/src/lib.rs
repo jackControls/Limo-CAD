@@ -9213,14 +9213,12 @@ mod tests {
         let raw_vertex_count = raw.positions.len() / 3;
         let tri_count = raw.triangle_count();
         assert!(tri_count > 0);
-        assert!(
-            raw_vertex_count >= tri_count * 3 - 2,
-            "OCCT soup should emit ~3 positions per triangle (got {raw_vertex_count} verts, {tri_count} tris)"
+        assert_eq!(
+            raw_vertex_count, 8,
+            "native box mesh should share its eight corners"
         );
-        assert!(
-            limo_cad_export::boundary_edge_count(raw) > 0,
-            "raw OCCT mesh should have boundary edges before export weld"
-        );
+        assert_eq!(limo_cad_export::boundary_edge_count(raw), 0);
+        assert_eq!(limo_cad_export::invalid_model_edge_count(raw), 0);
 
         let exported = server
             .call_tool("solid_export_3mf", json!({"slicer_target": "standard"}))
@@ -9241,9 +9239,9 @@ mod tests {
             vertex_count < tri_count * 3,
             "exported 3MF should be welded ({vertex_count} verts vs {triangle_count} tris)"
         );
-        assert!(
-            vertex_count <= raw_vertex_count / 2,
-            "welded vertex count should be far below raw soup"
+        assert_eq!(
+            vertex_count, raw_vertex_count,
+            "export should preserve the already valid native indexing"
         );
 
         assert_eq!(
