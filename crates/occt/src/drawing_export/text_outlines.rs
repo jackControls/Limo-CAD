@@ -12,6 +12,15 @@ const TOLERANCE_MM: f64 = 0.005;
 const MAX_VERTICES: usize = 200_000;
 const MAX_DXF_BYTES: usize = 32 * 1024 * 1024;
 
+fn generic_fallback(face: &ttf_parser::Face<'_>) -> bool {
+    // OpenType head.flags bit 14 marks symbolic placeholders for Unicode
+    // ranges, not actual character coverage (e.g. macOS LastResort).
+    face.raw_face()
+        .table(ttf_parser::Tag::from_bytes(b"head"))
+        .and_then(|head| head.get(16..18))
+        .is_some_and(|flags| u16::from_be_bytes([flags[0], flags[1]]) & (1 << 14) != 0)
+}
+
 fn fonts() -> Arc<usvg::fontdb::Database> {
     static FONTS: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
     FONTS
@@ -27,24 +36,25 @@ pub fn load_outline_fonts(fallback: Option<&[u8]>) -> usvg::fontdb::Database {
     if let Some(fallback) = fallback {
         fonts.load_font_data(fallback.to_vec());
     }
-    let color_faces: Vec<_> = fonts
+    let unsupported_faces: Vec<_> = fonts
         .faces()
         .filter(|face| {
             fonts
                 .with_face_data(face.id, |bytes, index| {
                     ttf_parser::Face::parse(bytes, index).is_ok_and(|font| {
-                        [b"COLR", b"CBDT", b"sbix", b"SVG "].iter().any(|tag| {
-                            font.raw_face()
-                                .table(ttf_parser::Tag::from_bytes(tag))
-                                .is_some()
-                        })
+                        generic_fallback(&font)
+                            || [b"COLR", b"CBDT", b"sbix", b"SVG "].iter().any(|tag| {
+                                font.raw_face()
+                                    .table(ttf_parser::Tag::from_bytes(tag))
+                                    .is_some()
+                            })
                     })
                 })
                 .unwrap_or(false)
         })
         .map(|face| face.id)
         .collect();
-    for id in color_faces {
+    for id in unsupported_faces {
         fonts.remove_face(id);
     }
     if fonts
@@ -286,11 +296,12 @@ fn font_spans(value: &str, family: &str, fonts: &usvg::fontdb::Database) -> Resu
         fonts
             .with_face_data(id, |bytes, index| {
                 ttf_parser::Face::parse(bytes, index).is_ok_and(|face| {
-                    cluster.chars().all(|ch| {
-                        ch.is_whitespace()
-                            || matches!(ch, '\u{200c}' | '\u{200d}' | '\u{fe0e}' | '\u{fe0f}')
-                            || face.glyph_index(ch).is_some()
-                    })
+                    !generic_fallback(&face)
+                        && cluster.chars().all(|ch| {
+                            ch.is_whitespace()
+                                || matches!(ch, '\u{200c}' | '\u{200d}' | '\u{fe0e}' | '\u{fe0f}')
+                                || face.glyph_index(ch).is_some()
+                        })
                 })
             })
             .unwrap_or(false)
