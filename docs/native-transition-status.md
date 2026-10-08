@@ -28,6 +28,145 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
+Current October 8 Medix qualification: clean matched `8ee3a909` opens the complete
+saved import with zero scene errors and zero display warnings. Its live model
+matches the saved archive: one compound body, 8,908 face identities and dimensions
+536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 86 unmatched
+boundary links and no multiply used links. The copied-mesh station repair now
+gets past the earlier sphere-strip meshing failures. Three-edge recovery now
+qualifies the source crossing and polygon simplicity; the connector cap is still
+refused because its fixed-root fan is not positive. The earlier `d2ba9017` trial exposed a 1.540435 radian facet-normal error
+on sphere face 3779. The earlier `69f1ee6b`/`7c235990` trials
+reported 86 unmatched boundary links and no multiply used links. Conforming
+source-interior refinement resolved their previous largest boundary group while
+preserving the original STEP and document. All 70 installed payload hashes
+match. No successful 3MF or
+native-precision-qualified STL is claimed. The subsequent clean matched
+`19ca11c7` GUI opens the same complete saved import, but export still refuses
+the paired-strip candidate: sphere faces 3779 and 3792 report **consecutive native
+strip stations collapsed**. The next candidate reconstructs distinct station
+indices on copied owner meshes while preserving every native parameter,
+junction endpoint, source witness and closure guard. The subsequent `eeb0aa05`
+physical export reaches the native topology guard described above; no successful
+export is claimed.
+The Medix notes below record earlier
+trials chronologically; they do not supersede this current qualification.
+
+The subsequent clean matched `35722a50` GUI export still reports 86 unmatched
+links. Three continuous source intersections are now qualified, but the thin
+three-edge strips are refused as nonsimple or unoriented. The next candidate
+replaces the scale-dependent UV segment classifier with conservative certified
+separation; ambiguous contacts and every existing source/domain/closure guard
+still reject. It is not yet qualified through the GUI.
+
+The subsequent clean matched `8ee3a909` GUI export gets past that simplicity
+check but still reports 86 unmatched links. Its leading thin spheres now stop
+after meshing at **connector cap lacks a positive source fan**. A bounded
+constrained cap triangulation now preserves every connector and tail station,
+checks positive disjoint ears and seven source precision witnesses, and bounds
+backtracking to 512 states. It awaits GUI qualification; no successful
+native-precision export is claimed.
+
+Actual guarded GUI export on clean matched `0226ec9f` qualifies those connector
+caps and reduces invalid boundary links from 86 to 53 across the same 33 native
+shells, with no multiply used links. Remaining groups include a source-angle
+refinement failure on face 2449, curved trim crossings on 8033/8014, and two-pole
+faces 7236/7146. A bounded two-pole export extension now certifies each independent
+native vertex and original wedge against the final composed quotient, with at
+most four representative choices; it awaits GUI qualification. Export is still
+refused, and the saved Medix model remains unchanged.
+
+On clean matched `cb464867`, actual GUI export reduces invalid links from 53 to
+49, still with no multiply used links across 33 native shells. The independent
+pole proposals now reach refinement; face 7236 fails its source-angle check
+instead of the earlier one-pole eligibility gate. Medix reopens with zero scene
+errors and zero display warnings and still matches its saved archive exactly.
+The next bounded refinement proposal evaluates all four children of both owners
+at seven source witnesses before selecting an interior split, and each child
+inherits its own parent's depth. Original precision, work/depth/node limits,
+native boundaries and final closure checks remain unchanged. GUI qualification
+is pending; native-precision export remains refused.
+
+The actual guarded GUI export on clean matched `7c235990` still reports 86
+unmatched links. Native curve diagnostics rule out zero-area incidence loss on
+the leading sphere faces: all ten existing facets have positive area, but native
+trim samples are missing from their mesh. Their crossing chords correspond to
+nearly coincident source curves, with approximately 1.407e-7 mm native separation
+and recorded tolerances of approximately 0.0483 mm. This observation alone does
+not prove continuous curves are disjoint. `96b567a7` adds export-only continuous
+intersection qualification and f64 strip witnesses. Its actual guarded GUI
+qualification at `d2ba9017` exposed the source-normal failure described above;
+the initial three proposed strip repairs were all rejected. Matching strip
+boundary stations and facet connectivity are being investigated while retaining
+the seven source witnesses. Export is still blocked; no mesh guard is waived.
+
+The clean matched `7c235990` bench session now has a separate preserved
+[lower-clearance checkpoint](../examples/checkpoints/garden-bench-lower-clearances-human-ui.limo)
+with nineteen features. Four lower-rail bores were created through the physical
+Hole dialog at U/V `(32.5, 40)`, `(32.5, 75)`, `(382.5, 40)`, `(382.5, 75)`, using
+5.5 mm diameter, 28 mm distance, simple style, flat bottoms and no flip. The
+feature is named; physical Undo/Redo and Ctrl+S restored the same feature and
+positions, and the saved model matches the live document. The original bench
+checkpoint remains unchanged. The lower rail remains unplaced source stock,
+with no appearance or separate component definition yet; upper and lower rail
+definitions must remain separate. This does not complete the bench walkthrough.
+
+On clean matched `d2ba9017`, physical File/Open reopened the saved four-bore
+bench. Its lower stock now has the upper rail's same deep-green timber appearance
+and a separate named **Lower side rail** definition, with one named **Left lower
+side rail** instance at the source origin. Ctrl+S and read-only archive comparison
+qualified the saved [lower-component checkpoint](../examples/checkpoints/garden-bench-lower-component-human-ui.limo):
+seven definitions and nine occurrences, with existing upper/apron shared
+definitions and placements preserved. Lower-rail placements, its shared right
+instance and the remaining bench geometry are unfinished.
+
+On clean matched `19ca11c7`, the physical Assembly UI placed the left lower rail
+at `(37, 30, 130)` mm, duplicated it, and named/placed the right lower rail at
+`(1135, 30, 130)` mm. Both rotations are zero. Ctrl+S and read-only comparison
+qualified the [lower-placement checkpoint](../examples/checkpoints/garden-bench-lower-placements-human-ui.limo):
+nineteen features, seven definitions and ten occurrences. The two lower rails
+share definition 14 and its four clearance bores, separately from upper-rail
+definition 12. Remaining pilots, geometry, joints and drawing/layout work are
+unfinished.
+
+On clean matched `08efc3e7`, physical top-face selection and the Hole dialog
+added the lower rail's two Ø3.5 mm, 32 mm deep, flat-bottom stretcher pilots at
+stock points `(14, 195, 90)` and `(14, 235, 90)` mm. The named feature and Ctrl+S
+produced the [lower-pilot checkpoint](../examples/checkpoints/garden-bench-lower-pilots-human-ui.limo):
+twenty features, seven definitions and ten occurrences, with both lower rails
+sharing the four side clearances and two top pilots. Read-only inspection of
+the saved parameters and exact live/archive comparison passed. Upper-rail top
+pilots and remaining post pilots, geometry, joints and drawings are unfinished.
+
+On clean matched `35722a50`, the physical Hole dialog added the upper rail's five
+Ø3.5 mm, 32 mm deep, flat-bottom seat-slat pilots at stock X 14 mm, Y
+12.5/102.5/192.5/282.5/372.5 mm, Z 90 mm. The named feature, all-body Browser
+visibility restoration and Ctrl+S produced the
+[rail-pilot checkpoint](../examples/checkpoints/garden-bench-rail-pilots-human-ui.limo):
+twenty-one features, seven definitions and ten occurrences. Upper and lower
+rails retain separate definitions and their correct shared pilot patterns.
+Saved parameters and exact live/archive comparison passed; the full frame was
+captured. Remaining post pilots, geometry, joints and drawings are unfinished.
+
+On clean matched `0226ec9f`, guarded physical Hole input added the left-front
+post's six Ø3.5 mm, 39 mm deep, flat-bottom rail/arm pilots at stock
+X 0 mm, Y 32.5 mm, Z 365/400/170/205/590/615 mm. The named feature, restored
+all-body visibility, Isometric/Fit and Ctrl+S produced the
+[left-front pilot checkpoint](../examples/checkpoints/garden-bench-left-front-pilots-human-ui.limo):
+twenty-two features, seven definitions and ten occurrences. Saved parameters,
+previous hole patterns and assembly preservation, and exact live/archive
+comparison passed. Right-front apron and both rear-post pilot patterns,
+remaining geometry, joints and drawings are unfinished.
+
+On clean matched `cb464867`, physical Hole input added the right-front post's
+two Ø3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
+Z 350/390 mm. Naming, restoring all Browser eyes and Ctrl+S produced the
+[front pilot checkpoint](../examples/checkpoints/garden-bench-front-pilots-human-ui.limo):
+twenty-three features, seven definitions and ten occurrences. Both front posts
+now retain their apron and six-position rail/arm pilots. Saved parameters and
+exact live/archive comparison passed. Both rear-post patterns, remaining
+geometry, joints and drawings are unfinished.
+
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled
 native control and all installed payload hashes without rebuilding, promoting or

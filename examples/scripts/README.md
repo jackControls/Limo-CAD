@@ -157,8 +157,83 @@ geometry and references.
     through the physical Ctrl+S shortcut. The saved project has eighteen features
     and seven bodies; the lower stock is still at its source origin and has no
     bores, appearance or component definition. Its reusable definition must remain
-    separate from the upper rail. Lower-rail clearance bores and placements,
-    other post pilots, joints, drawing sheets and print layouts remain unfinished.
+    separate from the upper rail.
+20. On clean matched `7c235990`, isolate the lower stock, select its outward −X
+    face and create **Lower side rail / Post clearances Ø5.5 x 28 / Four positions**
+    through the Hole dialog. Enter `(32.5, 40)`, `(32.5, 75)`, `(382.5, 40)` and
+    `(382.5, 75)`, committing numeric fields with Tab. Set simple style, 5.5 mm
+    diameter, 28 mm distance, flat bottom and no flip. Physical Undo removes the
+    bores; Redo restores their feature identity, positions and name. Save with
+    Ctrl+S. The new [lower-clearance checkpoint](../checkpoints/garden-bench-lower-clearances-human-ui.limo)
+    has nineteen features, seven bodies, six definitions and eight occurrences;
+    its live model matches the archive. The original stock checkpoint remains
+    preserved. Lower-rail appearance, its separate definition and placements,
+    remaining pilots, joints, drawing sheets and print layouts remain unfinished.
+21. Reopen the lower-clearance checkpoint through the native Open dialog. On
+    clean matched `d2ba9017`, select Body7 and apply the existing upper rail's
+    appearance: `#41544D`, **Deep green**, **Painted timber (visual designation)**,
+    family **Painted timber**, brand **Generic**. In Assembly, use **Make component**
+    and name the separate reusable definition **Lower side rail** and its instance
+    **Left lower side rail**. Save with Ctrl+S. The preserved
+    [lower-component checkpoint](../checkpoints/garden-bench-lower-component-human-ui.limo)
+    has seven definitions and nine occurrences, and its archive matches the live
+    model. The new instance is still at the source origin; its placement and
+    shared right instance remain unfinished.
+22. On clean matched `19ca11c7`, set the left lower instance's placement to
+    `(37, 30, 130)` mm with zero rotation, apply and save. Duplicate that instance
+    in Assembly, select the duplicate, rename it **Right lower side rail**, and
+    apply `(1135, 30, 130)` mm with zero rotation. Save with Ctrl+S and use Fit.
+    The [lower-placement checkpoint](../checkpoints/garden-bench-lower-placements-human-ui.limo)
+    has nineteen features, seven definitions and ten occurrences. Both lower
+    instances share definition 14 and all four bores; the upper rails retain
+    their separate definition 12. The saved model matches the live document.
+    Top pilots, remaining post pilots, geometry, joints and drawing/layout work
+    remain unfinished.
+
+23. On clean matched `08efc3e7`, select the lower rail's top face through the
+    viewport and add the two stretcher pilots through Hole. The face basis is
+    centred at `(14, 207.5, 90)` mm with U along X and V along Y: enter U/V
+    `(0, -12.5)` and `(0, 27.5)` for stock points `(14, 195, 90)` and
+    `(14, 235, 90)`. Use Ø3.5 mm, Distance 32 mm, Simple, Flat bottom, no flip.
+    Name the feature **Lower side rail / Stretcher top pilots Ø3.5 x 32 / Two positions**
+    and save. The [lower-pilot checkpoint](../checkpoints/garden-bench-lower-pilots-human-ui.limo)
+    has twenty features; both lower occurrences retain their placements and
+    share the new bores. Read-only archive inspection confirms every parameter
+    and an exact live/saved match. Upper-rail top pilots and remaining post
+    pilots, geometry, joints and drawing/layout work remain unfinished.
+24. On clean matched `35722a50`, isolate the upper stock and select its top face
+    through the viewport. Add five Ø3.5 mm, 32 mm deep, simple, flat-bottom pilots
+    with no flip at U/V `(0, -195)`, `(0, -105)`, `(0, -15)`, `(0, 75)`, `(0, 165)`.
+    Its centred face basis is the same as the lower stock; these are stock points
+    X 14 mm, Y 12.5/102.5/192.5/282.5/372.5 mm, Z 90 mm. Name the feature
+    **Upper side rail / Seat slat top pilots Ø3.5 x 32 / Five positions**.
+    Restore all seven bodies through their Browser eyes, use Isometric/Fit and
+    save. The [rail-pilot checkpoint](../checkpoints/garden-bench-rail-pilots-human-ui.limo)
+    has twenty-one features, seven definitions and ten occurrences. The upper
+    and lower definitions remain separate; their respective shared pairs show
+    five seat-slat and two stretcher pilots. Saved parameters and exact live/archive
+    comparison passed. Remaining post pilots, geometry, joints and drawings
+    remain unfinished.
+25. On clean matched `0226ec9f`, isolate Body1 and select its outward −X face in
+    Left view. Its basis is origin `(0, 65, 0)`, U `(0, -1, 0)`, V `(0, 0, 1)`.
+    Add six simple Ø3.5 mm, 39 mm deep, flat-bottom pilots with no flip at U 32.5,
+    V 365/400/170/205/590/615 mm. Name the feature **Left front post / Rail and
+    arm pilots Ø3.5 x 39 / Six positions**. Restore all seven Browser eyes,
+    use Isometric/Fit and save. The
+    [left-front pilot checkpoint](../checkpoints/garden-bench-left-front-pilots-human-ui.limo)
+    has twenty-two features with the previous hole patterns and assembly intact;
+    exact live/archive comparison passed. Right-front apron and both rear-post
+    pilot patterns, remaining geometry, joints and drawings remain unfinished.
+26. On clean matched `cb464867`, isolate Body2 and select its outward −Y face in
+    Front view. Its basis is origin `(0, 0, 0)`, U `(1, 0, 0)`, V `(0, 0, 1)`.
+    Add two simple Ø3.5 mm, 39 mm deep, flat-bottom pilots with no flip at U 32.5,
+    V 350/390 mm. Name the feature **Right front post / Apron pilots Ø3.5 x 39 /
+    Z350 and Z390**. Restore all seven Browser eyes, use Isometric/Fit and save.
+    The [front pilot checkpoint](../checkpoints/garden-bench-front-pilots-human-ui.limo)
+    has twenty-three features, seven definitions and ten occurrences, with both
+    front-post patterns complete. Saved parameters and exact live/archive
+    comparison passed. Both rear-post patterns, remaining geometry, joints and
+    drawings remain unfinished.
 
 Use the saved **Named Views** for a demonstration:
 
