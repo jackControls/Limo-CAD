@@ -228,6 +228,18 @@ it is not a native-winding-qualified export. A separate f64 export channel and
 precision-preserving text STL path are under development. Display remains at
 zero errors/warnings and the saved source geometry remains unchanged.
 
+Clean matched `280e1f64` installs the separate double-precision native export
+channel and retains every positive-area native facet. All 70 installed payload
+hashes match the clean manifest. Reopening the complete checkpoint still reports
+zero scene errors and display warnings; its live model matches the saved archive.
+Actual UI 3MF preflight now reaches native closure validation but refuses 115
+unmatched links across 33 native shells. Retaining positive tiny facets did not
+change that count. Source-face diagnostics identify boundary shortcuts, including
+faces 2449 and 1491, whose neighboring faces retain intervening native edge
+samples. A native-topology-proven repair remains open; no precision-qualified
+STL or successful 3MF export is claimed. Canceling preflight leaves the document
+unchanged and the CAD window active.
+
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,
