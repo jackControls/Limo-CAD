@@ -6,9 +6,9 @@
 - Related: [docs/proposed-architecture.md](../proposed-architecture.md),
   [docs/mcp-harness.md](../mcp-harness.md),
   [docs/agentic/STEERABLE_MCP.md](../agentic/STEERABLE_MCP.md)
-- Tracking (discussion): focus [#10](https://github.com/jackControls/Limo-CAD/issues/10),
-  co-link [#11](https://github.com/jackControls/Limo-CAD/issues/11);
-  multi-window [#12](https://github.com/jackControls/Limo-CAD/issues/12) is
+- Tracking (discussion): focus [#10](https://github.com/limo-cad/Limo-CAD/issues/10),
+  co-link [#11](https://github.com/limo-cad/Limo-CAD/issues/11);
+  multi-window [#12](https://github.com/limo-cad/Limo-CAD/issues/12) is
   **deferred** (not P0)
 
 ## Context

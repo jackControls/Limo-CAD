@@ -1,6 +1,6 @@
 # ADR 0007 — Limo product name and localized presentation
 
-- Status: **Accepted** (2026-10-02, accepted in [#195](https://github.com/jackControls/Limo-CAD/pull/195))
+- Status: **Accepted** (2026-10-02, accepted in [#195](https://github.com/limo-cad/Limo-CAD/pull/195))
 - Date: 2026-10-01
 - Updated: 2026-10-02
 - Detail: [Limo naming proposal](../limo-naming-proposal.md)

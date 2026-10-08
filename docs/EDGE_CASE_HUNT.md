@@ -5,7 +5,7 @@ for people to try **real parts** and **weird geometry** and tell us where it
 breaks. Every report becomes a regression test, so the bug stays fixed.
 
 This is the companion guide to the pinned
-[Edge-case hunt issue](https://github.com/jackControls/Limo-CAD/issues/45).
+[Edge-case hunt issue](https://github.com/limo-cad/Limo-CAD/issues/45).
 
 ## Why edge cases matter
 
@@ -23,7 +23,7 @@ you to try things we never would.
    whatever you actually need. Or work through the challenge list below.
 3. **When something breaks**, report it (see below). If it *works*, that's
    also useful — say so in the
-   [Edge-case hunt issue](https://github.com/jackControls/Limo-CAD/issues/45)
+   [Edge-case hunt issue](https://github.com/limo-cad/Limo-CAD/issues/45)
    and we'll mark it as verified.
 
 ## Challenge list — where edge cases hide
@@ -67,7 +67,7 @@ A good report takes five minutes and saves us an hour:
 
 Use the [bug template](../.github/ISSUE_TEMPLATE/bug_report.yml) (open an
 issue and pick *Bug report*), or comment on the
-[Edge-case hunt issue](https://github.com/jackControls/Limo-CAD/issues/45) if
+[Edge-case hunt issue](https://github.com/limo-cad/Limo-CAD/issues/45) if
 you are not sure it is a bug. Either way, try to say whether it feels like an
 edge case — that gets the `edge-case` label and a regression test.
 
@@ -98,5 +98,5 @@ you can inspect them with any unzip tool.
 
 **I can't build the project — can I still help?** Yes! The browser dev build
 has the same Rust model via WASM. If even that is too much, you can still help
-by reviewing [open issues](https://github.com/jackControls/Limo-CAD/issues)
+by reviewing [open issues](https://github.com/limo-cad/Limo-CAD/issues)
 and confirming reproductions.

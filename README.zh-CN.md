@@ -13,19 +13,19 @@
 在你自己的电脑上设计机械零件、装配体和工程图，可以亲手操作，也可以交给 AI 智能体，
 每一个草图和特征都保持可编辑。
 
-[![最新版本](https://img.shields.io/github/v/release/jackControls/Limo-CAD?label=release)](https://github.com/jackControls/Limo-CAD/releases/latest)
+[![最新版本](https://img.shields.io/github/v/release/limo-cad/Limo-CAD?label=release)](https://github.com/limo-cad/Limo-CAD/releases/latest)
 [![许可证：LGPL 2.1+](https://img.shields.io/badge/license-LGPL%202.1%2B-blue)](LICENSE)
-[![Discussions](https://img.shields.io/github/discussions/jackControls/Limo-CAD?label=discussions)](https://github.com/jackControls/Limo-CAD/discussions)
+[![Discussions](https://img.shields.io/github/discussions/limo-cad/Limo-CAD?label=discussions)](https://github.com/limo-cad/Limo-CAD/discussions)
 
 **早期预览版（Pre-alpha）· 0.2.2 版**
-· [发布说明与检查结果](https://github.com/jackControls/Limo-CAD/releases/tag/v0.2.2)
+· [发布说明与检查结果](https://github.com/limo-cad/Limo-CAD/releases/tag/v0.2.2)
 · [安装帮助（英文）](docs/INSTALL.md)
 
 | 平台 | 下载 |
 |---|---|
-| Windows 11 | [x64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-x64.zip) · [ARM64 ZIP](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-arm64.zip) |
-| macOS（Apple 芯片） | [DMG](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_aarch64.dmg)，已签名并经过公证 |
-| Linux | [Ubuntu 26.04 DEB](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.deb) · [AppImage](https://github.com/jackControls/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.AppImage) |
+| Windows 11 | [x64 ZIP](https://github.com/limo-cad/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-x64.zip) · [ARM64 ZIP](https://github.com/limo-cad/Limo-CAD/releases/download/v0.2.2/noBS-CAD-0.2.2-windows-arm64.zip) |
+| macOS（Apple 芯片） | [DMG](https://github.com/limo-cad/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_aarch64.dmg)，已签名并经过公证 |
+| Linux | [Ubuntu 26.04 DEB](https://github.com/limo-cad/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.deb) · [AppImage](https://github.com/limo-cad/Limo-CAD/releases/download/v0.2.2/noBS.CAD_0.2.2_amd64.AppImage) |
 
 Windows 代码签名正在办理中。在此之前，首次启动时 SmartScreen 可能会发出警告，
 请选择 **更多信息 → 仍要运行**。应用仍处于早期预览阶段，请为重要项目做好备份。
@@ -54,45 +54,45 @@ Windows 代码签名正在办理中。在此之前，首次启动时 SmartScreen
 <table>
 <tr>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench.png" alt="带有弧形顶部靠背板条和圆角扶手的花园长椅"></a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#garden-bench"><img src="docs/assets/showcase/bench.png" alt="带有弧形顶部靠背板条和圆角扶手的花园长椅"></a><br>
 <b>花园长椅</b><br>
 修改一根靠背板条的尺寸，整个靠背随之更新。框架、扶手和连接关系保持可编辑。
 </td>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise.png" alt="带有受约束滑动钳口和紧凑 D 形丝杠手柄的台虎钳"></a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#d-screw-vise"><img src="docs/assets/showcase/vise.png" alt="带有受约束滑动钳口和紧凑 D 形丝杠手柄的台虎钳"></a><br>
 <b>台虎钳</b><br>
 转动丝杠，钳口随之移动。100 mm 钳口，90 mm 行程，六个 3D 打印零件加标准件。
 </td>
 <td align="center" valign="top" width="33%">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine.png" alt="带轴承支撑轴和发电机传动的两级垂直轴涡轮"></a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><img src="docs/assets/showcase/turbine.png" alt="带轴承支撑轴和发电机传动的两级垂直轴涡轮"></a><br>
 <b>垂直轴涡轮</b><br>
 两级 Savonius 叶轮安装在轴承支撑的轴上，通过 4:1 传动驱动发电机。
 </td>
 </tr>
 <tr>
 <td align="center">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#garden-bench"><b>观看</b></a>
-· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#garden-bench">打开配方</a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#garden-bench"><b>观看</b></a>
+· <a href="https://limo-cad.github.io/Limo-CAD/open.html#garden-bench">打开配方</a><br>
 <a href="examples/scripts/garden-bench.nbcad.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/bench.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/bench-loop.gif">建模循环</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/bench-build-full.mp4">MP4</a>
 </td>
 <td align="center">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>观看</b></a>
-· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#d-screw-vise">打开配方</a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#d-screw-vise"><b>观看</b></a>
+· <a href="https://limo-cad.github.io/Limo-CAD/open.html#d-screw-vise">打开配方</a><br>
 <a href="examples/scripts/d-screw-vise.nbcad.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/vise.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/vise-loop.gif">建模循环</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/vise-build-full.mp4">MP4</a>
 </td>
 <td align="center">
-<a href="https://jackcontrols.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>观看</b></a>
-· <a href="https://jackcontrols.github.io/Limo-CAD/open.html#vertical-axis-turbine">打开配方</a><br>
+<a href="https://limo-cad.github.io/Limo-CAD/showcase.html#vertical-axis-turbine"><b>观看</b></a>
+· <a href="https://limo-cad.github.io/Limo-CAD/open.html#vertical-axis-turbine">打开配方</a><br>
 <a href="examples/scripts/vertical-axis-turbine.nbcad.jsonc">源码</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/turbine.nbcad">.nbcad</a>
 · <a href="docs/assets/showcase/turbine-loop.gif">建模循环</a>
-· <a href="https://github.com/jackControls/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
+· <a href="https://github.com/limo-cad/Limo-CAD/releases/download/showcase-v0.2.0/turbine-build-full.mp4">MP4</a>
 </td>
 </tr>
 </table>
@@ -152,7 +152,7 @@ Windows 代码签名正在办理中。在此之前，首次启动时 SmartScreen
 · [文档（英文）](docs/INDEX.md)
 
 有问题、想法，或者想展示你的作品？欢迎到
-[Discussions](https://github.com/jackControls/Limo-CAD/discussions) 发起讨论。
+[Discussions](https://github.com/limo-cad/Limo-CAD/discussions) 发起讨论。
 如果砺模 CAD 对你有用，点一个 star 能帮助更多人发现它。
 
 我们正朝着引导式设计课程和对话式向导努力，并在开发早期的 **三轴 CAM** 基础功能，
