@@ -188,12 +188,19 @@ appearance panel; a physical Fit and native Save As created
 `D:/limo-cad-maintenance/ui-models/Medix KW22 v4 - complete human UI.limo`.
 Its embedded 42,065,951-byte STEP has the original SHA256 and the live model
 matches its saved archive. This is complete display qualification, not complete
-export qualification: actual STL export contains 27 triangles collapsed by
-f32 coordinates, and actual 3MF export refuses a degenerate welded triangle.
+export qualification: actual STL export contains 27 triangles collapsed during
+epsilon welding, and actual 3MF export refuses a degenerate welded triangle.
 The initial STL is retained as diagnostic evidence; it is not a qualified mesh.
 Source-aware export precision work remains open. The 536 mm imported model
 also exceeds the default printer envelope; portable export does not qualify
 physical printing or its unchanged source placement.
+The matched `00603de3` read-only native tessellation inspection returns all
+453,491 triangles without a float-precision failure. Its actual UI STL retry
+is then refused by the strengthened writer at triangle 22,934, with no new
+file created. The export placement layer was found to weld nearby distinct
+vertices before the format writer. Preserving raw STL placement and trying
+exact-coordinate indexing before 3MF tolerance welding are awaiting UI
+qualification; both formats retain strict geometry checks.
 
 The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-bench-human-ui.limo)
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds

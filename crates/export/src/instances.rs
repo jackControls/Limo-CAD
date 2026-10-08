@@ -1,8 +1,5 @@
 //! Select part coordinates or solved assembly placement without retessellating.
-use crate::{
-    mesh_weld::validate_mesh_buffers, weld_triangle_mesh, ExportError, MeshExportScope,
-    TriangleMesh, DEFAULT_WELD_EPSILON,
-};
+use crate::{mesh_weld::validate_mesh_buffers, ExportError, MeshExportScope, TriangleMesh};
 use limo_cad_core::BodyId;
 
 pub struct MeshInstance {
@@ -20,10 +17,10 @@ pub fn prepare_export_meshes(
     scope: MeshExportScope,
 ) -> Result<Vec<TriangleMesh>, ExportError> {
     if scope == MeshExportScope::Definition {
-        return meshes
-            .iter()
-            .map(|mesh| weld_triangle_mesh(mesh, DEFAULT_WELD_EPSILON))
-            .collect();
+        for mesh in meshes {
+            validate_mesh_buffers(mesh)?;
+        }
+        return Ok(meshes.to_vec());
     }
 
     let mut output = Vec::new();
@@ -36,7 +33,9 @@ pub fn prepare_export_meshes(
             continue;
         }
 
-        let indexed = weld_triangle_mesh(source, DEFAULT_WELD_EPSILON)?;
+        // Placement preserves native triangles. Format-specific welding belongs
+        // to the 3MF writer; STL must retain distinct nearby source vertices.
+        validate_mesh_buffers(source)?;
         for p in placements.into_iter().filter(|p| p.visible) {
             let norm = p.rotation.iter().map(|x| x * x).sum::<f64>().sqrt();
             if !norm.is_finite() || norm < 1e-12 || p.translation.iter().any(|x| !x.is_finite()) {
@@ -46,7 +45,7 @@ pub fn prepare_export_meshes(
                 )));
             }
             let [x, y, z, w] = p.rotation.map(|x| x / norm);
-            let mut mesh = indexed.clone();
+            let mut mesh = source.clone();
             mesh.name = format!("{} (instance {})", source.name, p.occurrence_id);
             for v in mesh.positions.as_chunks_mut::<3>().0 {
                 let a = f64::from(v[0]);

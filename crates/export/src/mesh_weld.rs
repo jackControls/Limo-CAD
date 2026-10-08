@@ -16,8 +16,9 @@ pub const DEFAULT_WELD_EPSILON: f32 = 1e-5;
 /// Merge duplicate vertices without masking malformed source buffers.
 ///
 /// Already-valid indexed meshes are preserved exactly. Triangle-soup meshes
-/// are spatially welded using neighboring hash cells, so points within
-/// `epsilon` still match when they lie on opposite sides of a cell boundary.
+/// first merge only identical coordinates, preserving thin native geometry.
+/// If that does not form a valid solid, spatial welding uses neighboring hash
+/// cells, so points within `epsilon` match across cell boundaries.
 pub fn weld_triangle_mesh(mesh: &TriangleMesh, epsilon: f32) -> Result<TriangleMesh, ExportError> {
     validate_mesh_buffers(mesh)?;
     if !epsilon.is_finite() || epsilon <= 0.0 {
@@ -25,8 +26,13 @@ pub fn weld_triangle_mesh(mesh: &TriangleMesh, epsilon: f32) -> Result<TriangleM
             "mesh weld epsilon must be finite and greater than zero".into(),
         ));
     }
-    if invalid_model_edge_count(mesh) == 0 {
+    if validate_3mf_model_mesh(mesh).is_ok() {
         return Ok(mesh.clone());
+    }
+
+    let exact = weld_exact_coordinates(mesh);
+    if validate_3mf_model_mesh(&exact).is_ok() {
+        return Ok(exact);
     }
 
     let vertex_count = mesh.positions.len() / 3;
@@ -99,6 +105,40 @@ pub fn weld_triangle_mesh(mesh: &TriangleMesh, epsilon: f32) -> Result<TriangleM
     })
 }
 
+/// Preserve every triangle and coordinate while indexing exact coincidences.
+/// Buffer finiteness and index validity have already been checked by the caller.
+fn weld_exact_coordinates(mesh: &TriangleMesh) -> TriangleMesh {
+    let mut coordinates: HashMap<[u32; 3], u32> = HashMap::new();
+    let mut positions = Vec::with_capacity(mesh.positions.len());
+    let mut remap = Vec::with_capacity(mesh.positions.len() / 3);
+    for point in mesh.positions.as_chunks::<3>().0 {
+        // Signed zero has one geometric position, although its IEEE bits differ.
+        let key = point.map(|coordinate| {
+            if coordinate == 0.0 {
+                0
+            } else {
+                coordinate.to_bits()
+            }
+        });
+        let index = *coordinates.entry(key).or_insert_with(|| {
+            let index = (positions.len() / 3) as u32;
+            positions.extend_from_slice(point);
+            index
+        });
+        remap.push(index);
+    }
+    TriangleMesh {
+        body_id: mesh.body_id,
+        name: mesh.name.clone(),
+        positions,
+        indices: mesh
+            .indices
+            .iter()
+            .map(|&index| remap[index as usize])
+            .collect(),
+    }
+}
+
 /// Reject buffers that cannot be represented safely in STL or 3MF.
 pub fn validate_mesh_buffers(mesh: &TriangleMesh) -> Result<(), ExportError> {
     if !mesh.positions.len().is_multiple_of(3) {
@@ -153,6 +193,30 @@ pub fn validate_3mf_model_mesh(mesh: &TriangleMesh) -> Result<(), ExportError> {
             "body {} contains a degenerate triangle after welding",
             mesh.body_id.0
         )));
+    }
+    for (triangle_index, triangle) in mesh.indices.as_chunks::<3>().0.iter().enumerate() {
+        let points = triangle.map(|index| {
+            let base = index as usize * 3;
+            [
+                f64::from(mesh.positions[base]),
+                f64::from(mesh.positions[base + 1]),
+                f64::from(mesh.positions[base + 2]),
+            ]
+        });
+        let u: [f64; 3] = std::array::from_fn(|axis| points[1][axis] - points[0][axis]);
+        let v: [f64; 3] = std::array::from_fn(|axis| points[2][axis] - points[0][axis]);
+        let cross = [
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0],
+        ];
+        let area_squared = cross.iter().map(|value| value * value).sum::<f64>();
+        if !area_squared.is_finite() || area_squared == 0.0 {
+            return Err(ExportError(format!(
+                "body {} triangle {triangle_index} has zero-area or non-finite geometry after welding",
+                mesh.body_id.0
+            )));
+        }
     }
     let invalid_edges = invalid_model_edge_count(mesh);
     if invalid_edges != 0 {
