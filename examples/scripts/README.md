@@ -58,6 +58,12 @@ retains a tangent capsule after center-axis picks, zero-width rejection, typed
 Its four DOF leave length and placement free. Active dimension ink still needs
 the shared deployed repair; the other slot modes remain separate.
 
+[`surface-ui-overall-slot-human-ui.limo`](../checkpoints/surface-ui-overall-slot-human-ui.limo)
+retains the outside-endpoint slot after too-wide rejection/recovery, valid 10 mm
+width, retained 12 mm width edit, Cancel, Undo/Redo and exact native reopen.
+Its four DOF remain free. The misleading rejection message is repaired in source;
+deployed message and shared dimension-ink rechecks remain pending.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

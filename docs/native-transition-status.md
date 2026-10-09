@@ -109,6 +109,22 @@ claim is made. The shared dimension-ink defect remains; Slot's primary control
 is clipped at this ribbon width and its active caption is unqualified. Overall
 slot and Center-point slot remain next.
 
+Overall slot now passes outside-endpoint creation, safe too-wide rejection and
+recovery, exact draft Cancel, retained width edit, creation/edit Undo/Redo and
+exact native save/reopen. Width 30 on outside length 20 wrongly says "segment has
+zero length"; `15f6f407` changes only that Overall rejection branch to actionable
+width/length guidance. Both reviewers inspected pre-mutation rejection and error
+lifecycle compatibility. The fix is committed/pushed, with no local suite/build
+or deployed message proof. Shared dimension ink remains a second polish defect.
+Center-point slot remains next.
+
+Windows native CI for `230e9dc2` passed 937 tests, zero failures and ten ignored,
+including exact thread and both visibility/history contracts. This compiles the
+earlier feedback/focus/layout/variant repairs; live presentation remains pending.
+Ubuntu has only the retained strict thread failure and no poison/new failure;
+macOS is still pending at this receipt. `15f6f407` Linux and repository/WASM checks
+passed, but its own native qualification remains pending.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
