@@ -14,6 +14,7 @@ pub(crate) struct Stage {
     usable: AtomicBool,
     receipt: DocumentReceipt,
     feature_id: u64,
+    create_split: bool,
 }
 impl Stage {
     fn new(engine: &AppState, receipt: &DocumentReceipt, id: u64) -> Result<Self, String> {
@@ -38,6 +39,7 @@ impl Stage {
             usable: AtomicBool::new(false),
             receipt: receipt.clone(),
             feature_id: id,
+            create_split: false,
         };
         parse_engine_envelope(
             stage
@@ -47,13 +49,55 @@ impl Stage {
         stage.reset()?;
         Ok(stage)
     }
+    fn new_split(engine: &AppState, receipt: DocumentReceipt) -> Result<Self, String> {
+        let live_errors = engine.solid_scene_snapshot().errors.clone();
+        let source = parse_engine_envelope(engine.engine_call("project_export_model", ""))?
+            .as_str()
+            .ok_or("Engine omitted the Split Body snapshot")?
+            .to_owned();
+        let stage = Self {
+            engine: AppState::new(),
+            source,
+            input_index: 0,
+            restore_index: 0,
+            usable: AtomicBool::new(false),
+            receipt,
+            feature_id: 0,
+            create_split: true,
+        };
+        parse_engine_envelope(
+            stage
+                .engine
+                .bind_project_session(&stage.receipt.owner.document_id),
+        )?;
+        stage.reset()?;
+        let replay = stage.engine.solid_scene_snapshot();
+        let replay_errors: Vec<_> = replay
+            .errors
+            .iter()
+            .filter(|error| !live_errors.contains(error))
+            .collect();
+        if !replay_errors.is_empty() {
+            let messages = replay_errors
+                .into_iter()
+                .map(|error| error.message.as_str())
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(format!(
+                "The Split Body baseline could not rebuild: {messages}"
+            ));
+        }
+        Ok(stage)
+    }
     fn reset(&self) -> Result<(), String> {
         self.usable.store(false, Ordering::Release);
         parse_engine_envelope(self.engine.project_load(&json!(self.source).to_string()))?;
-        parse_engine_envelope(
-            self.engine
-                .solid_set_rollback(&json!({"rollback_index":self.input_index}).to_string()),
-        )?;
+        if !self.create_split {
+            parse_engine_envelope(
+                self.engine
+                    .solid_set_rollback(&json!({"rollback_index":self.input_index}).to_string()),
+            )?;
+        }
         self.usable.store(true, Ordering::Release);
         Ok(())
     }
@@ -66,20 +110,34 @@ impl Stage {
             return Err("Reopen the feature: its prepared model is no longer available".into());
         }
         let result = (|| {
-            super::super::super::dispatch_inbox_on_engine(&self.engine, operation, arguments)?;
-            let result = parse_engine_envelope(
-                self.engine
-                    .solid_set_rollback(&json!({"rollback_index":self.restore_index}).to_string()),
-            )?;
+            let prior_errors = self.engine.solid_scene_snapshot().errors.clone();
+            let result =
+                super::super::super::dispatch_inbox_on_engine(&self.engine, operation, arguments)?;
+            let result =
+                if self.create_split {
+                    result
+                } else {
+                    parse_engine_envelope(self.engine.solid_set_rollback(
+                        &json!({"rollback_index":self.restore_index}).to_string(),
+                    ))?
+                };
             let scene = self.engine.solid_scene_snapshot();
-            if !scene.errors.is_empty() {
-                let messages = scene
-                    .errors
-                    .iter()
+            let errors: Vec<_> = scene
+                .errors
+                .iter()
+                .filter(|error| !self.create_split || !prior_errors.contains(error))
+                .collect();
+            if !errors.is_empty() {
+                let messages = errors
+                    .into_iter()
                     .map(|error| error.message.as_str())
                     .collect::<Vec<_>>()
                     .join("; ");
-                return Err(format!("The edited feature could not rebuild: {messages}"));
+                return Err(if self.create_split {
+                    messages
+                } else {
+                    format!("The edited feature could not rebuild: {messages}")
+                });
             }
             Ok(result)
         })();
@@ -96,6 +154,29 @@ impl Stage {
 }
 
 impl SessionBridgeState {
+    pub(crate) fn apply_native_prepared_split_at(
+        &self,
+        engine: &AppState,
+        (owner, revision): (&DocumentContext, u64),
+        arguments: &Value,
+        validate: impl FnOnce() -> Result<(), String>,
+    ) -> Result<super::super::NativeMutationResult, String> {
+        let stage = Stage::new_split(
+            engine,
+            DocumentReceipt {
+                owner: owner.clone(),
+                revision,
+            },
+        )?;
+        self.apply_native_prepared_edit_at(
+            engine,
+            (owner, revision),
+            "solid_split_body",
+            arguments,
+            &stage,
+            validate,
+        )
+    }
     pub(crate) fn apply_native_prepared_edit_at(
         &self,
         engine: &AppState,
@@ -106,25 +187,29 @@ impl SessionBridgeState {
         validate: impl FnOnce() -> Result<(), String>,
     ) -> Result<super::super::NativeMutationResult, String> {
         use crate::session_bridge::{bump_engine_revision, native_history::HistoryState};
-        if !matches!(
-            operation,
-            "solid_edit_extrude"
-                | "solid_edit_fillet"
-                | "solid_edit_chamfer"
-                | "solid_edit_shell"
-                | "solid_edit_external_thread"
-                | "solid_edit_hole"
-                | "solid_edit_move_copy"
-                | "solid_edit_combine"
-                | "construction_plane_edit_offset"
-                | "construction_plane_edit_midplane"
-                | "construction_plane_edit_at_angle"
-                | "solid_edit_mirror"
-                | "solid_edit_split_body"
-                | "solid_edit_rectangular_pattern"
-                | "solid_edit_circular_pattern"
-        ) || arguments["feature_id"].as_u64() != Some(stage.feature_id)
-        {
+        let valid_operation = if stage.create_split {
+            operation == "solid_split_body" && arguments.get("feature_id").is_none()
+        } else {
+            matches!(
+                operation,
+                "solid_edit_extrude"
+                    | "solid_edit_fillet"
+                    | "solid_edit_chamfer"
+                    | "solid_edit_shell"
+                    | "solid_edit_external_thread"
+                    | "solid_edit_hole"
+                    | "solid_edit_move_copy"
+                    | "solid_edit_combine"
+                    | "construction_plane_edit_offset"
+                    | "construction_plane_edit_midplane"
+                    | "construction_plane_edit_at_angle"
+                    | "solid_edit_mirror"
+                    | "solid_edit_split_body"
+                    | "solid_edit_rectangular_pattern"
+                    | "solid_edit_circular_pattern"
+            ) && arguments["feature_id"].as_u64() == Some(stage.feature_id)
+        };
+        if !valid_operation {
             return Err("This prepared model belongs to another feature edit".into());
         }
         let mut publishers = self
