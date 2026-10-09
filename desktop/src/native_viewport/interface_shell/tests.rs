@@ -514,6 +514,43 @@ fn native_pointer_and_mcp_resolve_the_same_retained_control() {
 }
 
 #[test]
+fn focus_identity_tracks_retained_rebinding_and_loss_without_freezing_inspection_ids() {
+    let (mut app, handle, entity, _) = fixture();
+    click(&handle).unwrap();
+    handle.take_actions().unwrap();
+    let first = handle.inspect().unwrap();
+    let second = handle.inspect().unwrap();
+    assert_ne!(first["focused_control"], second["focused_control"]);
+    assert_eq!(first["focused_binding"], second["focused_binding"]);
+    assert_eq!(first["focused_binding"]["control_key"], entity.to_bits());
+    assert_eq!(first["focused_binding"]["binding"], 1);
+
+    app.world_mut()
+        .get_mut::<InterfaceControl>(entity)
+        .unwrap()
+        .binding += 1;
+    app.update();
+    let rebound = handle.inspect().unwrap();
+    assert_eq!(rebound["focused_binding"]["binding"], 2);
+    assert_ne!(first["focused_binding"], rebound["focused_binding"]);
+    assert!(handle.take_actions().unwrap().is_empty());
+
+    // A desired document transition cannot expose the previous laid-out field.
+    handle.present(frame("document-b", 2)).unwrap();
+    assert!(handle.inspect().is_err());
+    app.update();
+    let replaced = handle.inspect().unwrap();
+    assert!(replaced["focused_control"].is_null());
+    assert!(replaced["focused_binding"].is_null());
+
+    click(&handle).unwrap();
+    handle.take_actions().unwrap();
+    app.world_mut().despawn(entity);
+    app.update();
+    assert!(handle.inspect().unwrap()["focused_binding"].is_null());
+}
+
+#[test]
 fn closing_a_modal_restores_previous_focus_only_if_the_control_survives() {
     let (mut app, handle, entity, _) = fixture();
     click(&handle).unwrap();

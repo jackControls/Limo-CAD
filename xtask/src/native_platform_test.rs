@@ -62,7 +62,10 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             _ => bail!("Unknown native-platform option {arg}"),
         }
     }
-    ensure!(desktop_input, "Use --desktop-input on a disposable desktop: this check focuses its own window and uses the system text clipboard");
+    ensure!(
+        desktop_input,
+        "Use --desktop-input on a disposable desktop: this check focuses its own window and uses the system text clipboard"
+    );
     ensure!(
         !accessibility
             || cfg!(target_os = "windows") && !print_cancel && !ime_japanese && !ime_libpinyin,
@@ -152,8 +155,10 @@ fn exercise(
     }
     let trace = std::env::var("LIMO_CAD_NATIVE_IME_TRACE").as_deref() == Ok("1");
     if trace {
-        ensure!(cfg!(target_os = "macos") && ime_stock.is_some(),
-            "IME tracing requires the existing macOS Japanese scenario and passed stock prerequisite");
+        ensure!(
+            cfg!(target_os = "macos") && ime_stock.is_some(),
+            "IME tracing requires the existing macOS Japanese scenario and passed stock prerequisite"
+        );
         japanese_ime::guard()?;
         fs::write(
             out.join("ime-trace.json"),
@@ -202,6 +207,8 @@ fn exercise(
         .as_str()
         .context("Rename field has no value")?
         .to_owned();
+    #[cfg(windows)]
+    driver.event("pin-text-target")?;
     ensure!(!name.is_empty(), "Initial document name is empty");
     capture(&mut client, out, "focused")?;
 

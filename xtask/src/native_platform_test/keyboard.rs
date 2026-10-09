@@ -31,10 +31,12 @@ fn activate_target(
 
 pub(super) fn send_key(
     key: &str,
+    intended: &Value,
     mut observe: impl FnMut() -> Result<Value>,
     mut send: impl FnMut(&Value, Value) -> Result<Value>,
 ) -> Result<Value> {
     let mut observed = observe()?;
+    require_same_target(intended, &observed)?;
     let foreground = observed["foreground"]
         .as_bool()
         .ok_or_else(|| anyhow::anyhow!("Owned observation omitted foreground state"))?;
@@ -43,6 +45,7 @@ pub(super) fn send_key(
         // the key must use a new observation of the same document and window.
         observed = activate_target(&observed, &mut observe, &mut send)?.0;
     }
+    require_text_target(intended, &observed)?;
     // Any denial or partial receipt remains fatal. Repeating a key could edit
     // twice or act on a different control, even if the next observation looks OK.
     let receipt = send(&observed, json!({"action":"key","key":key}))?;
@@ -51,6 +54,58 @@ pub(super) fn send_key(
         "Key did not complete; do not retry blindly: {receipt}"
     );
     Ok(receipt)
+}
+
+/// Pin the actual focused Rename field once, before this scenario's first key.
+/// Text, selection and snapshot IDs may change; widget binding and owner may not.
+pub(super) fn text_target(observed: &Value) -> Result<Value> {
+    let ui = &observed["inspection"]["ui"];
+    let binding = &ui["focused_binding"];
+    ensure!(
+        observed["editable_focus"] == true
+            && ui["focused_control"].is_string()
+            && binding["control_key"].is_u64()
+            && binding["binding"].is_u64()
+            && binding["context"].is_object()
+            && binding["context"]["epoch"].is_u64()
+            && binding["context"]["document_id"] == observed["owner"]["document_id"]
+            && binding["context"]["window_id"] == observed["owner"]["window_id"],
+        "The intended editable CAD field has no current retained binding; no key was sent"
+    );
+    let mut focused = ui["surfaces"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|surface| surface["controls"].as_array().into_iter().flatten())
+        .filter(|control| control["id"] == ui["focused_control"]);
+    let field = focused.next().ok_or_else(|| {
+        anyhow::anyhow!("The intended editable CAD field is absent; no key was sent")
+    })?;
+    ensure!(
+        focused.next().is_none()
+            && field["label"] == "Project name"
+            && matches!(
+                field["role"].as_str(),
+                Some("textbox" | "multiline_textbox")
+            )
+            && field["disabled"] == false
+            && field["read_only"] == false,
+        "Focus is not the intended editable Project name field; no key was sent"
+    );
+    Ok(
+        json!({"owner":observed["owner"],"window_handle":observed["window_handle"],
+        "target_kind":observed["target_kind"],"binding":binding}),
+    )
+}
+
+fn require_text_target(intended: &Value, observed: &Value) -> Result<()> {
+    require_same_target(intended, observed)?;
+    let current = text_target(observed)?;
+    ensure!(
+        current["binding"] == intended["binding"],
+        "The intended editable CAD field changed during keyboard preparation; no key was sent"
+    );
+    Ok(())
 }
 
 pub(super) fn require_same_target(expected: &Value, actual: &Value) -> Result<()> {
@@ -70,8 +125,14 @@ mod tests {
 
     fn observation(foreground: bool, token: &str) -> Value {
         json!({"owner":{"pid":91,"process_instance_id":"owned-process",
-            "session_id":"owned-session","document_id":"owned-document","generation":7},
+            "session_id":"owned-session","document_id":"owned-document","window_id":"main","generation":7},
             "window_handle":32,"target_kind":"bevy_window","foreground":foreground,
+            "editable_focus":true,
+            "inspection":{"ui":{"focused_control":format!("field-{token}"),
+                "focused_binding":{"control_key":17,"binding":2,
+                    "context":{"document_id":"owned-document","window_id":"main","epoch":1}},
+                "surfaces":[{"controls":[{"id":format!("field-{token}"),"label":"Project name",
+                    "role":"textbox","disabled":false,"read_only":false,"value":"Untitled"}]}]}},
             "observation":token})
     }
 
@@ -84,6 +145,7 @@ mod tests {
         let calls = RefCell::new(Vec::new());
         let result = send_key(
             "Ctrl+V",
+            &text_target(&observation(true, "pinned")).unwrap(),
             || {
                 calls.borrow_mut().push(json!({"action":"observe"}));
                 Ok(observations
@@ -245,5 +307,66 @@ mod tests {
         let (result, calls) = exercise(vec![observed], vec![]);
         assert!(result.is_err());
         assert_eq!(calls, vec![json!({"action":"observe"})]);
+    }
+
+    #[test]
+    fn missing_replaced_or_uneditable_field_never_receives_a_key() {
+        for (pointer, replacement) in [
+            ("/editable_focus", json!(false)),
+            ("/inspection/ui/focused_control", Value::Null),
+            ("/inspection/ui/focused_binding", Value::Null),
+            ("/inspection/ui/focused_binding/context/epoch", Value::Null),
+            ("/inspection/ui/focused_binding/control_key", json!(18)),
+            ("/inspection/ui/focused_binding/binding", json!(3)),
+            ("/inspection/ui/focused_binding/context/epoch", json!(2)),
+            ("/inspection/ui/surfaces/0/controls", json!([])),
+            (
+                "/inspection/ui/surfaces/0/controls/0/id",
+                json!("different-field"),
+            ),
+            (
+                "/inspection/ui/surfaces/0/controls/0/label",
+                json!("Other name"),
+            ),
+            ("/inspection/ui/surfaces/0/controls/0/role", json!("button")),
+            ("/inspection/ui/surfaces/0/controls/0/disabled", json!(true)),
+            (
+                "/inspection/ui/surfaces/0/controls/0/read_only",
+                json!(true),
+            ),
+        ] {
+            for activate in [false, true] {
+                let mut observed = observation(true, "after");
+                *observed.pointer_mut(pointer).unwrap() = replacement.clone();
+                let (observations, receipts) = if activate {
+                    (
+                        vec![observation(false, "before"), observed],
+                        vec![focused()],
+                    )
+                } else {
+                    (vec![observed], vec![])
+                };
+                let (result, calls) = exercise(observations, receipts);
+                assert!(result.is_err(), "{pointer}, activation={activate}");
+                assert!(
+                    calls.iter().all(|call| call["action"] != "key"),
+                    "{pointer}, activation={activate}: {calls:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn inspection_ids_text_and_selection_can_change_on_the_intended_binding() {
+        let mut observed = observation(true, "fresh-inspection");
+        observed["inspection"]["ui"]["surfaces"][0]["controls"][0]["value"] = json!("Changed");
+        observed["inspection"]["ui"]["surfaces"][0]["controls"][0]["selection"] =
+            json!({"start":2,"end":4});
+        let (result, calls) = exercise(vec![observed], vec![Ok(json!({"status":"input_sent"}))]);
+        assert!(result.is_ok());
+        assert_eq!(
+            calls.iter().filter(|call| call["action"] == "key").count(),
+            1
+        );
     }
 }

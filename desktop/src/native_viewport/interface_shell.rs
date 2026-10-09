@@ -392,10 +392,28 @@ impl NativeInterfaceHandle {
             .shared
             .lock()
             .map_err(|_| "Native interface lock poisoned")?;
-        current_context(&shared)?;
+        let context = current_context(&shared)?;
         let snapshot = shared.registry.inspect().map_err(|e| e.to_string())?;
         let snapshot = {
             let mut snapshot = snapshot;
+            // Inspection IDs expire on every inspect. This read-only identity
+            // lets an input harness retain the intended widget across those
+            // observations without turning its key into an activation target.
+            snapshot["focused_binding"] = shared
+                .registry
+                .frame()
+                .controls
+                .iter()
+                .find(|control| {
+                    snapshot["focused_control"].is_string()
+                        && Some(control.key) == shared.registry.frame().focused
+                })
+                .map(|control| {
+                    serde_json::json!({"control_key":control.key.0,
+                    "binding":control.binding,"context":{"window_id":context.window_id,
+                        "document_id":context.document_id,"epoch":context.epoch}})
+                })
+                .unwrap_or(serde_json::Value::Null);
             if let Some(trace) = &shared.ime_diagnostics {
                 snapshot["ime_diagnostics"] = trace.snapshot();
                 snapshot["ime_diagnostics"]["focus"] = shared.registry.frame().controls.iter()
@@ -858,7 +876,7 @@ impl NativeInterfaceHandle {
             Err(_) => {
                 return Ok(hit(&shared, position).is_some()
                     || shared.capture.is_some()
-                    || has_modal(&shared))
+                    || has_modal(&shared));
             }
         };
         if position.iter().any(|v| !v.is_finite()) {

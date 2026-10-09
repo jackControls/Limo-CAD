@@ -23,6 +23,7 @@ pub(crate) struct Driver {
     window_id: String,
     diagnostics: PathBuf,
     preparation_sequence: Cell<u32>,
+    text_target: RefCell<Option<Value>>,
     client: RefCell<Client>,
 }
 
@@ -62,6 +63,7 @@ impl Driver {
             window_id: lease.window_id,
             diagnostics: out.join("input-helper.jsonl"),
             preparation_sequence: Cell::new(0),
+            text_target: RefCell::new(None),
             client: RefCell::new(client),
         })
     }
@@ -285,6 +287,13 @@ impl Driver {
                 )?;
                 receipt
             }
+            "pin-text-target" => {
+                let observed = self.observe()?;
+                let intended = super::keyboard::text_target(&observed)?;
+                self.record("intended-text-target", &intended)?;
+                *self.text_target.borrow_mut() = Some(intended);
+                return Ok(String::new());
+            }
             "diagnose-focus" => {
                 // Read only. A setup failure can occur before the first key's
                 // preparation, so preserve the foreign window at that point.
@@ -311,6 +320,10 @@ impl Driver {
                 };
                 super::keyboard::send_key(
                     key,
+                    self.text_target
+                        .borrow()
+                        .as_ref()
+                        .context("Pin the intended editable field before sending a key")?,
                     || self.observe_key_target(),
                     |observed, request| {
                         if request["action"] == "focus" {
