@@ -119,7 +119,10 @@ fn visible_counts(panels: &[Value], available: f32) -> Vec<usize> {
     }
     counts
 }
-fn references(world: &World, services: &NativeServices) -> Result<(NativeCommand, bool), String> {
+fn references(
+    world: &World,
+    services: &NativeServices,
+) -> Result<(NativeCommand, bool, bool), String> {
     let mut visibility = crate::session_bridge::parse_engine_envelope(
         services.engine.engine_call("project_visibility", ""),
     )?;
@@ -166,6 +169,7 @@ fn references(world: &World, services: &NativeServices) -> Result<(NativeCommand
             arguments: visibility,
         },
         disabled,
+        showing,
     ))
 }
 
@@ -401,15 +405,17 @@ pub(super) fn synchronize(
                     }
                 }
             } else if i < count {
-                let (command, disabled) = if bid == "constructionVisibility" {
-                    references(world, services)?
+                let (command, disabled, selected) = if bid == "constructionVisibility" {
+                    let (command, disabled, showing) = references(world, services)?;
+                    (command, disabled, Some(showing))
                 } else if bid == "sectionAnalysis" {
                     (
                         NativeCommand::SectionReview(0, section_review::Command::Open),
                         services.engine.solid_scene_snapshot().bodies.is_empty(),
+                        None,
                     )
                 } else {
-                    (NativeCommand::Workbench(Command::Dismiss), true)
+                    (NativeCommand::Workbench(Command::Dismiss), true, None)
                 };
                 let entity = centered_button(
                     (&mut state.widgets, world, camera),
@@ -420,7 +426,7 @@ pub(super) fn synchronize(
                     ),
                     command,
                     ribbon::node(x + 4. + i as f32 * 50., 34., 48.),
-                    None,
+                    selected,
                     disabled,
                     30,
                 )?;
@@ -594,6 +600,11 @@ fn menu(
         let id = item["id"].as_str().unwrap();
         let name = label(locale, item);
         let source = source(world, controls, id);
+        let reference = if id == "constructionVisibility" {
+            Some(references(world, services)?)
+        } else {
+            None
+        };
         let (command, disabled) = if workspace {
             match id {
                 "Solid Modeling" => (
@@ -631,8 +642,8 @@ fn menu(
                     .clone(),
                 world.get::<InterfaceControl>(entity).unwrap().disabled,
             )
-        } else if id == "constructionVisibility" {
-            references(world, services)?
+        } else if let Some((command, disabled, _)) = &reference {
+            (command.clone(), *disabled)
         } else if id == "sectionAnalysis" {
             (
                 NativeCommand::SectionReview(0, section_review::Command::Open),
@@ -648,7 +659,10 @@ fn menu(
             .map(limo_cad_interface::KeyChord::plain)
             .into();
         control.disabled = disabled;
-        control.selected = (workspace && id == workspace_name(state.workspace)).then_some(true);
+        control.selected = reference
+            .as_ref()
+            .map(|(_, _, showing)| *showing)
+            .or_else(|| (workspace && id == workspace_name(state.workspace)).then_some(true));
         let entity = state.widgets.button(
             world,
             camera,
@@ -673,7 +687,9 @@ fn menu(
         )?;
         interface_shell::caption_size(world, entity, 11.);
         ribbon::menu_ink(world, entity);
-        if workspace && id == workspace_name(state.workspace) {
+        if (workspace && id == workspace_name(state.workspace))
+            || reference.as_ref().is_some_and(|(_, _, showing)| *showing)
+        {
             state.widgets.glyph(
                 (world, camera),
                 &format!("workspace-check-{index}"),
