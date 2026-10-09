@@ -410,7 +410,7 @@ impl ComputerControl {
         let planned = plan.iter().filter(|step| step.is_input()).count();
         let mut native_text = if observed.native_dialog && request.action == "text" {
             guard_native_text_focus(&observed, hwnd)?;
-            Some(NativeTextVerification::new(&observed)?)
+            Some(NativeTextVerification::new(&observed, hwnd)?)
         } else {
             None
         };
@@ -1002,8 +1002,9 @@ struct NativeTextVerification {
 }
 
 impl NativeTextVerification {
-    fn new(observed: &Observation) -> Result<Self, String> {
-        let edit = read_native_edit(observed)?;
+    fn new(observed: &Observation, hwnd: HWND) -> Result<Self, String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
+        let edit = read_guarded_native_edit(observed, hwnd, deadline)?;
         if String::from_utf16(&edit.text[..edit.start]).is_err()
             || String::from_utf16(&edit.text[edit.end..]).is_err()
         {
@@ -1019,13 +1020,36 @@ impl NativeTextVerification {
     }
 }
 
-fn read_native_edit(observed: &Observation) -> Result<NativeEditText, String> {
+enum NativeEditReadError {
+    Unavailable(String),
+    Unstable(String),
+}
+
+impl From<String> for NativeEditReadError {
+    fn from(error: String) -> Self {
+        Self::Unavailable(error)
+    }
+}
+
+fn read_native_edit(
+    observed: &Observation,
+    deadline: std::time::Instant,
+) -> Result<NativeEditText, NativeEditReadError> {
     let edit = observed
         .layout
         .as_ref()
         .and_then(|layout| layout["focused_control"].as_u64())
-        .ok_or("Native text observation has no qualified edit")? as usize as HWND;
+        .ok_or_else(|| {
+            NativeEditReadError::Unavailable("Native text observation has no qualified edit".into())
+        })? as usize as HWND;
     let read = |message: u32, wparam: usize, lparam: isize| -> Result<usize, String> {
+        let timeout = deadline
+            .saturating_duration_since(std::time::Instant::now())
+            .as_millis()
+            .min(100) as u32;
+        if timeout == 0 {
+            return Err("Native CAD edit readback deadline elapsed".into());
+        }
         let mut result = 0;
         if unsafe {
             SendMessageTimeoutW(
@@ -1034,7 +1058,7 @@ fn read_native_edit(observed: &Observation) -> Result<NativeEditText, String> {
                 wparam,
                 lparam,
                 SMTO_ABORTIFHUNG,
-                100,
+                timeout,
                 &mut result,
             )
         } == 0
@@ -1046,23 +1070,64 @@ fn read_native_edit(observed: &Observation) -> Result<NativeEditText, String> {
     const MAX_NATIVE_EDIT_UNITS: usize = 4096;
     let length = read(WM_GETTEXTLENGTH, 0, 0)?;
     if length > MAX_NATIVE_EDIT_UNITS {
-        return Err("Native CAD edit text exceeds the bounded readback scope".into());
+        return Err(NativeEditReadError::Unavailable(
+            "Native CAD edit text exceeds the bounded readback scope".into(),
+        ));
     }
+    let before_selection = read(0x00B0, 0, 0)?;
     let mut text = vec![0u16; MAX_NATIVE_EDIT_UNITS + 1];
     let copied = read(WM_GETTEXT, text.len(), text.as_mut_ptr() as isize)?;
-    if copied > MAX_NATIVE_EDIT_UNITS || copied != length {
-        return Err("Native CAD edit changed during text readback".into());
+    if copied > MAX_NATIVE_EDIT_UNITS {
+        return Err(NativeEditReadError::Unavailable(
+            "Native CAD edit copy exceeds the bounded readback scope".into(),
+        ));
     }
     text.truncate(copied);
     // EM_GETSEL is a system edit message (0x00B0). With both pointer
     // arguments null its packed return suffices for our <=4096-unit scope.
     let selection = read(0x00B0, 0, 0)?;
+    let after_length = read(WM_GETTEXTLENGTH, 0, 0)?;
     let start = selection & 0xffff;
     let end = (selection >> 16) & 0xffff;
-    if start > end || end > text.len() || String::from_utf16(&text).is_err() {
-        return Err("Native CAD edit selection or Unicode text could not be qualified".into());
+    let unicode_valid = String::from_utf16(&text).is_ok();
+    if length != copied
+        || copied != after_length
+        || before_selection != selection
+        || start > end
+        || end > text.len()
+        || !unicode_valid
+    {
+        return Err(NativeEditReadError::Unstable(format!(
+            "Native CAD edit snapshot could not be qualified (UTF-16 lengths before/copied/after {length}/{copied}/{after_length}, selection before {}..{}, after {start}..{end}, Unicode valid {unicode_valid})",
+            before_selection & 0xffff, (before_selection >> 16) & 0xffff
+        )));
     }
     Ok(NativeEditText { text, start, end })
+}
+
+fn read_guarded_native_edit(
+    observed: &Observation,
+    hwnd: HWND,
+    deadline: std::time::Instant,
+) -> Result<NativeEditText, String> {
+    loop {
+        guard_action(observed, hwnd, false, false)?;
+        guard_native_text_focus(observed, hwnd)?;
+        let readback = read_native_edit(observed, deadline);
+        guard_action(observed, hwnd, false, false)?;
+        guard_native_text_focus(observed, hwnd)?;
+        match readback {
+            Ok(edit) => return Ok(edit),
+            Err(NativeEditReadError::Unavailable(error)) => return Err(error),
+            Err(NativeEditReadError::Unstable(error)) => {
+                if std::time::Instant::now() >= deadline {
+                    return Err(error);
+                }
+            }
+        }
+        // Retry only the read-only snapshot, never the queued keyboard input.
+        std::thread::sleep(std::time::Duration::from_millis(NATIVE_TEXT_INTERVAL_MS));
+    }
 }
 
 fn verify_native_text(
@@ -1079,11 +1144,7 @@ fn verify_native_text(
         .copied()
         .collect();
     loop {
-        guard_action(observed, hwnd, false, false)?;
-        guard_native_text_focus(observed, hwnd)?;
-        let current = read_native_edit(observed)?;
-        guard_action(observed, hwnd, false, false)?;
-        guard_native_text_focus(observed, hwnd)?;
+        let current = read_guarded_native_edit(observed, hwnd, deadline)?;
         let caret = expected.prefix.len();
         let exact_text = current.text == exact && current.start == caret && current.end == caret;
         // File dialogs may append a selected autocomplete suffix. Prove the
