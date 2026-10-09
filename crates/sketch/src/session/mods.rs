@@ -545,8 +545,11 @@ impl SketchSession {
         let radius = self.eval_text(&request.radius_text)?;
         let l1 = self.line_seg(l1_id)?;
         let l2 = self.line_seg(l2_id)?;
-        let result = fillet::fillet_lines(&l1, &l2, radius).map_err(|e| {
-            SessionError::InvalidConstraint(format!("fillet: {e:?}").to_lowercase())
+        let result = fillet::fillet_lines(&l1, &l2, radius).map_err(|error| match error {
+            fillet::FilletError::NotPositive => SessionError::InvalidConstraint(
+                "Fillet radius must be greater than zero. Enter a finite positive radius.".into(),
+            ),
+            error => SessionError::InvalidConstraint(format!("fillet: {error:?}").to_lowercase()),
         })?;
         let v = line_vertex(&l1, &l2).unwrap_or(result.arc.center);
         let _ = v;
