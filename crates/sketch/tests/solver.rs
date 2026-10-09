@@ -6,8 +6,8 @@
 use limo_cad_sketch::{
     CircleMode, Constraint, CurveCrossingRequest, DragPhase, EntityDto, EntityId,
     LineIntersectionRequest, LineTrackingRequest, LockedCircleRequest, LockedSegmentRequest,
-    MovePointRequest, OriginPlane, PlaneRef, RectangleMode, SketchSession, SnapTarget,
-    TrackingAxis, Vec2,
+    MovePointRequest, OriginPlane, PlaneRef, RectangleMode, SessionError, SketchSession,
+    SnapTarget, TrackingAxis, Vec2,
 };
 
 fn v(x: f64, y: f64) -> Vec2 {
@@ -1116,10 +1116,18 @@ fn fix_pins_geometry_and_blocks_conflicting_moves() {
     let l = s.add_line(v(0.0, 0.0), v(50.0, 0.0), true).unwrap();
     s.toggle_fix(l.start_point_id).unwrap();
 
-    let r = s
+    let before = s.dto();
+    let error = s
         .move_point(move_req(l.start_point_id, v(10.0, 10.0)))
-        .unwrap();
-    let (start, _) = line(&r.sketch, l.entity_id);
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        SessionError::InvalidConstraint(ref message)
+            if message.contains("could not move this point")
+                && message.contains("review the point's constraints")
+    ));
+    assert_eq!(s.dto(), before);
+    let (start, _) = line(&s.dto(), l.entity_id);
     assert!(close(start, v(0.0, 0.0)), "fixed point must not move");
 
     s.toggle_fix(l.start_point_id).unwrap();

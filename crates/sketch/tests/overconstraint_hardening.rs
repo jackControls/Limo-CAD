@@ -531,13 +531,22 @@ fn tangent_point_cannot_leave_the_line_until_its_new_incidence_is_removed() {
         .unwrap()
         .constraint_id;
     let target = v(10.0, 15.0);
-    s.move_point(MovePointRequest {
-        point_id: p,
-        to_raw: target,
-        phase: DragPhase::Single,
-        ctrl_held: true,
-    })
-    .unwrap();
+    let before = s.dto();
+    let error = s
+        .move_point(MovePointRequest {
+            point_id: p,
+            to_raw: target,
+            phase: DragPhase::Single,
+            ctrl_held: true,
+        })
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        SessionError::InvalidConstraint(ref message)
+            if message.contains("could not move this point")
+                && message.contains("review the point's constraints")
+    ));
+    assert_eq!(s.dto(), before);
     assert!(s.sketch().point_position(p).unwrap().distance(contact) < 1e-7);
     s.delete_constraint(attached).unwrap();
     s.move_point(MovePointRequest {

@@ -3322,6 +3322,18 @@ impl SketchSession {
             }
             self.analysis = Some(solver::analyze(&self.sketch));
             self.last_good_drag = Some(self.sketch.snapshot());
+        } else if request.phase == DragPhase::Single {
+            // A discrete failed drag has no last-good progress to commit.
+            // Restore its baseline without consuming an Undo or Redo entry.
+            if let Some(before) = self.pending_drag.take() {
+                self.sketch.restore(before);
+            }
+            self.last_good_drag = None;
+            self.analysis = Some(solver::analyze(&self.sketch));
+            return Err(SessionError::InvalidConstraint(
+                "The sketch solver could not move this point while preserving its constraints. Try a different position or review the point's constraints."
+                    .into(),
+            ));
         } else if let Some(good) = self.last_good_drag.take() {
             self.sketch.restore(good.clone());
             self.last_good_drag = Some(good);
