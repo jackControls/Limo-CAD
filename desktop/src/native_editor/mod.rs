@@ -1026,7 +1026,11 @@ pub(crate) fn synchronize_controls(
             if editor.stamp.as_ref().is_some_and(|s| s.sketch.is_some()) {
                 let mut rows = [
                     CreateTool::Line,
-                    CreateTool::Arc3Point,
+                    if editor.draft.tool == Some(CreateTool::ArcCenter) {
+                        CreateTool::ArcCenter
+                    } else {
+                        CreateTool::Arc3Point
+                    },
                     CreateTool::Rectangle(RectangleMode::TwoPoint),
                     CreateTool::Circle(CircleMode::CenterDiameter),
                     CreateTool::Spline,
