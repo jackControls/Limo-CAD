@@ -176,14 +176,14 @@ jobs:
           }
           $uriBase = 'HKEY_CURRENT_USER\Software\Classes\limo-cad'
           $handler = [Microsoft.Win32.Registry]::GetValue("$uriBase\shell\open\command", '', $null)
-          $expected = '"' + $probeExecutable + '" "%1"'
+          $expected = '"' + $executable.FullName + '" "%1"'
           if (-not [string]::Equals($handler, $expected, [StringComparison]::OrdinalIgnoreCase)) {
-            throw "Recipe URI handler does not point to the controlled source host: $handler"
+            throw "Recipe URI handler does not point to the default packaged executable: $handler"
           }
           if ($null -eq [Microsoft.Win32.Registry]::GetValue($uriBase, 'URL Protocol', $null)) {
             throw "Recipe URI protocol marker is missing"
           }
-          @{scheme='limo-cad';command=$handler;status='registered';scope='control-enabled source host'} | ConvertTo-Json |
+          @{scheme='limo-cad';command=$handler;status='registered';scope='default package registration retained; URI delivery not exercised'} | ConvertTo-Json |
             Set-Content -LiteralPath (Join-Path $diagnostics 'recipe-uri.json')
 
       - name: Upload Windows viewport diagnostics
