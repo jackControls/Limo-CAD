@@ -871,6 +871,16 @@ pub(crate) fn before_window_input(
                 {
                     return Ok(true);
                 }
+                if input.logical_key == Key::Tab
+                    && crate::native_editor::panel::focus_adjacent_form_field(
+                        world,
+                        handle,
+                        entity,
+                        modifiers.shift,
+                    )?
+                {
+                    return Ok(true);
+                }
                 if input.logical_key == Key::Enter && submits_on_enter(world, entity) {
                     handle.key(limo_cad_interface::KeyChord::plain("Enter"))?;
                 }

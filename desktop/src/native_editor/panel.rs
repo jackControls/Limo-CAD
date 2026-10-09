@@ -11,7 +11,7 @@ struct Panel {
     field: Option<Entity>,
     dimension_generation: Option<u64>,
     dimension_focused: bool,
-    form_fields: HashMap<usize, (Entity, u64)>,
+    form_fields: HashMap<usize, (Entity, u64, u64)>,
     form_id: Option<u64>,
     scroll: f32,
     max_scroll: f32,
@@ -32,6 +32,80 @@ pub(super) fn completion_reserve(tool: Option<CreateTool>) -> f32 {
     } else {
         156.
     }
+}
+
+pub(crate) fn focus_adjacent_form_field(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    current: Entity,
+    backwards: bool,
+) -> Result<bool, String> {
+    let Some(editor) = world.get_resource::<Editor>() else {
+        return Ok(false);
+    };
+    let Some(form) = editor.interaction.form.as_ref() else {
+        return Ok(false);
+    };
+    let Some(stamp) = editor.stamp.as_ref().filter(|stamp| stamp.sketch.is_some()) else {
+        return Ok(false);
+    };
+    let Some(panel) = world.get_resource::<Panel>() else {
+        return Ok(false);
+    };
+    let Some((&index, &(_, id, binding))) = panel
+        .form_fields
+        .iter()
+        .find(|(_, (entity, id, _))| *entity == current && *id == form.id)
+    else {
+        return Ok(false);
+    };
+    let next = if backwards {
+        index.checked_sub(1)
+    } else {
+        index
+            .checked_add(1)
+            .filter(|next| *next < form.values.len())
+    };
+    let Some((target, target_id, target_binding)) =
+        next.and_then(|next| panel.form_fields.get(&next)).copied()
+    else {
+        return Ok(false);
+    };
+    if id != target_id
+        || handle.focused_key() != Some(limo_cad_interface::ControlKey(current.to_bits()))
+    {
+        return Ok(false);
+    }
+    for (entity, expected_binding) in [(current, binding), (target, target_binding)] {
+        if world.get::<InterfaceControl>(entity).is_none_or(|control| {
+            control.binding != expected_binding
+                || !control.visible
+                || control.disabled
+                || !matches!(
+                    control.field,
+                    Field::Text {
+                        read_only: false,
+                        ..
+                    }
+                )
+        }) {
+            return Ok(false);
+        }
+    }
+    let source = handle.resolve_retained(limo_cad_interface::ControlKey(current.to_bits()))?;
+    if source.context != stamp.owner || source.control.binding() != binding {
+        return Err("The sketch form field changed before focus could move".into());
+    }
+    let Ok(target) = handle.resolve_retained(limo_cad_interface::ControlKey(target.to_bits()))
+    else {
+        return Ok(false);
+    };
+    if target.context != source.context || target.control.binding() != target_binding {
+        return Err("The sketch form field changed before focus could move".into());
+    }
+    handle.prepare_activation(&target)?;
+    fields::after_window_input(world, handle)?;
+    Ok(true)
 }
 
 pub(super) fn ribbon_groups(area: InterfaceRect, completion_reserve: f32) -> Vec<RibbonGroup> {
@@ -728,7 +802,7 @@ pub(super) fn synchronize(
                 31,
             )?;
         }
-        panel.form_fields.retain(|index, (entity, id)| {
+        panel.form_fields.retain(|index, (entity, id, _)| {
             if form.is_some_and(|f| f.id == *id && *index < f.values.len()) {
                 true
             } else {
@@ -825,7 +899,7 @@ pub(super) fn synchronize(
                 let mut bounds = rect(0., y + 18., 264., 30.);
                 bounds.border = UiRect::all(px(1.));
                 bounds.padding = UiRect::horizontal(px(6.));
-                let entity = if let Some((entity, _)) = panel.form_fields.get(&index) {
+                let entity = if let Some((entity, _, _)) = panel.form_fields.get(&index) {
                     *entity
                 } else {
                     let entity = fields::spawn_text_field(
@@ -848,7 +922,8 @@ pub(super) fn synchronize(
                             },
                         )),
                     )?;
-                    panel.form_fields.insert(index, (entity, form.id));
+                    let binding = world.get::<InterfaceControl>(entity).unwrap().binding;
+                    panel.form_fields.insert(index, (entity, form.id, binding));
                     entity
                 };
                 let mut old = world.get::<InterfaceControl>(entity).unwrap().clone();
