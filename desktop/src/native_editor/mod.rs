@@ -686,8 +686,10 @@ pub(crate) fn process_one(
                     &frame.context,
                     &crate::session_bridge::native_interface::feature::FeatureCommand::Control {
                         form_id: panel.form_id,
-                        action:
+                        action: panel.choice_field.map_or(
                             crate::session_bridge::native_interface::feature::FeatureControl::Cancel,
+                            crate::session_bridge::native_interface::feature::FeatureControl::Field,
+                        ),
                     },
                     &limo_cad_interface::ControlInput::Click,
                     || Ok(()),
