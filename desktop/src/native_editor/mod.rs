@@ -83,6 +83,7 @@ struct Editor {
     press: Option<(DocumentContext, Vec2)>,
     controls: HashMap<String, Entity>,
     error: String,
+    creation_error: Option<String>,
     interaction: interaction::Interaction,
     form_serial: u64,
     support: support::Picker,
@@ -130,6 +131,7 @@ fn synchronize_stamp(editor: &mut Editor, next: Stamp) -> bool {
     editor.draft.select(None);
     editor.press = None;
     editor.error.clear();
+    editor.creation_error = None;
     editor.interaction = Default::default();
     editor.support = Default::default();
     editor.stamp = Some(next);
@@ -157,6 +159,29 @@ pub(crate) fn status(world: &World) -> Option<String> {
     } else {
         editor.interaction.instruction()
     }
+}
+
+pub(crate) fn creation_context(world: &World) -> Option<(DocumentContext, String)> {
+    let editor = world.get_resource::<Editor>()?;
+    editor.draft.tool?;
+    let stamp = editor.stamp.as_ref()?;
+    Some((stamp.owner.clone(), stamp.sketch.clone()?))
+}
+
+pub(crate) fn creation_error_context(
+    world: &World,
+    error: &str,
+) -> Option<(DocumentContext, String)> {
+    let editor = world.get_resource::<Editor>()?;
+    if editor.error != error || editor.creation_error.as_deref() != Some(error) {
+        return None;
+    }
+    creation_context(world)
+}
+
+fn creation_failed(editor: &mut Editor, error: &str) {
+    editor.error = error.into();
+    editor.creation_error = Some(error.into());
 }
 
 pub(crate) fn synchronize_selection_readout(world: &mut World, visible: bool) {
@@ -205,11 +230,13 @@ fn preview(
     bridge.with_native_document_owner(engine, owner, || {
         let context = snapping::context(world, basis, raw);
         editor.draft.snap_context = Some(context);
-        let acquired = snapping::acquire(engine, &editor.draft, raw, ctrl, context)?;
+        let acquired = snapping::acquire(engine, &editor.draft, raw, ctrl, context)
+            .inspect_err(|error| creation_failed(editor, error))?;
         let mut cursor = acquired.snapped_to;
         let mut snap = acquired.snap;
         if editor.draft.tool == Some(CreateTool::Line) && !editor.draft.points.is_empty() {
-            let value = dynamic::line_preview(engine, &editor.draft, raw, ctrl)?;
+            let value = dynamic::line_preview(engine, &editor.draft, raw, ctrl)
+                .inspect_err(|error| creation_failed(editor, error))?;
             cursor = value.snapped_to;
             snap = value.snap;
         }
@@ -230,11 +257,13 @@ fn preview(
             kind,
         });
         editor.draft.cursor = Some(raw);
-        let resolved = dynamic::preview_points(engine, &editor.draft, raw, ctrl)?;
+        let resolved = dynamic::preview_points(engine, &editor.draft, raw, ctrl)
+            .inspect_err(|error| creation_failed(editor, error))?;
         if let Some(points) = resolved {
             cursor = points[1];
         }
-        cursor = dynamic::slot_cursor(&editor.draft, cursor)?;
+        cursor = dynamic::slot_cursor(&editor.draft, cursor)
+            .inspect_err(|error| creation_failed(editor, error))?;
         if marker.as_ref().is_some_and(|marker| {
             let resolved = basis.to_3d([cursor.x, cursor.y]).map(|v| v as f32);
             Vec3::from_array(marker.position).distance(Vec3::from_array(resolved)) > 1e-5
@@ -297,6 +326,10 @@ fn preview(
                 .unwrap_or_else(|| editor.draft.points.first().copied().unwrap_or(cursor)),
             cursor,
         ]);
+        if editor.creation_error.as_deref() == Some(editor.error.as_str()) {
+            editor.error.clear();
+            editor.creation_error = None;
+        }
         Ok(())
     })
 }
@@ -305,6 +338,7 @@ fn committed_feedback(output: &mut Value, editor: &mut Editor, followup: Result<
     output["committed"] = json!(true);
     if let Err(error) = followup {
         editor.error = error.clone();
+        editor.creation_error = None;
         editor.stamp = None;
         editor.draft.select(None);
         editor.press = None;
@@ -554,6 +588,8 @@ fn queue_mutation(
                     Ok(result) => result,
                     Err(error) => {
                         editor.error = error.clone();
+                        editor.creation_error = matches!(kind, Completion::Primitive)
+                            .then(|| error.clone());
                         return Err(error);
                     }
                 };
@@ -888,10 +924,10 @@ pub(crate) fn process_one(
                                 || Ok(()),
                             ) {
                                 Ok(value) => result = value,
-                                Err(error) => { editor.error = error.clone(); return Err(error); }
+                                Err(error) => { editor.creation_error = None; editor.error = error.clone(); return Err(error); }
                             }
                         }
-                        Err(error) => { editor.error = error.clone(); return Err(error); }
+                        Err(error) => { creation_failed(&mut editor, &error); return Err(error); }
                         _ => {}
                     },
                     _ => {}
@@ -975,7 +1011,7 @@ pub(crate) fn process_one(
                                     || Ok(()),
                                 ) {
                                     Ok(value) => result = value,
-                                    Err(error) => { editor.error = error.clone(); return Err(error); }
+                                    Err(error) => { editor.creation_error = None; editor.error = error.clone(); return Err(error); }
                                 }
                             }
                             Ok(None) => {
@@ -983,7 +1019,7 @@ pub(crate) fn process_one(
                                 preview(world,&services.engine,&services.bridge,&owner,&mut editor,point,event.modifiers.ctrl)?;
                                 result = json!({"handled":true,"picks":editor.draft.points.len(),"instruction":editor.draft.instruction()});
                             }
-                            Err(error) => { editor.error = error.clone(); return Err(error); }
+                            Err(error) => { creation_failed(&mut editor, &error); return Err(error); }
                         }
                     }
                 }

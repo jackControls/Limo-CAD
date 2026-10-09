@@ -93,6 +93,7 @@ struct Controller {
     logical_size: Vec2,
     pending: Option<PendingControl>,
     status: String,
+    sketch_input_error: Option<(DocumentContext, String, String)>,
     close_pending: bool,
     exit_after_receipt: bool,
     close_after_worker: bool,
@@ -128,6 +129,7 @@ impl Controller {
             logical_size: Vec2::new(1360., 860.),
             pending: None,
             status: String::new(),
+            sketch_input_error: None,
             close_pending: false,
             exit_after_receipt: false,
             close_after_worker: false,
@@ -407,6 +409,9 @@ fn update_inner(
                 Err(error) => {
                     files::dialog_error(world, &error);
                     eprintln!("Native operation {} failed: {error}", outcome.operation);
+                    state.sketch_input_error =
+                        crate::native_editor::creation_error_context(world, &error)
+                            .map(|(owner, sketch)| (owner, sketch, error.clone()));
                     state.status = error;
                 }
             }
@@ -676,8 +681,42 @@ fn update_inner(
             }
         }
         if !event.consumed {
-            if let Err(error) = crate::native_editor::process_one(world, handle, services, &event) {
-                state.status = error;
+            let creation = crate::native_editor::creation_context(world);
+            match crate::native_editor::process_one(world, handle, services, &event) {
+                Err(error) => {
+                    state.sketch_input_error =
+                        crate::native_editor::creation_error_context(world, &error)
+                            .map(|(owner, sketch)| (owner, sketch, error.clone()));
+                    state.status = error;
+                }
+                Ok(value) => {
+                    let progress = value["preview"] == true
+                        || value["cancelled"] == true
+                        || value["picks"].is_u64()
+                        || value["committed"] == true;
+                    if let Some((owner, sketch, error)) = state.sketch_input_error.as_ref() {
+                        let same_creation = creation
+                            .as_ref()
+                            .is_some_and(|(current, name)| current == owner && name == sketch)
+                            && event.context.as_ref() == Some(owner);
+                        let changed_creation = creation
+                            .as_ref()
+                            .is_some_and(|(current, name)| current != owner || name != sketch);
+                        if state.status != *error || changed_creation {
+                            state.sketch_input_error = None;
+                        } else if same_creation && progress {
+                            state.status = if value["presentation_pending"] == true {
+                                value["presentation_error"]
+                                    .as_str()
+                                    .unwrap_or("Model changed; interface presentation needs retry")
+                                    .to_owned()
+                            } else {
+                                summary(&value)
+                            };
+                            state.sketch_input_error = None;
+                        }
+                    }
+                }
             }
         }
     }
