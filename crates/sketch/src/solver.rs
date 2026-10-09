@@ -1897,8 +1897,67 @@ fn trim_reference_segment(sketch: &Sketch, line: EntityId) -> Option<fillet::Lin
     (a.distance(b) >= DEGENERATE_LINE_EPS).then_some(fillet::LineSeg { a, b })
 }
 
+/// Finite trimmed fillets also need an exact seed at their singular endpoint
+/// tangency; accept only their explicit endpoint and shared-corner topology.
+fn finite_trim_radius_seed_is_supported(
+    sketch: &Sketch,
+    arc: EntityId,
+    lines: &[EntityId],
+) -> bool {
+    let bindings: Vec<_> = sketch
+        .constraints()
+        .filter_map(|(_, constraint)| match *constraint {
+            Constraint::ArcEndpointCoincident {
+                point,
+                arc: owner,
+                end,
+            } if owner == arc => Some((point, end)),
+            _ => None,
+        })
+        .collect();
+    if bindings.len() != 2 || bindings[0].0 == bindings[1].0 || bindings[0].1 == bindings[1].1 {
+        return false;
+    }
+    let endpoints: Vec<_> = lines
+        .iter()
+        .filter_map(|line| {
+            let (start, end) = sketch.line_endpoint_ids(*line)?;
+            let owned: Vec<_> = bindings
+                .iter()
+                .filter(|(point, _)| *point == start || *point == end)
+                .collect();
+            (owned.len() == 1).then(|| owned[0].0)
+        })
+        .collect();
+    if endpoints.len() != 2 || endpoints[0] == endpoints[1] {
+        return false;
+    }
+    let corners: Vec<_> = sketch
+        .entities()
+        .filter_map(|(id, entity)| {
+            (matches!(entity, Entity::Point { .. })
+                && !endpoints.contains(&id)
+                && lines
+                    .iter()
+                    .all(|line| has_point_line_incidence(sketch, id, *line)))
+            .then_some(id)
+        })
+        .collect();
+    if corners.len() != 1 {
+        return false;
+    }
+    let Some(corner) = sketch.point_position(corners[0]) else {
+        return false;
+    };
+    lines
+        .iter()
+        .zip(endpoints)
+        .all(|(line, endpoint)| trim_origin_for_endpoint(sketch, *line, endpoint) == Some(corner))
+}
+
 /// A consumed fillet carrier starts from a singular zero-span configuration.
-/// When its radius changes, reconstruct the exact local fillet from the
+/// Proven finite trimmed fillets can also have singular endpoint tangency.
+/// When either radius changes, reconstruct the exact local fillet from the
 /// persistent pre-trim corners before LM begins. This is only an initial
 /// guess; the complete constraint system still determines the final geometry
 /// and the crossed-carrier guard rejects values beyond the topology boundary.
@@ -1935,11 +1994,13 @@ fn seed_consumed_radius_edit(sketch: &Sketch, map: &VarMap, x: &mut [f64]) {
             .collect::<Vec<_>>();
         tangent_lines.sort_unstable();
         tangent_lines.dedup();
-        if tangent_lines.len() != 2
-            || !tangent_lines
-                .iter()
-                .any(|line| line_is_degenerate(sketch, *line))
-        {
+        if tangent_lines.len() != 2 {
+            continue;
+        }
+        let consumed = tangent_lines
+            .iter()
+            .any(|line| line_is_degenerate(sketch, *line));
+        if !consumed && !finite_trim_radius_seed_is_supported(sketch, arc, &tangent_lines) {
             continue;
         }
 
