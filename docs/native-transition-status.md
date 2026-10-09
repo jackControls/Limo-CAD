@@ -1,5 +1,22 @@
 # Native transition status
 
+Current checkpoint, **2026-10-09 UTC**: PR124 remains open. Jack's PR359
+merged into the Bevy branch as bd69f00d after independent correctness,
+security and root source review, with follow-up issues #361, #362 and #363.
+The reviewers used scoped agent fallbacks; specialized review services were
+unavailable. PR338 is isolated against main without application runtime changes;
+its simulation sources match Jack's approved version and all 14 evidence hashes
+pass. Fresh CI and a renewed GitHub review are required before its merge.
+Main remains e0760efb, already included in Bevy; no main bypass occurred.
+
+The resumed d5af845b native build compiled and linked successfully in 9m16s.
+Promotion correctly stopped because canonical MCP workers remained running.
+The GUI exited through Save all and close; 78 saved model contents stayed exact,
+and 192 session models plus archives are preserved separately. Lossless cache
+compression preserves compiler files. The merged source still needs a fresh
+supported deployment, complete payload verification and a newly observed matched
+GUI/MCP pair before repair rechecks. Current live UI acceptance is incomplete.
+
 Release qualification checkpoint: **2026-10-06 UTC**, with the local UI walkthrough
 updated **2026-10-08 UTC**. The default desktop on the Bevy integration branch
 uses **Bevy `=0.20.0-rc.2`**, application version **0.2.2**, one native host and
