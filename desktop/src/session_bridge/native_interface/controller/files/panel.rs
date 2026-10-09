@@ -353,7 +353,7 @@ pub(crate) fn synchronize(
         let document_name = tabs
             .iter()
             .find(|tab| tab.active)
-            .map(|tab| tab.name.as_str())
+            .map(|tab| tab.display_name())
             .unwrap_or_else(|| t("app.untitledDocument"));
         let appearance = crate::native_viewport::ui::appearance_revision(world);
         if !state.layout.as_ref().is_some_and(|layout| {
@@ -473,7 +473,7 @@ pub(crate) fn synchronize(
                     let name = tabs
                         .iter()
                         .find(|t| t.active)
-                        .map(|t| t.name.as_str())
+                        .map(|t| t.display_name())
                         .unwrap_or_else(|| t("app.untitledDocument"));
                     let prompt = t(match intent {
                         Intent::Close => "file.closeSaveConfirm",
@@ -542,7 +542,7 @@ pub(crate) fn synchronize(
         let start = active.saturating_sub(available - 1);
         for (offset, tab) in tabs.iter().skip(start).take(available).enumerate() {
             let x = 68. + offset as f32 * 192.;
-            let label = tab.name.clone();
+            let label = tab.display_name().to_owned();
             state.chrome.panel(
                 world,
                 camera,
@@ -635,11 +635,7 @@ pub(crate) fn synchronize(
                     theme,
                     &assets,
                     format!("close-tab-{}", tab.owner.document_id),
-                    if tab.active {
-                        t("topbar.closeDocument").into()
-                    } else {
-                        format!("{}: {}", t("topbar.closeDocument"), tab.name)
-                    },
+                    format!("{}: {}", t("topbar.closeDocument"), tab.display_name()),
                     Some("×"),
                     FileCommand::CloseTab(tab.owner.clone()),
                     node(x + 166., 5., 20., 20.),

@@ -583,6 +583,19 @@ pub(crate) fn synchronize(
             state.revision = revision;
         }
         let document = state.document.as_ref().unwrap().clone();
+        let document_title =
+            if document.name == "Untitled" && world.contains_resource::<files::Files>() {
+                files::tabs(world, services, owner)
+                    .ok()
+                    .and_then(|tabs| {
+                        tabs.into_iter()
+                            .find(|tab| tab.active && tab.owner == *owner)
+                            .map(|tab| tab.display_name().to_owned())
+                    })
+                    .unwrap_or_else(|| document.name.clone())
+            } else {
+                document.name.clone()
+            };
         let mut visible = vec![];
         rows(&document.browser, &state.collapsed, 0, &mut visible);
         let mut cameras = world.query_filtered::<Entity, With<InterfaceCamera>>();
@@ -628,7 +641,7 @@ pub(crate) fn synchronize(
             &assets,
             theme,
             "document",
-            document.name.clone(),
+            document_title,
             node(x + 26., y + 33., width - 66., 24.),
             12.,
         );

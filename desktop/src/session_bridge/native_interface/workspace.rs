@@ -43,6 +43,23 @@ pub(crate) struct TabSummary {
     pub saving: bool,
 }
 
+impl TabSummary {
+    pub(crate) fn display_name(&self) -> &str {
+        if self.name == "Untitled" {
+            if let Some(name) = self
+                .path
+                .as_ref()
+                .and_then(|path| path.file_stem())
+                .and_then(|name| name.to_str())
+                .filter(|name| !name.trim().is_empty())
+            {
+                return name;
+            }
+        }
+        &self.name
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct DocumentWorkspace {
     tabs: Vec<Tab>,
