@@ -162,6 +162,16 @@ square whose edges are 10 mm from the center, with eight DOF/zero constraints.
 Passing geometry is retained; only the shared radius-message dependency requires
 a deployed recheck. Midpoint line and Point are next in the breadth survey.
 
+Midpoint line passes coincident rejection/recovery, symmetric midpoint/horizontal/
+origin creation, exact draft Cancel, larger retained endpoint resize, driving
+length dimension and whole-model native save/reopen. Its free line has one DOF;
+the independently exercised 24 mm dimension fully constrains it. A small unchanged
+drag leaves an extra Undo/Redo step, confirmed before creation finally undoes.
+`27210873` skips only an idle Single-phase exact unchanged snapped target in an
+already-consistent sketch, preserving ongoing gestures and solve/recovery paths.
+Root and peer reviewed the source; deployed history qualification is pending.
+The existing active-variant toolbar defect is also observed. Point is next.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;

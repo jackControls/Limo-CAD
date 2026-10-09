@@ -80,6 +80,12 @@ side-count validation, form Cancel, free vertex edit, Undo/Redo and exact native
 reopen. Original edges lie 10 mm from center; eight DOF remain unconstrained.
 The shared radius-message dependency needs only a deployed validation recheck.
 
+[`surface-ui-midpoint-line-human-ui.limo`](../checkpoints/surface-ui-midpoint-line-human-ui.limo)
+retains an origin-centered horizontal line after coincident rejection, draft
+Cancel, endpoint resize, Undo/Redo and exact native reopen. Its midpoint and
+orientation remain constrained with one length DOF. An extra unchanged drag
+history step and active toolbar identity have committed, undeployed repairs.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
