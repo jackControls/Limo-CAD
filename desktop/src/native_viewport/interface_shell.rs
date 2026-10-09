@@ -863,6 +863,7 @@ impl NativeInterfaceHandle {
         let key = hit(&shared, position);
         let had_capture = shared.capture.is_some();
         let old_hovered = shared.hovered;
+        let old_focused = shared.focused;
         let consumed = had_capture
             || shared
                 .hit_order
@@ -902,6 +903,24 @@ impl NativeInterfaceHandle {
                         let capture = shared.capture.clone().unwrap();
                         enqueue_range(&mut shared, &capture, &context, position[0])?;
                     }
+                } else if button == PointerButton::Primary
+                    && !consumed
+                    && shared.focused.is_some()
+                    && shared.presented_frame.as_ref().is_some_and(|frame| {
+                        frame.context == context
+                            && frame.canvases.iter().any(|canvas| {
+                                let bounds = canvas.bounds;
+                                canvas.name == "viewport"
+                                    && position[0] >= bounds.x
+                                    && position[0] < bounds.x + bounds.width
+                                    && position[1] >= bounds.y
+                                    && position[1] < bounds.y + bounds.height
+                            })
+                    })
+                {
+                    // The canvas owns subsequent keys after a real viewport
+                    // press; retain button focus for keyboard-only navigation.
+                    set_focus(&mut shared, None)?;
                 }
             }
             PointerPhase::Up => {
@@ -936,8 +955,9 @@ impl NativeInterfaceHandle {
         }
         shared.revision = shared.revision.wrapping_add(1);
         let changed_hover = old_hovered != shared.hovered;
+        let changed_focus = old_focused != shared.focused;
         drop(shared);
-        if consumed || changed_hover {
+        if consumed || changed_hover || changed_focus {
             (self.wake)();
         }
         Ok(consumed)
