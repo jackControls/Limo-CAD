@@ -25,7 +25,7 @@ mod history;
 mod prepared;
 mod publication;
 mod view;
-pub(crate) use view::clear_selection;
+pub(crate) use view::{clear_selection, fit_sketch_begin_camera};
 pub(crate) mod switch_timing;
 pub(crate) mod workspace;
 use prepared::{

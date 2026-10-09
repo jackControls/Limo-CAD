@@ -224,44 +224,92 @@ fn target_bounds(
         }))
         .filter(|_| matches!(target, Target::All | Target::ActiveSketch));
     for sketch in sketches {
-        use limo_cad_sketch::EntityDto;
-        let mut add = |x: f64, y: f64| {
-            Bounds::add(
-                &mut bounds,
-                Vec3::from_array(sketch.basis.to_3d([x, y]).map(|v| v as f32)),
-            )
-        };
-        for entity in &sketch.entities {
-            match entity {
-                EntityDto::Point { position, .. } => add(position.x, position.y),
-                EntityDto::Line {
-                    start,
-                    end,
-                    consumed,
-                    ..
-                } => {
-                    if !consumed {
-                        add(start.x, start.y);
-                        add(end.x, end.y);
+        add_sketch_bounds(&mut bounds, sketch);
+    }
+    bounds
+}
+
+fn add_sketch_bounds(bounds: &mut Option<Bounds>, sketch: &limo_cad_sketch::SketchDto) {
+    use limo_cad_sketch::EntityDto;
+    let mut add = |x: f64, y: f64| {
+        Bounds::add(
+            bounds,
+            Vec3::from_array(sketch.basis.to_3d([x, y]).map(|v| v as f32)),
+        )
+    };
+    for entity in &sketch.entities {
+        match entity {
+            EntityDto::Point { position, .. } => add(position.x, position.y),
+            EntityDto::Line {
+                start,
+                end,
+                consumed,
+                ..
+            } => {
+                if !consumed {
+                    add(start.x, start.y);
+                    add(end.x, end.y);
+                }
+            }
+            EntityDto::Circle { center, radius, .. } | EntityDto::Arc { center, radius, .. } => {
+                for dx in [-*radius, *radius] {
+                    for dy in [-*radius, *radius] {
+                        add(center.x + dx, center.y + dy);
                     }
                 }
-                EntityDto::Circle { center, radius, .. }
-                | EntityDto::Arc { center, radius, .. } => {
-                    for dx in [-*radius, *radius] {
-                        for dy in [-*radius, *radius] {
-                            add(center.x + dx, center.y + dy);
-                        }
-                    }
-                }
-                EntityDto::Spline { tessellation, .. } => {
-                    for p in tessellation {
-                        add(p.x, p.y);
-                    }
+            }
+            EntityDto::Spline { tessellation, .. } => {
+                for p in tessellation {
+                    add(p.x, p.y);
                 }
             }
         }
     }
-    bounds
+}
+
+/// Begin frames authored sketch geometry in the canvas area left of its palette.
+/// Empty sketches keep their existing plane-origin entry view.
+pub(crate) fn fit_sketch_begin_camera(
+    sketch: &limo_cad_sketch::SketchDto,
+    camera: ViewportCamera,
+    size: [f32; 2],
+    reserved_right: f32,
+) -> Result<Option<ViewportCamera>, String> {
+    let mut bounds = None;
+    add_sketch_bounds(&mut bounds, sketch);
+    if bounds.is_none()
+        || !reserved_right.is_finite()
+        || reserved_right < 0.
+        || size[0] <= reserved_right
+    {
+        return Ok(None);
+    }
+    let direction = (Vec3::from_array(camera.position) - Vec3::from_array(camera.target))
+        .try_normalize()
+        .ok_or("The sketch camera direction is invalid")?;
+    let right = (-direction)
+        .cross(Vec3::from_array(camera.up))
+        .try_normalize()
+        .ok_or("The sketch camera up direction is invalid")?;
+    let mut fitted = fit_bounds(bounds, camera, [size[0] - reserved_right, size[1]], None)?;
+    let previous_distance =
+        Vec3::from_array(camera.position).distance(Vec3::from_array(camera.target));
+    let distance = Vec3::from_array(fitted.position)
+        .distance(Vec3::from_array(fitted.target))
+        .max(previous_distance)
+        .max(100.);
+    // Projection still spans the full canvas: pan by half the palette width
+    // so the geometry centre projects into the unobscured area, not underneath it.
+    let shift = distance * (fitted.vertical_fov_degrees.to_radians() * 0.5).tan() * reserved_right
+        / size[1];
+    let target = Vec3::from_array(fitted.target) + right * shift;
+    let position = target + direction * distance;
+    if !target.is_finite() || !position.is_finite() {
+        return Err("The sketch bounds exceed the camera range".into());
+    }
+    fitted.target = target.to_array();
+    fitted.position = position.to_array();
+    Ok(Some(fitted))
 }
 
 fn fit_bounds(

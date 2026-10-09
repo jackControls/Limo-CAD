@@ -6,6 +6,8 @@ use crate::session_bridge::native_interface::controller::chrome::{rect, Widgets}
 use limo_cad_core::DimensionStyle;
 use limo_cad_interface::Field;
 
+pub(super) const WIDTH: f32 = 240.;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PaletteCommand {
     Collapse,
@@ -132,7 +134,7 @@ pub(super) fn synchronize(
                 && editor.interaction.dimension.is_none()
                 && editor.interaction.constraint.is_none()
         }) {
-            let x = (canvas.x + canvas.width - 240.) as f32;
+            let x = (canvas.x + canvas.width - f64::from(WIDTH)) as f32;
             let y = canvas.y as f32;
             let theme = crate::native_viewport::ui::theme(world);
             let expanded_height = 427_f32.min(canvas.height as f32);
@@ -141,7 +143,7 @@ pub(super) fn synchronize(
             } else {
                 expanded_height
             };
-            let mut bounds = rect(x, y, 240., height);
+            let mut bounds = rect(x, y, WIDTH, height);
             bounds.border_radius = BorderRadius::ZERO;
             bounds.border = UiRect::left(px(1.));
             state.widgets.panel(
@@ -161,7 +163,7 @@ pub(super) fn synchronize(
                 title,
                 Some("SKETCH PALETTE"),
                 NativeCommand::Sketch(EditorCommand::Palette(PaletteCommand::Collapse)),
-                rect(x, y, 240., 32.),
+                rect(x, y, WIDTH, 32.),
                 Some(if state.collapsed {
                     Icon::ChevronRight
                 } else {
@@ -176,7 +178,7 @@ pub(super) fn synchronize(
                 world,
                 camera,
                 "title-divider",
-                rect(x, y + 31., 240., 1.),
+                rect(x, y + 31., WIDTH, 1.),
                 theme.edge,
                 26,
             );
@@ -199,19 +201,19 @@ pub(super) fn synchronize(
                 state.area = Some(InterfaceRect {
                     x: f64::from(x),
                     y: f64::from(y),
-                    width: 240.,
+                    width: f64::from(WIDTH),
                     height: f64::from(height),
                 });
                 state.widgets.panel(
                     world,
                     camera,
                     "body",
-                    rect(x, y + 59., 240., body_height),
+                    rect(x, y + 59., WIDTH, body_height),
                     Color::NONE,
                     25,
                 );
                 let body = state.widgets.entity("body").unwrap();
-                let mut content_bounds = rect(0., -state.scroll, 240., 324.);
+                let mut content_bounds = rect(0., -state.scroll, WIDTH, 324.);
                 content_bounds.overflow = Overflow::visible();
                 state
                     .widgets
@@ -418,7 +420,7 @@ mod tests {
             area: Some(InterfaceRect {
                 x: 100.,
                 y: 120.,
-                width: 240.,
+                width: f64::from(WIDTH),
                 height: 260.,
             }),
             max_scroll: 160.,
