@@ -258,6 +258,12 @@ host-neutral workspace passed; the Offset rejection contract is verified.
 strict thread failure and both history contracts pass without poisoning.
 These hosted receipts do not qualify undeployed native UI fixes.
 
+Break passes a representative interior-line split, readable menu/hover/feedback,
+Cancel/empty-pick preservation, shared-point edit, exact two-step Undo/Redo and
+whole-model native save/reopen. Original outer endpoints remain exact; the two
+line pieces share an editable point, two horizontal constraints/four DOF.
+Fillet and Chamfer are next; broader arc/circle variants are unqualified.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
