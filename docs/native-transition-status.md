@@ -172,6 +172,17 @@ already-consistent sketch, preserving ongoing gestures and solve/recovery paths.
 Root and peer reviewed the source; deployed history qualification is pending.
 The existing active-variant toolbar defect is also observed. Point is next.
 
+Point passes pointer preview/creation, exact preview Cancel, cyan retained hover,
+free dragging, creation/edit Undo/Redo and whole-model native save/reopen on the
+matched `a3cebb9c` runtime. Its two positional DOF remain free. Numeric validation
+is not applicable to this pointer-only command. No new Point failure was observed;
+only the shared `27210873` idle unchanged-drag history dependency needs a deployed
+recheck. Sketch editing tools are next in the breadth survey.
+
+`a579dd31` automatic repository/WASM checks passed; native/MCP/package and Linux
+qualification remain pending at this receipt. These hosted checks do not qualify
+the undeployed source fixes or complete manual MCP coverage.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;

@@ -86,6 +86,11 @@ Cancel, endpoint resize, Undo/Redo and exact native reopen. Its midpoint and
 orientation remain constrained with one length DOF. An extra unchanged drag
 history step and active toolbar identity have committed, undeployed repairs.
 
+[`surface-ui-point-human-ui.limo`](../checkpoints/surface-ui-point-human-ui.limo)
+retains a free point after pointer creation, exact preview Cancel, retained drag,
+creation/edit Undo/Redo and exact native reopen. Two DOF remain free. The shared
+unchanged-drag history dependency requires a deployed recheck.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
