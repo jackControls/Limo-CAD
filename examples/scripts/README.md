@@ -159,6 +159,11 @@ retains correctly aligned free lines. Wrong-type selection/Cancel, readable
 inspector, relation history and native persistence passed. Endpoint dragging
 failed silently; saved reproduction stays available for the repair queue.
 
+[`surface-ui-sketch-horizontal-vertical-human-ui.limo`](../checkpoints/surface-ui-sketch-horizontal-vertical-human-ui.limo)
+retains independently edited Horizontal and Vertical lines. Closest-axis
+creation, Cancel/duplicate guidance, inspectors, exact history and native
+persistence/re-edit passed. Shared future camera framing acceptance is pending.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

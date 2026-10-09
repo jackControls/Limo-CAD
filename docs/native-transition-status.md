@@ -348,6 +348,20 @@ sketch bounds outside the palette; source acceptance awaits a matched runtime.
 `b0734d79` makes cache-lock test release explicit after intermittent hosted
 reacquire failure; production lock behavior is unchanged.
 
+Sketch Horizontal/Vertical passes both closest-axis line choices, Cancel,
+duplicate guidance, readable inspectors, independent constrained endpoint edits,
+exact four-step history and whole-model native persistence/re-edit. Only the
+shared undeployed Begin framing dependency requires a camera recheck.
+`9be977e6` repository/WASM and full Linux passed, including both changed failed
+discrete-drag contracts. `b0734d79` cache release contract passed hosted Linux.
+`9b70a83f` complete automatic MCP passed; manual MCP remains not-run.
+
+User confirmed finite additive Rib policy. Issue[#360](https://github.com/limo-cad/Limo-CAD/issues/360)
+is assigned to Jack. Existing UI guard was already qualified; `0166a9cc` now
+applies that policy to shared native/MCP add/edit before ID allocation.
+Existing archives and Subtract/Common replay remain unchanged; the request
+guard needs hosted and isolated manual acceptance.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
