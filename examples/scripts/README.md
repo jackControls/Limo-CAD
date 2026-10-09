@@ -41,6 +41,11 @@ validation, typed sizes, retained height edit, Cancel, Undo/Redo and exact nativ
 UI reopen. Shared dimension readability and active-variant toolbar repairs still
 need deployment and presentation rechecks.
 
+[`surface-ui-center-circle-human-ui.limo`](../checkpoints/surface-ui-center-circle-human-ui.limo)
+retains a fully constrained 24 mm origin-centered circle after zero-diameter
+validation, typed diameter, retained edit, Cancel, Undo/Redo and exact native
+UI reopen. Active construction still exposes the shared dimension-ink defect.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

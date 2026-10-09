@@ -86,6 +86,13 @@ rectangle were observed failing; fifteen presentation dependencies are recorded
 for recheck after deployment without changing their geometry acceptance. Circles
 are next in the breadth survey. All these source repairs remain undeployed.
 
+The center-circle checkpoint passes zero-diameter rejection, positive typed
+diameter, exact draft Cancel, retained 20 to 24 mm diameter editing, creation/edit
+Undo/Redo and exact native save/reopen with zero DOF. Its primary Circle selection
+is correct; the shared dimension-ink defect remains its polish failure. Two-point
+circle remains next. Linux engine CI for `eb1e96bf` passed all 43 nonempty suite
+summaries with no failed summaries; live presentation is still unqualified.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
