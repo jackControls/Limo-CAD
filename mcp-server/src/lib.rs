@@ -5574,7 +5574,10 @@ mod tests {
             let error = server
                 .call_tool("sketch_add_rectangle_locked", invalid)
                 .unwrap_err();
-            assert!(error.to_string().contains(name), "{error}");
+            assert!(
+                error.to_string().contains(name),
+                "unknown rectangle driver must be identified"
+            );
             assert_eq!(
                 server.call_tool("sketch_active", json!({})).unwrap(),
                 before
@@ -5694,7 +5697,10 @@ mod tests {
                 json!({"entity_ids":lines,"origin":{"x":0.,"y":0.},"factor_text":"2"}),
             )
             .unwrap_err();
-        assert!(rejected.contains("conflicts"), "{rejected}");
+        assert!(
+            rejected.contains("conflicts"),
+            "conflicting scale must report the constraint conflict"
+        );
         assert_eq!(
             server.call_tool("sketch_active", json!({})).unwrap(),
             before
@@ -9768,7 +9774,10 @@ mod tests {
         assert_eq!(model["revolves"].as_array().unwrap().len(), 1);
 
         let summary = server.feature_summary(&json!({})).unwrap();
-        assert_eq!(summary["hole_count"], 1, "{summary}");
+        assert_eq!(
+            summary["hole_count"], 1,
+            "revolved cavity must be counted as one hole"
+        );
         assert_eq!(summary["holes"][0]["diameter"], 20.0);
         assert_eq!(summary["holes"][0]["style"], "simple");
         assert!(summary["holes"][0]["through"].is_null());
@@ -9864,7 +9873,10 @@ mod tests {
                 .unwrap();
             assert_eq!(definitions.as_array().unwrap().len(), 1);
             let summary = server.feature_summary(&json!({})).unwrap();
-            assert_eq!(summary["hole_count"], 0, "{tool}: {summary}");
+            assert_eq!(
+                summary["hole_count"], 0,
+                "{tool} must not create inferred holes"
+            );
         }
 
         let (mut server, base) = mcp_box();
@@ -11824,7 +11836,7 @@ mod tests {
         let failure = server.call_tool("cad_refresh", json!({})).unwrap_err();
         assert!(
             !failure.contains("no selected document"),
-            "Refresh must recover the acknowledged target: {failure}"
+            "Refresh must retain the acknowledged target for recovery"
         );
         let recovered = CadServer::new()
             .unwrap()
