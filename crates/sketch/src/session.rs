@@ -3274,8 +3274,18 @@ impl SketchSession {
         if self.sketch.entity(point_id).is_none() {
             return Err(SessionError::EntityNotFound(point_id));
         }
-        if self.sketch.point_position(point_id).is_none() {
-            return Err(SessionError::NotAPoint(point_id));
+        let current = self
+            .sketch
+            .point_position(point_id)
+            .ok_or(SessionError::NotAPoint(point_id))?;
+        let (target, _) = self.snap_inner(request.to_raw, !request.ctrl_held, false, None);
+        if request.phase == DragPhase::Single
+            && target == current
+            && self.pending_drag.is_none()
+            && self.last_good_drag.is_none()
+            && solver::analyze(&self.sketch).converged
+        {
+            return Ok(MovePointResult { sketch: self.dto() });
         }
 
         if matches!(request.phase, DragPhase::Begin | DragPhase::Single) {
@@ -3283,7 +3293,6 @@ impl SketchSession {
             self.last_good_drag = Some(self.sketch.snapshot());
         }
 
-        let (target, _) = self.snap_inner(request.to_raw, !request.ctrl_held, false, None);
         let mut pins = vec![(point_id, target)];
 
         if let Some(center) = self.span_center_anchored_by(point_id) {
