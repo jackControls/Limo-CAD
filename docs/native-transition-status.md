@@ -25,8 +25,21 @@ The small human-built fixtures under `examples/checkpoints/surface-ui-*` retain
 the block, origin-plane sketches and a Common result whose supporting face is
 valid before its consuming extrusion. Editing that extrusion again falsely
 rejected its sketch support in the completed scene. `d9719134` uses the existing
-isolated pre-feature editor; actual clean-runtime qualification is pending.
-This does not qualify arbitrary upstream support-loss reporting.
+isolated pre-feature editor. The broad accompanying status exemption violated
+an existing broken-reference CI contract and was fully reverted at `0a8915e8`.
+That final clean GUI/MCP pair passes the reported edit, exact Cancel preservation,
+Undo/Redo with hidden Sketch2, and save/UI-reopen equality. The resulting
+two-body model is retained as `surface-ui-retained-extrusion-fixed-human-ui.limo`.
+The Linux contract and Ubuntu/macOS retained-edit checks pass. False error status
+on the valid Common result remains separately queued; genuine missing support
+continues to be reported.
+
+The next meaningful mode exposed a separate To Face direction error: top Z=8
+to selected bottom Z=0 with retained Flip produced Z=8..16 while reporting no
+errors. `b41645b1` preserves the selected plane's signed endpoint in geometry
+and preview and hides Flip only for that mode; runtime qualification is pending.
+The saved human fixture is `surface-ui-to-face-flip-human-ui.limo`. Analogous
+Rib logic remains unqualified and will be checked at its normal catalog position.
 
 Hosted native CI on `0bb6257b` confirms the test-only isolation repair: Windows
 937 passed/zero failed; Ubuntu 937 passed/one failed; macOS 942 passed/one failed.
