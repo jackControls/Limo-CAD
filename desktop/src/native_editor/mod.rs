@@ -628,7 +628,7 @@ fn queue_mutation(
                     interaction::present(world,&owner,&editor.interaction)?;
                     support::present(world, &owner, &editor.support)?;
                     if matches!(kind, Completion::Begin) {
-                        look_at_sketch(world, engine, bridge, &owner)?;
+                        look_at_sketch(world, engine, bridge, &owner, true)?;
                     } else if matches!(kind, Completion::Finish) {
                         let receipt = bridge.native_document_receipt(engine, &owner)?;
                         crate::session_bridge::native_interface::restore_model_view(world, &owner, receipt.revision)?;
@@ -667,17 +667,65 @@ fn look_at_sketch(
     engine: &AppState,
     bridge: &SessionBridgeState,
     owner: &DocumentContext,
+    fit_points: bool,
 ) -> Result<(), String> {
     bridge.with_native_document_owner(engine, owner, || {
         let Some(sketch) = active(engine)? else {
             return Err("The new sketch is no longer active".into());
         };
-        let (_, camera, _, _) = native_viewport::interface_view(world);
-        let center = Vec3::from_array(sketch.basis.origin.map(|v| v as f32));
+        let (_, camera, _, size) = native_viewport::interface_view(world);
+        let mut center = Vec3::from_array(sketch.basis.origin.map(|v| v as f32));
         let normal = Vec3::from_array(sketch.basis.normal.map(|v| v as f32));
-        let distance = Vec3::from_array(camera.position)
+        let mut distance = Vec3::from_array(camera.position)
             .distance(Vec3::from_array(camera.target))
             .max(100.);
+        let points: Option<Vec<_>> = sketch
+            .entities
+            .iter()
+            .map(|entity| match entity {
+                limo_cad_sketch::EntityDto::Point { position, .. }
+                    if position.x.is_finite() && position.y.is_finite() =>
+                {
+                    Some(*position)
+                }
+                _ => None,
+            })
+            .collect();
+        if let Some(points) = points.filter(|points| fit_points && !points.is_empty()) {
+            let mut min = points[0];
+            let mut max = points[0];
+            for point in points {
+                min.x = min.x.min(point.x);
+                min.y = min.y.min(point.y);
+                max.x = max.x.max(point.x);
+                max.y = max.y.max(point.y);
+            }
+            let midpoint = min * 0.5 + max * 0.5;
+            let point_center = Vec3::from_array(
+                sketch
+                    .basis
+                    .to_3d([midpoint.x, midpoint.y])
+                    .map(|v| v as f32),
+            );
+            let half_vertical = camera.vertical_fov_degrees.to_radians() * 0.5;
+            if size.iter().all(|value| value.is_finite() && *value > 0.)
+                && half_vertical.is_finite()
+                && half_vertical > 0.
+                && half_vertical < std::f32::consts::FRAC_PI_2
+            {
+                let half_horizontal = (half_vertical.tan() * size[0] / size[1]).atan();
+                let half_span = max * 0.5 - min * 0.5;
+                // Match Fit's bounding-sphere margin while retaining the normal
+                // sketch entry distance; empty/mixed sketches keep their old path.
+                let required = (half_span.x.hypot(half_span.y) as f32)
+                    / half_horizontal.min(half_vertical).sin()
+                    * 1.15;
+                if point_center.is_finite() && required.is_finite() {
+                    center = point_center;
+                    distance = distance.max(required);
+                }
+            }
+        }
         let camera = ViewportCamera {
             position: (center + normal * distance).to_array(),
             target: center.to_array(),

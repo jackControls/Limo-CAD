@@ -298,7 +298,13 @@ fn fit_bounds(
         return Err("Invalid camera field of view".into());
     }
     let half_horizontal = (half_vertical.tan() * size[0] / size[1]).atan();
-    let radius = ((bounds.max - bounds.min) * 0.5).length().max(0.01);
+    // Coincident-only bounds need a useful framing distance, not a microscopic
+    // camera pose that magnifies the sketch grips' depth floor and plane lift.
+    let radius = if bounds.min == bounds.max {
+        1.0
+    } else {
+        ((bounds.max - bounds.min) * 0.5).length().max(0.01)
+    };
     let distance = radius / half_horizontal.min(half_vertical).sin() * 1.15;
     let target = bounds.min * 0.5 + bounds.max * 0.5;
     let position = target + axis * distance;

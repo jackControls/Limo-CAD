@@ -63,7 +63,7 @@ pub(super) fn execute(
             let mut state = world.resource_mut::<Palette>();
             state.scroll = (state.scroll + f32::from(direction) * 120.).clamp(0., state.max_scroll);
         }
-        PaletteCommand::LookAt => look_at_sketch(world, engine, bridge, owner)?,
+        PaletteCommand::LookAt => look_at_sketch(world, engine, bridge, owner, false)?,
         PaletteCommand::Snap | PaletteCommand::Iso => {
             let (operation, arguments) = match command {
                 PaletteCommand::Snap => {
