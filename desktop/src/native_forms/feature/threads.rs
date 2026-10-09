@@ -529,6 +529,8 @@ impl SolidForm {
     pub(crate) fn feature_notes(&self) -> Vec<String> {
         if let Some(f) = &self.thread {
             f.notes()
+        } else if let Some(paths) = &self.paths {
+            paths.notes()
         } else {
             self.hole_notes()
         }

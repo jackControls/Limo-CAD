@@ -352,17 +352,23 @@ pub(crate) fn panel(world: &World) -> Option<FeaturePanel> {
 
 /// Only the explicitly successful visibility transaction may advance this
 /// new draft; ordinary model changes still invalidate its exact receipt.
-pub(crate) fn revolve_visibility_draft(world: &World, receipt: &DocumentReceipt) -> Option<u64> {
+pub(crate) fn profile_feature_visibility_draft(
+    world: &World,
+    receipt: &DocumentReceipt,
+) -> Option<u64> {
     let editor = world.get_resource::<NativeFeature>()?.editor.as_ref()?;
     (editor.snapshot.receipt == *receipt
         && editor.stage.is_none()
-        && editor.form.kind() == SolidFormKind::Revolve
+        && matches!(
+            editor.form.kind(),
+            SolidFormKind::Revolve | SolidFormKind::Sweep
+        )
         && !editor.form.is_feature_edit()
         && !editor.form.is_busy())
     .then_some(editor.id)
 }
 
-pub(crate) fn advance_revolve_visibility(
+pub(crate) fn advance_profile_feature_visibility(
     engine: &AppState,
     bridge: &SessionBridgeState,
     world: &mut World,
@@ -381,11 +387,11 @@ pub(crate) fn advance_revolve_visibility(
             .filter(|editor| {
                 editor.id == form_id && editor.snapshot.receipt == *from && editor.stage.is_none()
             })
-            .ok_or("The visibility change no longer owns this Revolve draft")?;
+            .ok_or("The visibility change no longer owns this feature draft")?;
         let snapshot = Snapshot::capture(engine, receipt)?;
         editor
             .form
-            .advance_revolve_visibility(&from.owner, from.revision, to)?;
+            .advance_profile_feature_visibility(&from.owner, from.revision, to)?;
         editor.snapshot = snapshot;
         editor.hovered_body = None;
         editor.hovered_face = None;

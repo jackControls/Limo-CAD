@@ -320,7 +320,7 @@ pub(crate) fn reduce(
         }
         BrowserCommand::Visibility(_) => {
             let receipt = bridge.native_document_receipt(engine, &action.context)?;
-            let draft = feature::revolve_visibility_draft(world, &receipt);
+            let draft = feature::profile_feature_visibility_draft(world, &receipt);
             let draft_receipt = receipt.clone();
             worker::enqueue_transaction(
                 world,
@@ -350,7 +350,7 @@ pub(crate) fn reduce(
                     );
                     if value["render_error"].is_null() && value["publication_error"].is_null() {
                         if let Some(form_id) = draft {
-                            feature::advance_revolve_visibility(
+                            feature::advance_profile_feature_visibility(
                                 &services.engine,
                                 &services.bridge,
                                 world,

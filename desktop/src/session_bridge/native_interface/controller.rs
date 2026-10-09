@@ -406,7 +406,8 @@ fn update_inner(
                 }
                 Err(error) => {
                     files::dialog_error(world, &error);
-                    state.status = format!("{}: {error}", outcome.operation);
+                    eprintln!("Native operation {} failed: {error}", outcome.operation);
+                    state.status = error;
                 }
             }
         }

@@ -30,10 +30,21 @@ impl PathFields {
             guide_enabled: false,
             centerline_enabled: false,
             orientation: SweepOrientation::CorrectedFrenet,
-            transition: SweepTransition::Transformed,
+            transition: if kind == SolidFormKind::Sweep {
+                SweepTransition::RightCorner
+            } else {
+                SweepTransition::Transformed
+            },
             force_c1: false,
             ruled: false,
             continuity: LoftContinuity::G0,
+        }
+    }
+    pub(super) fn notes(&self) -> Vec<String> {
+        if self.kind == SolidFormKind::Sweep && self.transition == SweepTransition::Transformed {
+            vec!["Transformed can self-intersect at sharp path bends. Choose Right corner or Round corner for bends.".into()]
+        } else {
+            vec![]
         }
     }
     pub fn set(&mut self, field: SolidField, value: &str) -> Result<(), String> {
