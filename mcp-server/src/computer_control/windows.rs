@@ -29,6 +29,9 @@ const OBSERVATION_MS: u64 = 60_000;
 // or a guarantee that another application cannot subsequently take focus.
 const NATIVE_TEXT_INTERVAL_MS: u64 = 20;
 const FOCUS_STABILITY_SAMPLES: usize = 5;
+const CAD_GESTURE_CAPTURE_ERROR: &str = "CAD input is captured by an existing gesture";
+// Bound read-only queue-settling checks; this does not qualify gesture timing.
+const POINTER_RELEASE_CAPTURE_WAIT_MS: u64 = 100;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -416,6 +419,16 @@ impl ComputerControl {
         };
         for step in &plan {
             let guard = guard_action(&observed, hwnd, driver.holds_button(), completed == 0)
+                .or_else(|error| {
+                    if !observed.native_dialog
+                        && driver.is_post_pointer_modifier_release(*step)
+                        && error == CAD_GESTURE_CAPTURE_ERROR
+                    {
+                        wait_for_pointer_capture_clear(&observed, hwnd)
+                    } else {
+                        Err(error)
+                    }
+                })
                 .and_then(|()| match *step {
                     Step::Move(point) => guard_pointer(point, hwnd),
                     Step::Button(_, _) | Step::Scroll(_) | Step::Pause(_) => guard_cursor(
@@ -929,21 +942,54 @@ fn guard_foreground(hwnd: HWND, owns_capture: bool, native_dialog: bool) -> Resu
         cbSize: size_of::<GUITHREADINFO>() as u32,
         ..Default::default()
     };
-    if unsafe { GetGUIThreadInfo(thread, &mut info) } == 0
-        || (!info.hwndCapture.is_null()
-            && (!(owns_capture || native_dialog) || !target_contains(hwnd, info.hwndCapture)))
-        || (!info.hwndMenuOwner.is_null()
-            && (!native_dialog || !target_contains(hwnd, info.hwndMenuOwner)))
-        || (!info.hwndFocus.is_null()
-            && if native_dialog {
-                !target_contains(hwnd, info.hwndFocus)
-            } else {
-                (unsafe { GetAncestor(info.hwndFocus, GA_ROOT) }) != hwnd
-            })
+    if unsafe { GetGUIThreadInfo(thread, &mut info) } == 0 {
+        return Err("Cannot inspect CAD native input ownership".into());
+    }
+    if !info.hwndMenuOwner.is_null()
+        && (!native_dialog || !target_contains(hwnd, info.hwndMenuOwner))
     {
-        return Err("CAD input is captured by an existing gesture or native menu".into());
+        return Err("CAD input is captured by a native menu".into());
+    }
+    if !info.hwndFocus.is_null()
+        && if native_dialog {
+            !target_contains(hwnd, info.hwndFocus)
+        } else {
+            (unsafe { GetAncestor(info.hwndFocus, GA_ROOT) }) != hwnd
+        }
+    {
+        return Err("CAD native input focus belongs to another window".into());
+    }
+    if !info.hwndCapture.is_null() {
+        if !target_contains(hwnd, info.hwndCapture) {
+            return Err("Pointer capture belongs to another window".into());
+        }
+        if !(owns_capture || native_dialog) {
+            return Err(CAD_GESTURE_CAPTURE_ERROR.into());
+        }
     }
     Ok(())
+}
+
+fn wait_for_pointer_capture_clear(observed: &Observation, hwnd: HWND) -> Result<(), String> {
+    let deadline = std::time::Instant::now()
+        + std::time::Duration::from_millis(POINTER_RELEASE_CAPTURE_WAIT_MS);
+    loop {
+        // No injected input or capture allowance: every check keeps the same
+        // process, owner, bounds, foreground, focus and native-menu fences.
+        match guard_action(observed, hwnd, false, false) {
+            Ok(()) => return Ok(()),
+            Err(error) if error == CAD_GESTURE_CAPTURE_ERROR => {
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    return Err(format!(
+                        "{error} after a bounded mouse-up capture-clear wait"
+                    ));
+                }
+                std::thread::sleep(remaining.min(std::time::Duration::from_millis(10)));
+            }
+            Err(error) => return Err(error),
+        }
+    }
 }
 
 fn guard_action(
@@ -1338,6 +1384,7 @@ enum Held {
 struct InputDriver {
     enigo: Enigo,
     held: Vec<Held>,
+    completed_pointer_up: bool,
 }
 
 impl InputDriver {
@@ -1349,11 +1396,17 @@ impl InputDriver {
         Ok(Self {
             enigo: Enigo::new(&settings).map_err(|error| error.to_string())?,
             held: Vec::new(),
+            completed_pointer_up: false,
         })
     }
 
     fn holds_button(&self) -> bool {
         self.held.iter().any(|held| matches!(held, Held::Button(_)))
+    }
+
+    fn is_post_pointer_modifier_release(&self, step: Step<'_>) -> bool {
+        matches!(step, Step::Key(key @ (Key::Control | Key::Shift), Direction::Release)
+            if self.completed_pointer_up && !self.holds_button() && self.held.contains(&Held::Key(key)))
     }
 
     fn apply(&mut self, step: Step<'_>) -> Result<(), String> {
@@ -1364,6 +1417,9 @@ impl InputDriver {
         };
         if let Some((held, Direction::Press)) = held {
             self.held.push(held);
+            if matches!(held, Held::Button(_)) {
+                self.completed_pointer_up = false;
+            }
         }
         match step {
             Step::Move(point) => position_cursor(point)?,
@@ -1383,6 +1439,9 @@ impl InputDriver {
             Step::Pause(ms) => std::thread::sleep(std::time::Duration::from_millis(ms)),
         }
         if let Some((held, Direction::Release)) = held {
+            if matches!(held, Held::Button(_)) {
+                self.completed_pointer_up = true;
+            }
             self.held.retain(|candidate| *candidate != held);
         }
         Ok(())
