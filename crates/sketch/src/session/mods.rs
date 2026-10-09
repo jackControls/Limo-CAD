@@ -896,6 +896,8 @@ impl SketchSession {
         };
         let magnitude = distance;
         let param = self.param_from_text_pub(ParamKind::Length, Some(distance_text), magnitude)?;
+        let text_pos =
+            self.radial_offset_text_position(center, (source_radius + target_radius) * 0.5);
         self.add_constraint_bound(
             Constraint::Distance {
                 from,
@@ -903,10 +905,46 @@ impl SketchSession {
                 value: magnitude,
             },
             param,
-            center + Vec2::new((source_radius + target_radius) * 0.5, 0.0),
+            text_pos,
             false,
         )?;
         Ok(())
+    }
+
+    fn radial_offset_text_position(&self, center: Vec2, radius: f64) -> Vec2 {
+        let candidates = [
+            center + Vec2::new(radius, 0.0),
+            center + Vec2::new(0.0, radius),
+            center + Vec2::new(-radius, 0.0),
+            center + Vec2::new(0.0, -radius),
+        ];
+        let anchors: Vec<_> = self
+            .sketch
+            .constraints()
+            .filter_map(|(id, _)| self.sketch.dim_placement(&id))
+            .filter(|point| point.x.is_finite() && point.y.is_finite())
+            .collect();
+        let clearance = |candidate: Vec2| {
+            anchors
+                .iter()
+                .map(|anchor| candidate.distance(*anchor))
+                .fold(f64::INFINITY, f64::min)
+        };
+        let mut best = candidates[0];
+        let mut best_clearance = clearance(best);
+        // This 4 mm creation-only heuristic spaces saved anchors, not text bounds.
+        // It cannot guarantee separation at every zoom/font; existing placements stay put.
+        if best_clearance >= 4.0 {
+            return best;
+        }
+        for candidate in candidates.into_iter().skip(1) {
+            let candidate_clearance = clearance(candidate);
+            if candidate_clearance > best_clearance {
+                best = candidate;
+                best_clearance = candidate_clearance;
+            }
+        }
+        best
     }
 
     /// Intersections of `entity` with every other entity (angle-filtered
