@@ -1062,17 +1062,14 @@ pub(crate) fn synchronize_controls(
             if editor.stamp.as_ref().is_some_and(|s| s.sketch.is_some()) {
                 let mut rows = [
                     CreateTool::Line,
-                    if editor.draft.tool == Some(CreateTool::ArcCenter) {
-                        CreateTool::ArcCenter
-                    } else {
-                        CreateTool::Arc3Point
-                    },
+                    CreateTool::Arc3Point,
                     CreateTool::Rectangle(RectangleMode::TwoPoint),
                     CreateTool::Circle(CircleMode::CenterDiameter),
                     CreateTool::Spline,
                     CreateTool::Slot(SlotMode::CenterToCenter),
                 ]
                 .into_iter()
+                .map(|tool| tool.primary_variant(editor.draft.tool))
                 .map(|tool| (tool.label().to_owned(), EditorCommand::Tool(tool)))
                 .collect::<Vec<_>>();
                 for command in [

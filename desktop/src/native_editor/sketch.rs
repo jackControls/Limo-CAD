@@ -26,6 +26,20 @@ pub(crate) enum CreateTool {
 }
 
 impl CreateTool {
+    pub(crate) fn primary_variant(self, active: Option<Self>) -> Self {
+        match (self, active) {
+            (Self::Line | Self::MidpointLine, Some(tool @ (Self::Line | Self::MidpointLine)))
+            | (
+                Self::Arc3Point | Self::ArcCenter,
+                Some(tool @ (Self::Arc3Point | Self::ArcCenter)),
+            )
+            | (Self::Rectangle(_), Some(tool @ Self::Rectangle(_)))
+            | (Self::Circle(_), Some(tool @ Self::Circle(_)))
+            | (Self::Slot(_), Some(tool @ Self::Slot(_))) => tool,
+            _ => self,
+        }
+    }
+
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Line => "Line",
