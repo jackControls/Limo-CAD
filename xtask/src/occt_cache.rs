@@ -305,6 +305,9 @@ mod tests {
         fs::write(prefix.join("library"), "installed").unwrap();
         publish(&prefix, "key").unwrap();
         assert!(complete(&prefix, "key").unwrap());
+        // An inherited descriptor can outlive this handle during parallel subprocess tests.
+        // Explicit release does not depend on those inherited handles closing.
+        first.unlock().unwrap();
         drop(first);
         let _next = prepare_locked(&prefix, "key").unwrap();
         assert!(complete(&prefix, "key").unwrap());
