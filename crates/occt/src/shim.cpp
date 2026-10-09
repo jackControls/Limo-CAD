@@ -3207,6 +3207,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       recover_export_chord_boundaries();
       recover_export_longest_faces(false,true);
       recover_export_longest_faces(true);
+      diagnose_export_boundary_merges();
     }
     if (!range.More()) {
       for (const auto& trial : strip_trials) restore_spherical_strip(trial);
@@ -4972,6 +4973,108 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   // Refine a sampled crossing only when the corresponding exact, oriented
   // source PCurve intervals are disjoint. Snapshot after all earlier repairs;
   // neither a failed remesh nor rollback may undo their qualified geometry.
+  // Read the final discrete constraints before ModelPostProcessor turns their
+  // indices into native polygons. A shared mesh node is not evidence that two
+  // distinct native edge samples are the same topological boundary point.
+  // Keep the strict export identity rejection; this records the actual local
+  // cavity needed to decide whether separate constraints can be reconstructed.
+  void diagnose_export_boundary_merges() {
+    try {
+      TopTools_IndexedMapOfShape edges,vertices;
+      TopExp::MapShapes(GetModel()->GetShape(),TopAbs_EDGE,edges);
+      TopExp::MapShapes(GetModel()->GetShape(),TopAbs_VERTEX,vertices);
+      struct Station {
+        IMeshData::IEdgePtr edge;IMeshData::IPCurveHandle pc;
+        int wire,occurrence,sample;std::array<int,3> key;
+      };
+      int work=0,reports=0;
+      for (int fi=0;fi<GetModel()->FacesNb() && reports<4;++fi) {
+        const auto face=GetModel()->GetFace(fi).get();TopLoc_Location location;
+        const auto mesh=BRep_Tool::Triangulation(face->GetFace(),location);
+        if (mesh.IsNull() || !mesh->HasUVNodes() || mesh->NbNodes()>65536 || mesh->NbTriangles()>131072) continue;
+        std::map<int,std::vector<Station>> stations;
+        for (int wi=0;wi<face->WiresNb();++wi) {
+          const auto wire=face->GetWire(wi);
+          for (int ei=0;ei<wire->EdgesNb();++ei) {
+            const auto edge=wire->GetEdge(ei);const auto pc=edge->GetPCurve(face,wire->GetEdgeOrientation(ei));
+            if (pc.IsNull() || pc->ParametersNb()<2 || pc->ParametersNb()>65536) continue;
+            TopoDS_Vertex first,last;TopExp::Vertices(edge->GetEdge(),first,last,false);
+            for (int i=0;i<pc->ParametersNb();++i) {
+              if (++work>1048576) return;
+              const int id=pc->GetIndex(i);if (id<1 || id>mesh->NbNodes()) continue;
+              const bool endpoint=i==0 || i+1==pc->ParametersNb();
+              const auto vertex=i==0 ? first : last;
+              const std::array<int,3> key=endpoint ? std::array<int,3>{1,vertices.FindIndex(vertex),0} :
+                  std::array<int,3>{2,edges.FindIndex(edge->GetEdge()),i};
+              stations[id].push_back({edge,pc,wi,ei,i,key});
+            }
+          }
+        }
+        for (const auto& group : stations) {
+          if (reports>=4) break;
+          if (group.second.size()<2 || std::all_of(group.second.begin(),group.second.end(),
+              [&](const Station& item) { return item.key==group.second.front().key; })) continue;
+          ++reports;
+          std::ostringstream detail;detail.precision(12);
+          detail << "face " << strip_original_faces_.FindIndex(face->GetFace()) << " node " << group.first <<
+              " type/wires/status " << static_cast<int>(face->GetSurface()->GetType()) << '/' << face->WiresNb() << '/' <<
+              face->GetStatusMask() << " mesh nodes/triangles " << mesh->NbNodes() << '/' << mesh->NbTriangles();
+          const auto point=mesh->Node(group.first).Transformed(location.Transformation());const auto uv=mesh->UVNode(group.first);
+          detail << " mesh XYZ " << point.X() << '/' << point.Y() << '/' << point.Z() << " UV " << uv.X() << '/' << uv.Y();
+          for (int wi=0;wi<face->WiresNb() && wi<8;++wi) {
+            const auto wire=face->GetWire(wi);detail << "; wire " << wi << " edges/status " << wire->EdgesNb() << '/' << wire->GetStatusMask();
+            for (int ei=0;ei<wire->EdgesNb() && ei<12;++ei) {
+              const auto edge=wire->GetEdge(ei);const auto pc=edge->GetPCurve(face,wire->GetEdgeOrientation(ei));
+              detail << " e" << edges.FindIndex(edge->GetEdge())-1 << ':' << static_cast<int>(wire->GetEdgeOrientation(ei)) <<
+                  ':' << (pc.IsNull() ? 0 : pc->ParametersNb());
+            }
+          }
+          int described=0;
+          for (const auto& item : group.second) {
+            if (++described>6) break;
+            const auto curve=item.edge->GetCurve();
+            detail << "; station wire/occurrence/kind/shape/sample " << item.wire << '/' << item.occurrence << '/' <<
+                item.key[0] << '/' << item.key[1]-1 << '/' << item.sample << " native flags " << item.edge->GetSameParam() << '/' <<
+                item.edge->GetSameRange() << " samples " << item.pc->ParametersNb() << '/' << curve->ParametersNb();
+            if (item.sample>=curve->ParametersNb()) continue;
+            const auto native=curve->GetPoint(item.sample);const auto chart=item.pc->GetPoint(item.sample);
+            const double parameter=item.pc->GetParameter(item.sample);
+            detail << " param " << parameter << " discrete XYZ " << native.X() << '/' << native.Y() << '/' << native.Z() <<
+                " UV " << chart.X() << '/' << chart.Y() << " mesh gaps XYZ/UV " << native.Distance(point) << '/' << chart.Distance(uv) <<
+                " edge/face tolerances " << BRep_Tool::Tolerance(item.edge->GetEdge()) << '/' << BRep_Tool::Tolerance(face->GetFace());
+            double low,high;
+            const auto source=BRep_Tool::CurveOnSurface(TopoDS::Edge(item.edge->GetEdge().Oriented(item.pc->GetOrientation())),face->GetFace(),low,high);
+            if (!source.IsNull() && std::isfinite(parameter) && parameter>=low && parameter<=high) {
+              const auto exact=source->Value(parameter);const auto surface=face->GetSurface()->Value(chart.X(),chart.Y());
+              detail << " source UV " << exact.X() << '/' << exact.Y() << " source/discrete UV gap " << exact.Distance(chart) <<
+                  " surface/native gap " << surface.Distance(native);
+            }
+            for (int i=std::max(0,item.sample-1);i<=std::min(item.pc->ParametersNb()-1,item.sample+1);++i) {
+              const auto p=item.pc->GetPoint(i);
+              detail << " neighbor " << i << ':' << item.pc->GetIndex(i) << ':' << p.X() << '/' << p.Y();
+            }
+          }
+          int incidents=0;
+          for (int ti=1;ti<=mesh->NbTriangles();++ti) {
+            if (++work>1048576) break;
+            int ids[3];mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);
+            if (ids[0]!=group.first && ids[1]!=group.first && ids[2]!=group.first) continue;
+            if (++incidents>16) continue;
+            detail << "; incident " << ti << " nodes " << ids[0] << '/' << ids[1] << '/' << ids[2];
+            for (int id : ids) {
+              if (id<1 || id>mesh->NbNodes()) { detail << " invalid index";continue; }
+              const auto p=mesh->UVNode(id);const auto x=mesh->Node(id).Transformed(location.Transformation());
+              detail << " [" << p.X() << '/' << p.Y() << ";" << x.X() << '/' << x.Y() << '/' << x.Z() << ']';
+            }
+          }
+          detail << "; total incident cells " << incidents;
+          std::fprintf(stderr,"Native export merged boundary %s\n",detail.str().substr(0,7000).c_str());
+        }
+      }
+    } catch (const Standard_Failure&) { std::fprintf(stderr,"Native export merged boundary diagnostic OCCT exception\n"); }
+      catch (const std::exception&) { std::fprintf(stderr,"Native export merged boundary diagnostic exception\n"); }
+  }
+
   void recover_export_chord_boundaries() {
     struct Segment { IMeshData::IEdgePtr edge;IMeshData::IPCurveHandle pc;int first,last; };
     int attempts=0,accepted=0,inserted=0;
