@@ -24,7 +24,10 @@ jobs:
       CARGO_BUILD_JOBS: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-rust
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+          components: rustfmt, clippy
       - name: Install mesh I/O prerequisites
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends liblzma-dev pkg-config
       - name: Check formatting
