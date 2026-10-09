@@ -129,6 +129,11 @@ retains the normal equal5 chamfer after zero/Cancel, exact history and native
 reopen. Its5-to7 retained edit caused severe free-carrier drift, preserved in
 external receipts; the saved baseline supports rechecking that failure.
 
+[`surface-ui-sketch-mirror-human-ui.limo`](../checkpoints/surface-ui-sketch-mirror-human-ui.limo)
+retains a reflected independent line and its edited endpoint after missing-axis
+validation/Cancel, exact history and native save/reopen. Source and axis stay
+unchanged; curve/oblique/multiple-source variants remain unqualified.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

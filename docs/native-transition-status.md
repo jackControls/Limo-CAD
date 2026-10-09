@@ -286,8 +286,20 @@ editing and stable free-carrier edits. `27a244e7` places only new captions6mm
 outside the corner; existing/manual placements and picking remain unchanged.
 A5-to7 edit satisfies equal7 cutbacks but stretches far ends to almost4m and
 y230.8mm. The normal5 baseline is checkpointed for reproduction; bounded
-operation-local stabilization is under source investigation. No repaired UI
-acceptance or all-font/zoom spacing guarantee is claimed. Mirror is next.
+`71fedf1d` adds conservative isolated retained-edit seeding and temporary
+corner/far-end/direction preferences, keeping wider graphs and persistent
+constraints on the generic path. No repaired UI acceptance or all-font/zoom
+spacing guarantee is claimed.
+
+Sketch Mirror passes source/axis order, missing-axis/Cancel exact preservation,
+reflection, independent endpoint editing, exact two-step Undo/Redo and native
+save/reopen. One diagonal and vertical axis are qualified; curve/multi-entity/
+oblique variants remain untested. Rectangular Pattern is next.
+
+`5a9b982a` full repository/Rust/WASM checks passed. `ff4658c3` native Windows
+passed937/0/10; Ubuntu937/1/10 and macOS942/1/10 retain only the known strict
+thread failure with both history contracts passing and no poisoning. New
+`71fedf1d` repository-contract passed; full latest CI is pending.
 
 `ff4658c3` full repository/Rust/WASM checks passed. `e1928904` native Windows
 passed937/0/10; Ubuntu937/1/10 and macOS942/1/10 retain only the known strict
