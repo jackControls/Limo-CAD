@@ -44,6 +44,7 @@ type StyledControlQuery<'w, 's> = Query<
         Option<&'static InterfaceFlat>,
         Option<&'static InterfaceReference>,
         Option<&'static PrimaryButton>,
+        Option<&'static DimensionInk>,
         &'static mut Node,
         &'static mut BackgroundColor,
         &'static mut BorderColor,
@@ -1849,6 +1850,7 @@ fn update_controls(
         flat,
         reference,
         primary,
+        dimension,
         mut node,
         mut background,
         mut border,
@@ -1946,6 +1948,10 @@ fn update_controls(
                 // Match the reference's opacity on the whole submit button:
                 // blend its white caption over the dialog footer, too.
                 ribbon::css_mix(theme.ink, theme.header, 0.4)
+            } else if let Some(dimension) = dimension.filter(|_| control.disabled) {
+                // Construction disables dimension editing, not measurement
+                // readability. Retain the ink used by its extension lines.
+                dimension.0
             } else if control.disabled {
                 ribbon::css_mix(theme.mute, theme.panel, 0.4)
             } else {
