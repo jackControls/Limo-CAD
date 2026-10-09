@@ -5110,7 +5110,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               owner_stop="merged boundary owner refinement attempt/work cap";break;
             }
             ++export_boundary_attempts_;
-            qualified=restore_complete_export_face(single,0,strategy>0,strategy>=2,false,strategy==3) &&
+            qualified=restore_complete_export_face(single,0,strategy>0,strategy>=2,strategy==3,false,true) &&
                 validate_spherical_strip(single,true,true);
             owner_stop="owner "+std::to_string(strip_original_faces_.FindIndex(saved.face->GetFace())-1)+
                 " strategy "+std::to_string(strategy)+" "+strip_stop_;
@@ -6029,7 +6029,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
 
   // Rebuild the COMPLETE authoritative mapped wire rather than an incomplete
   // old facet union. Original PCurves/native nodes and pole witnesses remain.
-  bool restore_complete_export_face(const StripTrial& trial,int pole_choice,bool lookahead=false,bool longest=false,bool allow_flips=false,bool boundary_ears=false) {
+  bool restore_complete_export_face(const StripTrial& trial,int pole_choice,bool lookahead=false,bool longest=false,bool allow_flips=false,bool boundary_ears=false,
+                                    bool retain_native_seed=false) {
     strip_stop_="whole-face preparation";
     const char* policy=boundary_ears ? "boundary-ears" : allow_flips ? "deferred-flip" : longest ? "longest" : lookahead ? "lookahead" : "original";
     try {
@@ -6038,6 +6039,14 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       TopLoc_Location location; const auto mesh=BRep_Tool::Triangulation(face->GetFace(),location);
       if (face->WiresNb()!=1 || mesh.IsNull() || !mesh->HasUVNodes() || mesh->NbNodes()>65535 ||
           (face->GetStatusMask() & ~IMeshData_Outdated)!=0) { strip_stop_="whole-face unsupported chart/status"; return false; }
+      // The merged-boundary owner already has a complete native trim mesh.
+      // Its source angular failure must be refined, not accepted or replaced
+      // by a sparse star over hundreds of retained boundary stations. The
+      // proposal must first pass all existing geometry/domain/incidence gates;
+      // only source-seven precision is deferred to the final refined leaves.
+      if (retain_native_seed && (mesh->NbTriangles()>4096 || !validate_spherical_strip(trial,true,false))) {
+        strip_stop_="native seed domain/cell scope: "+strip_stop_;return false;
+      }
       std::map<int,int> aliases; IMeshData::IEdgePtr pole_edge=nullptr;
       if (!qualify_native_pole(saved,mesh,location,aliases,pole_edge,true,true,pole_choice)) return false;
       const auto canonical=[&](int id) { const auto found=aliases.find(id); return found==aliases.end() ? id : found->second; };
@@ -6049,7 +6058,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         const auto edge=wire->GetEdge(ei); const auto orientation=wire->GetEdgeOrientation(ei);
         const auto pc=edge->GetPCurve(face,orientation); const auto curve=edge->GetCurve();
         if ((orientation!=TopAbs_FORWARD && orientation!=TopAbs_REVERSED) || pc.IsNull() || pc->ParametersNb()<2 ||
-            pc->ParametersNb()>256 || pc->ParametersNb()!=curve->ParametersNb() ||
+            pc->ParametersNb()>(retain_native_seed ? 1024 : 256) || pc->ParametersNb()!=curve->ParametersNb() ||
             (BRep_Tool::Degenerated(edge->GetEdge()) && !certified_pole_edge(edge,pc,aliases)) ||
             (edge->GetDegenerated() && !BRep_Tool::Degenerated(edge->GetEdge()))) {
           strip_stop_="whole-face unsupported native constraint"; return false;
@@ -6088,7 +6097,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           }
           if (i+1==pc->ParametersNb()) continue;
           if (boundary.empty() || boundary.back()!=id) boundary.push_back(id);
-          if (boundary.size()>256) { strip_stop_="whole-face boundary cap"; return false; }
+          if (boundary.size()>(retain_native_seed ? 1024 : 256)) { strip_stop_="whole-face boundary cap"; return false; }
         }
       }
       if (boundary.size()>1 && boundary.front()==boundary.back()) boundary.pop_back();
@@ -6200,7 +6209,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       if (!std::isfinite(area) || area==0.0) { strip_stop_="whole-face zero/nonfinite domain area"; return false; }
       const double winding=area>0.0 ? 1.0 : -1.0;
       std::vector<gp_Pnt2d> kernel={{xmin,ymin},{xmax,ymin},{xmax,ymax},{xmin,ymax}};
-      for (std::size_t i=0;i<boundary.size();++i) {
+      for (std::size_t i=0;i<boundary.size() && !retain_native_seed;++i) {
         const auto u=mesh->UVNode(boundary[i]),v=mesh->UVNode(boundary[(i+1)%boundary.size()]);
         const auto delta=v.Coord()-u.Coord();std::vector<gp_Pnt2d> clipped;
         for (std::size_t j=0;j<kernel.size();++j) {
@@ -6230,12 +6239,18 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       double best=std::numeric_limits<double>::infinity(),rejected=best,error_at_rejected=best;
       int worst_child=-1,worst_sample=-1;gp_Pnt2d selected,worst_uv;gp_Pnt selected_local;
       std::vector<std::array<int,3>> seed;
-      if (boundary_ears) {
+      if (retain_native_seed) {
+        for (int ti=1;ti<=mesh->NbTriangles();++ti) {
+          if (++export_boundary_work_>2097152) { strip_stop_="native seed read work cap";return false; }
+          std::array<int,3> ids;mesh->Triangle(ti).Get(ids[0],ids[1],ids[2]);seed.push_back(ids);
+        }
+        best=0.0;
+      } else if (boundary_ears) {
         if (!build_export_boundary_ears(face,mesh,location,boundary,winding,d,angle,seed)) return false;
         best=0.0;
       }
       for (const auto& candidate : candidates) {
-        if (boundary_ears) break;
+        if (boundary_ears || retain_native_seed) break;
         if (!strip_finite(candidate) || BRepClass_FaceClassifier(face->GetFace(),candidate,Precision::PConfusion()).State()!=TopAbs_IN) continue;
         if (++export_boundary_work_>2097152) { strip_stop_="whole-face centre evaluation budget";return false; }
         const auto source_point=face->GetSurface()->Value(candidate.X(),candidate.Y());
@@ -6274,7 +6289,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             std::to_string(worst_uv.X())+"/"+std::to_string(worst_uv.Y());return false;
       }
       const auto replacement=mesh->Copy();const int node=mesh->NbNodes()+1;
-      if (!boundary_ears) {
+      if (!boundary_ears && !retain_native_seed) {
         replacement->ResizeNodes(node,true);replacement->SetUVNode(node,selected);
         replacement->SetNode(node,selected_local);
       }
@@ -6297,9 +6312,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           if (found!=incidence.end()) { found->second.erase(index);if (found->second.empty()) incidence.erase(found); }
         }
       };
-      if (boundary_ears) for (const auto& triangle : seed) add_cell(triangle,0);
+      if (boundary_ears || retain_native_seed) for (const auto& triangle : seed) add_cell(triangle,0);
       else for (std::size_t i=0;i<boundary.size();++i) add_cell({boundary[i],boundary[(i+1)%boundary.size()],node},0);
-      int inspected=0,inserted=boundary_ears ? 0 : 1,max_depth=0,flips=0;
+      int inspected=0,inserted=(boundary_ears || retain_native_seed) ? 0 : 1,max_depth=0,flips=0;
       std::set<std::pair<Link,Link>> flipped_diagonals;
       std::vector<std::string> recent_splits;
       // Bisect an unconstrained interior edge in BOTH incident cells. Retire
