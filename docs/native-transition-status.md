@@ -23,6 +23,14 @@ The separate Roller GUI PID30300 remains intact. Windows denied foreground
 activation even though CAD acknowledged it; no input was sent. Targeted repair
 rechecks await actual foreground ownership. Current live UI acceptance is incomplete.
 
+Fresh continuation: the earlier canonical GUI exited between turns for an
+unattributed reason; no input preceded its detection and no Windows crash
+report was found. Canonical relaunch PID36700/MCP47360 reports matched 93823f6d
+and foreground ownership. Rib additive Through All refusal/finite recovery,
+Coincident point-only framing/Fit grips, Midpoint mixed framing and H/V framing
+passed targeted human UI rechecks with whole-model preservation. Other cases
+and the broad UI/MCP gates remain unfinished; Parallel is next in catalog order.
+
 Release qualification checkpoint: **2026-10-06 UTC**, with the local UI walkthrough
 updated **2026-10-08 UTC**. The default desktop on the Bevy integration branch
 uses **Bevy `=0.20.0-rc.2`**, application version **0.2.2**, one native host and
