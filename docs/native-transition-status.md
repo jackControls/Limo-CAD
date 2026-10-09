@@ -183,6 +183,20 @@ recheck. Sketch editing tools are next in the breadth survey.
 qualification remain pending at this receipt. These hosted checks do not qualify
 the undeployed source fixes or complete manual MCP coverage.
 
+Sketch Move/Copy passes selection gating/removal, safe invalid-expression rejection,
+exact Cancel, signed Move and Create copy, independent operation Undo/Redo and
+whole-model native save/reopen. The two free lines retain eight DOF. Tab from X
+distance incorrectly focuses Browser Origin before Y; `148d9f0e` redirects only
+eligible adjacent fields in the same current owned form after ordinary text flush.
+Boundaries, buttons and offscreen targets keep existing traversal. Root and peer
+reviewed the committed/pushed source; deployed focus verification remains pending.
+Trim and the remaining sketch editing tools are next.
+
+`858cc0f8` repository/WASM and Linux engine checks passed. Earlier `45ce0569`
+Windows native CI passed 937/0/10; Ubuntu/macOS retain only the known strict modeled
+thread failure, with both history contracts passing and no poison/other failures.
+Latest native and source-fix qualification remain pending.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;

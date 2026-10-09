@@ -91,6 +91,11 @@ retains a free point after pointer creation, exact preview Cancel, retained drag
 creation/edit Undo/Redo and exact native reopen. Two DOF remain free. The shared
 unchanged-drag history dependency requires a deployed recheck.
 
+[`surface-ui-sketch-move-copy-human-ui.limo`](../checkpoints/surface-ui-sketch-move-copy-human-ui.limo)
+retains two free lines after signed Move/Create copy, selection removal, invalid
+input, exact Cancel, Undo/Redo and native reopen. Adjacent-field Tab focus has a
+committed repair awaiting deployment; geometry and persistence passed.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
