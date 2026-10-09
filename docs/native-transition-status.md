@@ -190,12 +190,23 @@ distance incorrectly focuses Browser Origin before Y; `148d9f0e` redirects only
 eligible adjacent fields in the same current owned form after ordinary text flush.
 Boundaries, buttons and offscreen targets keep existing traversal. Root and peer
 reviewed the committed/pushed source; deployed focus verification remains pending.
-Trim and the remaining sketch editing tools are next.
+Scale, Offset and Trim follow in catalog order.
 
 `858cc0f8` repository/WASM and Linux engine checks passed. Earlier `45ce0569`
 Windows native CI passed 937/0/10; Ubuntu/macOS retain only the known strict modeled
 thread failure, with both history contracts passing and no poison/other failures.
 Latest native and source-fix qualification remain pending.
+
+Sketch Scale passes selection gating, zero-factor rejection, exact Cancel, positive
+scaling about an entered nonzero origin, negative scaling about zero, operation
+Undo/Redo and whole-model native save/reopen. Stable point/line IDs retain four DOF.
+No new Scale failure was observed; only its shared multi-field Tab dependency needs
+a deployed recheck. Offset is next, followed by Trim and Extend.
+
+`a579dd31` Windows native CI passed 937/0/10 at17:19:22 UTC, including exact thread
+and both history contracts, with zero poison. Ubuntu/macOS retain only the known
+strict modeled-thread failure; both history contracts pass. `148d9f0e` Linux engine
+checks passed; newer native qualification remains pending.
 
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
