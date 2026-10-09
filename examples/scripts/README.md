@@ -101,6 +101,11 @@ retains a free line after nonzero-origin enlargement, negative-factor scaling,
 zero validation, exact Cancel, Undo/Redo and native reopen. Four DOF remain free;
 only the shared adjacent-field Tab dependency awaits deployed qualification.
 
+[`surface-ui-sketch-offset-human-ui.limo`](../checkpoints/surface-ui-sketch-offset-human-ui.limo)
+retains concentric radii 10/14/8 after outward/inward Offset, validation, exact
+Cancel, retained gap edit, Undo/Redo and native reopen. Geometry passes with two
+DOF; collapse feedback, adjacent labels and active-form ink await deployed fixes.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

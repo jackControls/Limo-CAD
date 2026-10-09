@@ -203,10 +203,28 @@ Undo/Redo and whole-model native save/reopen. Stable point/line IDs retain four 
 No new Scale failure was observed; only its shared multi-field Tab dependency needs
 a deployed recheck. Offset is next, followed by Trim and Extend.
 
-`a579dd31` Windows native CI passed 937/0/10 at17:19:22 UTC, including exact thread
+`a579dd31` Windows native CI passed 937/0/10 at 17:19:22 UTC, including exact thread
 and both history contracts, with zero poison. Ubuntu/macOS retain only the known
 strict modeled-thread failure; both history contracts pass. `148d9f0e` Linux engine
 checks passed; newer native qualification remains pending.
+
+Circular Offset passes selection/side gating, safe zero/collapse rejection, exact
+Cancel, outward/inward geometry, retained gap editing, three-step creation/edit
+Undo/Redo and whole-model native save/reopen. The fixture retains concentric radii
+10/14/8 and two DOF. Collapse feedback is opaque; `b99dfa8e` translates only that
+error. Adjacent offset labels concatenate; `bb2324bc` preserves a clear +X default
+or chooses a separated cardinal anchor for the new radial label, reading saved
+anchors without moving existing/manual labels. The 4 mm heuristic is not an
+all-font/zoom collision guarantee. Both repairs were root/peer reviewed and
+committed/pushed; deployed proof remains pending. Shared active-form dimension
+ink also fails and uses existing `6f24e148`. Trim and Extend are next.
+
+`8471bfb1` Windows native CI passed 937/0/10 at 17:34:02 UTC; Unix hosts retain only
+the known strict thread failure, with both history contracts passing and zero
+poison/other failures. `1e2d6ed0` repository/WASM and Linux checks passed; newer
+Offset source checks remain pending. `3f745d96` full automatic MCP matrix passed
+all six core/vise/turbine acceptance jobs plus final Ubuntu tests; manual MCP
+qualification remains gated on the unfinished UI surface.
 
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
