@@ -285,13 +285,13 @@ impl SolidForm {
                 F::Symmetric,
                 "Symmetric depth".into(),
                 Field::Toggle(p.symmetric),
-                true,
+                matches!(p.extent, RibExtent::Distance { .. }),
             ),
             (
                 F::Flip,
                 "Flip direction".into(),
                 Field::Toggle(self.flip),
-                true,
+                !matches!(p.extent, RibExtent::ToFace { .. }),
             ),
             (
                 F::Operation,

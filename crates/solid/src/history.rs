@@ -3001,10 +3001,13 @@ fn make_jobs(
                             sketch.basis,
                             &definition.target_body_ids,
                             previous_scene,
+                            definition.flip,
                         )?,
                     ),
                 };
-                if definition.flip {
+                // To Face already resolves the signed distance to the chosen
+                // plane; reflecting it would move the rib away from that plane.
+                if definition.flip && !matches!(definition.extent, Some(RibExtent::ToFace { .. })) {
                     (start_offset, end_offset) = (-end_offset, -start_offset);
                 }
                 let result_body_ids = resolve_outputs(
@@ -4771,6 +4774,7 @@ fn nearest_target_offset(
     sketch_basis: PlaneBasis,
     target_body_ids: &[BodyId],
     scene: &SolidSceneDto,
+    flip: bool,
 ) -> Result<f64, SolidError> {
     if target_body_ids.is_empty() {
         return Err(SolidError::InvalidExtent(
@@ -4786,6 +4790,8 @@ fn nearest_target_offset(
         .filter_map(|face| face.plane)
         .filter(|plane| dot(plane.normal, sketch_basis.normal).abs() >= 1.0 - 1e-6)
         .map(|plane| {
+            // Search in the requested direction. The caller reflects the
+            // resulting positive extent into signed sketch-normal offsets.
             dot(
                 [
                     plane.origin[0] - sketch_basis.origin[0],
@@ -4793,7 +4799,7 @@ fn nearest_target_offset(
                     plane.origin[2] - sketch_basis.origin[2],
                 ],
                 sketch_basis.normal,
-            )
+            ) * if flip { -1.0 } else { 1.0 }
         })
         .filter(|distance| *distance > EPS)
         .min_by(|a, b| a.total_cmp(b));
