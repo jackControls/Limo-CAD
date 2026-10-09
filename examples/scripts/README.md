@@ -139,6 +139,11 @@ retains a3x2 array with20mm spacings and one independently edited copied
 endpoint. Validation/Cancel/history/native reopen passed; keyboard traversal
 awaits the shared focus fix.
 
+[`surface-ui-sketch-circular-pattern-human-ui.limo`](../checkpoints/surface-ui-sketch-circular-pattern-human-ui.limo)
+retains a clockwise partial circle pattern with an independently edited center.
+Full-turn and partial placements, validation/Cancel/history and native reopen
+passed; keyboard traversal awaits the shared focus fix.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

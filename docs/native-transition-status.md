@@ -315,6 +315,17 @@ copies are independent/free. Keyboard traversal stays needs_recheck for
 undeployed `148d9f0e`; no array preview/oblique/negative/curve claim is made.
 Circular Pattern is next. `8c7484cc` full repository/Rust/WASM passed.
 
+Sketch Circular Pattern passes zero-count/Cancel preservation, full360/count4
+and clockwise partial180/count3 circle placements about the origin. Independent
+copied-center editing preserves radius and other circles; exact history and
+native persistence pass. Tab traversal stays needs_recheck for `148d9f0e`;
+shifted centers/other primitive variants remain unqualified.
+
+`71fedf1d` native Windows passed937/0/10; Ubuntu937/1/10 and macOS942/1/10
+retain only known strict thread failure, with both history contracts passing
+and no poisoning. `8d59076a` full repository/Rust/WASM and Linux workspace
+checks passed. These do not qualify the undeployed Chamfer repair.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
