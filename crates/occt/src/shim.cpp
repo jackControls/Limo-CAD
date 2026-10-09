@@ -2309,15 +2309,12 @@ void Kernel::apply_job(const FfiJob& job) {
         throw std::runtime_error("drill point angle is invalid");
       }
       const gp_Pnt tip_start = support.Translated(
-          direction.Multiplied(hole_depth - overlap));
+          direction.Multiplied(hole_depth));
       const gp_Ax2 tip_axis(tip_start, gp_Dir(direction));
-      // Extend the same exact cone upward into the cylinder: its nominal
-      // radius meets the cylindrical stop at hole_depth, while its apex
-      // remains at hole_depth + tip_depth and its included angle is retained.
+      // Meet the cylinder at its exact stop disk. Extending the cone upward
+      // enlarges its radius beyond the bore and cuts an unintended radial lip.
       BRepPrimAPI_MakeCone drill_point(
-          tip_axis,
-          finished_hole_diameter * 0.5 + overlap * std::tan(half_angle), 0.0,
-          tip_depth + overlap);
+          tip_axis, finished_hole_diameter * 0.5, 0.0, tip_depth);
       BRepAlgoAPI_Fuse fuse(cutter, drill_point.Shape(),
                             Message_ProgressRange());
       if (!fuse.IsDone()) {
