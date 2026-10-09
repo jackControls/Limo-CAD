@@ -50,6 +50,13 @@ The source fix awaits deployment and visible recheck. The survey continues to
 center-point arcs. Hosted Windows native CI for `6f24e148` passed 937 tests with
 zero failures and ten ignored; it does not qualify the repaired live UI.
 
+The center-point arc fixture also passes safe zero-radius rejection, partial
+draft cancellation, retained endpoint drag, creation/edit Undo/Redo and exact
+native UI save/reopen. Its toolbar mode identity and stale error feedback fail
+the separate polish check. `dc131d00` fixes the active Center arc toolbar binding;
+the controller's stale sketch-error lifecycle repair is under review. These
+repairs remain undeployed, and the broad survey moves on to fit-point splines.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;

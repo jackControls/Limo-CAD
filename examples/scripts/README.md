@@ -19,6 +19,11 @@ retains a three-point arc after endpoint editing, creation/edit Undo/Redo,
 Cancel and exact UI save/reopen. Collinear picks are safely rejected, but the
 runtime's misleading validation message still needs the committed fix deployed.
 
+[`surface-ui-center-arc-human-ui.limo`](../checkpoints/surface-ui-center-arc-human-ui.limo)
+retains a center-point arc after safe zero-radius rejection, draft cancellation,
+endpoint dragging, Undo/Redo and exact UI save/reopen. Active toolbar feedback
+and stale validation status have separate recorded polish defects.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
