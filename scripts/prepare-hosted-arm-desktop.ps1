@@ -115,7 +115,7 @@ function Close-ObservedShellWindows {
         $candidate = Get-ShellWindow ([IntPtr]::new($observed))
         if ($null -ne $candidate) { $candidates.Add($candidate) }
     }
-    $report.shell_windows = @($candidates.ToArray())
+    $report.shell_windows = @($report.shell_windows) + @($candidates.ToArray())
 
     foreach ($candidate in $candidates) {
         $shellWindow = [IntPtr]::new($candidate.hwnd)
@@ -166,14 +166,76 @@ function Close-ObservedShellWindows {
     }
 }
 
+function Get-HostedTerminalWindow([IntPtr]$window) {
+    if (-not [HostedArmAccountWindow]::IsWindowVisible($window)) { return $null }
+    $identity = Get-CoveringWindowIdentity $window
+    $expectedTitle = Join-Path $env:WINDIR 'System32\wsl.exe'
+    if ($identity.class -cne 'CASCADIA_HOSTING_WINDOW_CLASS' -or
+        ($identity.title -cne 'Terminal' -and
+         -not [string]::Equals($identity.title, $expectedTitle, [StringComparison]::OrdinalIgnoreCase))) {
+        return $null
+    }
+    $executable = $identity.executable
+    if ([string]::IsNullOrEmpty($executable) -or [string]::IsNullOrEmpty($env:ProgramFiles)) {
+        throw 'Cannot establish the hosted runner terminal executable identity'
+    }
+    if ($executable.StartsWith('\\?\', [StringComparison]::Ordinal)) { $executable = $executable.Substring(4) }
+    $executable = [IO.Path]::GetFullPath($executable)
+    $packageRoot = [IO.Path]::GetFullPath((Join-Path $env:ProgramFiles 'WindowsApps')).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    if ($identity.process_name -cne 'WindowsTerminal' -or
+        -not $executable.StartsWith($packageRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        $executable.Substring($packageRoot.Length) -cnotmatch '^Microsoft\.WindowsTerminal_\d+\.\d+\.\d+\.\d+_arm64__8wekyb3d8bbwe[\\/]WindowsTerminal\.exe$') {
+        throw 'Refusing a terminal outside its Microsoft ARM64 WindowsApps package'
+    }
+    $identity
+}
+
+function Hide-ObservedHostedTerminalWindows {
+    # The ARM64 runner image can open a WSL update prompt after GUI readiness,
+    # including a Terminal window with the application's default title:
+    # https://github.com/actions/runner-images/issues/14264
+    # Hide that exact observed window; leave the terminal and update running.
+    $candidates = [Collections.Generic.List[object]]::new()
+    $seen = [Collections.Generic.HashSet[long]]::new()
+    foreach ($observed in @($Window, [HostedArmAccountWindow]::GetForegroundWindow().ToInt64())) {
+        if ($observed -eq 0 -or -not $seen.Add($observed)) { continue }
+        $candidate = Get-HostedTerminalWindow ([IntPtr]::new($observed))
+        if ($null -ne $candidate) { $candidates.Add($candidate) }
+    }
+    $report.terminal_windows = @($report.terminal_windows) + @($candidates.ToArray())
+    foreach ($candidate in $candidates) {
+        $window = [IntPtr]::new($candidate.hwnd)
+        $current = Get-HostedTerminalWindow $window
+        if ($null -eq $current -or $current.process_id -ne $candidate.process_id -or
+            $current.title -cne $candidate.title -or $current.process_name -cne $candidate.process_name -or
+            -not [string]::Equals($current.executable, $candidate.executable, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Terminal identity changed before runner preparation; nothing was sent'
+        }
+        if (-not [HostedArmAccountWindow]::ShowWindowAsync($window, 0)) {
+            throw 'The verified hosted runner terminal refused SW_HIDE'
+        }
+        $deadline = [DateTime]::UtcNow.AddSeconds(2)
+        while ([HostedArmAccountWindow]::IsWindowVisible($window)) {
+            [uint32]$owner = 0
+            [void][HostedArmAccountWindow]::GetWindowThreadProcessId($window, [ref]$owner)
+            if ($owner -ne $candidate.process_id) { throw 'Terminal owner changed while waiting for SW_HIDE' }
+            if ([DateTime]::UtcNow -ge $deadline) { throw 'The hosted runner terminal remained visible after SW_HIDE' }
+            Start-Sleep -Milliseconds 50
+        }
+        $candidate | Add-Member -NotePropertyName method -NotePropertyValue 'SW_HIDE'
+        $candidate | Add-Member -NotePropertyName status -NotePropertyValue 'hidden'
+    }
+}
+
 $report = [ordered]@{
     run_id = $env:GITHUB_RUN_ID
     runner_arch = $env:RUNNER_ARCH
     status = 'inspecting'
     started_utc = [DateTime]::UtcNow.ToString('o')
-    method = 'WM_CLOSE to exactly matched system windows; verified Start/Search-only SW_HIDE fallback; no input, account action or process termination'
+    method = 'WM_CLOSE to exactly matched account/Start/Search windows; verified Start/Search fallback and Microsoft ARM64 Terminal SW_HIDE; no input, account action or process termination'
     windows = @()
     shell_windows = @()
+    terminal_windows = @()
     foreground = $null
 }
 try {
@@ -194,6 +256,7 @@ try {
         }
     } else {
     Close-ObservedShellWindows
+    Hide-ObservedHostedTerminalWindows
     $accountWindows = [Collections.Generic.List[object]]::new()
     $inspectionErrors = [Collections.Generic.List[string]]::new()
 
@@ -239,7 +302,7 @@ try {
     if (-not $enumerated) { throw "Cannot enumerate hosted runner windows (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))" }
     if ($accountWindows.Count -gt 1) { throw 'Refusing ambiguous Microsoft-account windows on the hosted runner' }
     if ($accountWindows.Count -eq 0) {
-        $report.status = if ($report.shell_windows.Count -gt 0) { 'closed' } else { 'not_present' }
+        $report.status = if ($report.shell_windows.Count -gt 0 -or $report.terminal_windows.Count -gt 0) { 'closed' } else { 'not_present' }
     } else {
         $candidate = $accountWindows[0]
         $expectedExecutable = Join-Path $env:WINDIR 'System32\WWAHost.exe'
@@ -269,12 +332,24 @@ try {
         }
         $report.status = 'closed'
     }
+    # Closing the account dialog may reveal a different foreground shell.
+    # Qualify that observed window before the fixture requests CAD focus.
+    Close-ObservedShellWindows
+    Hide-ObservedHostedTerminalWindows
     }
 } catch {
     $report.status = 'failed'
     $report.error = $_.Exception.Message
     throw
 } finally {
+    if (-not $IdentifyOnly) {
+        try {
+            $after = [HostedArmAccountWindow]::GetForegroundWindow()
+            $report.foreground_after = if ($after -eq [IntPtr]::Zero) { $null } else { Get-CoveringWindowIdentity $after }
+        } catch {
+            $report.foreground_observation_error = $_.Exception.Message
+        }
+    }
     $report.finished_utc = [DateTime]::UtcNow.ToString('o')
     [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($evidenceFile))
     [IO.File]::WriteAllText($evidenceFile, ($report | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))

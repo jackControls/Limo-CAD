@@ -38,6 +38,10 @@ pub(super) fn target(arch: &str, selected: Option<&str>) -> Result<Target> {
 pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
     let target = target(env::consts::ARCH, options.target.as_deref())?;
     let source = provenance::read(&package.root)?;
+    ensure!(
+        !options.computer_control || !source.modified,
+        "Packaged computer control requires a clean source tree; commit build inputs first"
+    );
     let sdk = options
         .occt_root
         .clone()
@@ -64,14 +68,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         println!("Cross-built packages require checked-runtime qualification on the target before publication.");
     }
     let bin = runtime_bin(&sdk)?;
-    common::run(
-        package
-            .cargo()
-            .args(["--target", target.triple])
-            .env("LIMO_CAD_BUILD_REVISION", &source.revision)
-            .env("OCCT_ROOT", &sdk)
-            .env("VCPKG_TARGET_TRIPLET", target.triplet),
-    )?;
+    common::run(&mut build_command(package, options, &target, &sdk, &source))?;
     ensure!(
         provenance::read(&package.root)? == source,
         "Source revision or modified state changed while building the Windows package"
@@ -86,6 +83,25 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         &release.join("bundle/portable"),
         &source,
     )
+}
+
+fn build_command(
+    package: &Package,
+    options: &Options,
+    target: &Target,
+    sdk: &Path,
+    source: &provenance::Source,
+) -> std::process::Command {
+    let mut command = package.cargo();
+    command
+        .args(["--target", target.triple])
+        .env("LIMO_CAD_BUILD_REVISION", &source.revision)
+        .env("OCCT_ROOT", sdk)
+        .env("VCPKG_TARGET_TRIPLET", target.triplet);
+    if options.computer_control {
+        command.args(["--features", "native-computer-control"]);
+    }
+    command
 }
 
 pub(crate) fn runtime_bin(sdk: &Path) -> Result<PathBuf> {
@@ -198,9 +214,44 @@ pub(crate) fn stage_runtime(
 mod tests {
     use super::*;
     #[test]
+    fn both_windows_packages_preserve_the_opt_in_control_feature_and_target() {
+        let root = crate::release_tooling::root().to_path_buf();
+        let package = Package {
+            desktop: root.join("desktop"),
+            target: root.join("desktop/target"),
+            root,
+            version: "0.2.2".into(),
+        };
+        let source = provenance::Source {
+            revision: "test-revision".into(),
+            modified: false,
+        };
+        for arch in ["x86_64", "aarch64"] {
+            let target = target(arch, None).unwrap();
+            for computer_control in [false, true] {
+                let options = Options {
+                    computer_control,
+                    ..Options::default()
+                };
+                let command = build_command(&package, &options, &target, &package.root, &source);
+                let args: Vec<_> = command.get_args().map(|a| a.to_string_lossy()).collect();
+                assert!(args.windows(2).any(|a| a == ["--target", target.triple]));
+                assert_eq!(
+                    args.windows(2)
+                        .any(|a| a == ["--features", "native-computer-control"]),
+                    computer_control
+                );
+                assert!(args.iter().any(|a| a == "--release"));
+                assert!(args.iter().any(|a| a == "--locked"));
+            }
+        }
+    }
+
+    #[test]
     fn windows_package_requires_runtime_and_license_closure() {
         let temp = tempfile::tempdir().unwrap();
-        let root = temp.path();
+        let resolved = temp.path().canonicalize().unwrap();
+        let root = resolved.as_path();
         fs::write(root.join("LICENSE"), "license").unwrap();
         fs::write(root.join("THIRD_PARTY_NOTICES.md"), "notices").unwrap();
         let sdk = root.join("sdk");

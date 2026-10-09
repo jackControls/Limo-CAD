@@ -60,6 +60,12 @@ cargo xtask package --target aarch64-pc-windows-msvc
 Use `x86_64-pc-windows-msvc` for x64. If `OCCT_ROOT` is set, it must point
 to the SDK for the selected target. The `--target` option is Windows-only.
 
+Add `--computer-control` to opt a Windows package into guarded native OS input.
+The package workflow enables this mode and runs xtask with
+`--features native-control-harness` to qualify keyboard and clipboard behavior
+against the extracted executable. Local packages leave computer control disabled
+unless the flag is supplied.
+
 </details>
 
 ### macOS SDK (Apple silicon)

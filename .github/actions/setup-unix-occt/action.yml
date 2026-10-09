@@ -11,13 +11,13 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Install native compiler and font prerequisites
+    - name: Install native compiler, font and X11 prerequisites
       shell: bash
       run: |
         set -euo pipefail
         if [[ "$RUNNER_OS" == Linux ]]; then
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends build-essential ca-certificates cmake ninja-build pkg-config libfontconfig-dev libfreetype6-dev
+          sudo apt-get install --yes --no-install-recommends build-essential ca-certificates cmake ninja-build pkg-config libfontconfig-dev libfreetype6-dev libx11-dev
         elif [[ "$RUNNER_OS" == macOS ]]; then
           brew install cmake ninja freetype
         else

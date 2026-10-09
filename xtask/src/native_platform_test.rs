@@ -20,6 +20,8 @@ use std::{io::Write, process::Stdio};
 
 mod hosted;
 mod japanese_ime;
+#[cfg(any(all(windows, feature = "native-control-harness"), test))]
+mod keyboard;
 mod print_cancel;
 #[cfg(all(windows, feature = "native-control-harness"))]
 mod windows;
@@ -187,7 +189,15 @@ fn exercise(
     control(&mut client, "File", None)?;
     control(&mut client, "Rename Project…", None)?;
     control(&mut client, "Project name", None)?;
-    let initial = text_state(&mut client)?;
+    // On the hosted Windows desktop, another runner window can appear while
+    // the UI opens the field. Prepare foreground before its first inspection,
+    // not only before the first shortcut. Never refocus a different control.
+    #[cfg(windows)]
+    driver.event("focus")?;
+    let initial = text_state(&mut client).inspect_err(|_| {
+        #[cfg(windows)]
+        let _ = driver.event("diagnose-focus");
+    })?;
     let name = initial["value"]
         .as_str()
         .context("Rename field has no value")?
@@ -309,6 +319,10 @@ fn exercise(
             "not_tested":[if ime_libpinyin || ime_stock.is_some() { "Other IME engines/platforms" } else { "IME composition" }, "physical keyboard", "monitor DPI transition", "visual correctness without reviewing the captures"]
         }))
     })();
+    #[cfg(windows)]
+    if checked.is_err() {
+        let _ = driver.event("diagnose-focus");
+    }
     let restored = driver.clipboard_write(&previous_clipboard);
     match checked {
         Ok(evidence) => {

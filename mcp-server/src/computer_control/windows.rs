@@ -350,26 +350,44 @@ impl ComputerControl {
                 }
                 SetForegroundWindow(hwnd) != 0
             };
-            if accepted && unsafe { GetForegroundWindow() } != hwnd {
-                let mut result = 0;
-                unsafe {
-                    SendMessageTimeoutW(hwnd, WM_NULL, 0, 0, SMTO_ABORTIFHUNG, 1_000, &mut result);
-                }
-            }
+            // Activation across input queues is asynchronous. Wait for the
+            // target to process that one request before checking foreground.
+            // https://devblogs.microsoft.com/oldnewthing/20161118-00/?p=94745
+            let mut result = 0;
+            let acknowledged = unsafe {
+                SendMessageTimeoutW(
+                    hwnd,
+                    WM_NULL,
+                    0,
+                    0,
+                    SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT,
+                    5000,
+                    &mut result,
+                ) != 0
+            };
             observed.process.verify()?;
             if session::computer_control_owner(session_id)? != observed.owner
                 || target_window(&observed.owner, main)? != target
+                || session::now_ms() > observed.expires_ms
             {
-                return Err("CAD owner or window changed during activation; observe again".into());
+                return Err("CAD owner or window changed while activating; observe again".into());
+            }
+            if !acknowledged {
+                return Err(
+                    "CAD did not acknowledge foreground activation within 5s; no input was sent"
+                        .into(),
+                );
             }
             if unsafe { GetForegroundWindow() } != hwnd || unsafe { IsIconic(hwnd) } != 0 {
-                return Err(if accepted {
-                    "CAD foreground activation was not confirmed; no input was sent"
-                } else {
-                    "Windows denied CAD foreground activation; no input was sent"
-                }
-                .into());
+                return Err(json!({"code":"computer_control_foreground_denied",
+                    "message":"Windows did not activate the owned CAD window; no input was sent",
+                    "activation_accepted":accepted,"activation_acknowledged":acknowledged,
+                    "expected_hwnd":hwnd as usize,
+                    "foreground_hwnd":unsafe { GetForegroundWindow() } as usize,
+                    "minimized":unsafe { IsIconic(hwnd) } != 0})
+                .to_string());
             }
+            guard_foreground(hwnd, false, observed.native_dialog)?;
             for _ in 0..FOCUS_STABILITY_SAMPLES {
                 std::thread::sleep(std::time::Duration::from_millis(NATIVE_TEXT_INTERVAL_MS));
                 observed.process.verify()?;
@@ -386,6 +404,7 @@ impl ComputerControl {
             }
             return Ok(
                 json!({"status":"focused","owner":observed.owner,"observation_consumed":true,
+                "activation_accepted":accepted,"activation_acknowledged":acknowledged,
                 "foreground_stability_ms":NATIVE_TEXT_INTERVAL_MS * FOCUS_STABILITY_SAMPLES as u64,
                 "hint":"Foreground ownership held during bounded sampling only. Observe again before sending mouse or keyboard input."}),
             );

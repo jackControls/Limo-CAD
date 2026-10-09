@@ -97,6 +97,7 @@ fn rust_setup_and_wasm_tools_use_repository_pins() {
     assert!(matched.contains("uses: ./candidate/.github/actions/setup-unix-occt"));
     let unix_sdk = read(".github/actions/setup-unix-occt/action.yml");
     assert!(unix_sdk.contains("libfontconfig-dev libfreetype6-dev"));
+    assert!(unix_sdk.contains("libx11-dev"));
     for image in ["ubuntu-26.04", "appimage-ubuntu-22.04"] {
         assert!(read(&format!("scripts/docker/{image}.Dockerfile")).contains("libfontconfig-dev"));
     }
@@ -312,6 +313,70 @@ fn native_shards_keep_geometry_workshop_and_exact_same_run_artifact_provenance()
     assert!(!Regex::new(r"run-id:|repository:|github-token:|pattern:")
         .unwrap()
         .is_match(&config));
+}
+
+#[test]
+fn windows_package_keyboard_checks_use_an_isolated_control_host() {
+    let workflow = read(".github/workflows/desktop-packages.yml");
+    let windows = job(&workflow, "build-windows-portable");
+    ordered(
+        &windows,
+        "git status --porcelain --untracked-files=normal",
+        "cargo xtask package --target",
+    );
+    assert!(windows.contains("cargo xtask package --target \"${{ matrix.rust_target }}\""));
+    assert!(!windows
+        .contains("cargo xtask package --target \"${{ matrix.rust_target }}\" --computer-control"));
+    ordered(
+        &windows,
+        "Expand-Archive -LiteralPath $archive.FullName",
+        "$archiveHash = (Get-FileHash",
+    );
+    ordered(
+        &windows,
+        "$archiveHash = (Get-FileHash",
+        "cargo build --locked --release --manifest-path desktop/Cargo.toml --bin limo-cad --features native-computer-control",
+    );
+    ordered(
+        &windows,
+        "Copy-Item -LiteralPath $executable.DirectoryName -Destination $probeRoot -Recurse",
+        "-PackageDirectory $probeRoot",
+    );
+    assert!(windows.contains("-ControlledSourceHost"));
+    for failure in [
+        "Source host qualification changed the default packaged executable",
+        "Source host qualification changed the default portable ZIP",
+    ] {
+        assert!(windows.contains(failure));
+    }
+    let verify = read("scripts/verify-windows-viewport.ps1");
+    assert!(verify.contains("cargo run --quiet --locked -p xtask --features native-control-harness -- test-mcp native-platform"));
+    ordered(
+        &verify,
+        "prepare-hosted-arm-desktop.ps1",
+        "cargo run --quiet --locked",
+    );
+    assert!(verify.contains(
+        "if ($LASTEXITCODE -ne 0) { throw 'Controlled source host native input verification failed' }"
+    ));
+    assert!(verify.contains("if (-not $ControlledSourceHost) { throw"));
+    assert!(!verify.contains("continue-on-error"));
+    let fixture = read("xtask/src/native_platform_test.rs");
+    ordered(
+        &fixture,
+        "wait_for_interface(&mut client, &session)",
+        "Driver::new(client.process_id(), out)",
+    );
+    let driver = read("xtask/src/native_platform_test/windows.rs");
+    ordered(
+        &driver,
+        "Client::start_command(command",
+        "prepare_hosted_arm_desktop(out)?",
+    );
+    assert!(
+        driver.contains("runner-ready-desktop.json")
+            && driver.contains(".creation_flags(0x08000000)")
+    );
 }
 
 #[test]

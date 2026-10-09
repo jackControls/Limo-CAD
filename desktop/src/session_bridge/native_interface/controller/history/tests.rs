@@ -37,20 +37,22 @@ fn drain(world: &mut World, services: &NativeServices) -> Result<Value, String> 
     }
 }
 
+fn export_model(fixture: &Fixture) -> Value {
+    serde_json::from_str(
+        parse_engine_envelope(fixture.engine.engine_call("project_export_model", ""))
+            .unwrap()
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap()
+}
+
 #[test]
 fn renaming_solid_history_preserves_geometry_undo_and_reload() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
     let owner = solid(&fixture);
-    let export = || {
-        serde_json::from_str::<Value>(
-            parse_engine_envelope(fixture.engine.engine_call("project_export_model", ""))
-                .unwrap()
-                .as_str()
-                .unwrap(),
-        )
-        .unwrap()
-    };
+    let export = || export_model(&fixture);
     let before = export();
     let geometry = fixture.engine.viewport_frame();
     let services = NativeServices {
@@ -144,6 +146,56 @@ fn renaming_solid_history_preserves_geometry_undo_and_reload() {
         fixture.engine.viewport_snapshot().2,
         *geometry.document.scene
     );
+}
+
+#[test]
+fn renaming_sketch_history_preserves_dependent_solid_undo_and_reload() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let fixture = Fixture::new();
+    let owner = solid(&fixture);
+    let before = export_model(&fixture);
+    let scene = fixture.engine.viewport_snapshot().2;
+    fixture
+        .bridge
+        .apply_native_mutation(
+            &fixture.engine,
+            &owner,
+            "solid_rename_feature",
+            &json!({"feature_id":1,"name":"Base outline"}),
+            || Ok(()),
+        )
+        .unwrap();
+    let after = export_model(&fixture);
+    assert_eq!(
+        after["document"]["history"]["features"][0]["name"],
+        "Base outline"
+    );
+    assert_eq!(after["extrudes"][0]["sketch_name"], "Base outline");
+    assert_eq!(fixture.engine.viewport_snapshot().2, scene);
+    for (redo, expected) in [(false, &before), (true, &after)] {
+        fixture
+            .bridge
+            .apply_native_history(&fixture.engine, &fixture.owner(), redo, || Ok(()))
+            .unwrap();
+        assert_eq!(&export_model(&fixture), expected);
+        assert_eq!(fixture.engine.viewport_snapshot().2, scene);
+    }
+    for (operation, args) in [
+        ("solid_recompute", json!({})),
+        (
+            "cad_load_project_model",
+            json!({"model_json":after.to_string()}),
+        ),
+    ] {
+        fixture
+            .bridge
+            .apply_native_mutation(&fixture.engine, &fixture.owner(), operation, &args, || {
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(export_model(&fixture), after);
+        assert_eq!(fixture.engine.viewport_snapshot().2, scene);
+    }
 }
 
 fn publish_history(

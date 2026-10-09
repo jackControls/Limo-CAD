@@ -3,7 +3,7 @@ use crate::replay::Client;
 use anyhow::{bail, ensure, Context, Result};
 use serde_json::{json, Value};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     fs,
     io::{Seek, SeekFrom, Write},
     path::{Path, PathBuf},
@@ -22,6 +22,7 @@ pub(crate) struct Driver {
     process_instance: String,
     window_id: String,
     diagnostics: PathBuf,
+    preparation_sequence: Cell<u32>,
     client: RefCell<Client>,
 }
 
@@ -49,6 +50,7 @@ impl Driver {
             .env("LIMO_CAD_SESSION_DIR", &sessions)
             .env("LIMO_CAD_DESKTOP_BIN", &image);
         let client = Client::start_command(command, Some(Duration::from_secs(45)))?;
+        prepare_hosted_arm_desktop(out)?;
         Ok(Self {
             pid,
             helper: Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -59,6 +61,7 @@ impl Driver {
             process_instance: lease.process_instance,
             window_id: lease.window_id,
             diagnostics: out.join("input-helper.jsonl"),
+            preparation_sequence: Cell::new(0),
             client: RefCell::new(client),
         })
     }
@@ -130,10 +133,34 @@ impl Driver {
         Ok(observed)
     }
 
+    fn observe_key_target(&self) -> Result<Value> {
+        let observed = self.observe()?;
+        if observed["foreground"] != true && hosted_arm_desktop() {
+            let foreground = foreground_diagnostics();
+            self.record(
+                "prepare-before-key",
+                &json!({"observed_owner":observed["owner"],"foreground_window":foreground}),
+            )?;
+            let sequence = self.preparation_sequence.get() + 1;
+            self.preparation_sequence.set(sequence);
+            let evidence = self
+                .diagnostics
+                .parent()
+                .context("Native input evidence directory")?
+                .join(format!("runner-input-desktop-{sequence}.json"));
+            prepare_hosted_arm_desktop_at(&evidence, foreground["hwnd"].as_u64())?;
+            let prepared = self.observe()?;
+            super::keyboard::require_same_target(&observed, &prepared)?;
+            return Ok(prepared);
+        }
+        Ok(observed)
+    }
+
     fn send(&self, observed: &Value, mut request: Value) -> Result<Value> {
         self.check_process()?;
         request["session_id"] = observed["owner"]["session_id"].clone();
         request["observation"] = observed["observation"].clone();
+        let action = request["action"].clone();
         let focus = request["action"] == "focus";
         if focus {
             self.record_focus_state("focus-before", observed, None);
@@ -147,6 +174,16 @@ impl Driver {
             Err(error) => {
                 if focus {
                     self.record_focus_state("focus-failed", observed, Some(&error));
+                }
+                if let Err(diagnostic_error) = self.record(
+                    "computer-control",
+                    &json!({"status":"failed","action":action,
+                    "error":format!("{error:#}"),"observed_owner":observed["owner"],
+                    "observed_foreground":observed["foreground"],
+                    "observed_window_handle":observed["window_handle"],
+                    "native_window_diagnostics":observed["native_window_diagnostics"]}),
+                ) {
+                    eprintln!("Could not retain input refusal diagnostics: {diagnostic_error:#}");
                 }
                 return Err(error);
             }
@@ -235,18 +272,57 @@ impl Driver {
                 let request: Value = serde_json::from_str(input.context("Gesture required")?)?;
                 self.gesture(operation, &request)?
             }
+            "focus" => {
+                let (activated, receipt) = super::keyboard::focus_target(
+                    || self.observe_key_target(),
+                    |observed, request| self.send(observed, request),
+                )?;
+                self.record(
+                    "prepared-field-focus",
+                    &json!({"owner":activated["owner"],"foreground":activated["foreground"],
+                        "focused_control":activated["inspection"]["ui"]["focused_control"],
+                        "foreground_window":foreground_diagnostics()}),
+                )?;
+                receipt
+            }
+            "diagnose-focus" => {
+                // Read only. A setup failure can occur before the first key's
+                // preparation, so preserve the foreign window at that point.
+                let foreground = foreground_diagnostics();
+                let observation = self.observe();
+                self.record(
+                    "field-focus-failure",
+                    &json!({"foreground_window":foreground,
+                        "observation":observation.as_ref().ok().map(|observed| json!({
+                            "owner":observed["owner"],"foreground":observed["foreground"],
+                            "focused_control":observed["inspection"]["ui"]["focused_control"]})),
+                        "observation_error":observation.err().map(|error| format!("{error:#}"))}),
+                )?;
+                return Ok(String::new());
+            }
             _ => {
-                let observed = self.observe()?;
-                let request = match operation {
-                    "focus" => json!({"action":"focus"}),
-                    "select-all" => json!({"action":"key","key":"Ctrl+A"}),
-                    "copy" => json!({"action":"key","key":"Ctrl+C"}),
-                    "paste" => json!({"action":"key","key":"Ctrl+V"}),
-                    "right" => json!({"action":"key","key":"ArrowRight"}),
-                    "backspace" => json!({"action":"key","key":"Backspace"}),
+                let key = match operation {
+                    "select-all" => "Ctrl+A",
+                    "copy" => "Ctrl+C",
+                    "paste" => "Ctrl+V",
+                    "right" => "ArrowRight",
+                    "backspace" => "Backspace",
                     _ => bail!("Unknown Windows input operation {operation}"),
                 };
-                self.send(&observed, request)?
+                super::keyboard::send_key(
+                    key,
+                    || self.observe_key_target(),
+                    |observed, request| {
+                        if request["action"] == "focus" {
+                            self.record(
+                                "focus-before-key",
+                                &json!({"observed_owner":observed["owner"],
+                                    "foreground_window":foreground_diagnostics()}),
+                            )?;
+                        }
+                        self.send(observed, request)
+                    },
+                )?
             }
         };
         self.record(operation, &result)?;
@@ -562,6 +638,75 @@ impl Driver {
         self.check_process()?;
         output(&mut stdout)
     }
+}
+
+// Diagnostic identity of the window that took foreground. It never qualifies
+// that window for input or permits closing it.
+fn foreground_diagnostics() -> Value {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClassNameW, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
+    };
+    let hwnd = unsafe { GetForegroundWindow() };
+    let mut pid = 0;
+    let mut title = [0u16; 512];
+    let mut class = [0u16; 512];
+    let (title_len, class_len) = unsafe {
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        (
+            GetWindowTextW(hwnd, &mut title),
+            GetClassNameW(hwnd, &mut class),
+        )
+    };
+    let process = match process_identity(pid) {
+        Ok((image, start_time)) => json!({"executable":image,"start_time":start_time}),
+        Err(error) => json!({"identity_error":format!("{error:#}")}),
+    };
+    json!({"diagnostics_only":true,"hwnd":hwnd.0 as usize,"pid":pid,
+        "title":String::from_utf16_lossy(&title[..title_len.max(0) as usize]),
+        "class":String::from_utf16_lossy(&class[..class_len.max(0) as usize]),
+        "process":process,"still_foreground":unsafe { GetForegroundWindow() == hwnd }})
+}
+
+// Runner prompts can take foreground after startup. Prepare only individually
+// qualified disposable-runner windows, then use the unchanged input guards.
+fn prepare_hosted_arm_desktop(out: &Path) -> Result<()> {
+    prepare_hosted_arm_desktop_at(&out.join("runner-ready-desktop.json"), None)
+}
+
+fn hosted_arm_desktop() -> bool {
+    std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true")
+        && std::env::var("RUNNER_ENVIRONMENT").as_deref() == Ok("github-hosted")
+        && std::env::var("RUNNER_ARCH").as_deref() == Ok("ARM64")
+}
+
+fn prepare_hosted_arm_desktop_at(evidence: &Path, window: Option<u64>) -> Result<()> {
+    if !hosted_arm_desktop() {
+        return Ok(());
+    }
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .context("Repository root")?;
+    use std::os::windows::process::CommandExt;
+    let mut command = Command::new("pwsh.exe");
+    command
+        .creation_flags(0x08000000)
+        .args(["-NoProfile", "-NonInteractive", "-File"])
+        .arg(root.join("scripts/prepare-hosted-arm-desktop.ps1"))
+        .arg("-EvidencePath")
+        .arg(evidence)
+        .stdin(Stdio::null());
+    if let Some(window) = window {
+        command.arg("-Window").arg(window.to_string());
+    }
+    let output = command
+        .output()
+        .context("Prepare the disposable ARM64 input desktop")?;
+    ensure!(
+        output.status.success(),
+        "ARM64 ready-desktop preparation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
 }
 
 struct Mapping {

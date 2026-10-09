@@ -9201,7 +9201,7 @@ mod tests {
     }
 
     #[test]
-    fn occt_box_export_3mf_is_index_welded() {
+    fn occt_box_export_3mf_preserves_indexed_closed_mesh() {
         let (mut server, _) = mcp_box();
         let request = MeshExportRequest::default();
         let raw_meshes = server
@@ -9212,13 +9212,13 @@ mod tests {
         let raw = &raw_meshes[0];
         let raw_vertex_count = raw.positions.len() / 3;
         let tri_count = raw.triangle_count();
-        assert!(tri_count > 0);
+        assert_eq!(tri_count, 12, "a box should have two triangles per face");
         assert_eq!(
             raw_vertex_count, 8,
-            "native box mesh should share its eight corners"
+            "native topology should share box corners"
         );
-        assert_eq!(limo_cad_export::boundary_edge_count(raw), 0);
-        assert_eq!(limo_cad_export::invalid_model_edge_count(raw), 0);
+        limo_cad_export::validate_3mf_model_mesh(raw)
+            .expect("native box mesh should already be closed, outward-facing and nondegenerate");
 
         let exported = server
             .call_tool("solid_export_3mf", json!({"slicer_target": "standard"}))
@@ -9235,18 +9235,9 @@ mod tests {
         let vertex_count = xml.matches("<vertex ").count();
         let triangle_count = xml.matches("<triangle ").count();
         assert_eq!(triangle_count, tri_count);
-        assert!(
-            vertex_count < tri_count * 3,
-            "exported 3MF should be welded ({vertex_count} verts vs {triangle_count} tris)"
-        );
         assert_eq!(
             vertex_count, raw_vertex_count,
-            "export should preserve the already valid native indexing"
-        );
-
-        assert_eq!(
-            vertex_count, 8,
-            "OCCT unit-box 3MF should weld to 8 corners (got {vertex_count})"
+            "3MF export should preserve the eight shared native corners"
         );
 
         let parsed = parse_3mf_model_mesh(&xml);
@@ -9262,6 +9253,27 @@ mod tests {
             0,
             "every exported edge should have two oppositely oriented triangle uses"
         );
+        limo_cad_export::validate_3mf_model_mesh(&parsed)
+            .expect("exported box mesh should retain positive volume and nondegenerate triangles");
+        let corners = |mesh: &limo_cad_export::TriangleMesh| {
+            let mut points = mesh.positions.as_chunks::<3>().0.to_vec();
+            points.sort_by(|a, b| {
+                a[0].total_cmp(&b[0])
+                    .then(a[1].total_cmp(&b[1]))
+                    .then(a[2].total_cmp(&b[2]))
+            });
+            points
+        };
+        let expected_corners: Vec<_> = [-10., 10.]
+            .into_iter()
+            .flat_map(|x| {
+                [-10., 10.]
+                    .into_iter()
+                    .flat_map(move |y| [0., 10.].into_iter().map(move |z| [x, y, z]))
+            })
+            .collect();
+        assert_eq!(corners(raw), expected_corners, "native box dimensions");
+        assert_eq!(corners(&parsed), corners(raw), "3MF preserves box geometry");
     }
 
     #[test]

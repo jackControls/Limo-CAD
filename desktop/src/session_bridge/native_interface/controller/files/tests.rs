@@ -519,6 +519,125 @@ fn save_all_before_exit_writes_every_dirty_tab_before_requesting_close() {
 }
 
 #[test]
+fn bootstrap_rebinding_republishes_snapshot_ownership_before_input() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let _directory = Fixture::new();
+    let services = NativeServices::default();
+    let bootstrap = services
+        .bridge
+        .native_document_context("main", &services.engine)
+        .unwrap();
+    assert_eq!(bootstrap.document_id, crate::state::BOOTSTRAP_SESSION_ID);
+    services
+        .bridge
+        .publish_native_document(&services.engine, &bootstrap, "solid")
+        .unwrap();
+    let session = services
+        .bridge
+        .session_id_for_window("main")
+        .unwrap()
+        .unwrap();
+    let mut workspace = DocumentWorkspace::default();
+    let current = workspace
+        .observe(&services.bridge, &services.engine, "main")
+        .unwrap();
+    assert_ne!(current.owner.document_id, bootstrap.document_id);
+    assert_eq!(
+        services
+            .bridge
+            .session_id_for_window("main")
+            .unwrap()
+            .unwrap(),
+        session
+    );
+    for name in ["heartbeat.json", "focus.json"] {
+        let metadata: Value =
+            serde_json::from_slice(&std::fs::read(path(&format!("{session}/{name}"))).unwrap())
+                .unwrap();
+        assert_eq!(metadata["document_id"], current.owner.document_id, "{name}");
+        assert_eq!(
+            metadata["project_session_id"], current.owner.document_id,
+            "{name}"
+        );
+        assert_eq!(metadata["generation"], current.revision, "{name}");
+    }
+    let lease: Value = serde_json::from_slice(
+        &std::fs::read(path(&format!(
+            "_ui/processes/{}.json",
+            services.bridge.process_instance_id
+        )))
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        lease["windows"][0]["active_document_id"],
+        current.owner.document_id
+    );
+    assert_eq!(lease["windows"][0]["active_session_id"], session);
+    assert!(services
+        .bridge
+        .with_native_document_owner(&services.engine, &bootstrap, || Ok(()))
+        .is_err());
+    assert_eq!(
+        services.bridge.engine_revision_for_window("main").unwrap(),
+        Some(current.revision)
+    );
+}
+
+#[test]
+fn failed_bootstrap_publication_is_retried_without_replacing_the_new_design() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let _directory = Fixture::new();
+    let services = NativeServices::default();
+    let bootstrap = services
+        .bridge
+        .native_document_context("main", &services.engine)
+        .unwrap();
+    services
+        .bridge
+        .publish_native_document(&services.engine, &bootstrap, "solid")
+        .unwrap();
+    let session = services
+        .bridge
+        .session_id_for_window("main")
+        .unwrap()
+        .unwrap();
+    let blocked = path(&format!("{session}/focus.json"));
+    std::fs::remove_file(&blocked).unwrap();
+    std::fs::create_dir(&blocked).unwrap();
+    let mut workspace = DocumentWorkspace::default();
+    assert!(workspace
+        .observe(&services.bridge, &services.engine, "main")
+        .is_err());
+    let owner = services
+        .bridge
+        .native_document_context("main", &services.engine)
+        .unwrap();
+    assert!(workspace
+        .summaries(&services.bridge, &owner)
+        .unwrap()
+        .is_empty());
+    let document = services.engine.active_project_session_id();
+    assert_ne!(document, bootstrap.document_id);
+    std::fs::remove_dir(&blocked).unwrap();
+    let current = workspace
+        .observe(&services.bridge, &services.engine, "main")
+        .unwrap();
+    assert_eq!(current.owner.document_id, document);
+    assert_eq!(
+        services
+            .bridge
+            .session_id_for_window("main")
+            .unwrap()
+            .unwrap(),
+        session
+    );
+    let metadata: Value = serde_json::from_slice(&std::fs::read(blocked).unwrap()).unwrap();
+    assert_eq!(metadata["document_id"], document);
+    assert_eq!(metadata["generation"], current.revision);
+}
+
+#[test]
 fn real_bootstrap_first_new_retains_both_models_and_distinct_mcp_sessions() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let _directory = Fixture::new();

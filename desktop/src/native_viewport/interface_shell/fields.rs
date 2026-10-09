@@ -942,6 +942,22 @@ pub(crate) fn after_window_input(
     world: &mut World,
     handle: &NativeInterfaceHandle,
 ) -> Result<(), String> {
+    synchronize_editor_focus(world, handle, true)
+}
+
+/// Returning to a window resumes its editor without reselecting a dimension.
+pub(crate) fn after_window_focus(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+) -> Result<(), String> {
+    synchronize_editor_focus(world, handle, false)
+}
+
+fn synchronize_editor_focus(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    select_dimension: bool,
+) -> Result<(), String> {
     if !world.contains_resource::<EditorSession>() {
         return Ok(());
     }
@@ -963,7 +979,7 @@ pub(crate) fn after_window_input(
     }
     let action = next.map(|key| handle.resolve_retained(key)).transpose()?;
     if let Some(entity) = next.map(|key| Entity::from_bits(key.0)) {
-        if world.get::<DrawingDimension>(entity).is_some() {
+        if select_dimension && world.get::<DrawingDimension>(entity).is_some() {
             apply_edit(world, entity, TextEdit::SelectAll)?;
             handle.invalidate_presentation();
         }
