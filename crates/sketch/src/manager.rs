@@ -3809,6 +3809,8 @@ impl SketchManager {
                 "finish the active sketch before creating a Rib".to_string(),
             ));
         }
+        limo_cad_solid::validate_rib_extent(request.operation, request.extent)
+            .map_err(|error| SessionError::Solid(error.to_string()))?;
         let feature_id = self.document.alloc_feature_id();
         let next_number = self.rib_count + 1;
         let name = format!("Rib{next_number}");

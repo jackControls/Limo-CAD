@@ -1193,6 +1193,7 @@ impl SolidDocument {
         if request.line_entity_ids.is_empty() {
             return Err(SolidError::EmptySelection);
         }
+        validate_rib_extent(request.operation, request.extent)?;
         let mut new_body_ids = Vec::with_capacity(request.line_entity_ids.len());
         for _ in &request.line_entity_ids {
             new_body_ids.push(self.alloc_body_id()?);
@@ -1243,6 +1244,7 @@ impl SolidDocument {
             .iter()
             .position(|definition| definition.feature_id == feature_id)
             .ok_or(SolidError::FeatureNotFound(feature_id))?;
+        validate_rib_extent(request.operation, request.extent)?;
         while ribs[index].new_body_ids.len() < request.line_entity_ids.len() {
             let body_id = self.alloc_body_id()?;
             ribs[index].new_body_ids.push(body_id);
@@ -4125,6 +4127,25 @@ fn extent_face_basis(extent: ExtrudeExtent, scene: &SolidSceneDto) -> Option<Pla
         ExtrudeExtent::ToFace { face_id } => face_basis(scene, face_id),
         _ => None,
     }
+}
+
+/// Reject unbounded additive Rib requests without rewriting saved definitions.
+pub fn validate_rib_extent(
+    operation: ExtrudeOperation,
+    extent: Option<RibExtent>,
+) -> Result<(), SolidError> {
+    if matches!(extent, Some(RibExtent::ThroughAll))
+        && matches!(
+            operation,
+            ExtrudeOperation::NewBody | ExtrudeOperation::Join
+        )
+    {
+        return Err(SolidError::InvalidExtent(
+            "Through All requires Subtract or Common. Choose Distance, To Next, or To Face for additive ribs."
+                .into(),
+        ));
+    }
+    Ok(())
 }
 
 fn rib_extent_face_basis(extent: Option<RibExtent>, scene: &SolidSceneDto) -> Option<PlaneBasis> {
