@@ -280,6 +280,22 @@ strict thread failure, both history contracts passing and zero poisoning.
 `cf0e97c3` repository/Rust/WASM and Linux checks passed. These hosted receipts
 do not qualify the new Fillet fixes or repaired native captions.
 
+Sketch Chamfer passes zero/Cancel preservation, equal5 creation, exact creation/
+edit Undo/Redo and native persistence, but fails accessible caption-center
+editing and stable free-carrier edits. `27a244e7` places only new captions6mm
+outside the corner; existing/manual placements and picking remain unchanged.
+A5-to7 edit satisfies equal7 cutbacks but stretches far ends to almost4m and
+y230.8mm. The normal5 baseline is checkpointed for reproduction; bounded
+operation-local stabilization is under source investigation. No repaired UI
+acceptance or all-font/zoom spacing guarantee is claimed. Mirror is next.
+
+`ff4658c3` full repository/Rust/WASM checks passed. `e1928904` native Windows
+passed937/0/10; Ubuntu937/1/10 and macOS942/1/10 retain only the known strict
+thread failure, with both history contracts passing and zero poisoning. Full
+automatic MCP workflow `8471bfb1` passed all six host/model jobs plus final
+Ubuntu and aggregate checks; the manual256-tool catalog remains untested and
+gated on the incomplete UI survey.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;

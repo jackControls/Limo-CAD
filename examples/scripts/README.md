@@ -124,6 +124,11 @@ retains the radius5 tangent corner after validation/Cancel, creation history
 and exact native reopen. Retained radius3/7 edits failed safely on the tested
 build; their source repair and clearer zero feedback await deployed acceptance.
 
+[`surface-ui-sketch-chamfer-human-ui.limo`](../checkpoints/surface-ui-sketch-chamfer-human-ui.limo)
+retains the normal equal5 chamfer after zero/Cancel, exact history and native
+reopen. Its5-to7 retained edit caused severe free-carrier drift, preserved in
+external receipts; the saved baseline supports rechecking that failure.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
