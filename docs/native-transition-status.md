@@ -6,16 +6,22 @@ security and root source review, with follow-up issues #361, #362 and #363.
 The reviewers used scoped agent fallbacks; specialized review services were
 unavailable. PR338 is isolated against main without application runtime changes;
 its simulation sources match Jack's approved version and all 14 evidence hashes
-pass. Fresh CI and a renewed GitHub review are required before its merge.
+pass. The isolated research harness and both required checks passed; a renewed
+GitHub review remains required before its merge.
 Main remains e0760efb, already included in Bevy; no main bypass occurred.
 
 The resumed d5af845b native build compiled and linked successfully in 9m16s.
 Promotion correctly stopped because canonical MCP workers remained running.
 The GUI exited through Save all and close; 78 saved model contents stayed exact,
 and 192 session models plus archives are preserved separately. Lossless cache
-compression preserves compiler files. The merged source still needs a fresh
-supported deployment, complete payload verification and a newly observed matched
-GUI/MCP pair before repair rechecks. Current live UI acceptance is incomplete.
+compression preserves compiler files. Clean 93823f6d compiled and linked in
+5m45s, then deployed through the supported
+restart/launch path. All 70 payload hashes pass. Fresh GUI PID34320 and MCP
+PID25152 report a matched clean pair, SHA256
+45a253fce260fd6d7454d12d62cc037ebe8a6695a237e4f559f8d412bec2681a.
+The separate Roller GUI PID30300 remains intact. Windows denied foreground
+activation even though CAD acknowledged it; no input was sent. Targeted repair
+rechecks await actual foreground ownership. Current live UI acceptance is incomplete.
 
 Release qualification checkpoint: **2026-10-06 UTC**, with the local UI walkthrough
 updated **2026-10-08 UTC**. The default desktop on the Bevy integration branch
@@ -516,7 +522,7 @@ qualifying a live GUI/MCP pair. Application version alone is insufficient.
 Current October 8 Medix qualification: clean matched `51cb7479` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
-536 × 327.47 × 48 mm. Actual GUI 3MF and STL exports now pass the native
+536 Ã— 327.47 Ã— 48 mm. Actual GUI 3MF and STL exports now pass the native
 source-precision and oriented-closure checks across 33 native shells. Restoring
 the original split policy recovers the 37 repaired faces lost by the earlier
 lookahead regression to 72 links. Connector caps and
@@ -568,7 +574,7 @@ fix. Appearance Apply and Make component had both refused unchanged Body8 with
 owner/revision, layout, visibility and modal fences; fresh pointer/MCP observation
 remains strict. Both retries passed. The saved
 [center-bearer checkpoint](../examples/checkpoints/garden-bench-center-bearer-human-ui.limo)
-has its independent timber-colored 28 × 415 × 90 mm bearer named and placed at
+has its independent timber-colored 28 Ã— 415 Ã— 90 mm bearer named and placed at
 586/30/325 mm with identity rotation. Exact live/archive comparison passed with
 twenty-nine features, eight definitions, eleven occurrences, five named views,
 zero scene errors and zero display warnings. Support blocks and the rest of the
@@ -576,7 +582,7 @@ three-model walkthrough remain unfinished. The newly observed threaded-part
 export identity conflict remains under investigation in automatic native CI.
 
 The subsequent [front support stock checkpoint](../examples/checkpoints/garden-bench-front-support-stock-human-ui.limo)
-adds its origin-constrained 65 × 28 mm sketch and independent 65 mm extrusion
+adds its origin-constrained 65 Ã— 28 mm sketch and independent 65 mm extrusion
 through the same guarded UI. Both features are named, all nine bodies restored,
 and the finished sketch hidden. Exact live/archive comparison passed at
 thirty-one features, nine definitions and twelve occurrences. This block's
@@ -730,7 +736,7 @@ share definition 14 and its four clearance bores, separately from upper-rail
 definition 12. Remaining pilots, geometry, joints and drawing/layout work are
 unfinished.
 
-On clean matched `e7e0a775`, physical Hole input added six Ø3.5 mm, 39 mm deep,
+On clean matched `e7e0a775`, physical Hole input added six Ã˜3.5 mm, 39 mm deep,
 flat-bottom left-rear rail/arm pilots at stock X 0 mm, Y 32.5 mm and Z
 365/400/170/205/590/615 mm. The named
 [left-rear pilot checkpoint](../examples/checkpoints/garden-bench-left-rear-pilots-human-ui.limo)
@@ -738,7 +744,7 @@ has twenty-six features, seven definitions and ten occurrences with all Browser
 eyes restored. Saved parameters and exact live/archive comparison passed.
 On clean matched `7a51d2e0`, physical Hole input completed the right-rear rail/arm
 pattern on the outward +X face: stock X 65 mm, Y 32.5 mm and the same six Z
-positions, with Ø3.5 mm, 39 mm deep, flat-bottom pilots. The named
+positions, with Ã˜3.5 mm, 39 mm deep, flat-bottom pilots. The named
 [post-pilot checkpoint](../examples/checkpoints/garden-bench-post-pilots-human-ui.limo)
 has twenty-seven features, seven definitions, ten occurrences and five named
 views. All Browser eyes are restored; saved parameters and exact live/archive
@@ -746,7 +752,7 @@ comparison passed. The four post pilot patterns are complete. Remaining bench
 geometry, joints, drawings and print layouts are unfinished.
 
 On clean matched `fc275793`, physical Rectangle input added the center seat
-bearer's 28 × 415 mm XY profile. Its saved constraints retain an origin-coincident
+bearer's 28 Ã— 415 mm XY profile. Its saved constraints retain an origin-coincident
 point, horizontal/vertical edges and driving dimensions. Physical Extrude input
 created independent 90 mm stock with zero taper and no flip. Both features were
 named through the UI; all eight Browser eyes were restored. The saved
@@ -756,7 +762,7 @@ and matches the live model exactly. The center stock remains at the source
 origin; its appearance, assembly placement and support blocks are unfinished.
 
 On clean matched `08efc3e7`, physical top-face selection and the Hole dialog
-added the lower rail's two Ø3.5 mm, 32 mm deep, flat-bottom stretcher pilots at
+added the lower rail's two Ã˜3.5 mm, 32 mm deep, flat-bottom stretcher pilots at
 stock points `(14, 195, 90)` and `(14, 235, 90)` mm. The named feature and Ctrl+S
 produced the [lower-pilot checkpoint](../examples/checkpoints/garden-bench-lower-pilots-human-ui.limo):
 twenty features, seven definitions and ten occurrences, with both lower rails
@@ -765,7 +771,7 @@ the saved parameters and exact live/archive comparison passed. Upper-rail top
 pilots and remaining post pilots, geometry, joints and drawings are unfinished.
 
 On clean matched `35722a50`, the physical Hole dialog added the upper rail's five
-Ø3.5 mm, 32 mm deep, flat-bottom seat-slat pilots at stock X 14 mm, Y
+Ã˜3.5 mm, 32 mm deep, flat-bottom seat-slat pilots at stock X 14 mm, Y
 12.5/102.5/192.5/282.5/372.5 mm, Z 90 mm. The named feature, all-body Browser
 visibility restoration and Ctrl+S produced the
 [rail-pilot checkpoint](../examples/checkpoints/garden-bench-rail-pilots-human-ui.limo):
@@ -775,7 +781,7 @@ Saved parameters and exact live/archive comparison passed; the full frame was
 captured. Remaining post pilots, geometry, joints and drawings are unfinished.
 
 On clean matched `0226ec9f`, guarded physical Hole input added the left-front
-post's six Ø3.5 mm, 39 mm deep, flat-bottom rail/arm pilots at stock
+post's six Ã˜3.5 mm, 39 mm deep, flat-bottom rail/arm pilots at stock
 X 0 mm, Y 32.5 mm, Z 365/400/170/205/590/615 mm. The named feature, restored
 all-body visibility, Isometric/Fit and Ctrl+S produced the
 [left-front pilot checkpoint](../examples/checkpoints/garden-bench-left-front-pilots-human-ui.limo):
@@ -785,7 +791,7 @@ comparison passed. Right-front apron and both rear-post pilot patterns,
 remaining geometry, joints and drawings are unfinished.
 
 On clean matched `cb464867`, physical Hole input added the right-front post's
-two Ø3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
+two Ã˜3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
 Z 350/390 mm. Naming, restoring all Browser eyes and Ctrl+S produced the
 [front pilot checkpoint](../examples/checkpoints/garden-bench-front-pilots-human-ui.limo):
 twenty-three features, seven definitions and ten occurrences. Both front posts
@@ -794,7 +800,7 @@ exact live/archive comparison passed. Both rear-post patterns, remaining
 geometry, joints and drawings are unfinished.
 
 On clean matched `fe195308`, physical Hole input added the left-rear post's two
-Ø3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
+Ã˜3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
 Z 350/390 mm. Naming, restoring all Browser eyes and Ctrl+S produced the
 [left-rear apron checkpoint](../examples/checkpoints/garden-bench-left-rear-apron-human-ui.limo):
 twenty-four features, seven definitions and ten occurrences. Its saved hole
@@ -802,7 +808,7 @@ parameters and exact live/archive comparison passed. Rear rail/arm pilots,
 right-rear apron pilots, remaining geometry, joints and drawings are unfinished.
 
 On clean matched `0528a7db`, physical Hole input added the right-rear post's two
-Ø3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
+Ã˜3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
 Z 350/390 mm. The named [rear apron checkpoint](../examples/checkpoints/garden-bench-rear-aprons-human-ui.limo)
 has twenty-five features, seven definitions and ten occurrences with all Browser
 eyes restored. Saved parameters and exact live/archive comparison passed.
@@ -884,7 +890,7 @@ Clean `afe296af` built, deployed and was physically retried on a matched GUI/MCP
 pair. The repair now includes measured original pcurve/3D discrepancies at the
 shared endpoint, each bounded by its incident edge's recorded tolerance. All
 eight sampled junction repairs passed. Import progressed to body 1 face 3779,
-a spherical face with signed area -0.000015055593139196334 mm², status 4 and no
+a spherical face with signed area -0.000015055593139196334 mmÂ², status 4 and no
 reported boundary intersections. That nonzero face was rejected rather than
 omitted; the import tab stayed empty. Its meshing failure is the next unresolved
 issue, and successful Medix import is still not established.
@@ -1041,7 +1047,7 @@ its manifest. Actual GUI 3MF preflight still refuses those 107 links. Both teste
 surface-point diagonal refinements were rolled back after the complete face
 winding guard rejected them. The live Medix document matches the saved complete
 checkpoint and reports zero scene errors and display warnings, with 8,908 faces
-and dimensions 536 × 327.47 × 48 mm. No native-precision-qualified STL or 3MF is
+and dimensions 536 Ã— 327.47 Ã— 48 mm. No native-precision-qualified STL or 3MF is
 claimed. The foreground GUI/MCP pair is matched; unique GUI output/error logs
 are retained for the previously unexplained process exit.
 
@@ -1073,7 +1079,7 @@ The October 7 [human-operated bench checkpoint](../examples/checkpoints/garden-b
 was built through real OS mouse/keyboard input on matched clean GUI/MCP builds
 through `0db4c009`. It contains eighteen named features, four separate posts,
 two shared aprons, two shared upper side rails, eight post pilots, six shared apron clearance positions,
-four shared upper-rail clearance positions, a separate 28 × 415 × 90 mm lower-rail
+four shared upper-rail clearance positions, a separate 28 Ã— 415 Ã— 90 mm lower-rail
 stock and five named views. The lower stock is fully constrained but still has no
 bores, component definition, appearance or assembly placement. UI checks cover fully
 constrained stock, translated/rotated shared editing, precise multi-position Hole
