@@ -3207,6 +3207,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       recover_export_chord_boundaries();
       recover_export_longest_faces(false,true);
       recover_export_longest_faces(true);
+      recover_export_merged_boundaries();
       diagnose_export_boundary_merges();
     }
     if (!range.More()) {
@@ -4973,6 +4974,128 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   // Refine a sampled crossing only when the corresponding exact, oriented
   // source PCurve intervals are disjoint. Snapshot after all earlier repairs;
   // neither a failed remesh nor rollback may undo their qualified geometry.
+  // OCCT may register two distinct boundary stations as one UV mesh node.
+  // Reconstruct the retained native stations and their authoritative trim
+  // chains on disposable mesh copies, rather than conflating their identities
+  // during export. A failed owner rolls back the entire shared-edge trial.
+  void recover_export_merged_boundaries() {
+    struct Station { IMeshData::IEdgePtr edge;IMeshData::IPCurveHandle pc;int sample; };
+    int attempts=0,accepted=0;
+    for (int fi=0;fi<GetModel()->FacesNb() && attempts<8 && export_boundary_attempts_<128 &&
+         export_boundary_work_<2097152;++fi) {
+      const auto face=GetModel()->GetFace(fi).get();
+      // The observed merge is on a regular planar trim. Do not assume a
+      // singular or periodic chart admits the same local cavity construction.
+      if (face->GetSurface()->GetType()!=GeomAbs_Plane || face->WiresNb()!=1 ||
+          (face->GetStatusMask() & ~IMeshData_Outdated)!=0) continue;
+      const int original=strip_original_faces_.FindIndex(face->GetFace())-1;
+      StripTrial trial;bool mutated=false,success=false;std::string reason;
+      try {
+        TopLoc_Location location;const auto mesh=BRep_Tool::Triangulation(face->GetFace(),location);
+        if (mesh.IsNull() || !mesh->HasUVNodes() || mesh->NbNodes()>65536 || mesh->NbTriangles()>131072) continue;
+        const auto wire=face->GetWire(0);std::map<int,std::vector<Station>> stations;
+        for (int ei=0;ei<wire->EdgesNb();++ei) {
+          const auto edge=wire->GetEdge(ei);const auto pc=edge->GetPCurve(face,wire->GetEdgeOrientation(ei));
+          if (pc.IsNull() || pc->ParametersNb()<2 || pc->ParametersNb()>65536)
+            throw std::runtime_error("merged boundary lacks bounded native stations");
+          for (int i=0;i<pc->ParametersNb();++i) {
+            if (++export_boundary_work_>2097152) throw std::runtime_error("merged boundary scan work cap");
+            const int id=pc->GetIndex(i);
+            if (id<1 || id>mesh->NbNodes()) throw std::runtime_error("merged boundary mapped index is invalid");
+            stations[id].push_back({edge,pc,i});
+          }
+        }
+        std::array<IMeshData::IEdgePtr,2> pair{nullptr,nullptr};
+        for (const auto& group : stations) {
+          if (group.second.size()!=2) continue;
+          const auto& a=group.second[0];const auto& b=group.second[1];
+          if (a.edge==b.edge || a.sample==0 || b.sample==0 || a.sample+1==a.pc->ParametersNb() ||
+              b.sample+1==b.pc->ParametersNb()) continue;
+          // Equal native stations need an identity proof, not this separation
+          // repair. Here both stored coordinates and parameters remain fixed.
+          if (!strip_finite(a.pc->GetPoint(a.sample)) || !strip_finite(b.pc->GetPoint(b.sample)) ||
+              a.pc->GetPoint(a.sample).Distance(b.pc->GetPoint(b.sample))==0.0) continue;
+          pair={a.edge,b.edge};break;
+        }
+        if (!pair[0]) continue;
+        std::set<IMeshData::IFacePtr> owners;
+        for (const auto edge : pair) {
+          const auto curve=edge->GetCurve();
+          if (!edge->GetSameParam() || !edge->GetSameRange() || edge->GetDegenerated() ||
+              BRep_Tool::Degenerated(edge->GetEdge()) || edge->PCurvesNb()!=2 ||
+              edge->GetPCurve(0)->GetFace()==edge->GetPCurve(1)->GetFace() ||
+              curve->ParametersNb()<2 || curve->ParametersNb()>256)
+            throw std::runtime_error("merged boundary native parameters/owners exceed certified scope");
+          StripEdge saved{edge,edge->GetStatusMask(),{},{},{}};
+          for (int i=0;i<curve->ParametersNb();++i) {
+            const auto point=curve->GetPoint(i);const double parameter=curve->GetParameter(i);
+            if (!strip_finite(point) || !std::isfinite(parameter) || (i && parameter<=curve->GetParameter(i-1)))
+              throw std::runtime_error("merged boundary native station order/point is invalid");
+            saved.points.push_back(point);saved.parameters.push_back(parameter);
+          }
+          for (int pi=0;pi<edge->PCurvesNb();++pi) {
+            const auto pc=edge->GetPCurve(pi);const auto owner=pc->GetFace();owners.insert(owner);
+            if (pc->ParametersNb()!=curve->ParametersNb()) throw std::runtime_error("merged boundary owner sample count mismatch");
+            StripPCurve item{pc,{},{},{}};
+            const double budget=std::min(GetParameters().Deflection/4.0,
+                BRep_Tool::Tolerance(edge->GetEdge())+BRep_Tool::Tolerance(owner->GetFace()));
+            for (int i=0;i<pc->ParametersNb();++i) {
+              if (++export_boundary_work_>2097152) throw std::runtime_error("merged boundary source work cap");
+              const auto uv=pc->GetPoint(i);const auto source=owner->GetSurface()->Value(uv.X(),uv.Y());
+              if (pc->GetParameter(i)!=curve->GetParameter(i) || !strip_finite(uv) || !strip_finite(source) ||
+                  !std::isfinite(budget) || budget<=0.0 || source.Distance(curve->GetPoint(i))>budget)
+                throw std::runtime_error("merged boundary retained chart/native station exceeds tolerance or precision");
+              item.points.push_back(uv);item.parameters.push_back(pc->GetParameter(i));item.indices.push_back(pc->GetIndex(i));
+            }
+            saved.pcurves.push_back(std::move(item));
+          }
+          trial.edges.push_back(std::move(saved));
+        }
+        if (owners.size()>4) throw std::runtime_error("merged boundary owner cap");
+        for (const auto owner : owners) {
+          if ((owner->GetStatusMask() & ~IMeshData_Outdated)!=0 || owner->WiresNb()!=1)
+            throw std::runtime_error("merged boundary owner status or holes exceed local proof scope");
+          for (int oi=1;oi<=strip_original_faces_.Extent();++oi) if (
+              strip_original_faces_.FindKey(oi).IsPartner(owner->GetFace()) && !strip_original_faces_.FindKey(oi).IsSame(owner->GetFace()))
+            throw std::runtime_error("merged boundary owner has an uncertified located alias");
+          TopLoc_Location owner_location;const auto current=BRep_Tool::Triangulation(owner->GetFace(),owner_location);
+          if (current.IsNull() || !current->HasUVNodes() || current->NbNodes()>65536 || current->NbTriangles()>131072)
+            throw std::runtime_error("merged boundary owner has no bounded UV mesh");
+          StripFace saved{owner,owner->GetStatusMask(),{},current,{}};
+          const int key=strip_original_faces_.FindIndex(owner->GetFace());
+          if (key<=0) throw std::runtime_error("merged boundary original owner mapping missing");
+          saved.original_orientation=strip_original_faces_.FindKey(key).Orientation();
+          const auto owner_wire=owner->GetWire(0);saved.wire_statuses.push_back(owner_wire->GetStatusMask());
+          if (owner_wire->GetStatusMask()!=0) throw std::runtime_error("merged boundary owner wire status");
+          std::size_t count=0;
+          for (int ei=0;ei<owner_wire->EdgesNb();++ei) {
+            const auto edge=owner_wire->GetEdge(ei);const auto pc=edge->GetPCurve(owner,owner_wire->GetEdgeOrientation(ei));
+            if (BRep_Tool::Degenerated(edge->GetEdge()) || pc.IsNull() || (count+=pc->ParametersNb())>1024)
+              throw std::runtime_error("merged boundary owner pole or station cap");
+            std::vector<int> indices;
+            for (int i=0;i<pc->ParametersNb();++i) indices.push_back(pc->GetIndex(i));
+            saved.boundary_indices.push_back({pc,std::move(indices)});
+          }
+          trial.faces.push_back(std::move(saved));
+        }
+        ++attempts;++export_boundary_attempts_;mutated=true;
+        if (!restore_strip_station_nodes(trial)) throw std::runtime_error(strip_stop_);
+        if (!restore_skipped_strip_nodes(trial,true,0,true)) throw std::runtime_error("merged boundary native cavity: "+strip_stop_);
+        if (!validate_spherical_strip(trial,true,true)) throw std::runtime_error("merged boundary all-owner source/domain: "+strip_stop_);
+        success=true;++accepted;
+        export_boundary_rejections_[original]="separate native boundary stations and complete trim certified";
+      } catch (const StripRollbackFailure&) { throw; }
+        catch (const Standard_Failure&) { reason="OCCT exception reconstructing merged native boundary"; }
+        catch (const std::exception& error) { reason=error.what(); }
+      if (!success && mutated) restore_spherical_strip(trial);
+      if (!success && !reason.empty()) {
+        export_boundary_rejections_[original]+="; merged boundary: "+reason.substr(0,650);
+        std::fprintf(stderr,"Native export merged boundary face %d rejected: %s\n",original+1,reason.substr(0,3000).c_str());
+      }
+    }
+    export_boundary_stop_+="; merged boundary attempts/accepted "+std::to_string(attempts)+'/'+std::to_string(accepted);
+  }
+
   // Read the final discrete constraints before ModelPostProcessor turns their
   // indices into native polygons. A shared mesh node is not evidence that two
   // distinct native edge samples are the same topological boundary point.
@@ -6790,7 +6913,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
   // Some native triangulators omit collinear UV constraint samples even
   // though their mapped nodes and shared 3D curve samples remain available.
   // Reinsert only those existing nodes into the sole incident triangle.
-  bool restore_skipped_strip_nodes(const StripTrial& trial,bool native_export=false,int unused_pole_choice=0) {
+  bool restore_skipped_strip_nodes(const StripTrial& trial,bool native_export=false,int unused_pole_choice=0,
+                                   bool complete_native_wire=false) {
     strip_corner_detail_.clear();
     strip_degenerate_details_.clear();
     try {
@@ -6871,7 +6995,9 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             }
             if ((orientation != TopAbs_FORWARD && orientation != TopAbs_REVERSED) || pc.IsNull() ||
                 (BRep_Tool::Degenerated(edge->GetEdge()) && (!native_export || !certified_pole_edge(edge,pc,pole_aliases))) ||
-                pc->ParametersNb() < 2 || pc->ParametersNb() > 256 ||
+                // The separation caller already bounded the entire original
+                // wire to 1024 stations; read its unchanged long edges too.
+                pc->ParametersNb() < 2 || pc->ParametersNb() > (native_export && complete_native_wire ? 1024 : 256) ||
                 pc->ParametersNb() != edge->GetCurve()->ParametersNb() || chain.size()+pc->ParametersNb() > 4096) {
               eligible_wire = false; break;
             }

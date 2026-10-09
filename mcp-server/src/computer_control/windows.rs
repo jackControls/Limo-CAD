@@ -25,6 +25,10 @@ use super::capture;
 use crate::{build_pair, session};
 
 const OBSERVATION_MS: u64 = 60_000;
+// Conservative queue pacing/stability sampling, not text-consumption proof
+// or a guarantee that another application cannot subsequently take focus.
+const NATIVE_TEXT_INTERVAL_MS: u64 = 20;
+const FOCUS_STABILITY_SAMPLES: usize = 5;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -322,6 +326,12 @@ impl ComputerControl {
                 layout(&current)
             };
             if current_layout != *expected {
+                if observed.native_dialog {
+                    return Err(format!(
+                        "Native CAD dialog changed ({}); observe again before input",
+                        native_layout_difference(expected, &current_layout)
+                    ));
+                }
                 return Err(
                     "Rendered controls or camera changed; observe again before input".into(),
                 );
@@ -357,9 +367,24 @@ impl ComputerControl {
                 }
                 .into());
             }
+            for _ in 0..FOCUS_STABILITY_SAMPLES {
+                std::thread::sleep(std::time::Duration::from_millis(NATIVE_TEXT_INTERVAL_MS));
+                observed.process.verify()?;
+                if session::computer_control_owner(session_id)? != observed.owner
+                    || target_window(&observed.owner, main)? != target
+                {
+                    return Err(
+                        "CAD owner or window changed during activation; observe again".into(),
+                    );
+                }
+                if unsafe { GetForegroundWindow() } != hwnd || unsafe { IsIconic(hwnd) } != 0 {
+                    return Err("CAD foreground activation was lost during stability sampling; no input was sent".into());
+                }
+            }
             return Ok(
                 json!({"status":"focused","owner":observed.owner,"observation_consumed":true,
-                "hint":"Observe again before sending mouse or keyboard input."}),
+                "foreground_stability_ms":NATIVE_TEXT_INTERVAL_MS * FOCUS_STABILITY_SAMPLES as u64,
+                "hint":"Foreground ownership held during bounded sampling only. Observe again before sending mouse or keyboard input."}),
             );
         }
         guard_foreground(hwnd, false, observed.native_dialog)?;
@@ -395,6 +420,9 @@ impl ComputerControl {
                         pointer.ok_or("Pointer input has no planned position")?,
                         hwnd,
                     ),
+                    Step::Text(_) if observed.native_dialog => {
+                        guard_native_text_focus(&observed, hwnd)
+                    }
                     _ => Ok(()),
                 });
             if let Err(error) = guard {
@@ -421,6 +449,21 @@ impl ComputerControl {
                 pointer_start.get_or_insert(point);
             }
             completed += usize::from(step.is_input());
+            if observed.native_dialog && matches!(step, Step::Text(_)) {
+                std::thread::sleep(std::time::Duration::from_millis(NATIVE_TEXT_INTERVAL_MS));
+            }
+        }
+        if observed.native_dialog && request.action == "text" {
+            if let Err(error) = guard_action(&observed, hwnd, false, false)
+                .and_then(|()| guard_native_text_focus(&observed, hwnd))
+            {
+                let cleanup_errors = driver.release_all();
+                return Ok(json!({"status":"input_incomplete","action":request.action,
+                    "backend":backend,"completed_primitives":completed,"planned_primitives":planned,
+                    "failed_primitive":"final_text_guard","error":error,"cleanup_errors":cleanup_errors,
+                    "input_may_have_been_inserted":true,"owner":observed.owner,
+                    "observation_consumed":true,"hint":"Native text was queued, but final ownership or edit focus was lost. Observe and capture the partial result before any further input."}));
+            }
         }
         let client_point = |point: [i32; 2]| {
             observed
@@ -733,6 +776,53 @@ fn native_layout(hwnd: HWND) -> Result<Value, String> {
     )
 }
 
+fn native_layout_difference(expected: &Value, current: &Value) -> String {
+    let bounded = |value: &Value| {
+        let rendered = value.to_string();
+        let mut summary: String = rendered.chars().take(80).collect();
+        if rendered.chars().count() > 80 {
+            summary.push_str("...");
+        }
+        summary
+    };
+    let changed = |path: &str, before: &Value, after: &Value| {
+        format!("{path}: {} -> {}", bounded(before), bounded(after))
+    };
+    for field in ["focused_control", "focused_editable", "class"] {
+        if expected[field] != current[field] {
+            return changed(field, &expected[field], &current[field]);
+        }
+    }
+    let Some(before) = expected["controls"].as_array() else {
+        return "observed controls unavailable".into();
+    };
+    let Some(after) = current["controls"].as_array() else {
+        return "current controls unavailable".into();
+    };
+    if before.len() != after.len() {
+        return format!("control count: {} -> {}", before.len(), after.len());
+    }
+    for (index, (old, new)) in before.iter().zip(after).enumerate() {
+        for field in [
+            "window_handle",
+            "caption",
+            "screen_bounds",
+            "style",
+            "enabled",
+            "class",
+        ] {
+            if old[field] != new[field] {
+                return changed(
+                    &format!("control[{index}].{field}"),
+                    &old[field],
+                    &new[field],
+                );
+            }
+        }
+    }
+    "other native layout metadata changed".into()
+}
+
 fn process_image(pid: u32) -> Result<PathBuf, String> {
     let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
     if process.is_null() {
@@ -874,6 +964,42 @@ fn guard_action(
         return Err("Active CAD document or window owner changed during input".into());
     }
     guard_foreground(hwnd, owns_capture, observed.native_dialog)
+}
+
+fn guard_native_text_focus(observed: &Observation, hwnd: HWND) -> Result<(), String> {
+    let expected = observed
+        .layout
+        .as_ref()
+        .and_then(|layout| layout["focused_control"].as_u64())
+        .ok_or("Native text observation has no qualified edit focus")?;
+    let mut pid = 0;
+    let thread = unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+    let mut info = GUITHREADINFO {
+        cbSize: size_of::<GUITHREADINFO>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GetGUIThreadInfo(thread, &mut info) } == 0 {
+        return Err("Cannot verify native CAD edit focus during text input".into());
+    }
+    let focus = info.hwndFocus;
+    let mut focus_pid = 0;
+    unsafe {
+        GetWindowThreadProcessId(focus, &mut focus_pid);
+    }
+    if focus.is_null()
+        || focus as usize as u64 != expected
+        || focus_pid != pid
+        || unsafe { GetAncestor(focus, GA_ROOT) } != hwnd
+        || unsafe { IsWindowEnabled(focus) } == 0
+        || unsafe { IsWindowVisible(focus) } == 0
+        || (unsafe { GetWindowLongPtrW(focus, GWL_STYLE) } & ES_READONLY as isize) != 0
+        || !window_class(focus).is_ok_and(|class| {
+            class.eq_ignore_ascii_case("Edit") || class.to_ascii_uppercase().starts_with("RICHEDIT")
+        })
+    {
+        return Err("The observed native CAD edit no longer owns writable text focus".into());
+    }
+    Ok(())
 }
 
 fn guard_held_input() -> Result<(), String> {
@@ -1255,7 +1381,13 @@ fn plan<'a>(
                     }).to_string());
                 }
             }
-            steps.push(Step::Text(text));
+            if observed.native_dialog {
+                for (start, character) in text.char_indices() {
+                    steps.push(Step::Text(&text[start..start + character.len_utf8()]));
+                }
+            } else {
+                steps.push(Step::Text(text));
+            }
         }
         _ => return Err("Unknown computer control action".into()),
     }

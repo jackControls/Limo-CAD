@@ -7,6 +7,31 @@ one shared CAD/CAM command path. The integration is tracked by
 [PR #124](https://github.com/limo-cad/Limo-CAD/pull/124) and has not merged
 into `main`. Passing required checks and an external approval remain merge gates.
 
+October 9 UTC thread investigation: the actual human UI built and saved the
+annular stock (20/10 mm diameters, 20 mm extrusion) and a modeled right-hand
+M20 x 2.5 external thread of length 8 mm at the opposite end. The saved archive
+matches the live model exactly and is retained at
+`examples/checkpoints/threaded-annulus-human-ui.limo`. An incomplete native
+Save As filename produced `D:/li.limo`; that original is preserved, and its
+byte-identical archive was copied to the named UI-model path and checkpoint.
+This is construction/save evidence, not successful thread-export qualification.
+
+Hosted CI identified two distinct native boundary stations merged into one
+planar UV node. The bounded repair candidate separates retained native stations
+on copied meshes and certifies every affected owner's complete trim, source
+precision and incidence before acceptance. It preserves native identity and
+the final oriented-closure guard. Native dialog text now pins the observed
+writable edit and checks ownership between paced Unicode scalars and after
+insertion. Foreground activation has bounded stability sampling; fresh
+observation and visible filename verification remain necessary. The native
+layout rejection reports a bounded first difference without relaxing its guard.
+These changes require a fresh native build and manual UI qualification.
+
+The MCP recipe export assertion now accepts complete, finite ASCII STL as well
+as binary STL; precision-preserving ASCII output exposed its binary-only
+assumption in hosted CI. No local suites or recipe replay were run for this
+manual session. The complete three-model human walkthrough remains unfinished.
+
 The public [Bevy preview](https://github.com/limo-cad/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 contains **Windows x64 ZIP and Ubuntu 26.04 x64 DEB from `9b082687`**.
 Windows passed SDK-free headless/desktop MCP
