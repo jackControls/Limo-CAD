@@ -149,6 +149,11 @@ retains two coincident points after shared drag. Selection/Cancel, inspector
 delete/restore, history and native reopen passed. Point-only camera framing
 and degenerate Fit await the committed camera repair.
 
+[`surface-ui-sketch-midpoint-human-ui.limo`](../checkpoints/surface-ui-sketch-midpoint-human-ui.limo)
+retains a midpoint on a translated horizontal40mm line. Relation, Cancel,
+retained inspector/history and native persistence passed. Re-edit framing
+hides the right endpoint; camera acceptance remains pending.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

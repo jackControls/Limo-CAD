@@ -332,6 +332,13 @@ point-only re-edit loses visible geometry; degenerate Fit magnifies point grips.
 Source repair `d766df9c` is committed, reviewed and not yet deployed. A later
 fresh pointer move highlights correctly; no hover defect is attributed.
 
+Sketch Midpoint passes point-line placement, constrained translation, Cancel,
+readable inspector/delete/history and whole-model persistence. Saved re-edit
+hides the right line endpoint behind the palette; mixed-sketch framing is
+being investigated separately from the relation. `9b70a83f` repository/WASM
+and Linux workspace passed; native Windows937/0/10 and Unix only known thread
+failure. Hosted `aa7d0000` automatic MCP passed; manual MCP stays not-run.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
