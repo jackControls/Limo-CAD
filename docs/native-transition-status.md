@@ -226,6 +226,25 @@ Offset source checks remain pending. `3f745d96` full automatic MCP matrix passed
 all six core/vise/turbine acceptance jobs plus final Ubuntu tests; manual MCP
 qualification remains gated on the unfinished UI surface.
 
+Trim passes the representative line-intersection removal workflow, preview/Cancel,
+empty-pick validation, subsequent endpoint editing, exact two-step Undo/Redo and
+whole-model native save/reopen. No coincident-to-boundary constraint was added;
+free horizontal editing can move its y. Extend is next. A lingering modeling
+footer after reopen is tracked independently: `3b079dc0` prevents background
+memory retention from introducing a caption its success path preserves. Exact
+responsibility for the observed footer remains unproven; deployed acceptance
+is pending. Only affected Open/status cases were reopened.
+
+Linux CI caught an old Offset wording assertion on `bb2324bc` and `e3e80ed8`.
+`79b0cb00` preserves rejection and geometry checks, requires actionable radius
+guidance and verifies exact DTO preservation; corrected hosted CI is pending.
+`e3e80ed8` repository/Rust/WASM passed. `1e2d6ed0` native Windows passed937/0/10;
+Unix hosts retain only the known strict thread failure, both history contracts
+passing and zero poison failures. `858cc0f8` packages passed x64 and all
+Linux/macOS jobs; ARM controlled-source-host input was denied foreground by
+Windows and sent no input. Default shipping artifact OS input remains
+unqualified. No local suites/builds were run for these repairs.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;

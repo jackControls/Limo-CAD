@@ -106,6 +106,11 @@ retains concentric radii 10/14/8 after outward/inward Offset, validation, exact
 Cancel, retained gap edit, Undo/Redo and native reopen. Geometry passes with two
 DOF; collapse feedback, adjacent labels and active-form ink await deployed fixes.
 
+[`surface-ui-sketch-trim-human-ui.limo`](../checkpoints/surface-ui-sketch-trim-human-ui.limo)
+retains a manually trimmed line and independent crossing boundary after
+preview/Cancel, validation, endpoint edit, Undo/Redo and native reopen.
+The separate reopened-document modeling footer awaits live requalification.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
