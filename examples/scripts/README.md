@@ -74,6 +74,12 @@ retains the six-edge polygon after side-count/radius validation, form Cancel,
 free vertex edit, Undo/Redo and exact native reopen. It has twelve DOF and no
 regularity constraints. The committed radius-message repair awaits deployment.
 
+[`surface-ui-circumscribed-polygon-human-ui.limo`](../checkpoints/surface-ui-circumscribed-polygon-human-ui.limo)
+retains the four-edge polygon after circumscribed radius/rotation creation,
+side-count validation, form Cancel, free vertex edit, Undo/Redo and exact native
+reopen. Original edges lie 10 mm from center; eight DOF remain unconstrained.
+The shared radius-message dependency needs only a deployed validation recheck.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

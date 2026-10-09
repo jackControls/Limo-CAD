@@ -152,7 +152,15 @@ reviewed it, with deployed validation still pending. Circumscribed mode is next.
 at 16:17:46 UTC; macOS has 942 passes and only the known strict thread failure.
 `8660ca5e` passed all six automatic Ubuntu/Windows core/vise/turbine MCP acceptance
 jobs and their aggregator; the final Ubuntu MCP-tests job remains pending at this
-receipt. These checks do not complete the manual MCP surface survey.
+receipt; that final job subsequently completed successfully. These checks do not
+complete the manual MCP surface survey.
+
+Circumscribed Polygon also passes side-count rejection, radius/rotation geometry,
+exact form Cancel, retained vertex editing, creation/edit Undo/Redo and whole-model
+native save/reopen. Four sides with radius 10 and rotation 45 produce a 20 by 20
+square whose edges are 10 mm from the center, with eight DOF/zero constraints.
+Passing geometry is retained; only the shared radius-message dependency requires
+a deployed recheck. Midpoint line and Point are next in the breadth survey.
 
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
