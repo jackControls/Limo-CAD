@@ -360,7 +360,9 @@ User confirmed finite additive Rib policy. Issue[#360](https://github.com/limo-c
 is assigned to Jack. Existing UI guard was already qualified; `0166a9cc` now
 applies that policy to shared native/MCP add/edit before ID allocation.
 Existing archives and Subtract/Common replay remain unchanged; the request
-guard needs hosted and isolated manual acceptance.
+guard passed hosted Linux workspace and repository checks. Full WASM was
+cancelled; isolated manual requests and the changed native form wiring remain
+pending acceptance on a newly deployed matched runtime.
 
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
