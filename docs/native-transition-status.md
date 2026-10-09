@@ -326,6 +326,12 @@ retain only known strict thread failure, with both history contracts passing
 and no poisoning. `8d59076a` full repository/Rust/WASM and Linux workspace
 checks passed. These do not qualify the undeployed Chamfer repair.
 
+Sketch Coincident passes point-point selection/Cancel, shared drag, retained
+inspector/delete, exact history and whole-model native persistence. Existing
+point-only re-edit loses visible geometry; degenerate Fit magnifies point grips.
+Source repair `d766df9c` is committed, reviewed and not yet deployed. A later
+fresh pointer move highlights correctly; no hover defect is attributed.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;

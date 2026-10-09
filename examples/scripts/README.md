@@ -144,6 +144,11 @@ retains a clockwise partial circle pattern with an independently edited center.
 Full-turn and partial placements, validation/Cancel/history and native reopen
 passed; keyboard traversal awaits the shared focus fix.
 
+[`surface-ui-sketch-coincident-human-ui.limo`](../checkpoints/surface-ui-sketch-coincident-human-ui.limo)
+retains two coincident points after shared drag. Selection/Cancel, inspector
+delete/restore, history and native reopen passed. Point-only camera framing
+and degenerate Fit await the committed camera repair.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
