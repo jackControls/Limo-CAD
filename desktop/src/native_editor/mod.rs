@@ -1123,7 +1123,8 @@ pub(crate) fn synchronize_controls(
                 false
             }
         });
-        let groups = panel::ribbon_groups(area);
+        let completion_reserve = panel::completion_reserve(editor.draft.tool);
+        let groups = panel::ribbon_groups(area, completion_reserve);
         let mut slots: HashMap<&str, usize> = HashMap::new();
         let active_sketch = editor
             .stamp
@@ -1148,7 +1149,8 @@ pub(crate) fn synchronize_controls(
             let y = area.y as f32;
             let visible = finish
                 || !active_sketch
-                || (*slot < group.count && x + width <= (area.x + area.width - 156.) as f32);
+                || (*slot < group.count
+                    && x + width <= (area.x + area.width - f64::from(completion_reserve)) as f32);
             *slot += 1;
             use crate::native_viewport::interface_shell::ribbon;
             let node = if finish {

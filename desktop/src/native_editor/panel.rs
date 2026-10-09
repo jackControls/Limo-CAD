@@ -26,7 +26,15 @@ pub(super) struct RibbonGroup {
     pub count: usize,
     pub menu: bool,
 }
-pub(super) fn ribbon_groups(area: InterfaceRect) -> Vec<RibbonGroup> {
+pub(super) fn completion_reserve(tool: Option<CreateTool>) -> f32 {
+    if tool == Some(CreateTool::Spline) {
+        312.
+    } else {
+        156.
+    }
+}
+
+pub(super) fn ribbon_groups(area: InterfaceRect, completion_reserve: f32) -> Vec<RibbonGroup> {
     let mut groups: Vec<_> = [
         ("draw", "DRAW", 6, true),
         ("edit", "EDIT", 5, true),
@@ -45,7 +53,7 @@ pub(super) fn ribbon_groups(area: InterfaceRect) -> Vec<RibbonGroup> {
         width: 0.,
     })
     .collect();
-    let available = (area.width as f32 - 156.).max(0.);
+    let available = (area.width as f32 - completion_reserve).max(0.);
     let width = |group: &RibbonGroup| {
         group.count as f32 * 50. + if group.key == "dimension" { 20. } else { 8. }
     };
@@ -142,10 +150,11 @@ pub(super) fn synchronize(
     let mut panel = world.remove_resource::<Panel>().unwrap_or_default();
     let result = (|| {
         let active = editor.stamp.as_ref().is_some_and(|s| s.sketch.is_some());
+        let completion_reserve = completion_reserve(editor.draft.tool);
         panel.widgets.begin();
         let window_height = interface_shell::window_ui_size(world).map_or(860., |size| size.y);
         if active {
-            for group in ribbon_groups(area) {
+            for group in ribbon_groups(area, completion_reserve) {
                 let RibbonGroup {
                     key,
                     label,
@@ -341,7 +350,7 @@ pub(super) fn synchronize(
                 };
                 let rows_per_column = rows.len().div_ceil(columns).max(1);
                 let menu_width = 240. * columns as f32;
-                let left = ribbon_groups(area)
+                let left = ribbon_groups(area, completion_reserve)
                     .iter()
                     .find(|group| group.key == menu)
                     .map_or(area.x as f32, |group| group.left)
