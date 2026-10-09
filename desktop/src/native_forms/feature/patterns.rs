@@ -275,11 +275,11 @@ impl SolidForm {
                 f.second_enabled = second_direction.is_some();
                 if let Some(direction) = second_direction {
                     f.second_direction = vector(direction, DimensionKind::Unitless, units);
+                    f.second_spacing =
+                        MeasurementInput::new(DimensionKind::Length, second_spacing, units);
+                    f.second_count =
+                        MeasurementInput::new(DimensionKind::Unitless, second_count as f64, units);
                 }
-                f.second_spacing =
-                    MeasurementInput::new(DimensionKind::Length, second_spacing, units);
-                f.second_count =
-                    MeasurementInput::new(DimensionKind::Unitless, second_count as f64, units);
                 (feature_id, f)
             }
             BodyFeatureDefinitionDto::CircularPattern {
