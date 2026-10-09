@@ -132,8 +132,8 @@ permissions:
 
 concurrency:
   group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.ime-native-macos && '-ime-native-macos' || inputs.input-family == 'windows-ime' && '-windows-ime' || inputs.input-family == 'windows-print' && '-windows-print' || inputs.input-family == 'switching' && '-switching' || inputs.linux-only && format('-linux-only-{0}', inputs.input-family || 'all') || '' }}
-  # Finish running qualification; newer pending checkpoints still consolidate.
-  cancel-in-progress: false
+  # Preserve explicit/manual qualification; cancel only superseded PR checks.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -329,7 +329,7 @@ jobs:
 
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input && matrix.family == 'keyboard'
-        run: cargo test --locked --manifest-path desktop/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
+        run: cargo xtask ci native-ignored-test fonts
 
       - name: Exercise X11 keyboard and clipboard at 100% and 200% scale
         if: inputs.desktop-input && matrix.family == 'keyboard'
@@ -543,7 +543,7 @@ jobs:
           cargo build --locked --manifest-path desktop/Cargo.toml "${features[@]}" --bin limo-cad
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input || inputs.ime-native-macos
-        run: cargo test --locked --manifest-path desktop/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
+        run: cargo xtask ci native-ignored-test fonts
       - name: Exercise macOS Command shortcuts and clipboard
         if: inputs.desktop-input && !inputs.ime-native-macos
         run: |
@@ -619,7 +619,7 @@ jobs:
         run: cargo build --locked --manifest-path desktop/Cargo.toml --features native-computer-control --bin limo-cad
       - name: Verify installed CJK and emoji fonts through Bevy shaping
         if: inputs.desktop-input && inputs.input-family != 'windows-print'
-        run: cargo test --locked --manifest-path desktop/Cargo.toml --lib native_font_fallback_shapes_ -- --ignored --nocapture
+        run: cargo xtask ci native-ignored-test fonts
       - name: Exercise Windows keyboard and clipboard
         if: inputs.desktop-input && inputs.input-family != 'windows-print'
         shell: pwsh

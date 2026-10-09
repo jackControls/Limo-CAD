@@ -58,7 +58,8 @@ permissions:
 
 concurrency:
   group: mcp-server-${{ github.ref }}
-  cancel-in-progress: false
+  # Keep main/tag/manual receipts; only superseded PR acceptance is obsolete.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always

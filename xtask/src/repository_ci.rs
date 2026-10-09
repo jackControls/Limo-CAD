@@ -25,6 +25,40 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
     let root = crate::release_tooling::root();
     match task.as_str() {
         "desktop-changes" => return crate::desktop_changes::run(args),
+        "native-ignored-test" => {
+            let suite = args
+                .next()
+                .context("missing native ignored suite (fonts or sketch-visual)")?;
+            ensure!(
+                args.next().is_none(),
+                "unexpected native ignored suite argument"
+            );
+            let (filter, _) = native_ignored_suite(&suite)?;
+            let arguments = native_ignored_arguments(filter);
+            let mut listing = arguments.clone();
+            listing.pop(); // Replace --nocapture with --list; keep the exact filter and --ignored.
+            listing.push("--list".into());
+            let inventory = crate::build_tools::cargo()
+                .current_dir(root)
+                .args(listing)
+                .stderr(std::process::Stdio::inherit())
+                .output()
+                .context("list compiled native diagnostic tests")?;
+            ensure!(
+                inventory.status.success(),
+                "native diagnostic inventory failed ({})",
+                inventory.status
+            );
+            verify_native_ignored_inventory(&suite, std::str::from_utf8(&inventory.stdout)?)?;
+            let status = crate::build_tools::cargo()
+                .current_dir(root)
+                .args(arguments)
+                .status()?;
+            ensure!(
+                status.success(),
+                "native {suite} diagnostics failed ({status})"
+            );
+        }
         "mcp-shard" => {
             let shard = args
                 .next()
@@ -75,6 +109,54 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             )?;
         }
         _ => bail!("unknown CI task '{task}'"),
+    }
+    Ok(())
+}
+
+fn native_ignored_suite(suite: &str) -> Result<(&'static str, &'static [&'static str])> {
+    match suite {
+        "fonts" => Ok((
+            "native_font_fallback_shapes_",
+            &[
+                "native_font_fallback_shapes_cjk_and_emoji_without_missing_glyphs",
+                "native_font_fallback_shapes_drawing_symbols_without_missing_glyphs",
+            ],
+        )),
+        "sketch-visual" => Ok((
+            "native_sketch_boundary_visual_matrix",
+            &["native_sketch_boundary_visual_matrix"],
+        )),
+        _ => bail!("unknown native ignored suite; use fonts or sketch-visual"),
+    }
+}
+
+fn native_ignored_arguments(filter: &str) -> Vec<String> {
+    [
+        "test",
+        "--locked",
+        "--manifest-path",
+        "desktop/Cargo.toml",
+        "--lib",
+        filter,
+        "--",
+        "--ignored",
+        "--nocapture",
+    ]
+    .map(String::from)
+    .into()
+}
+
+fn verify_native_ignored_inventory(suite: &str, output: &str) -> Result<()> {
+    let (_, expected) = native_ignored_suite(suite)?;
+    let selected = output
+        .lines()
+        .filter_map(|line| line.strip_suffix(": test"))
+        .map(|test| test.rsplit("::").next().unwrap_or(test))
+        .collect::<Vec<_>>();
+    ensure!(selected.len() == expected.len(), "native {suite} selected {} tests, expected {}; a filter must not silently run zero or different tests", selected.len(), expected.len());
+    for name in expected {
+        ensure!(selected.iter().filter(|selected| *selected == name).count() == 1,
+            "expected exactly one compiled native diagnostic {name}; update the guarded suite after a rename");
     }
     Ok(())
 }
@@ -213,6 +295,47 @@ fn stage_projects(source: &Path, destination: &Path, commit: &str, version: &str
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_diagnostic_filters_reject_empty_renamed_and_duplicate_tests() {
+        for suite in ["fonts", "sketch-visual"] {
+            let (filter, expected) = native_ignored_suite(suite).unwrap();
+            let inventory = expected
+                .iter()
+                .map(|name| format!("native::tests::{name}: test\r\n"))
+                .collect::<String>();
+            verify_native_ignored_inventory(suite, &inventory).unwrap();
+            assert!(verify_native_ignored_inventory(suite, "0 tests, 0 benchmarks").is_err());
+            assert!(verify_native_ignored_inventory(
+                suite,
+                &inventory.replace(expected[0], "renamed_test")
+            )
+            .is_err());
+            assert!(
+                verify_native_ignored_inventory(suite, &(inventory.clone() + &inventory)).is_err()
+            );
+            assert!(verify_native_ignored_inventory(
+                suite,
+                &inventory.replace(": test", ": benchmark")
+            )
+            .is_err());
+            assert_eq!(
+                native_ignored_arguments(filter),
+                [
+                    "test",
+                    "--locked",
+                    "--manifest-path",
+                    "desktop/Cargo.toml",
+                    "--lib",
+                    filter,
+                    "--",
+                    "--ignored",
+                    "--nocapture"
+                ]
+            );
+        }
+        assert!(native_ignored_suite("all").is_err());
+    }
+
     #[test]
     fn compiled_shards_require_exact_unique_names() {
         let inventory = FLAGSHIPS

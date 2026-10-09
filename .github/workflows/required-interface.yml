@@ -9,8 +9,8 @@ permissions:
 
 concurrency:
   group: required-interface-${{ github.ref }}
-  # Keep an active contract receipt when a newer checkpoint arrives.
-  cancel-in-progress: false
+  # Preserve main/manual receipts; cancel only superseded PR checks.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   frontend_regressions:

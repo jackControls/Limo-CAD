@@ -2,7 +2,7 @@ name: CodeQL
 
 on:
   push:
-    branches: [main, feat/bevy-interface]
+    branches: [main]
   pull_request:
   workflow_dispatch:
   schedule:

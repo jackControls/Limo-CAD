@@ -1,5 +1,7 @@
 //! Preserve release/ABI/publication guard contracts without a Node test runner.
+use anyhow::{ensure, Context, Result};
 use regex::Regex;
+use serde_yaml_ng::Value;
 use std::fs;
 fn read(file: &str) -> String {
     fs::read_to_string(crate::release_tooling::root().join(file))
@@ -29,6 +31,318 @@ fn ordered(text: &str, first: &str, second: &str) {
         text.find(first).unwrap() < text.find(second).unwrap(),
         "{first} must precede {second}"
     );
+}
+
+fn workflow(file: &str) -> Value {
+    serde_yaml_ng::from_str(&read(file)).unwrap_or_else(|error| panic!("invalid {file}: {error}"))
+}
+
+fn executable_job<'a>(source: &'a Value, id: &str) -> Result<&'a Value> {
+    let job = &source["jobs"][id];
+    ensure!(job.is_mapping(), "missing executable job {id}");
+    require_failure_propagation(job)?;
+    if let Some(steps) = job["steps"].as_sequence() {
+        for step in steps {
+            require_failure_propagation(step)?;
+        }
+    }
+    Ok(job)
+}
+
+fn require_failure_propagation(value: &Value) -> Result<()> {
+    ensure!(
+        value["continue-on-error"].is_null() || value["continue-on-error"].as_bool() == Some(false),
+        "acceptance failure must not be converted to success"
+    );
+    ensure!(
+        value["if"].as_bool() != Some(false)
+            && value["if"].as_str() != Some("false")
+            && value["if"].as_str() != Some("${{ false }}"),
+        "acceptance must not be disabled"
+    );
+    Ok(())
+}
+
+fn executable_steps(job: &Value) -> Result<&[Value]> {
+    job["steps"]
+        .as_sequence()
+        .map(Vec::as_slice)
+        .context("missing executable steps")
+}
+
+fn named_step<'a>(job: &'a Value, name: &str) -> Result<(usize, &'a Value)> {
+    let matches = executable_steps(job)?
+        .iter()
+        .enumerate()
+        .filter(|(_, step)| step["name"].as_str() == Some(name))
+        .collect::<Vec<_>>();
+    ensure!(matches.len() == 1, "expected one executable step {name}");
+    require_failure_propagation(matches[0].1)?;
+    Ok(matches[0])
+}
+
+fn requires_command(step: &Value, command: &str) -> Result<()> {
+    let run = step["run"]
+        .as_str()
+        .context("missing executable run command")?;
+    ensure!(
+        run.lines().map(str::trim).any(|line| {
+            line == command
+                || line
+                    .strip_prefix(command)
+                    .is_some_and(|tail| tail.starts_with(' '))
+        }),
+        "missing executable command {command}"
+    );
+    Ok(())
+}
+
+fn needs(job: &Value) -> Result<Vec<&str>> {
+    if let Some(single) = job["needs"].as_str() {
+        return Ok(vec![single]);
+    }
+    job["needs"]
+        .as_sequence()
+        .context("missing dependencies")?
+        .iter()
+        .map(|value| value.as_str().context("invalid dependency"))
+        .collect()
+}
+
+fn check_package_gates(source: &Value) -> Result<()> {
+    ensure!(
+        executable_job(source, "version_preflight")?["uses"].as_str()
+            == Some("./.github/workflows/version-guard.yml"),
+        "packages require the reusable version gate"
+    );
+    for (id, platform) in [
+        ("build-windows-portable", "windows"),
+        ("build-linux-ubuntu", "linux"),
+        ("build-linux-appimage", "linux"),
+        ("build-macos-apple-silicon", "macos"),
+    ] {
+        let job = executable_job(source, id)?;
+        ensure!(
+            needs(job)? == ["classify_changes", "version_preflight"],
+            "{id} must await classification and version validation"
+        );
+        ensure!(
+            job["if"].as_str()
+                == Some(
+                    format!("needs.classify_changes.outputs.{platform}_should_build == 'true'")
+                        .as_str()
+                ),
+            "{id} must not override failed dependencies"
+        );
+    }
+    let verification = executable_job(source, "verify-linux-appimage")?;
+    ensure!(
+        needs(verification)? == ["classify_changes", "build-linux-appimage"],
+        "new-host AppImage verification must use the successful build"
+    );
+    ensure!(
+        verification["if"].as_str()
+            == Some("needs.classify_changes.outputs.linux_should_build == 'true'"),
+        "new-host verification must not override failed dependencies"
+    );
+    let publish = executable_job(source, "publish_release")?;
+    ensure!(
+        publish["if"].as_str()
+            == Some("github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"),
+        "publication is release-tag-only"
+    );
+    ensure!(
+        needs(publish)?
+            == [
+                "build-windows-portable",
+                "build-linux-ubuntu",
+                "build-linux-appimage",
+                "verify-linux-appimage",
+                "build-macos-apple-silicon"
+            ],
+        "publication must await every build and the newer-host AppImage check"
+    );
+    let (tag_index, tag) = named_step(
+        publish,
+        "Refuse a release tag that does not name VERSION on main",
+    )?;
+    requires_command(tag, "cargo xtask check-release-tag")?;
+    ensure!(
+        tag["if"].is_null(),
+        "release tag validation cannot be conditional"
+    );
+    let (download_index, download) = named_step(publish, "Download this run's packages")?;
+    ensure!(
+        download["if"].is_null(),
+        "package download cannot be conditional"
+    );
+    ensure!(
+        download["uses"].as_str() == Some("actions/download-artifact@v4"),
+        "missing package artifact download"
+    );
+    ensure!(
+        download["with"]["merge-multiple"].as_bool() == Some(false),
+        "keep package artifacts separate"
+    );
+    for key in ["run-id", "repository", "github-token"] {
+        ensure!(
+            download["with"][key].is_null(),
+            "packages must come from this run, not {key}"
+        );
+    }
+    let (checksum_index, checksum) =
+        named_step(publish, "Verify every package against its checksum")?;
+    ensure!(checksum["if"].is_null(), "checksums cannot be conditional");
+    requires_command(checksum, "test \"$checked\" -eq 5")?;
+    let (publish_index, publication) =
+        named_step(publish, "Publish packages, checksums and notes")?;
+    ensure!(
+        publication["if"].is_null(),
+        "publication cannot bypass earlier steps"
+    );
+    requires_command(publication, "test \"$uploaded\" -eq 11")?;
+    ensure!(
+        tag_index < download_index
+            && download_index < checksum_index
+            && checksum_index < publish_index,
+        "validate tag, download and verify before publishing"
+    );
+    Ok(())
+}
+
+fn check_mcp_provenance(source: &Value) -> Result<()> {
+    let expected: Value = serde_yaml_ng::from_str(
+        "[{shard: core, project: garden-bench}, {shard: turbine, project: vertical-axis-turbine}, {shard: vise, project: d-screw-vise}]",
+    )?;
+    for (id, platform) in [("mcp-windows", "windows"), ("mcp-linux", "linux")] {
+        let job = executable_job(source, id)?;
+        ensure!(
+            job["strategy"]["fail-fast"].as_bool() == Some(false),
+            "retain independent shard outcomes"
+        );
+        ensure!(
+            job["strategy"]["matrix"]["include"] == expected,
+            "{id} must run every named acceptance shard"
+        );
+        let (test_index, tests) = named_step(job, "MCP server tests")?;
+        requires_command(tests, "cargo xtask ci mcp-shard ${{ matrix.shard }}")?;
+        ensure!(
+            tests["if"].is_null(),
+            "every shard must run its server tests"
+        );
+        let (geometry_index, geometry) =
+            named_step(job, "Native geometry integration regressions")?;
+        ensure!(
+            geometry["if"].as_str() == Some("matrix.shard == 'core'"),
+            "native geometry must execute in the core shard"
+        );
+        requires_command(geometry, "cargo test --locked -p limo-cad-occt --features native-occt --tests -- --test-threads=1")?;
+        ensure!(
+            geometry["env"]["CARGO_TARGET_DIR"].as_str()
+                == Some("${{ github.workspace }}/mcp-server/target"),
+            "reuse the native ABI build target"
+        );
+        let (_, workshop) = named_step(job, "MCP bench and complete feature workshop")?;
+        ensure!(
+            workshop["if"].as_str() == Some("matrix.shard == 'core'"),
+            "the complete workshop must run in core"
+        );
+        requires_command(workshop, "cargo xtask test-mcp bench")?;
+        let (upload_index, upload) = named_step(job, "Upload successful demo input")?;
+        ensure!(
+            upload["if"].is_null(),
+            "only default success flow may upload demo inputs"
+        );
+        ensure!(
+            upload["uses"].as_str() == Some("actions/upload-artifact@v4"),
+            "missing shard input upload"
+        );
+        ensure!(
+            upload["with"]["name"].as_str()
+                == Some(format!("mcp-demo-{platform}-${{{{ matrix.shard }}}}").as_str()),
+            "demo input must retain platform/shard identity"
+        );
+        ensure!(
+            upload["with"]["if-no-files-found"].as_str() == Some("error"),
+            "missing demo input must fail"
+        );
+        ensure!(
+            test_index < geometry_index && geometry_index < upload_index,
+            "native acceptance must finish before uploading a demo"
+        );
+    }
+    for (id, native, platform) in [
+        ("mcp-tests", "mcp-windows", "windows"),
+        ("mcp-tests-linux", "mcp-linux", "linux"),
+    ] {
+        let job = executable_job(source, id)?;
+        ensure!(
+            needs(job)? == [native],
+            "aggregate requires all native platform shards"
+        );
+        ensure!(
+            job["if"].as_str() == Some("${{ !cancelled() }}"),
+            "aggregate must report failed native results, but not cancelled runs"
+        );
+        ensure!(
+            job["env"]["NATIVE_RESULT"].as_str()
+                == Some(format!("${{{{ needs.{native}.result }}}}").as_str()),
+            "gate must inspect this platform's aggregate result"
+        );
+        ensure!(
+            job["env"]["MCP_PLATFORM"].as_str() == Some(platform),
+            "wrong aggregate platform"
+        );
+        let (gate_index, gate) = named_step(job, "Require every platform acceptance shard")?;
+        ensure!(
+            gate["if"].is_null(),
+            "platform success gate cannot be conditional"
+        );
+        requires_command(gate, "cargo xtask ci require-platform")?;
+        let downloads = executable_steps(job)?
+            .iter()
+            .enumerate()
+            .filter(|(_, step)| step["uses"].as_str() == Some("actions/download-artifact@v4"))
+            .collect::<Vec<_>>();
+        ensure!(
+            downloads.len() == 3,
+            "download exactly the three verified shard inputs"
+        );
+        for ((index, download), shard) in downloads.iter().zip(["core", "turbine", "vise"]) {
+            ensure!(
+                gate_index < *index && download["if"].is_null(),
+                "gate must pass before every download"
+            );
+            ensure!(
+                download["with"]["name"].as_str()
+                    == Some(format!("mcp-demo-${{{{ env.MCP_PLATFORM }}}}-{shard}").as_str()),
+                "download exact platform/shard input"
+            );
+            for key in ["run-id", "repository", "github-token", "pattern"] {
+                ensure!(
+                    download["with"][key].is_null(),
+                    "demo input must be from this run, not {key}"
+                );
+            }
+        }
+        let (stage_index, stage) = named_step(job, "Stage verified editable demo projects")?;
+        requires_command(stage, "cargo xtask ci stage-demo-projects")?;
+        ensure!(
+            stage["if"].is_null() && downloads.iter().all(|(index, _)| *index < stage_index),
+            "stage only after all verified downloads"
+        );
+        let (upload_index, upload) = named_step(job, "Upload verified editable demo projects")?;
+        ensure!(
+            stage_index < upload_index && upload["if"].is_null(),
+            "publish only staged projects"
+        );
+        ensure!(
+            upload["with"]["name"].as_str()
+                == Some("Limo-CAD-demo-projects-${{ env.MCP_PLATFORM }}-${{ github.sha }}"),
+            "demo publication must identify platform and exact commit"
+        );
+    }
+    Ok(())
 }
 
 #[test]
@@ -110,6 +424,9 @@ fn rust_setup_and_wasm_tools_use_repository_pins() {
 
 #[test]
 fn package_and_publication_cannot_bypass_version_or_failed_builds() {
+    // Parse executable YAML first: commented examples and disabled steps cannot
+    // satisfy the release gates. The remaining source checks protect shell details.
+    check_package_gates(&workflow(".github/workflows/desktop-packages.yml")).unwrap();
     let desktop = read(".github/workflows/desktop-packages.yml");
     assert!(!desktop.contains("frontend_regressions") && !desktop.contains("npm ci"));
     assert!(
@@ -222,6 +539,9 @@ fn sdk_cache_keys_keep_all_abi_inputs_and_arm_runner_is_default_branch_only() {
 
 #[test]
 fn native_shards_keep_geometry_workshop_and_exact_same_run_artifact_provenance() {
+    // Alias expansion is significant: validate the actual Linux matrix and
+    // publication steps, rather than merely finding an anchor in the source.
+    check_mcp_provenance(&workflow(".github/workflows/mcp-server.yml")).unwrap();
     let mcp = read(".github/workflows/mcp-server.yml");
     assert!(
         job(&mcp, "mcp-windows").contains("strategy: &acceptance-shards\n      fail-fast: false")
@@ -447,4 +767,200 @@ fn appimage_keeps_oldest_glibc_and_minimal_host_input_runtime() {
         assert!(bundler.contains(&format!("\"libwayland-{library}.so\"")));
     }
     assert!(!bundler.contains("\"libwayland-server.so\""));
+}
+
+#[test]
+fn package_gates_reject_dependencies_disabled_commands_and_foreign_artifacts() {
+    let valid = workflow(".github/workflows/desktop-packages.yml");
+    check_package_gates(&valid).unwrap();
+    let mut missing_version = valid.clone();
+    missing_version["jobs"]["build-windows-portable"]["needs"]
+        .as_sequence_mut()
+        .unwrap()
+        .pop();
+    assert!(check_package_gates(&missing_version).is_err());
+    let mut ignored_build = valid.clone();
+    ignored_build["jobs"]["build-linux-ubuntu"]["continue-on-error"] = Value::Bool(true);
+    assert!(check_package_gates(&ignored_build).is_err());
+    let tag_index = named_step(
+        &valid["jobs"]["publish_release"],
+        "Refuse a release tag that does not name VERSION on main",
+    )
+    .unwrap()
+    .0;
+    for condition in [Value::Bool(false), Value::String("${{ false }}".into())] {
+        let mut disabled_tag = valid.clone();
+        disabled_tag["jobs"]["publish_release"]["steps"][tag_index]["if"] = condition;
+        assert!(check_package_gates(&disabled_tag).is_err());
+    }
+    let mut comment_only = valid.clone();
+    comment_only["jobs"]["publish_release"]["steps"][tag_index]["run"] = Value::String(
+        "# cargo xtask check-release-tag \"$GITHUB_REF_NAME\" \"$GITHUB_SHA\"\necho example only"
+            .into(),
+    );
+    assert!(check_package_gates(&comment_only).is_err());
+    let download_index = named_step(
+        &valid["jobs"]["publish_release"],
+        "Download this run's packages",
+    )
+    .unwrap()
+    .0;
+    let mut foreign_artifact = valid.clone();
+    foreign_artifact["jobs"]["publish_release"]["steps"][download_index]["with"]["run-id"] =
+        Value::String("1234".into());
+    assert!(check_package_gates(&foreign_artifact).is_err());
+}
+
+#[test]
+fn mcp_provenance_rejects_missing_shards_bypassed_geometry_and_stale_inputs() {
+    let valid = workflow(".github/workflows/mcp-server.yml");
+    check_mcp_provenance(&valid).unwrap();
+    let mut missing_shard = valid.clone();
+    missing_shard["jobs"]["mcp-linux"]["strategy"]["matrix"]["include"]
+        .as_sequence_mut()
+        .unwrap()
+        .pop();
+    assert!(check_mcp_provenance(&missing_shard).is_err());
+    let geometry_index = named_step(
+        &valid["jobs"]["mcp-windows"],
+        "Native geometry integration regressions",
+    )
+    .unwrap()
+    .0;
+    let mut ignored_geometry = valid.clone();
+    ignored_geometry["jobs"]["mcp-windows"]["steps"][geometry_index]["continue-on-error"] =
+        Value::Bool(true);
+    assert!(check_mcp_provenance(&ignored_geometry).is_err());
+    let mut comment_geometry = valid.clone();
+    comment_geometry["jobs"]["mcp-windows"]["steps"][geometry_index]["run"] = Value::String(
+        "# cargo test --locked -p limo-cad-occt --features native-occt --tests -- --test-threads=1"
+            .into(),
+    );
+    assert!(check_mcp_provenance(&comment_geometry).is_err());
+    let mut wrong_platform = valid.clone();
+    wrong_platform["jobs"]["mcp-tests-linux"]["env"]["NATIVE_RESULT"] =
+        Value::String("${{ needs.mcp-windows.result }}".into());
+    assert!(check_mcp_provenance(&wrong_platform).is_err());
+    let gate_index = named_step(
+        &valid["jobs"]["mcp-tests"],
+        "Require every platform acceptance shard",
+    )
+    .unwrap()
+    .0;
+    let mut disabled_gate = valid.clone();
+    disabled_gate["jobs"]["mcp-tests"]["steps"][gate_index]["if"] = Value::Bool(false);
+    assert!(check_mcp_provenance(&disabled_gate).is_err());
+    let download_index = named_step(&valid["jobs"]["mcp-tests"], "Download verified bench")
+        .unwrap()
+        .0;
+    for key in ["run-id", "repository", "github-token", "pattern"] {
+        let mut stale_inputs = valid.clone();
+        stale_inputs["jobs"]["mcp-tests"]["steps"][download_index]["with"][key] =
+            Value::String("foreign".into());
+        assert!(check_mcp_provenance(&stale_inputs).is_err(), "{key}");
+    }
+}
+
+fn check_security_scan_triggers(source: &Value) -> Result<()> {
+    ensure!(
+        source["on"].as_mapping().is_some_and(|events| events
+            .contains_key(Value::String("pull_request".into()))
+            && events.contains_key(Value::String("workflow_dispatch".into()))
+            && events.contains_key(Value::String("schedule".into()))),
+        "retain PR, manual and scheduled security scans"
+    );
+    let branches = source["on"]["push"]["branches"]
+        .as_sequence()
+        .context("missing post-merge security scan")?;
+    ensure!(
+        branches.len() == 1 && branches[0].as_str() == Some("main"),
+        "scan main pushes while Bevy's open PR supplies candidate coverage once"
+    );
+    Ok(())
+}
+
+fn check_superseded_pr_policy(source: &Value) -> Result<()> {
+    ensure!(
+        source["concurrency"]["group"]
+            .as_str()
+            .is_some_and(|group| group.contains("github.ref")),
+        "isolate distinct PR/branch receipts"
+    );
+    ensure!(
+        source["concurrency"]["cancel-in-progress"].as_str()
+            == Some("${{ github.event_name == 'pull_request' }}"),
+        "cancel superseded PR receipts, preserve main/tag/manual qualification"
+    );
+    Ok(())
+}
+
+#[test]
+fn security_and_heavy_ci_keep_coverage_without_duplicate_or_stale_pr_work() {
+    let codeql = workflow(".github/workflows/codeql.yml");
+    check_security_scan_triggers(&codeql).unwrap();
+    let mut duplicate_scan = codeql.clone();
+    duplicate_scan["on"]["push"]["branches"]
+        .as_sequence_mut()
+        .unwrap()
+        .push(Value::String("feat/bevy-interface".into()));
+    assert!(check_security_scan_triggers(&duplicate_scan).is_err());
+    let mut missing_pr = codeql;
+    missing_pr["on"]
+        .as_mapping_mut()
+        .unwrap()
+        .remove(Value::String("pull_request".into()));
+    assert!(check_security_scan_triggers(&missing_pr).is_err());
+    for file in [
+        "desktop-packages",
+        "mcp-server",
+        "native-host-tests",
+        "linux-engine-tests",
+        "required-interface",
+    ] {
+        let policy = workflow(&format!(".github/workflows/{file}.yml"));
+        check_superseded_pr_policy(&policy).unwrap();
+        for bypass in [Value::Bool(true), Value::Bool(false)] {
+            let mut drift = policy.clone();
+            drift["concurrency"]["cancel-in-progress"] = bypass;
+            assert!(check_superseded_pr_policy(&drift).is_err(), "{file}");
+        }
+    }
+    let transport = workflow(".github/workflows/session-storage.yml");
+    let branches = transport["on"]["push"]["branches"].as_sequence().unwrap();
+    assert_eq!(branches, &[Value::String("main".into())]);
+    let events = transport["on"].as_mapping().unwrap();
+    assert!(events.contains_key(Value::String("pull_request".into())));
+    assert!(events.contains_key(Value::String("workflow_dispatch".into())));
+}
+
+#[test]
+fn opt_in_native_font_and_visual_commands_require_nonempty_compiled_inventory() {
+    let native = workflow(".github/workflows/native-host-tests.yml");
+    for id in [
+        "native-host-tests",
+        "macos-native-host-tests",
+        "windows-native-host-tests",
+    ] {
+        let job = &native["jobs"][id];
+        let (_, font) = named_step(
+            job,
+            "Verify installed CJK and emoji fonts through Bevy shaping",
+        )
+        .unwrap();
+        requires_command(font, "cargo xtask ci native-ignored-test fonts").unwrap();
+        assert!(font["if"]
+            .as_str()
+            .unwrap()
+            .contains("inputs.desktop-input"));
+    }
+    let visual = workflow(".github/workflows/native-visual.yml");
+    let (_, check) = named_step(
+        &visual["jobs"]["native-visual"],
+        "Verify projected boundaries and thin-wall occlusion on the GPU",
+    )
+    .unwrap();
+    requires_command(check, "cargo xtask ci native-ignored-test sketch-visual").unwrap();
+    let events = visual["on"].as_mapping().unwrap();
+    assert_eq!(events.len(), 1);
+    assert!(events.contains_key(Value::String("workflow_dispatch".into())));
 }

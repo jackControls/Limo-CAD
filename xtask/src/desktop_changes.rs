@@ -55,7 +55,12 @@ impl Builds {
         if common {
             *self = Self::all();
         }
-        self.windows |= path == "scripts/verify-windows-viewport.ps1";
+        self.windows |= [
+            "scripts/verify-windows-viewport.ps1",
+            "scripts/prepare-hosted-arm-desktop.ps1",
+            "scripts/ci/arm-runner-shell-preflight.test.ps1",
+        ]
+        .contains(&path);
         self.linux |= [
             "scripts/verify-linux-viewport.sh",
             "scripts/verify-linux-native-package.sh",
@@ -228,5 +233,31 @@ mod tests {
         builds.files(&[serde_json::json!({"filename": "docs/moved.svg", "previous_filename": "assets/ribbon-icons/save.svg"})]).unwrap();
         assert_eq!(builds, Builds::all());
         assert!(builds.files(&[serde_json::json!({})]).is_err());
+    }
+
+    #[test]
+    fn executed_windows_preflight_inputs_and_renames_qualify_windows_packages() {
+        for path in [
+            "scripts/verify-windows-viewport.ps1",
+            "scripts/prepare-hosted-arm-desktop.ps1",
+            "scripts/ci/arm-runner-shell-preflight.test.ps1",
+        ] {
+            assert!(crate::release_tooling::root().join(path).is_file());
+            let expected = Builds {
+                windows: true,
+                ..Builds::default()
+            };
+            let mut direct = Builds::default();
+            direct.path(path);
+            assert_eq!(direct, expected, "{path}");
+            let mut renamed = Builds::default();
+            renamed
+                .files(&[serde_json::json!({
+                    "filename": "docs/retired-preflight.ps1",
+                    "previous_filename": path,
+                })])
+                .unwrap();
+            assert_eq!(renamed, expected, "renamed {path}");
+        }
     }
 }
