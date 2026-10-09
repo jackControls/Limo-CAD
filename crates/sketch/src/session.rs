@@ -334,6 +334,13 @@ enum EndpointResolution {
     New(Vec2),
 }
 
+struct ChamferEditTopology {
+    origin: EntityId,
+    cutbacks: [EntityId; 2],
+    carriers: [EntityId; 2],
+    far_points: [EntityId; 2],
+}
+
 impl SketchSession {
     pub fn new(
         name: impl Into<String>,
@@ -3874,8 +3881,20 @@ impl SketchSession {
         &mut self,
         constraints: &[Constraint],
     ) -> Analysis {
-        let stays = self.operation_stays(constraints);
-        self.seed_constraint_projections(constraints);
+        self.solve_constraint_operation_with_preferences(constraints, false)
+    }
+
+    fn solve_dimension_edit_with_recovery(&mut self, constraints: &[Constraint]) -> Analysis {
+        self.solve_constraint_operation_with_preferences(constraints, true)
+    }
+
+    fn solve_constraint_operation_with_preferences(
+        &mut self,
+        constraints: &[Constraint],
+        chamfer_edit: bool,
+    ) -> Analysis {
+        let stays = self.operation_stays(constraints, chamfer_edit);
+        self.seed_constraint_projections(constraints, chamfer_edit);
         let seeded_state = self.sketch.snapshot();
         let first = if stays.is_empty() {
             solver::solve(&mut self.sketch, &[])
@@ -3974,11 +3993,157 @@ impl SketchSession {
         }
     }
 
+    /// Recognize an independent trimmed Chamfer before applying edit-local
+    /// placement preferences; ambiguous or wider graphs keep the generic path.
+    fn chamfer_edit_topology(&self, from: EntityId, to: EntityId) -> Option<ChamferEditTopology> {
+        let relations: Vec<_> = self
+            .sketch
+            .constraints()
+            .filter_map(|(_, constraint)| match *constraint {
+                Constraint::EqualDistance { origin, a, b }
+                    if (origin == from && (a == to || b == to))
+                        || (origin == to && (a == from || b == from)) =>
+                {
+                    Some((origin, [a, b]))
+                }
+                _ => None,
+            })
+            .collect();
+        if relations.len() != 1 {
+            return None;
+        }
+        let (origin, cutbacks) = relations[0];
+        if cutbacks[0] == cutbacks[1] || cutbacks.contains(&origin) {
+            return None;
+        }
+        let mut carriers = [origin; 2];
+        let mut far_points = [origin; 2];
+        for (index, point) in cutbacks.iter().enumerate() {
+            let owners: Vec<_> = self
+                .sketch
+                .entities()
+                .filter_map(|(id, _)| {
+                    let (start, end) = self.sketch.line_endpoint_ids(id)?;
+                    let far = if start == *point {
+                        end
+                    } else if end == *point {
+                        start
+                    } else {
+                        return None;
+                    };
+                    let incident = self.sketch.constraints().any(|(_, constraint)| {
+                        matches!(*constraint, Constraint::Coincident { a, b }
+                        if (a == origin && b == id) || (b == origin && a == id))
+                    });
+                    incident.then_some((id, far))
+                })
+                .collect();
+            if owners.len() != 1 {
+                return None;
+            }
+            (carriers[index], far_points[index]) = owners[0];
+        }
+        if carriers[0] == carriers[1]
+            || far_points[0] == far_points[1]
+            || far_points
+                .iter()
+                .any(|point| *point == origin || cutbacks.contains(point))
+        {
+            return None;
+        }
+        let connectors: Vec<_> = self
+            .sketch
+            .entities()
+            .filter_map(|(id, _)| {
+                let (start, end) = self.sketch.line_endpoint_ids(id)?;
+                ((start == cutbacks[0] && end == cutbacks[1])
+                    || (start == cutbacks[1] && end == cutbacks[0]))
+                    .then_some(id)
+            })
+            .collect();
+        if connectors.len() != 1 {
+            return None;
+        }
+        let local = [
+            origin,
+            cutbacks[0],
+            cutbacks[1],
+            far_points[0],
+            far_points[1],
+            carriers[0],
+            carriers[1],
+            connectors[0],
+        ];
+        // Keep this preference local: independently related or shared geometry
+        // follows the existing generic edit and recovery path.
+        for (id, entity) in self.sketch.entities() {
+            if let Entity::Line { start, end } = entity {
+                if !local.contains(&id) && (local.contains(start) || local.contains(end)) {
+                    return None;
+                }
+            }
+        }
+        for (_, constraint) in self.sketch.constraints() {
+            if !constraint
+                .referenced_entities()
+                .iter()
+                .any(|id| local.contains(id))
+            {
+                continue;
+            }
+            let allowed = match *constraint {
+                Constraint::EqualDistance { origin: o, a, b } => o == origin && [a, b] == cutbacks,
+                Constraint::Distance {
+                    from: f,
+                    to: Some(t),
+                    ..
+                } => (f == from && t == to) || (f == to && t == from),
+                Constraint::Coincident { a, b } => {
+                    (a == origin && carriers.contains(&b)) || (b == origin && carriers.contains(&a))
+                }
+                Constraint::Horizontal { entity } | Constraint::Vertical { entity } => {
+                    carriers.contains(&entity)
+                }
+                Constraint::Perpendicular { a, b } | Constraint::Parallel { a, b } => {
+                    carriers.contains(&a) && carriers.contains(&b)
+                }
+                Constraint::Fix { entity } | Constraint::OriginCoincident { entity } => {
+                    entity == origin || far_points.contains(&entity)
+                }
+                _ => false,
+            };
+            if !allowed {
+                return None;
+            }
+        }
+        let corner = self.sketch.point_position(origin)?;
+        for (index, point) in cutbacks.iter().enumerate() {
+            let cut = self.sketch.point_position(*point)?;
+            let far = self.sketch.point_position(far_points[index])?;
+            let ray = cut - corner;
+            let span = ray.x.hypot(ray.y);
+            let remaining = cut.distance(far);
+            if !span.is_finite()
+                || span < MIN_LINE_LENGTH_MM
+                || !remaining.is_finite()
+                || remaining < MIN_LINE_LENGTH_MM
+            {
+                return None;
+            }
+        }
+        Some(ChamferEditTopology {
+            origin,
+            cutbacks,
+            carriers,
+            far_points,
+        })
+    }
+
     /// Put a newly requested relation on the nearest exact geometric branch
     /// before the nonlinear solve. The solver remains authoritative and can
     /// move the wider constrained component, but it no longer needs to find
     /// a finite solution by walking through a scale/translation null space.
-    fn seed_constraint_projections(&mut self, constraints: &[Constraint]) {
+    fn seed_constraint_projections(&mut self, constraints: &[Constraint], chamfer_edit: bool) {
         fn set_point(sketch: &mut Sketch, point: EntityId, position: Vec2) -> bool {
             let Some(Entity::Point { position: target }) = sketch.entity_mut(point) else {
                 return false;
@@ -4398,6 +4563,22 @@ impl SketchSession {
                         Some(Entity::Point { position: second }),
                         Some(to),
                     ) => {
+                        if chamfer_edit && constraints.len() == 1 {
+                            if let Some(ChamferEditTopology {
+                                origin, cutbacks, ..
+                            }) = self.chamfer_edit_topology(from, to)
+                            {
+                                let corner = self.sketch.point_position(origin).unwrap();
+                                let positions = cutbacks.map(|point| {
+                                    let ray = self.sketch.point_position(point).unwrap() - corner;
+                                    let span = ray.x.hypot(ray.y);
+                                    corner + Vec2::new(ray.x / span, ray.y / span) * value.abs()
+                                });
+                                set_point(&mut self.sketch, cutbacks[0], positions[0]);
+                                set_point(&mut self.sketch, cutbacks[1], positions[1]);
+                                continue;
+                            }
+                        }
                         let radial = second - first;
                         let direction = if radial.length() < MIN_LINE_LENGTH_MM {
                             Vec2::new(1.0, 0.0)
@@ -4543,7 +4724,11 @@ impl SketchSession {
     /// Capture the authored properties that a newly applied tool does not
     /// semantically own. These are preferences for this one solve only; they
     /// are not hidden constraints and never reduce the sketch's reported DOF.
-    fn operation_stays(&self, constraints: &[Constraint]) -> solver::SolveStays {
+    fn operation_stays(
+        &self,
+        constraints: &[Constraint],
+        chamfer_edit: bool,
+    ) -> solver::SolveStays {
         fn add_line_shape(
             lengths: &mut BTreeSet<EntityId>,
             angles: &mut BTreeSet<EntityId>,
@@ -4791,6 +4976,20 @@ impl SketchSession {
                         line_midpoints.insert(from);
                     }
                     (Some(Entity::Point { .. }), Some(Entity::Point { .. }), Some(to)) => {
+                        if chamfer_edit && constraints.len() == 1 {
+                            if let Some(ChamferEditTopology {
+                                origin,
+                                carriers,
+                                far_points,
+                                ..
+                            }) = self.chamfer_edit_topology(from, to)
+                            {
+                                point_positions.insert(origin);
+                                point_positions.extend(far_points);
+                                line_angles.extend(carriers);
+                                continue;
+                            }
+                        }
                         point_pair_angles.insert((from, to));
                         point_pair_midpoints.insert((from, to));
                     }

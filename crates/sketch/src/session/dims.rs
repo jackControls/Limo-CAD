@@ -433,7 +433,7 @@ impl SketchSession {
                 .then_some(*current)
             })
             .collect::<Vec<_>>();
-        let analysis = self.solve_constraint_operation_with_recovery(&changed_dimensions);
+        let analysis = self.solve_dimension_edit_with_recovery(&changed_dimensions);
         let residual = crate::solver::constraint_residual(&self.sketch, request.constraint_id);
         if !analysis.converged || residual > 1e-6 {
             let error = self.classify_constraint_failure(request.constraint_id, constraint);
