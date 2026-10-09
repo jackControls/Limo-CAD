@@ -7,7 +7,37 @@ one shared CAD/CAM command path. The integration is tracked by
 [PR #124](https://github.com/limo-cad/Limo-CAD/pull/124) and has not merged
 into `main`. Passing required checks and an external approval remain merge gates.
 
-Manual development stopped at the user's request on **2026-10-09 UTC**.
+Manual development resumed with the user's approval on **2026-10-09 UTC**.
+The durable UI-first/MCP-second policy is in `.cursor/rules/surface-qualification.mdc`;
+`docs/qualification/surface-coverage.json` records 356 explicit UI cases and
+256 registered MCP tools. This is an active breadth survey, not complete
+program qualification. Local test suites, recipe replay and direct model
+mutations remain outside this manual session's scope.
+
+The clean `8fdd5fd7` GUI/MCP pair verified all 70 payload hashes. Settings scrolling
+and translated document units pass the exercised normal-window flows. A full
+71-character Unicode path saved and reopened a model matching the live state;
+a later new-document Save As stopped partway through another path before submission.
+That native text case remains open. Ctrl+Shift+S also remains unattributed:
+the menu opens Save As but the guarded shortcut did not.
+
+The small human-built fixtures under `examples/checkpoints/surface-ui-*` retain
+the block, origin-plane sketches and a Common result whose supporting face is
+valid before its consuming extrusion. Editing that extrusion again falsely
+rejected its sketch support in the completed scene. `d9719134` uses the existing
+isolated pre-feature editor; actual clean-runtime qualification is pending.
+This does not qualify arbitrary upstream support-loss reporting.
+
+Hosted native CI on `0bb6257b` confirms the test-only isolation repair: Windows
+937 passed/zero failed; Ubuntu 937 passed/one failed; macOS 942 passed/one failed.
+All three pass the Browser visibility Undo/Redo regressions with no poisoned-lock
+cascade. The exact thread export passes Windows but remains the sole native
+failure on Ubuntu/macOS. It is queued after the bounded investigation; source
+precision and native identity guards remain unchanged. Other current CI jobs
+are not qualified by these native-host receipts.
+
+The earlier stopping receipt is preserved below as historical evidence.
+Manual development had stopped at the user's request on **2026-10-09 UTC**.
 The final code revision is `289aef988d9c33c1805ea2be5f1de187737b9089`;
 the stopping checkpoint is documentation only. Both working checkouts and remote
 integration branches were clean and synchronized before recording this receipt.
