@@ -100,6 +100,15 @@ claim is made. This mode actually reproduces both existing dimension-ink and
 active-family toolbar defects, extending observed coverage without opening
 duplicate repairs. Slots are next in the UI breadth survey.
 
+Center-to-center slot passes axis/width creation, zero-width validation, exact
+draft Cancel, retained 10 to 12 mm width edit, creation/edit Undo/Redo and exact
+native save/reopen. Eight entities and eleven tangent/equality/endpoint/diameter
+constraints remain stable. Its four DOF leave length and placement free; the
+second center moves about 0.00009 mm during the width solve, so no locked-length
+claim is made. The shared dimension-ink defect remains; Slot's primary control
+is clipped at this ribbon width and its active caption is unqualified. Overall
+slot and Center-point slot remain next.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
