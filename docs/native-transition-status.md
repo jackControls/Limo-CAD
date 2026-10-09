@@ -19,8 +19,11 @@ now respects its selected signed stop plane despite retained Flip metadata. Prev
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
 all four saved feature statuses are OK. The separate Common final-status defect
 remains queued. Revolve's four axis modes and signed half/full turns produce
-expected geometry; boolean and persistence checks continue. Duplicate validation
-text and losing the feature draft on browser visibility changes are recorded.
+expected geometry. The clean `5b10cdc3` pair additionally qualifies Add/Subtract/
+Common targets, retained Cancel/Undo/Redo and exact save/UI-reopen with four OK
+features. Its narrow fix preserves new Revolve drafts across browser visibility
+changes and removes duplicated inline validation; both have actual UI receipts.
+Two human-built Revolve checkpoints retain the axis and boolean fixtures.
 
 The clean `8fdd5fd7` GUI/MCP pair verified all 70 payload hashes. Settings scrolling
 and translated document units pass the exercised normal-window flows. A full
@@ -45,7 +48,8 @@ continues to be reported.
 The next meaningful mode exposed a separate To Face direction error: top Z=8
 to selected bottom Z=0 with retained Flip produced Z=8..16 while reporting no
 errors. `b41645b1` preserves the selected plane's signed endpoint in geometry
-and preview and hides Flip only for that mode; runtime qualification is pending.
+and preview and hides Flip only for that mode; runtime qualification passes on
+`b71665d7`, including same-plane validation, editing and exact save/UI-reopen.
 The saved human fixture is `surface-ui-to-face-flip-human-ui.limo`. Analogous
 Rib logic remains unqualified and will be checked at its normal catalog position.
 
