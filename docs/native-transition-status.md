@@ -27,6 +27,24 @@ observation and visible filename verification remain necessary. The native
 layout rejection reports a bounded first difference without relaxing its guard.
 These changes require a fresh native build and manual UI qualification.
 
+The clean `8e0a0bda` deployment and fresh matched GUI/MCP pair passed the actual
+UI-built annulus 3MF and STL exports. The 3MF contains 863 vertices and 1,726
+triangles with zero invalid directed edges or zero-area facets; its millimetre
+bounds are (-10, -10, approximately 0) to (10, 10, 20). The ASCII STL has 1,726
+finite, nondegenerate facets and exactly matches the ordered 3MF coordinates.
+The UI completed both export filenames and a full-path native Save As; fresh
+captures preceded Enter, and the saved model again matched the live model.
+The original accidental-path archive remains preserved. This receipt does not
+establish universal foreground stability or prove that the human sketch's
+machine-rounded inner radius exercises CI's exact native topology.
+
+Hosted Ubuntu CI on that source still correctly rejected a pre-existing curved
+owner facet for source angular precision after the boundary separation, rolling
+back the full transaction. The follow-up candidate tries independently restored,
+bounded source-chart refinements of that owner at the unchanged requested
+precision, then requires the complete all-owner certificates again. The exact
+hosted case remains unqualified until CI passes. No local suites were run.
+
 The MCP recipe export assertion now accepts complete, finite ASCII STL as well
 as binary STL; precision-preserving ASCII output exposed its binary-only
 assumption in hosted CI. No local suites or recipe replay were run for this

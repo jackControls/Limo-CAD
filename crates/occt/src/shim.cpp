@@ -5081,6 +5081,48 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         ++attempts;++export_boundary_attempts_;mutated=true;
         if (!restore_strip_station_nodes(trial)) throw std::runtime_error(strip_stop_);
         if (!restore_skipped_strip_nodes(trial,true,0,true)) throw std::runtime_error("merged boundary native cavity: "+strip_stop_);
+        for (const auto& saved : trial.faces) {
+          // Separating the native cap station can expose a curved owner's
+          // pre-existing angular error. Qualify its complete source chart on
+          // independent mesh copies; never relax the requested precision.
+          // This snapshot contains the NEW distinct boundary indices. The
+          // outer trial alone owns restoration of their pre-separation state.
+          TopLoc_Location current_location;
+          StripFace current{saved.face,saved.face->GetStatusMask(),{},
+              BRep_Tool::Triangulation(saved.face->GetFace(),current_location),{}};
+          current.original_orientation=saved.original_orientation;
+          for (int wi=0;wi<saved.face->WiresNb();++wi) {
+            const auto wire=saved.face->GetWire(wi);current.wire_statuses.push_back(wire->GetStatusMask());
+            for (int ei=0;ei<wire->EdgesNb();++ei) {
+              const auto pc=wire->GetEdge(ei)->GetPCurve(saved.face,wire->GetEdgeOrientation(ei));
+              if (pc.IsNull()) throw std::runtime_error("merged boundary owner retry lacks its current PCurve");
+              std::vector<int> indices;
+              for (int i=0;i<pc->ParametersNb();++i) indices.push_back(pc->GetIndex(i));
+              current.boundary_indices.push_back({pc,std::move(indices)});
+            }
+          }
+          StripTrial single;single.faces.push_back(std::move(current));
+          bool qualified=validate_spherical_strip(single,true,true);
+          std::string owner_stop=strip_stop_;
+          for (int strategy=0;strategy<4 && !qualified;++strategy) {
+            restore_spherical_strip(single);
+            if (export_boundary_attempts_>=128 || export_boundary_work_>=2097152) {
+              owner_stop="merged boundary owner refinement attempt/work cap";break;
+            }
+            ++export_boundary_attempts_;
+            qualified=restore_complete_export_face(single,0,strategy>0,strategy>=2,false,strategy==3) &&
+                validate_spherical_strip(single,true,true);
+            owner_stop="owner "+std::to_string(strip_original_faces_.FindIndex(saved.face->GetFace())-1)+
+                " strategy "+std::to_string(strategy)+" "+strip_stop_;
+            if (!qualified) std::fprintf(stderr,"Native export merged boundary target %d %s\n",
+                original+1,owner_stop.substr(0,3000).c_str());
+          }
+          if (!qualified) {
+            diagnose_export_rails(saved.face);
+            restore_spherical_strip(single);
+            throw std::runtime_error("merged boundary owner complete source qualification: "+owner_stop);
+          }
+        }
         if (!validate_spherical_strip(trial,true,true)) throw std::runtime_error("merged boundary all-owner source/domain: "+strip_stop_);
         success=true;++accepted;
         export_boundary_rejections_[original]="separate native boundary stations and complete trim certified";
