@@ -35,6 +35,12 @@ retains a fully constrained 30 by 20 mm rectangle after size validation, typed
 width/height entry, retained dimension edit, Cancel, Undo/Redo and exact UI reopen.
 The existing dimension-ink repair also needs a deployed rectangle recheck.
 
+[`surface-ui-center-rectangle-human-ui.limo`](../checkpoints/surface-ui-center-rectangle-human-ui.limo)
+retains a fully constrained 20 by 12 mm origin-centered rectangle after zero-height
+validation, typed sizes, retained height edit, Cancel, Undo/Redo and exact native
+UI reopen. Shared dimension readability and active-variant toolbar repairs still
+need deployment and presentation rechecks.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

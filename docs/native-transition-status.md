@@ -70,11 +70,21 @@ unqualified. `0230d0bc` shares a two-slot completion reserve across Spline toolb
 header and menu layouts; other modes keep their original allocation. The layout
 repair is committed but undeployed.
 
-The two-point rectangle fixture retains a fully constrained30 by20 profile after
+The two-point rectangle fixture retains a fully constrained 30 by 20 profile after
 zero-width rejection, typed width/height/Tab entry, exact draft Cancel, retained
 driving-dimension edit, creation/edit Undo/Redo and exact native UI save/reopen.
 The existing `6f24e148` dimension readability repair gains only these affected
-rectangle cases. Center rectangle remains next in the breadth survey.
+rectangle cases.
+
+The center rectangle checkpoint retains a fully constrained 20 by 12 profile
+around the origin. Zero-height rejection, numeric entry, exact draft Cancel,
+retained height editing, creation/edit Undo/Redo and native save/reopen pass.
+Active-tool dimension ink and toolbar variant feedback remain polish failures.
+`eb1e96bf` consolidates the earlier Center arc repair across the existing Line,
+Arc, Rectangle, Circle and Slot primary tool families. Only Center arc and Center
+rectangle were observed failing; fifteen presentation dependencies are recorded
+for recheck after deployment without changing their geometry acceptance. Circles
+are next in the breadth survey. All these source repairs remain undeployed.
 
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
