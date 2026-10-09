@@ -689,6 +689,19 @@ impl SketchSession {
             });
             let param =
                 s.param_from_text_pub(ParamKind::Length, Some(&request.distance_text), distance)?;
+            let corner_position = s.sketch.point_position(corner).unwrap_or(v);
+            let arm = p1 - corner_position;
+            let span = arm.x.hypot(arm.y);
+            let mut text_pos = (corner_position + p1) * 0.5;
+            if span.is_finite() && span > 0.0 {
+                let mut normal = Vec2::new(-arm.y / span, arm.x / span);
+                if normal.dot(p2 - corner_position) > 0.0 {
+                    normal = normal * -1.0;
+                }
+                // New labels start 6 mm outside the corner, away from relation glyphs.
+                // This is not a collision guarantee for all fonts/zoom; saved labels stay put.
+                text_pos = text_pos + normal * 6.0;
+            }
             s.add_constraint_bound(
                 Constraint::Distance {
                     from: corner,
@@ -696,7 +709,7 @@ impl SketchSession {
                     value: distance,
                 },
                 param,
-                (s.sketch.point_position(corner).unwrap_or(v) + p1) * 0.5,
+                text_pos,
                 false,
             )?;
             let _ = line_id;
