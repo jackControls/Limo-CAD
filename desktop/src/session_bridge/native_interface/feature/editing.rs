@@ -73,10 +73,13 @@ impl Stage {
             )?;
             let scene = self.engine.solid_scene_snapshot();
             if !scene.errors.is_empty() {
-                return Err(format!(
-                    "The edited feature could not rebuild: {:?}",
-                    scene.errors
-                ));
+                let messages = scene
+                    .errors
+                    .iter()
+                    .map(|error| error.message.as_str())
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                return Err(format!("The edited feature could not rebuild: {messages}"));
             }
             Ok(result)
         })();
