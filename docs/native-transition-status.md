@@ -264,6 +264,22 @@ whole-model native save/reopen. Original outer endpoints remain exact; the two
 line pieces share an editable point, two horizontal constraints/four DOF.
 Fillet and Chamfer are next; broader arc/circle variants are unqualified.
 
+Sketch Fillet creates the representative radius5 tangent corner correctly,
+with exact zero/Cancel preservation, creation Undo/Redo and whole-model native
+save/reopen. The case fails retained R5-to7 and R5-to3 edits: solver rejects
+both while preserving the whole sketch and history. `aa7d0000` extends the
+existing consumed-fillet initial guess only to proven finite shared-corner
+topology; equations, rank reporting, convergence, consumption guards and atomic
+rollback remain unchanged. `e1928904` separately explains nonpositive radius.
+Both repairs were reviewed/formatted/committed/pushed; hosted and deployed
+acceptance remain pending. Reported DOF6 is the local first-order rank at
+singular trim tangency, not proof of two extra finite motions. Chamfer is next.
+
+`3b079dc0` Windows native CI passed937/0/10; Unix hosts retain only the known
+strict thread failure, both history contracts passing and zero poisoning.
+`cf0e97c3` repository/Rust/WASM and Linux checks passed. These hosted receipts
+do not qualify the new Fillet fixes or repaired native captions.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;

@@ -119,6 +119,11 @@ point-on-line constraint, endpoint edit, Undo/Redo and exact native reopen.
 retains two horizontal line pieces sharing an edited point after menu Break,
 Cancel/validation, Undo/Redo and exact native reopen.
 
+[`surface-ui-sketch-fillet-human-ui.limo`](../checkpoints/surface-ui-sketch-fillet-human-ui.limo)
+retains the radius5 tangent corner after validation/Cancel, creation history
+and exact native reopen. Retained radius3/7 edits failed safely on the tested
+build; their source repair and clearer zero feedback await deployed acceptance.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
