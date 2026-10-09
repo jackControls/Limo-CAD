@@ -90,6 +90,13 @@ zero scene errors and zero display warnings. Support blocks and the rest of the
 three-model walkthrough remain unfinished. The newly observed threaded-part
 export identity conflict remains under investigation in automatic native CI.
 
+The subsequent [front support stock checkpoint](../examples/checkpoints/garden-bench-front-support-stock-human-ui.limo)
+adds its origin-constrained 65 × 28 mm sketch and independent 65 mm extrusion
+through the same guarded UI. Both features are named, all nine bodies restored,
+and the finished sketch hidden. Exact live/archive comparison passed at
+thirty-one features, nine definitions and twelve occurrences. This block's
+appearance and placement remain unfinished.
+
 The subsequent clean matched `35722a50` GUI export still reports 86 unmatched
 links. Three continuous source intersections are now qualified, but the thin
 three-edge strips are refused as nonsimple or unoriented. The next candidate

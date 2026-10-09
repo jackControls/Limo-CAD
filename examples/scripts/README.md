@@ -305,6 +305,19 @@ geometry and references.
     Support blocks and the remaining geometry, joints, drawings and print
     layouts remain unfinished.
 
+33. On the same matched `d515b39a` runtime, isolate the nine-body working area
+    and create the front support block through an XY-origin Rectangle, width
+    65 mm and height 28 mm. Its saved origin coincidence, four horizontal/vertical
+    constraints and two driving dimensions retain the exact profile. Extrude
+    an independent body 65 mm, with zero taper and no flip. Name the sketch
+    **Front center bearer support block / stock from A-B-C** and its extrusion
+    **Front center bearer support block / stock from A-B-C / Stock 65 mm**.
+    Hide the finished sketch, restore all nine bodies and save the
+    [front support stock checkpoint](../checkpoints/garden-bench-front-support-stock-human-ui.limo).
+    Exact live/archive comparison passed; it has thirty-one features, nine
+    definitions and twelve occurrences. The front block's appearance and
+    placement, rear block and remaining construction are unfinished.
+
 Use the saved **Named Views** for a demonstration:
 
 1. Recall **01 / Front frame assembly**, **03 / Seat support frame** and
