@@ -17,21 +17,23 @@ if (-not $evidenceFile.StartsWith($runnerRoot, [StringComparison]::OrdinalIgnore
 
 # The runner agent repeatedly launches a broken WSL updater during GUI tests.
 # Redirect only wsl.exe to Windows' inert systray stub for this test's lifetime.
-# Both registry views are necessary on ARM64; a foreground-window hide alone
-# cannot prevent a new terminal appearing between observation and OS input.
+# IFEO is shared across registry views on modern Windows. Use its canonical
+# location once; deleting it twice through WOW6432Node aliases breaks cleanup.
+# A foreground-window hide alone cannot prevent a new terminal appearing
+# between observation and OS input.
 # https://github.com/actions/runner-images/issues/14264
+# https://learn.microsoft.com/en-us/windows/win32/winprog64/shared-registry-keys
 $stub = Join-Path $env:WINDIR 'System32\systray.exe'
 $redirect = '"' + $stub + '"'
 $paths = @(
-    'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wsl.exe',
-    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wsl.exe'
+    'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wsl.exe'
 )
 $states = [Collections.Generic.List[object]]::new()
 $report = [ordered]@{
     run_id = $env:GITHUB_RUN_ID
     started_utc = [DateTime]::UtcNow.ToString('o')
     status = 'preparing'
-    method = 'Scoped wsl.exe IFEO redirection in both registry views; restored in finally'
+    method = 'Scoped wsl.exe IFEO redirection at the shared canonical key; restored in finally'
     keys = @()
     existing_wsl = @()
 }
@@ -39,8 +41,7 @@ try {
     if (-not (Test-Path -LiteralPath $stub -PathType Leaf)) {
         throw 'The system systray stub is missing; no registry settings were changed'
     }
-    # Inspect both views before changing either. Existing debugger policies
-    # belong to the runner and must not be overwritten.
+    # Existing debugger policies belong to the runner and must not be overwritten.
     foreach ($path in $paths) {
         $exists = Test-Path -LiteralPath $path
         if ($exists -and ((Get-Item -LiteralPath $path).GetValueNames() -contains 'Debugger')) {
@@ -109,5 +110,9 @@ try {
     $report.finished_utc = [DateTime]::UtcNow.ToString('o')
     [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($evidenceFile))
     [IO.File]::WriteAllText($evidenceFile, ($report | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
-    if ($restoreErrors.Count -gt 0) { throw "WSL isolation cleanup failed: $($restoreErrors -join '; ')" }
+    if ($restoreErrors.Count -gt 0) {
+        $failure = "WSL isolation cleanup failed: $($restoreErrors -join '; ')"
+        if ($report.error) { $failure += "; original failure: $($report.error)" }
+        throw $failure
+    }
 }

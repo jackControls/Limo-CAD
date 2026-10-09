@@ -1,14 +1,16 @@
 $ErrorActionPreference = 'Stop'
 
 # Exercise the real isolation script with registry operations replaced by an
-# in-memory provider. These tests never access HKLM or launch WSL/OS input.
+# in-memory provider. IFEO's canonical and WOW6432Node paths share one key,
+# matching modern Windows. These tests never access HKLM or launch WSL/OS input.
 Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
 public sealed class FakeWslRegistryKey {
     public Dictionary<string, object> Values = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+    public string[] SubKeys = new string[0];
     public string[] GetValueNames() { string[] names = new string[Values.Count]; Values.Keys.CopyTo(names, 0); return names; }
-    public string[] GetSubKeyNames() { return new string[0]; }
+    public string[] GetSubKeyNames() { return SubKeys; }
 }
 public sealed class FakeWslUpdater {
     public int Id = 2468, Waits;
@@ -35,24 +37,32 @@ $paths = @(
     'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wsl.exe',
     'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wsl.exe'
 )
+$registryPath = $paths[0]
+function Resolve-RegistryPath([string]$Path) {
+    if ($Path -ceq $paths[1]) { return $registryPath }
+    $Path
+}
 function Test-Path {
     param($LiteralPath, $PathType)
     if ($LiteralPath -eq [WslIsolationFixture]::Stub) { return [WslIsolationFixture]::StubExists }
-    [WslIsolationFixture]::Keys.ContainsKey($LiteralPath)
+    [WslIsolationFixture]::Keys.ContainsKey((Resolve-RegistryPath $LiteralPath))
 }
 function Get-Item {
     param($LiteralPath)
+    $LiteralPath = Resolve-RegistryPath $LiteralPath
     if (-not [WslIsolationFixture]::Keys.ContainsKey($LiteralPath)) { throw 'Missing fake registry key' }
     [WslIsolationFixture]::Keys[$LiteralPath]
 }
 function New-Item {
     param($Path, [switch]$Force, $ItemType)
     if ($ItemType -eq 'Directory') { [void][IO.Directory]::CreateDirectory($Path); return }
+    $Path = Resolve-RegistryPath $Path
     if (-not [WslIsolationFixture]::Keys.ContainsKey($Path)) { [WslIsolationFixture]::Keys[$Path] = [FakeWslRegistryKey]::new() }
     [WslIsolationFixture]::Writes.Add('create:' + $Path)
 }
 function New-ItemProperty {
     param($LiteralPath, $Name, $PropertyType, $Value)
+    $LiteralPath = Resolve-RegistryPath $LiteralPath
     if ($Name -cne 'Debugger' -or $PropertyType -cne 'String' -or $Value -cne ('"' + [WslIsolationFixture]::Stub + '"')) {
         throw 'Unexpected registry policy'
     }
@@ -62,18 +72,27 @@ function New-ItemProperty {
 }
 function Get-ItemPropertyValue {
     param($LiteralPath, $Name)
+    $LiteralPath = Resolve-RegistryPath $LiteralPath
+    if (-not [WslIsolationFixture]::Keys.ContainsKey($LiteralPath)) { throw 'Missing fake registry key' }
     if (-not [WslIsolationFixture]::Keys[$LiteralPath].Values.ContainsKey($Name)) { throw 'Missing fake registry value' }
     [WslIsolationFixture]::Keys[$LiteralPath].Values[$Name]
 }
 function Remove-ItemProperty {
     param($LiteralPath, $Name)
+    $LiteralPath = Resolve-RegistryPath $LiteralPath
     if ($LiteralPath -eq [WslIsolationFixture]::FailRemove) { throw 'Simulated registry cleanup failure' }
-    [void][WslIsolationFixture]::Keys[$LiteralPath].Values.Remove($Name)
+    if (-not [WslIsolationFixture]::Keys.ContainsKey($LiteralPath) -or
+        -not [WslIsolationFixture]::Keys[$LiteralPath].Values.Remove($Name)) { throw 'Missing fake registry value' }
+    [WslIsolationFixture]::Writes.Add('remove-property:' + $LiteralPath)
 }
 function Remove-Item {
     param($LiteralPath)
-    if ([WslIsolationFixture]::Keys[$LiteralPath].Values.Count -ne 0) { throw 'Refusing nonempty fake registry deletion' }
+    $LiteralPath = Resolve-RegistryPath $LiteralPath
+    if (-not [WslIsolationFixture]::Keys.ContainsKey($LiteralPath)) { throw 'Missing fake registry key' }
+    if ([WslIsolationFixture]::Keys[$LiteralPath].Values.Count -ne 0 -or
+        [WslIsolationFixture]::Keys[$LiteralPath].SubKeys.Count -ne 0) { throw 'Refusing nonempty fake registry deletion' }
     [void][WslIsolationFixture]::Keys.Remove($LiteralPath)
+    [WslIsolationFixture]::Writes.Add('remove-key:' + $LiteralPath)
 }
 function Get-Process {
     param($Name, $ErrorAction)
@@ -105,13 +124,16 @@ function Invoke-Case([string]$name, [scriptblock]$action, [bool]$fails, [bool]$r
         throw "$name omitted failure or restoration evidence"
     }
     if (-not $report.started_utc -or -not $report.finished_utc) { throw "$name omitted timing evidence" }
+    if (-not $restored -and $report.error -and -not $caught.Exception.Message.Contains($report.error)) {
+        throw "$name hid the original verification failure behind cleanup"
+    }
     $report
 }
 $checkBoth = {
     [WslIsolationFixture]::Actions++
     foreach ($path in $paths) {
         if ((Get-ItemPropertyValue -LiteralPath $path -Name Debugger) -cne ('"' + [WslIsolationFixture]::Stub + '"')) {
-            throw 'Both views must be isolated before the input check'
+            throw 'Both aliases of the shared key must be isolated before the input check'
         }
     }
 }
@@ -125,8 +147,9 @@ try {
     $env:RUNNER_TEMP = $evidenceRoot
 
     Reset-Registry
-    $null = Invoke-Case 'success' $checkBoth $false
-    if ([WslIsolationFixture]::Actions -ne 1 -or [WslIsolationFixture]::Keys.Count -ne 0) { throw 'Successful check must restore both newly created keys' }
+    $report = Invoke-Case 'shared-key-success' $checkBoth $false
+    if ([WslIsolationFixture]::Actions -ne 1 -or [WslIsolationFixture]::Keys.Count -ne 0 -or $report.keys.Count -ne 1 -or
+        [WslIsolationFixture]::Writes.Count -ne 4) { throw 'Successful check must create, redirect and restore the shared key exactly once' }
 
     Reset-Registry
     $updater = [FakeWslUpdater]::new()
@@ -146,32 +169,29 @@ try {
 
     Reset-Registry
     $null = Invoke-Case 'input-failure' { & $checkBoth; throw 'Simulated input verification failure' } $true
-    if ([WslIsolationFixture]::Actions -ne 1 -or [WslIsolationFixture]::Keys.Count -ne 0) { throw 'Failed check must restore both keys without retrying input' }
+    if ([WslIsolationFixture]::Actions -ne 1 -or [WslIsolationFixture]::Keys.Count -ne 0) { throw 'Failed check must restore the shared key without retrying input' }
 
     Reset-Registry
-    foreach ($path in $paths) {
-        [WslIsolationFixture]::Keys[$path] = [FakeWslRegistryKey]::new()
-        [WslIsolationFixture]::Keys[$path].Values['Unrelated'] = 'keep'
-    }
+    [WslIsolationFixture]::Keys[$registryPath] = [FakeWslRegistryKey]::new()
+    [WslIsolationFixture]::Keys[$registryPath].Values['Unrelated'] = 'keep'
     $null = Invoke-Case 'existing-keys' $checkBoth $false
-    foreach ($path in $paths) {
-        if ([WslIsolationFixture]::Keys[$path].Values.Count -ne 1 -or [WslIsolationFixture]::Keys[$path].Values['Unrelated'] -cne 'keep') {
-            throw 'Existing keys and unrelated values must survive cleanup'
-        }
+    if ([WslIsolationFixture]::Keys[$registryPath].Values.Count -ne 1 -or [WslIsolationFixture]::Keys[$registryPath].Values['Unrelated'] -cne 'keep') {
+        throw 'Existing keys and unrelated values must survive cleanup'
     }
 
     foreach ($path in $paths) {
         Reset-Registry
-        [WslIsolationFixture]::Keys[$path] = [FakeWslRegistryKey]::new()
-        [WslIsolationFixture]::Keys[$path].Values['Debugger'] = 'existing-debugger'
+        $physicalPath = Resolve-RegistryPath $path
+        [WslIsolationFixture]::Keys[$physicalPath] = [FakeWslRegistryKey]::new()
+        [WslIsolationFixture]::Keys[$physicalPath].Values['Debugger'] = 'existing-debugger'
         $null = Invoke-Case ('existing-debugger-' + [WslIsolationFixture]::Cases) $checkBoth $true
-        if ([WslIsolationFixture]::Actions -ne 0 -or [WslIsolationFixture]::Writes.Count -ne 0 -or [WslIsolationFixture]::Keys[$path].Values['Debugger'] -cne 'existing-debugger') {
-            throw 'Inspect both views before changing either; never overwrite a debugger policy'
+        if ([WslIsolationFixture]::Actions -ne 0 -or [WslIsolationFixture]::Writes.Count -ne 0 -or [WslIsolationFixture]::Keys[$physicalPath].Values['Debugger'] -cne 'existing-debugger') {
+            throw 'A debugger policy visible through either alias must not be overwritten'
         }
     }
 
     Reset-Registry
-    [WslIsolationFixture]::FailWrite = $paths[1]
+    [WslIsolationFixture]::FailWrite = $registryPath
     $null = Invoke-Case 'partial-setup-failure' $checkBoth $true
     if ([WslIsolationFixture]::Actions -ne 0 -or [WslIsolationFixture]::Keys.Count -ne 0) { throw 'Partial setup must roll back without starting input' }
 
@@ -181,17 +201,41 @@ try {
     if ([WslIsolationFixture]::Actions -ne 0 -or [WslIsolationFixture]::Writes.Count -ne 0) { throw 'Missing system stub must leave registry and input untouched' }
 
     Reset-Registry
-    [WslIsolationFixture]::FailRemove = $paths[0]
+    [WslIsolationFixture]::FailRemove = $registryPath
     $report = Invoke-Case 'cleanup-failure' $checkBoth $true $false
-    if ([WslIsolationFixture]::Keys.Count -ne 1 -or $report.restore_errors.Count -ne 1) { throw 'Cleanup failures must be fatal while the other view is restored' }
+    if ([WslIsolationFixture]::Keys.Count -ne 1 -or $report.restore_errors.Count -ne 1) { throw 'Cleanup failures must be fatal and retain restoration evidence' }
+
+    Reset-Registry
+    [WslIsolationFixture]::FailRemove = $registryPath
+    $report = Invoke-Case 'input-and-cleanup-failure' { & $checkBoth; throw 'Original input verification failure' } $true $false
+    if ($report.error -cne 'Original input verification failure' -or $report.restore_errors.Count -ne 1) { throw 'Both verification and cleanup failures must be retained' }
 
     Reset-Registry
     $null = Invoke-Case 'replaced-policy' {
         & $checkBoth
-        [WslIsolationFixture]::Keys[$paths[1]].Values['Debugger'] = 'new-policy'
+        [WslIsolationFixture]::Keys[$registryPath].Values['Debugger'] = 'new-policy'
     } $true $false
-    if ([WslIsolationFixture]::Keys.Count -ne 1 -or [WslIsolationFixture]::Keys[$paths[1]].Values['Debugger'] -cne 'new-policy') {
-        throw 'A changed policy must be preserved while the other view is restored'
+    if ([WslIsolationFixture]::Keys.Count -ne 1 -or [WslIsolationFixture]::Keys[$registryPath].Values['Debugger'] -cne 'new-policy') {
+        throw 'A changed policy must be preserved'
+    }
+
+    Reset-Registry
+    [WslIsolationFixture]::Keys[$registryPath] = [FakeWslRegistryKey]::new()
+    $null = Invoke-Case 'existing-empty-key' $checkBoth $false
+    if ([WslIsolationFixture]::Keys.Count -ne 1 -or [WslIsolationFixture]::Keys[$registryPath].Values.Count -ne 0) { throw 'A preexisting empty key must survive cleanup' }
+
+    foreach ($addition in @('value', 'subkey')) {
+        Reset-Registry
+        $null = Invoke-Case ('unrelated-' + $addition) {
+            & $checkBoth
+            if ($addition -eq 'value') { [WslIsolationFixture]::Keys[$registryPath].Values['Unrelated'] = 'keep' }
+            else { [WslIsolationFixture]::Keys[$registryPath].SubKeys = @('Unrelated') }
+        } $false
+        if ([WslIsolationFixture]::Keys.Count -ne 1 -or [WslIsolationFixture]::Keys[$registryPath].Values.ContainsKey('Debugger') -or
+            ($addition -eq 'value' -and [WslIsolationFixture]::Keys[$registryPath].Values['Unrelated'] -cne 'keep') -or
+            ($addition -eq 'subkey' -and [WslIsolationFixture]::Keys[$registryPath].SubKeys[0] -cne 'Unrelated')) {
+            throw 'Unrelated values and subkeys added during the test must survive cleanup'
+        }
     }
 
     foreach ($guard in $guardNames | Where-Object { $_ -ne 'RUNNER_TEMP' }) {

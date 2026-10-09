@@ -337,7 +337,7 @@ try {
     try { & $preflight -EvidencePath $escaped -Window 100 } catch { $refused = $true }
     if (-not $refused -or (Test-Path -LiteralPath $escaped) -or [HostedArmAccountWindow]::Closed.Count -ne 0) { throw 'Evidence path escape did not fail closed' }
     $script:caseCount++
-    Write-Output "PASS: $script:caseCount managed shell-preflight cases; no desktop APIs invoked"
+    Write-Output "PASS: hosted ARM shell preflight; $script:caseCount managed cases; no desktop APIs invoked"
 } finally {
     foreach ($name in $guardNames) { [Environment]::SetEnvironmentVariable($name, $original[$name]) }
     [Environment]::SetEnvironmentVariable('ProgramFiles', $originalProgramFiles)
