@@ -308,6 +308,13 @@ automatic MCP workflow `8471bfb1` passed all six host/model jobs plus final
 Ubuntu and aggregate checks; the manual256-tool catalog remains untested and
 gated on the incomplete UI survey.
 
+Sketch Rectangular Pattern passes zero-count safe feedback, Cancel exact
+preservation, positive3x2 spacing20 geometry, independent copied-endpoint edit,
+exact Undo/Redo and native save/reopen. Source horizontal constraint remains;
+copies are independent/free. Keyboard traversal stays needs_recheck for
+undeployed `148d9f0e`; no array preview/oblique/negative/curve claim is made.
+Circular Pattern is next. `8c7484cc` full repository/Rust/WASM passed.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;

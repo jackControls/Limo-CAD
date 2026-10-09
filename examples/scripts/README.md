@@ -134,6 +134,11 @@ retains a reflected independent line and its edited endpoint after missing-axis
 validation/Cancel, exact history and native save/reopen. Source and axis stay
 unchanged; curve/oblique/multiple-source variants remain unqualified.
 
+[`surface-ui-sketch-rectangular-pattern-human-ui.limo`](../checkpoints/surface-ui-sketch-rectangular-pattern-human-ui.limo)
+retains a3x2 array with20mm spacings and one independently edited copied
+endpoint. Validation/Cancel/history/native reopen passed; keyboard traversal
+awaits the shared focus fix.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
