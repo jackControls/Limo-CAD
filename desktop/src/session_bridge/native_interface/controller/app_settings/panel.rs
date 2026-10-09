@@ -74,7 +74,7 @@ pub(super) fn paint(
         x: (x + 1.) as f64,
         y: (y + 44.) as f64,
         width: (w - 2.) as f64,
-        height: (h - if settings.error.is_some() { 101. } else { 45. }) as f64,
+        height: (h - if settings.error.is_some() { 141. } else { 85. }) as f64,
     };
     settings.content = Some(body);
     let content_height = settings
@@ -471,7 +471,7 @@ pub(super) fn paint(
         "settings-units",
         680.,
         22.,
-        &format!("Document units: {units}"),
+        &t("appearance.documentUnits").replace("{unit}", units),
         11.,
     );
     if settings.error.is_some() {
@@ -479,7 +479,7 @@ pub(super) fn paint(
             world,
             camera,
             "settings-error-footer",
-            rect(x + 1., y + h - 57., w - 2., 56.),
+            rect(x + 1., y + h - 97., w - 2., 56.),
             theme.header.with_alpha(1.),
             76,
         );
@@ -487,7 +487,7 @@ pub(super) fn paint(
             world,
             camera,
             "settings-error",
-            rect(x + 12., y + h - 51., w - 150., 44.),
+            rect(x + 12., y + h - 91., w - 150., 44.),
             t("appearance.preferenceError"),
             10.,
             77,
@@ -500,10 +500,61 @@ pub(super) fn paint(
             t("appearance.retryPreferences"),
             None,
             Command::Retry,
-            rect(x + w - 130., y + h - 46., 116., 32.),
+            rect(x + w - 130., y + h - 86., 116., 32.),
             None,
             false,
         )?;
+    }
+    settings.widgets.panel(
+        world,
+        camera,
+        "settings-scroll-footer",
+        rect(x + 1., y + h - 41., w - 2., 40.),
+        theme.header.with_alpha(1.),
+        76,
+    );
+    settings.widgets.text(
+        world,
+        camera,
+        "settings-scroll-hint",
+        rect(x + 12., y + h - 36., w - 100., 30.),
+        t("appearance.scrollHint"),
+        10.,
+        77,
+    );
+    for (key, label, caption, direction, left, disabled) in [
+        (
+            "settings-scroll-up",
+            "appearance.scrollUp",
+            "\u{2191}",
+            -1,
+            w - 78.,
+            settings.scroll <= 0.,
+        ),
+        (
+            "settings-scroll-down",
+            "appearance.scrollDown",
+            "\u{2193}",
+            1,
+            w - 42.,
+            settings.scroll >= settings.scroll_max,
+        ),
+    ] {
+        let mut control = InterfaceControl::button("document/appearance", t(label));
+        control.modal_scope = Some("app-settings".into());
+        control.disabled = disabled;
+        let entity = settings.widgets.button(
+            world,
+            camera,
+            key,
+            control,
+            Some(caption),
+            NativeCommand::AppSettings(Command::Scroll(direction)),
+            rect(x + left, y + h - 36., 30., 30.),
+            None,
+            78,
+        )?;
+        interface_shell::center_caption(world, entity);
     }
     Ok(())
 }

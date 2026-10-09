@@ -235,6 +235,89 @@ geometry and references.
     comparison passed. Both rear-post patterns, remaining geometry, joints and
     drawings remain unfinished.
 
+27. On clean matched `fe195308`, isolate Body3 and select its outward −Y face in
+    Front view. The basis is origin `(0, 0, 0)`, U `(1, 0, 0)`, V `(0, 0, 1)`.
+    Add two simple Ø3.5 mm, 39 mm deep, flat-bottom pilots with no flip at U 32.5,
+    V 350/390 mm. Name the feature **Left rear post / Apron pilots Ø3.5 x 39 /
+    Z350 and Z390**. Restore all seven Browser eyes, use Isometric/Fit and save.
+    The [left-rear apron checkpoint](../checkpoints/garden-bench-left-rear-apron-human-ui.limo)
+    has twenty-four features, seven definitions and ten occurrences. Saved hole
+    parameters and exact live/archive comparison passed. Rear rail/arm pilots,
+    right-rear apron pilots, remaining geometry, joints and drawings remain open.
+
+28. On clean matched `0528a7db`, isolate Body4 and select its outward −Y face in
+    Front view. Its basis is origin `(0, 0, 0)`, U `(1, 0, 0)`, V `(0, 0, 1)`.
+    Add two simple Ø3.5 mm, 39 mm deep, flat-bottom pilots with no flip at U 32.5,
+    V 350/390 mm. Name the feature **Right rear post / Apron pilots Ø3.5 x 39 /
+    Z350 and Z390**. Restore all seven Browser eyes, use Isometric/Fit and save.
+    The [rear apron checkpoint](../checkpoints/garden-bench-rear-aprons-human-ui.limo)
+    has twenty-five features, seven definitions and ten occurrences. Saved hole
+    parameters and exact live/archive comparison passed. Both rear rail/arm pilot
+    patterns, remaining geometry, joints and drawings remain unfinished.
+
+29. On clean matched `e7e0a775`, isolate Body3 and select its outward −X face in
+    Left view. Its basis is origin `(0, 65, 0)`, U `(0, −1, 0)`, V `(0, 0, 1)`.
+    Add six simple Ø3.5 mm, 39 mm deep, flat-bottom pilots with no flip at U 32.5,
+    V 365/400/170/205/590/615 mm. Name the feature **Left rear post / Rail and arm
+    pilots Ø3.5 x 39 / Six positions**. Restore all seven Browser eyes and save.
+    The [left-rear pilot checkpoint](../checkpoints/garden-bench-left-rear-pilots-human-ui.limo)
+    has twenty-six features, seven definitions and ten occurrences. Saved hole
+    parameters and exact live/archive comparison passed. Right-rear rail/arm
+    pilots, remaining geometry, joints and drawings remain unfinished.
+
+30. On clean matched `7a51d2e0`, isolate Body4 and select its outward +X face in
+    Right view. Its basis is origin `(65, 0, 0)`, U `(0, 1, 0)`, V `(0, 0, 1)`.
+    Add six simple Ø3.5 mm, 39 mm deep, flat-bottom pilots with no flip at U 32.5,
+    V 365/400/170/205/590/615 mm. Name the feature **Right rear post / Rail and arm
+    pilots Ø3.5 x 39 / Six positions**. Restore all seven Browser eyes and save.
+    The [post-pilot checkpoint](../checkpoints/garden-bench-post-pilots-human-ui.limo)
+    has twenty-seven features, seven definitions, ten occurrences and five named
+    views. Saved hole parameters and exact live/archive comparison passed. All
+    four post pilot patterns are complete; remaining geometry, joints, drawings
+    and print layouts remain unfinished.
+
+31. On clean matched `fc275793`, hide the seven stock bodies, create a sketch on
+    the XY origin plane and draw a Rectangle from the origin. Type width 28 mm
+    and height 415 mm, then finish the sketch. Its saved origin coincidence,
+    horizontal/vertical edges and driving dimensions retain the exact profile.
+    Select the closed profile in Extrude and create an independent body at
+    distance 90 mm, zero taper and no flip. Name the sketch **Center seat bearer /
+    stock from A-B-C** and the extrusion **Center seat bearer / stock from A-B-C /
+    Stock 90 mm**. Hide its finished sketch, restore all eight Browser eyes and
+    save. The [center-stock checkpoint](../checkpoints/garden-bench-center-stock-human-ui.limo)
+    has twenty-nine features, eight definitions, eleven occurrences and five
+    named views; exact live/archive comparison passed. Its appearance, placement
+    and support blocks remain unfinished.
+
+32. On clean matched `d515b39a`, select Body8 and set its appearance to
+    **Oiled timber (visual designation)**, **Honey timber**, RGB 187/126/68,
+    with an empty material family. In Assembly, Make component absorbs the
+    promoted source. Name the reusable definition and its instance **Center
+    seat bearer**, then apply instance translation 586/30/325 mm and zero
+    rotation. The actual viewport shows the timber-colored bearer crossing
+    the frame. Save the [center-bearer checkpoint](../checkpoints/garden-bench-center-bearer-human-ui.limo);
+    exact live/archive comparison passed, with twenty-nine features, eight
+    definitions, eleven occurrences, five named views, zero scene errors and
+    zero display warnings. Both appearance Apply and Make component had failed
+    on the prior runtime with **Native interface transition is pending**. The
+    new dispatch fence permits only a footer repaint, retaining every owner,
+    revision, control, layout and modal guard; both physical retries passed.
+    Support blocks and the remaining geometry, joints, drawings and print
+    layouts remain unfinished.
+
+33. On the same matched `d515b39a` runtime, isolate the nine-body working area
+    and create the front support block through an XY-origin Rectangle, width
+    65 mm and height 28 mm. Its saved origin coincidence, four horizontal/vertical
+    constraints and two driving dimensions retain the exact profile. Extrude
+    an independent body 65 mm, with zero taper and no flip. Name the sketch
+    **Front center bearer support block / stock from A-B-C** and its extrusion
+    **Front center bearer support block / stock from A-B-C / Stock 65 mm**.
+    Hide the finished sketch, restore all nine bodies and save the
+    [front support stock checkpoint](../checkpoints/garden-bench-front-support-stock-human-ui.limo).
+    Exact live/archive comparison passed; it has thirty-one features, nine
+    definitions and twelve occurrences. The front block's appearance and
+    placement, rear block and remaining construction are unfinished.
+
 Use the saved **Named Views** for a demonstration:
 
 1. Recall **01 / Front frame assembly**, **03 / Seat support frame** and

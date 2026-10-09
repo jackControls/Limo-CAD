@@ -1527,6 +1527,8 @@ fn summary(value: &Value) -> String {
         "Model changed; snapshot publication needs retry".into()
     } else if let Some(error) = value["render_error"].as_str() {
         error.into()
+    } else if let Some(message) = value["status_message"].as_str() {
+        message.into()
     } else {
         String::new()
     }

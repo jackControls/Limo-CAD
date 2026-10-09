@@ -422,6 +422,8 @@ pub(crate) fn synchronize(
                     } else {
                         484.
                     }
+                } else if matches!(dialog.kind, DialogKind::Export(_)) && dialog.error.is_some() {
+                    360.
                 } else {
                     220.
                 };
@@ -496,17 +498,6 @@ pub(crate) fn synchronize(
                         &assets,
                         72,
                         false,
-                    );
-                }
-                if let Some(error) = &dialog.error {
-                    text(
-                        (world, &mut state, camera),
-                        node(x + 16., y + dialog_height - 92., w - 32., 40.),
-                        error,
-                        theme,
-                        &assets,
-                        72,
-                        true,
                     );
                 }
             }
@@ -976,11 +967,56 @@ pub(crate) fn synchronize(
                 } else {
                     484.
                 }
+            } else if matches!(dialog.kind, DialogKind::Export(_)) && dialog.error.is_some() {
+                360.
             } else {
                 220.
             };
             let y = (height - dialog_height).max(0.) / 2.;
             let token = dialog.token;
+            if let Some(error) = &dialog.error {
+                let (top, error_height) = match &dialog.kind {
+                    DialogKind::Export(intent)
+                        if intent.format == io::Format::ThreeMf && !intent.bambu.enabled =>
+                    {
+                        (272., dialog_height - 336.)
+                    }
+                    DialogKind::Export(intent) if !intent.bambu.enabled => {
+                        (120., dialog_height - 184.)
+                    }
+                    _ => (dialog_height - 92., 40.),
+                };
+                let mut control = InterfaceControl::button(
+                    "file-dialog",
+                    "Error details (read-only; click, then scroll or copy)",
+                );
+                control.modal_scope = Some("file-dialog".into());
+                control.field = Field::Text {
+                    value: error.clone(),
+                    selection: None,
+                    read_only: true,
+                };
+                let mut bounds = node(x + 16., y + top, w - 32., error_height);
+                bounds.overflow = Overflow::clip();
+                bounds.border = UiRect::all(px(1.));
+                let entity = state.chrome.button(
+                    world,
+                    camera,
+                    "file-error-details",
+                    control,
+                    None,
+                    NativeCommand::File(FileCommand::ErrorDetails(token)),
+                    bounds,
+                    None,
+                    73,
+                )?;
+                fields::multiline::enable(world, entity)?;
+                world.entity_mut(entity).insert((
+                    TextLayout::linebreak(bevy::text::LineBreak::WordOrCharacter),
+                    theme.text(&assets, 11., FontWeight::NORMAL),
+                    TextColor(Color::srgb_u8(224, 85, 85)),
+                ));
+            }
             if let DialogKind::Rename(name) = &dialog.kind {
                 let key = "rename-value".to_owned();
                 live.insert(key.clone());
@@ -1208,7 +1244,13 @@ pub(crate) fn synchronize(
                                 73,
                             )?;
                         }
-                        let summary = if let Some(report) = &intent.layout_report {
+                        let summary = if dialog.error.is_some() && !worker::busy(world) {
+                            if io::needs_layout_check(intent) && intent.layout_report.is_none() {
+                                "Print layout check failed. Review the details below; change export options or cancel.".into()
+                            } else {
+                                "Export failed. Review the details below; change export options or cancel.".into()
+                            }
+                        } else if let Some(report) = &intent.layout_report {
                             let issues = report["issues"].as_array().map_or(0, Vec::len);
                             let mut summary = format!(
                                 "{} instances · {} multipart groups · {issues} layout issues. {}",
@@ -1243,12 +1285,17 @@ pub(crate) fn synchronize(
                             world,
                             camera,
                             "export-layout-summary",
-                            node(x + 16., y + shift + 200., w - 32., 148.),
+                            node(
+                                x + 16.,
+                                y + shift + 200.,
+                                w - 32.,
+                                if dialog.error.is_some() { 28. } else { 148. },
+                            ),
                             &summary,
                             11.,
                             73,
                         );
-                        if io::layout_has_issues(intent) {
+                        if io::layout_has_issues(intent) && dialog.error.is_none() {
                             button(
                                 world,
                                 &mut state,

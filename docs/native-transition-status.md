@@ -7,6 +7,99 @@ one shared CAD/CAM command path. The integration is tracked by
 [PR #124](https://github.com/limo-cad/Limo-CAD/pull/124) and has not merged
 into `main`. Passing required checks and an external approval remain merge gates.
 
+Manual development resumed with the user's approval on **2026-10-09 UTC**.
+The durable UI-first/MCP-second policy is in `.cursor/rules/surface-qualification.mdc`;
+`docs/qualification/surface-coverage.json` records 356 explicit UI cases and
+256 registered MCP tools. This is an active breadth survey, not complete
+program qualification. Local test suites, recipe replay and direct model
+mutations remain outside this manual session's scope.
+
+The clean `8fdd5fd7` GUI/MCP pair verified all 70 payload hashes. Settings scrolling
+and translated document units pass the exercised normal-window flows. A full
+71-character Unicode path saved and reopened a model matching the live state;
+a later new-document Save As stopped partway through another path before submission.
+That native text case remains open. Ctrl+Shift+S also remains unattributed:
+the menu opens Save As but the guarded shortcut did not.
+
+The small human-built fixtures under `examples/checkpoints/surface-ui-*` retain
+the block, origin-plane sketches and a Common result whose supporting face is
+valid before its consuming extrusion. Editing that extrusion again falsely
+rejected its sketch support in the completed scene. `d9719134` uses the existing
+isolated pre-feature editor; actual clean-runtime qualification is pending.
+This does not qualify arbitrary upstream support-loss reporting.
+
+Hosted native CI on `0bb6257b` confirms the test-only isolation repair: Windows
+937 passed/zero failed; Ubuntu 937 passed/one failed; macOS 942 passed/one failed.
+All three pass the Browser visibility Undo/Redo regressions with no poisoned-lock
+cascade. The exact thread export passes Windows but remains the sole native
+failure on Ubuntu/macOS. It is queued after the bounded investigation; source
+precision and native identity guards remain unchanged. Other current CI jobs
+are not qualified by these native-host receipts.
+
+The earlier stopping receipt is preserved below as historical evidence.
+Manual development had stopped at the user's request on **2026-10-09 UTC**.
+The final code revision is `289aef988d9c33c1805ea2be5f1de187737b9089`;
+the stopping checkpoint is documentation only. Both working checkouts and remote
+integration branches were clean and synchronized before recording this receipt.
+The installed clean runtime's 70 payload hashes were verified, and its fresh
+GUI/MCP pair matched. The pending repeat annulus export dialog was cancelled
+without changing the saved model. No additional UI walkthrough, builds or
+local suites are authorized by this stopping receipt.
+
+Automatic CI on that code was still in progress at the stopping check: 17 jobs
+passed, eight were running and six were skipped, with no reported failures yet.
+This is a point-in-time observation, not final CI success. The last completed
+native-host run rejected the exact thread case; the follow-up fix remains
+pending hosted qualification. Actual human inspection was detailed for selected
+bench, Medix and annulus operations, saved-model equality and export integrity.
+It was not a systematic application-wide usability or polish audit, and the
+full bench/vise/turbine human walkthrough remains unfinished. Retained artifact
+identities and limitations are recorded in
+`docs/qualification/manual-ui-stop-20261009.json`.
+
+October 9 UTC thread investigation: the actual human UI built and saved the
+annular stock (20/10 mm diameters, 20 mm extrusion) and a modeled right-hand
+M20 x 2.5 external thread of length 8 mm at the opposite end. The saved archive
+matches the live model exactly and is retained at
+`examples/checkpoints/threaded-annulus-human-ui.limo`. An incomplete native
+Save As filename produced `D:/li.limo`; that original is preserved, and its
+byte-identical archive was copied to the named UI-model path and checkpoint.
+This is construction/save evidence, not successful thread-export qualification.
+
+Hosted CI identified two distinct native boundary stations merged into one
+planar UV node. The bounded repair candidate separates retained native stations
+on copied meshes and certifies every affected owner's complete trim, source
+precision and incidence before acceptance. It preserves native identity and
+the final oriented-closure guard. Native dialog text now pins the observed
+writable edit and checks ownership between paced Unicode scalars and after
+insertion. Foreground activation has bounded stability sampling; fresh
+observation and visible filename verification remain necessary. The native
+layout rejection reports a bounded first difference without relaxing its guard.
+These changes require a fresh native build and manual UI qualification.
+
+The clean `8e0a0bda` deployment and fresh matched GUI/MCP pair passed the actual
+UI-built annulus 3MF and STL exports. The 3MF contains 863 vertices and 1,726
+triangles with zero invalid directed edges or zero-area facets; its millimetre
+bounds are (-10, -10, approximately 0) to (10, 10, 20). The ASCII STL has 1,726
+finite, nondegenerate facets and exactly matches the ordered 3MF coordinates.
+The UI completed both export filenames and a full-path native Save As; fresh
+captures preceded Enter, and the saved model again matched the live model.
+The original accidental-path archive remains preserved. This receipt does not
+establish universal foreground stability or prove that the human sketch's
+machine-rounded inner radius exercises CI's exact native topology.
+
+Hosted Ubuntu CI on that source still correctly rejected a pre-existing curved
+owner facet for source angular precision after the boundary separation, rolling
+back the full transaction. The follow-up candidate tries independently restored,
+bounded source-chart refinements of that owner at the unchanged requested
+precision, then requires the complete all-owner certificates again. The exact
+hosted case remains unqualified until CI passes. No local suites were run.
+
+The MCP recipe export assertion now accepts complete, finite ASCII STL as well
+as binary STL; precision-preserving ASCII output exposed its binary-only
+assumption in hosted CI. No local suites or recipe replay were run for this
+manual session. The complete three-model human walkthrough remains unfinished.
+
 The public [Bevy preview](https://github.com/limo-cad/Limo-CAD/releases/tag/bevy-preview-0.2.2-20261004.1)
 contains **Windows x64 ZIP and Ubuntu 26.04 x64 DEB from `9b082687`**.
 Windows passed SDK-free headless/desktop MCP
@@ -28,29 +121,74 @@ payload before reuse. The adjacent `runtime-manifest.json` records the deployed
 revision and SHA-256; inspect `build_pair.status` and require `matched` before
 qualifying a live GUI/MCP pair. Application version alone is insufficient.
 
-Current October 8 Medix qualification: clean matched `8ee3a909` opens the complete
+Current October 8 Medix qualification: clean matched `51cb7479` opens the complete
 saved import with zero scene errors and zero display warnings. Its live model
 matches the saved archive: one compound body, 8,908 face identities and dimensions
-536 × 327.47 × 48 mm. Actual GUI 3MF export remains refused with 86 unmatched
-boundary links and no multiply used links. The copied-mesh station repair now
-gets past the earlier sphere-strip meshing failures. Three-edge recovery now
-qualifies the source crossing and polygon simplicity; the connector cap is still
-refused because its fixed-root fan is not positive. The earlier `d2ba9017` trial exposed a 1.540435 radian facet-normal error
-on sphere face 3779. The earlier `69f1ee6b`/`7c235990` trials
-reported 86 unmatched boundary links and no multiply used links. Conforming
-source-interior refinement resolved their previous largest boundary group while
-preserving the original STEP and document. All 70 installed payload hashes
-match. No successful 3MF or
-native-precision-qualified STL is claimed. The subsequent clean matched
-`19ca11c7` GUI opens the same complete saved import, but export still refuses
-the paired-strip candidate: sphere faces 3779 and 3792 report **consecutive native
-strip stations collapsed**. The next candidate reconstructs distinct station
-indices on copied owner meshes while preserving every native parameter,
-junction endpoint, source witness and closure guard. The subsequent `eeb0aa05`
-physical export reaches the native topology guard described above; no successful
-export is claimed.
-The Medix notes below record earlier
-trials chronologically; they do not supersede this current qualification.
+536 × 327.47 × 48 mm. Actual GUI 3MF and STL exports now pass the native
+source-precision and oriented-closure checks across 33 native shells. Restoring
+the original split policy recovers the 37 repaired faces lost by the earlier
+lookahead regression to 72 links. Connector caps and
+independent pole proposals now qualify. A bounded fallback to the earlier
+split strategy retains its primary trajectory and defers alternate trials.
+FIFO processing of the alternate queue repairs one further face, reducing 49
+links to 45; a last longest-interior-edge strategy repairs seven more faces and
+reduces the count to 16 on `0528a7db`. The next trial reaches shared-curve owner
+qualification but rolls it back for source-angle failures; inserting flips into
+the longest strategy regressed the result to 24. Restoring the exact no-flip
+trajectory recovers 16 links. The bounded constrained-ear alternative also leaves
+16 links. Source inspection identifies two thin, three-edge strips whose native
+rails use different U stations. Their measured source widths exceed the retained
+native endpoint offsets. The station synchronization trial initially preserves
+16 links because two endpoint checks mixed exact source evaluation with retained
+UV coordinates. Using retained station coordinates for range checks and pairing
+the shared apex after native vertex/world identity, coordinate-roundoff and
+source-precision certificates qualifies both rail repairs and all affected
+owners: two accepted transactions insert 22 native stations, reducing 16 links
+to 8. A complete constrained native-boundary seed then repairs the two remaining
+six-edge rational B-spline patches, without artificial star spokes. Every native
+station and final source/pole/domain/closure check remains.
+All 70 installed payload hashes match the clean manifest. The actual portable
+3MF has 227,034 vertices, 454,572 triangles, zero zero-area triangles and zero
+invalid directed-edge links. The actual ASCII STL has the same 454,572 facets,
+zero nonfinite or degenerate facets and zero opposing normals. Every ordered
+vertex coordinate matches exactly between the exported formats. The original
+STEP hash and live/saved CAD model are unchanged. See the
+[manual export evidence](qualification/medix-kw22-native-human-ui-20261008.json).
+Three default-bed layout issues remain because the preserved 536 mm import is
+below and larger than that bed; portable export deliberately retains its original
+placement. This does not qualify physical printing. These results qualify the
+local Windows GUI path; the complete three-model walkthrough remains unfinished.
+The Medix notes below record earlier trials and do not supersede this result.
+
+A fresh blank-window import of the original Downloads STEP on clean matched
+`d8b29c3f` independently reproduces that result. Its saved model exactly matches
+the prior import, its native export check passes, and its actual GUI 3MF is
+byte-identical to the qualified package above. Read-only inspection again finds
+zero invalid directed-edge links and exact agreement with the qualified STL.
+The managed GUI and operator now both use the supported `LIMO_CAD_SESSION_DIR`
+and `LIMO_CAD_PRINT_CACHE` overrides on D: to reduce pressure on C:. The original
+session, document, settings and recovery files remain preserved.
+
+Actual guarded bench clicks on clean matched `d515b39a` qualify the footer-race
+fix. Appearance Apply and Make component had both refused unchanged Body8 with
+**Native interface transition is pending**. Queued dispatch now permits only
+`document/status` text changes while retaining the original control stamp,
+owner/revision, layout, visibility and modal fences; fresh pointer/MCP observation
+remains strict. Both retries passed. The saved
+[center-bearer checkpoint](../examples/checkpoints/garden-bench-center-bearer-human-ui.limo)
+has its independent timber-colored 28 × 415 × 90 mm bearer named and placed at
+586/30/325 mm with identity rotation. Exact live/archive comparison passed with
+twenty-nine features, eight definitions, eleven occurrences, five named views,
+zero scene errors and zero display warnings. Support blocks and the rest of the
+three-model walkthrough remain unfinished. The newly observed threaded-part
+export identity conflict remains under investigation in automatic native CI.
+
+The subsequent [front support stock checkpoint](../examples/checkpoints/garden-bench-front-support-stock-human-ui.limo)
+adds its origin-constrained 65 × 28 mm sketch and independent 65 mm extrusion
+through the same guarded UI. Both features are named, all nine bodies restored,
+and the finished sketch hidden. Exact live/archive comparison passed at
+thirty-one features, nine definitions and twelve occurrences. This block's
+appearance and placement remain unfinished.
 
 The subsequent clean matched `35722a50` GUI export still reports 86 unmatched
 links. Three continuous source intersections are now qualified, but the thin
@@ -86,6 +224,77 @@ at seven source witnesses before selecting an interior split, and each child
 inherits its own parent's depth. Original precision, work/depth/node limits,
 native boundaries and final closure checks remain unchanged. GUI qualification
 is pending; native-precision export remains refused.
+
+The actual clean matched `64472748` lookahead trial regresses from 49 to 72
+invalid links, with 35 repaired faces instead of the previous 37. The next
+candidate restores the exact original metric and max-owner depth policy before
+any alternate is attempted. Deferred lookahead begins from fully restored mesh,
+wire/face status and boundary-index snapshots within the same cumulative caps.
+Bounded stderr diagnostics include failed triangle coordinates and source
+normals, plus exact trimmed source-PCurve intersection status/counts and quarter
+chord errors; they change no precision or topology acceptance checks.
+
+Actual guarded GUI export on clean matched `2cccc3d8` restores 49 invalid links,
+37 repaired faces and 41 added triangles, with 99 attempts and no multiply used
+links. Its saved model still matches exactly and read-only inspection reports
+zero scene errors and zero display warnings. The failing face 2449 alternate
+repeatedly shrinks a tiny unconstrained interior edge while leaving two long
+interior edges coarse. FIFO processing of that alternate queue is the next
+bounded candidate; the primary LIFO trajectory remains unchanged.
+
+Exact interval diagnostics on faces 8033/8014 report a completed native trimmed
+PCurve intersection calculation with zero points and overlaps for the two
+reported crossing chord pairs. This establishes separation only for those
+specific source intervals. Their sampled chords cross despite native curve
+separation; a shared native edge sampling repair is being designed independently.
+No successful native-precision STL or 3MF is claimed.
+
+On clean matched `fe195308`, guarded GUI export reports 45 invalid links across
+33 native shells, 98 attempts, 38 repaired faces and 71 added triangles, with no
+multiply used links. Read-only inspection still reports zero scene errors and
+zero display warnings, and the saved archive matches exactly. The next candidate
+adds source-certified native midpoint samples to crossing chords on all shared
+owners in one export-only transaction, then tries FIFO longest-interior-edge
+refinement from fresh snapshots. All source accuracy, domain, work/depth limits,
+native ownership and final closure checks remain mandatory; GUI qualification
+is pending.
+
+Actual guarded GUI export on clean matched `0528a7db` reports 16 invalid links
+across 33 native shells, with no multiply used links. Its longest-edge fallback
+repairs seven faces in 18 attempts and adds 491 triangles, including resolving
+the previously leading face 2449. The shared-curve sampler makes zero mutation
+attempts because an owner eligibility gate rejects both crossing faces. The
+remaining spherical refinement cells are curved UV slivers: consistent source
+normals but nearly reversed straight facet normals. The next candidate preserves
+a unique whole-period source chart branch for periodic owners and permits at
+most 32 conforming flips of unconstrained interior diagonals, only when both new
+facets qualify outright at all seven source accuracy witnesses. Bounds, native
+constraints, final domain and closure checks remain unchanged. Read-only scene
+inspection remains at zero errors and zero display warnings; the saved archive
+matches exactly. Export is still refused; no successful STL or 3MF is claimed.
+
+Actual guarded GUI export on clean matched `31c9a6ba` regresses from 16 to 24
+invalid links. Both periodic sampler transactions reach owner meshing but fail
+source-angle qualification and restore their pre-insertion baselines; zero
+sampler transactions are accepted. Interleaved flips change the previous
+successful longest-edge trajectory: five repaired faces instead of seven.
+The next candidate restores the exact no-flip strategy before all later work,
+then uses independent post-insertion owner snapshots for sampler alternatives
+and separately deferred flip trials. The original 16-link qualification remains
+the best result. Scene inspection remains at zero errors and zero display
+warnings and the live model still matches the saved archive exactly.
+
+Actual guarded GUI export on clean matched `e7e0a775` recovers the exact 16-link
+baseline: original repairs 98/38/71 and longest repairs 18/7/491. Two sampler
+transactions and two deferred flip attempts are rejected; neither changes the
+saved model or loosens final accuracy/closure checks. Both sampler targets now
+fail on nearly collinear same-rail triangles. The next candidate tries a bounded
+complete constrained-ear triangulation, preserving every native station and
+qualifying every triangle at all seven source witnesses before installation.
+Bounded native rail diagnostics measure actual rail separation and source/native
+normal offsets; they do not certify or alter geometry. Read-only inspection
+remains at zero scene errors and zero display warnings; no accepted STL or 3MF
+is claimed.
 
 The actual guarded GUI export on clean matched `7c235990` still reports 86
 unmatched links. Native curve diagnostics rule out zero-area incidence loss on
@@ -129,6 +338,31 @@ share definition 14 and its four clearance bores, separately from upper-rail
 definition 12. Remaining pilots, geometry, joints and drawing/layout work are
 unfinished.
 
+On clean matched `e7e0a775`, physical Hole input added six Ø3.5 mm, 39 mm deep,
+flat-bottom left-rear rail/arm pilots at stock X 0 mm, Y 32.5 mm and Z
+365/400/170/205/590/615 mm. The named
+[left-rear pilot checkpoint](../examples/checkpoints/garden-bench-left-rear-pilots-human-ui.limo)
+has twenty-six features, seven definitions and ten occurrences with all Browser
+eyes restored. Saved parameters and exact live/archive comparison passed.
+On clean matched `7a51d2e0`, physical Hole input completed the right-rear rail/arm
+pattern on the outward +X face: stock X 65 mm, Y 32.5 mm and the same six Z
+positions, with Ø3.5 mm, 39 mm deep, flat-bottom pilots. The named
+[post-pilot checkpoint](../examples/checkpoints/garden-bench-post-pilots-human-ui.limo)
+has twenty-seven features, seven definitions, ten occurrences and five named
+views. All Browser eyes are restored; saved parameters and exact live/archive
+comparison passed. The four post pilot patterns are complete. Remaining bench
+geometry, joints, drawings and print layouts are unfinished.
+
+On clean matched `fc275793`, physical Rectangle input added the center seat
+bearer's 28 × 415 mm XY profile. Its saved constraints retain an origin-coincident
+point, horizontal/vertical edges and driving dimensions. Physical Extrude input
+created independent 90 mm stock with zero taper and no flip. Both features were
+named through the UI; all eight Browser eyes were restored. The saved
+[center-stock checkpoint](../examples/checkpoints/garden-bench-center-stock-human-ui.limo)
+has twenty-nine features, eight definitions, eleven occurrences and five views,
+and matches the live model exactly. The center stock remains at the source
+origin; its appearance, assembly placement and support blocks are unfinished.
+
 On clean matched `08efc3e7`, physical top-face selection and the Hole dialog
 added the lower rail's two Ø3.5 mm, 32 mm deep, flat-bottom stretcher pilots at
 stock points `(14, 195, 90)` and `(14, 235, 90)` mm. The named feature and Ctrl+S
@@ -166,6 +400,22 @@ twenty-three features, seven definitions and ten occurrences. Both front posts
 now retain their apron and six-position rail/arm pilots. Saved parameters and
 exact live/archive comparison passed. Both rear-post patterns, remaining
 geometry, joints and drawings are unfinished.
+
+On clean matched `fe195308`, physical Hole input added the left-rear post's two
+Ø3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
+Z 350/390 mm. Naming, restoring all Browser eyes and Ctrl+S produced the
+[left-rear apron checkpoint](../examples/checkpoints/garden-bench-left-rear-apron-human-ui.limo):
+twenty-four features, seven definitions and ten occurrences. Its saved hole
+parameters and exact live/archive comparison passed. Rear rail/arm pilots,
+right-rear apron pilots, remaining geometry, joints and drawings are unfinished.
+
+On clean matched `0528a7db`, physical Hole input added the right-rear post's two
+Ø3.5 mm, 39 mm deep, flat-bottom apron pilots at stock X 32.5 mm, Y 0 mm,
+Z 350/390 mm. The named [rear apron checkpoint](../examples/checkpoints/garden-bench-rear-aprons-human-ui.limo)
+has twenty-five features, seven definitions and ten occurrences with all Browser
+eyes restored. Saved parameters and exact live/archive comparison passed.
+Both rear rail/arm pilot patterns, remaining geometry, joints and drawings remain
+unfinished.
 
 The October 7 manual reconnect now has an explicit `cad-call --installed
 --interactive` path. It verifies the recorded clean deployed identity, enabled

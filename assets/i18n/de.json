@@ -124,6 +124,10 @@
     "unavailable": "Nicht verfügbar"
   },
   "appearance": {
+    "documentUnits": "Dokumenteinheiten: {unit}",
+    "scrollHint": "Scrollen: Mausrad oder Bild auf / Bild ab",
+    "scrollUp": "Vorherige Einstellungen",
+    "scrollDown": "Weitere Einstellungen",
     "gpuStockRemovalDescription": "Entfernt bei der CAM-Simulationswiedergabe das Material direkt hinter dem Werkzeug auf der GPU. Die CPU-Simulation misst und prüft das Restmaterial weiterhin.",
     "gpuStockRemoval": "Materialabtrag auf der GPU",
     "title": "Einstellungen",

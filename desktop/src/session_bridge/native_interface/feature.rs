@@ -929,7 +929,8 @@ fn reduce_owned(
         if let Some(feature_id) = feature_id.filter(|_| {
             matches!(
                 kind,
-                SolidFormKind::Fillet
+                SolidFormKind::Extrude
+                    | SolidFormKind::Fillet
                     | SolidFormKind::Chamfer
                     | SolidFormKind::MoveCopy
                     | SolidFormKind::Hole

@@ -45,6 +45,7 @@ pub(crate) enum Command {
     ResetSpeed,
     InterfaceSize(u8),
     GpuStock(bool),
+    Scroll(i32),
     Retry,
     Close,
 }
@@ -245,6 +246,18 @@ pub(crate) fn reduce(
     if !files::settings_open(world) {
         return Err("Settings is closed".into());
     }
+    if let Command::Scroll(direction) = command {
+        if !super::super::is_activation(&action.control.input) {
+            return Err("Activate the Settings scroll control".into());
+        }
+        let mut settings = world.resource_mut::<Settings>();
+        let page = settings
+            .content
+            .map_or(200., |body| body.height as f32 * 0.8);
+        settings.scroll =
+            (settings.scroll + direction as f32 * page).clamp(0., settings.scroll_max);
+        return Ok(json!({"scroll":settings.scroll}));
+    }
     let patch = match command {
         Command::Speed => {
             let ControlInput::SetValue(value) = &action.control.input else {
@@ -301,7 +314,7 @@ pub(crate) fn reduce(
                     files::close_settings(world);
                     return Ok(json!({"closed":true}));
                 }
-                Command::Speed => unreachable!(),
+                Command::Speed | Command::Scroll(_) => unreachable!(),
             }
         }
     };

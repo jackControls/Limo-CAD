@@ -124,6 +124,10 @@
     "unavailable": "No disponible"
   },
   "appearance": {
+    "documentUnits": "Unidades del documento: {unit}",
+    "scrollHint": "Desplazar: rueda o Re Pág / Av Pág",
+    "scrollUp": "Ajustes anteriores",
+    "scrollDown": "Más ajustes",
     "gpuStockRemovalDescription": "Durante la reproducción de la simulación CAM, elimina el material en la GPU justo detrás de la herramienta. La simulación en CPU sigue midiendo y verificando el material restante.",
     "gpuStockRemoval": "Eliminación de material en la GPU",
     "title": "Configuración",

@@ -27,7 +27,7 @@ impl DispatchGuard {
     /// dispatch or writing output; preparation never grants mutation access.
     pub(crate) fn validate_preparation(&self) -> Result<(), String> {
         if let Some(action) = &self.action {
-            self.handle.validate_action(action)?;
+            self.handle.validate_dispatch_action(action)?;
         }
         Ok(())
     }

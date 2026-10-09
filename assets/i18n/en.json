@@ -124,6 +124,10 @@
     "unavailable": "Unavailable"
   },
   "appearance": {
+    "documentUnits": "Document units: {unit}",
+    "scrollHint": "Scroll: wheel or Page Up / Page Down",
+    "scrollUp": "Previous settings",
+    "scrollDown": "More settings",
     "gpuStockRemovalDescription": "During CAM simulation playback, remove stock on the GPU right behind the cutter. The CPU simulation still measures and verifies remaining stock.",
     "gpuStockRemoval": "GPU stock removal",
     "title": "Settings",

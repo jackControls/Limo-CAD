@@ -25,6 +25,10 @@ use super::capture;
 use crate::{build_pair, session};
 
 const OBSERVATION_MS: u64 = 60_000;
+// Conservative queue pacing/stability sampling, not text-consumption proof
+// or a guarantee that another application cannot subsequently take focus.
+const NATIVE_TEXT_INTERVAL_MS: u64 = 20;
+const FOCUS_STABILITY_SAMPLES: usize = 5;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -322,6 +326,12 @@ impl ComputerControl {
                 layout(&current)
             };
             if current_layout != *expected {
+                if observed.native_dialog {
+                    return Err(format!(
+                        "Native CAD dialog changed ({}); observe again before input",
+                        native_layout_difference(expected, &current_layout)
+                    ));
+                }
                 return Err(
                     "Rendered controls or camera changed; observe again before input".into(),
                 );
@@ -375,10 +385,25 @@ impl ComputerControl {
                 .to_string());
             }
             guard_foreground(hwnd, false, observed.native_dialog)?;
+            for _ in 0..FOCUS_STABILITY_SAMPLES {
+                std::thread::sleep(std::time::Duration::from_millis(NATIVE_TEXT_INTERVAL_MS));
+                observed.process.verify()?;
+                if session::computer_control_owner(session_id)? != observed.owner
+                    || target_window(&observed.owner, main)? != target
+                {
+                    return Err(
+                        "CAD owner or window changed during activation; observe again".into(),
+                    );
+                }
+                if unsafe { GetForegroundWindow() } != hwnd || unsafe { IsIconic(hwnd) } != 0 {
+                    return Err("CAD foreground activation was lost during stability sampling; no input was sent".into());
+                }
+            }
             return Ok(
                 json!({"status":"focused","owner":observed.owner,"observation_consumed":true,
                 "activation_accepted":accepted,"activation_acknowledged":acknowledged,
-                "hint":"Observe again before sending mouse or keyboard input."}),
+                "foreground_stability_ms":NATIVE_TEXT_INTERVAL_MS * FOCUS_STABILITY_SAMPLES as u64,
+                "hint":"Foreground ownership held during bounded sampling only. Observe again before sending mouse or keyboard input."}),
             );
         }
         guard_foreground(hwnd, false, observed.native_dialog)?;
@@ -402,6 +427,12 @@ impl ComputerControl {
         let mut pointer = None;
         let mut pointer_start = None;
         let planned = plan.iter().filter(|step| step.is_input()).count();
+        let mut native_text = if observed.native_dialog && request.action == "text" {
+            guard_native_text_focus(&observed, hwnd)?;
+            Some(NativeTextVerification::new(&observed, hwnd)?)
+        } else {
+            None
+        };
         for step in &plan {
             let guard = guard_action(&observed, hwnd, driver.holds_button(), completed == 0)
                 .and_then(|()| match *step {
@@ -414,6 +445,9 @@ impl ComputerControl {
                         pointer.ok_or("Pointer input has no planned position")?,
                         hwnd,
                     ),
+                    Step::Text(_) if observed.native_dialog => {
+                        guard_native_text_focus(&observed, hwnd)
+                    }
                     _ => Ok(()),
                 });
             if let Err(error) = guard {
@@ -440,6 +474,36 @@ impl ComputerControl {
                 pointer_start.get_or_insert(point);
             }
             completed += usize::from(step.is_input());
+            if observed.native_dialog && matches!(step, Step::Text(_)) {
+                if let (Some(verification), Step::Text(text)) = (&mut native_text, step) {
+                    verification.prefix.extend(text.encode_utf16());
+                    if let Err(error) = verify_native_text(&observed, hwnd, verification, false) {
+                        let cleanup_errors = driver.release_all();
+                        return Ok(json!({"status":"input_incomplete","action":request.action,
+                            "backend":backend,"completed_primitives":completed,"planned_primitives":planned,
+                            "verified_text_scalars":verification.verified_scalars,
+                            "failed_primitive":"native_text_readback","error":error,"cleanup_errors":cleanup_errors,
+                            "input_may_have_been_inserted":true,"owner":observed.owner,
+                            "observation_consumed":true,"hint":"Native edit readback did not confirm the queued scalar. Observe the actual text; do not submit or blindly retry."}));
+                    }
+                    verification.verified_scalars += 1;
+                }
+            }
+        }
+        if observed.native_dialog && request.action == "text" {
+            if let Err(error) = guard_action(&observed, hwnd, false, false)
+                .and_then(|()| guard_native_text_focus(&observed, hwnd))
+                .and_then(|()| {
+                    verify_native_text(&observed, hwnd, native_text.as_ref().unwrap(), true)
+                })
+            {
+                let cleanup_errors = driver.release_all();
+                return Ok(json!({"status":"input_incomplete","action":request.action,
+                    "backend":backend,"completed_primitives":completed,"planned_primitives":planned,
+                    "failed_primitive":"final_text_guard","error":error,"cleanup_errors":cleanup_errors,
+                    "input_may_have_been_inserted":true,"owner":observed.owner,
+                    "observation_consumed":true,"hint":"Final native edit ownership or exact text replacement could not be confirmed. Observe and capture the actual result before any further input."}));
+            }
         }
         let client_point = |point: [i32; 2]| {
             observed
@@ -451,6 +515,8 @@ impl ComputerControl {
             "completed_primitives":completed,"owner":observed.owner,
             "mouse_button_primitives":plan.iter().filter(|step| matches!(step, Step::Button(_, _))).count(),
             "keyboard_primitives":plan.iter().filter(|step| matches!(step, Step::Key(_, _) | Step::Text(_))).count(),
+            "native_text_verified_scalars":native_text.as_ref().map(|verification| verification.verified_scalars),
+            "native_text_verification":native_text.as_ref().map(|_| "Exact edit text replacement verified by bounded read-only Win32 readback; this does not verify saving or CAD behavior."),
             "pointer_start_physical_client":pointer_start.and_then(client_point),
             "pointer_end_physical_client":pointer.and_then(client_point),
             "pointer_verification":"Cursor checked after movement and before pointer primitives; coordinates describe input, not the resulting product state.",
@@ -752,6 +818,53 @@ fn native_layout(hwnd: HWND) -> Result<Value, String> {
     )
 }
 
+fn native_layout_difference(expected: &Value, current: &Value) -> String {
+    let bounded = |value: &Value| {
+        let rendered = value.to_string();
+        let mut summary: String = rendered.chars().take(80).collect();
+        if rendered.chars().count() > 80 {
+            summary.push_str("...");
+        }
+        summary
+    };
+    let changed = |path: &str, before: &Value, after: &Value| {
+        format!("{path}: {} -> {}", bounded(before), bounded(after))
+    };
+    for field in ["focused_control", "focused_editable", "class"] {
+        if expected[field] != current[field] {
+            return changed(field, &expected[field], &current[field]);
+        }
+    }
+    let Some(before) = expected["controls"].as_array() else {
+        return "observed controls unavailable".into();
+    };
+    let Some(after) = current["controls"].as_array() else {
+        return "current controls unavailable".into();
+    };
+    if before.len() != after.len() {
+        return format!("control count: {} -> {}", before.len(), after.len());
+    }
+    for (index, (old, new)) in before.iter().zip(after).enumerate() {
+        for field in [
+            "window_handle",
+            "caption",
+            "screen_bounds",
+            "style",
+            "enabled",
+            "class",
+        ] {
+            if old[field] != new[field] {
+                return changed(
+                    &format!("control[{index}].{field}"),
+                    &old[field],
+                    &new[field],
+                );
+            }
+        }
+    }
+    "other native layout metadata changed".into()
+}
+
 fn process_image(pid: u32) -> Result<PathBuf, String> {
     let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
     if process.is_null() {
@@ -893,6 +1006,222 @@ fn guard_action(
         return Err("Active CAD document or window owner changed during input".into());
     }
     guard_foreground(hwnd, owns_capture, observed.native_dialog)
+}
+
+struct NativeEditText {
+    text: Vec<u16>,
+    start: usize,
+    end: usize,
+}
+
+struct NativeTextVerification {
+    prefix: Vec<u16>,
+    suffix: Vec<u16>,
+    verified_scalars: usize,
+}
+
+impl NativeTextVerification {
+    fn new(observed: &Observation, hwnd: HWND) -> Result<Self, String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
+        let edit = read_guarded_native_edit(observed, hwnd, deadline)?;
+        if String::from_utf16(&edit.text[..edit.start]).is_err()
+            || String::from_utf16(&edit.text[edit.end..]).is_err()
+        {
+            return Err(
+                "Native CAD edit selection splits a Unicode scalar; no input was sent".into(),
+            );
+        }
+        Ok(Self {
+            prefix: edit.text[..edit.start].to_vec(),
+            suffix: edit.text[edit.end..].to_vec(),
+            verified_scalars: 0,
+        })
+    }
+}
+
+enum NativeEditReadError {
+    Unavailable(String),
+    Unstable(String),
+}
+
+impl From<String> for NativeEditReadError {
+    fn from(error: String) -> Self {
+        Self::Unavailable(error)
+    }
+}
+
+fn read_native_edit(
+    observed: &Observation,
+    deadline: std::time::Instant,
+) -> Result<NativeEditText, NativeEditReadError> {
+    let edit = observed
+        .layout
+        .as_ref()
+        .and_then(|layout| layout["focused_control"].as_u64())
+        .ok_or_else(|| {
+            NativeEditReadError::Unavailable("Native text observation has no qualified edit".into())
+        })? as usize as HWND;
+    let read = |message: u32, wparam: usize, lparam: isize| -> Result<usize, String> {
+        let timeout = deadline
+            .saturating_duration_since(std::time::Instant::now())
+            .as_millis()
+            .min(100) as u32;
+        if timeout == 0 {
+            return Err("Native CAD edit readback deadline elapsed".into());
+        }
+        let mut result = 0;
+        if unsafe {
+            SendMessageTimeoutW(
+                edit,
+                message,
+                wparam,
+                lparam,
+                SMTO_ABORTIFHUNG,
+                timeout,
+                &mut result,
+            )
+        } == 0
+        {
+            return Err("Native CAD edit readback timed out or was unavailable".into());
+        }
+        Ok(result)
+    };
+    const MAX_NATIVE_EDIT_UNITS: usize = 4096;
+    let length = read(WM_GETTEXTLENGTH, 0, 0)?;
+    if length > MAX_NATIVE_EDIT_UNITS {
+        return Err(NativeEditReadError::Unavailable(
+            "Native CAD edit text exceeds the bounded readback scope".into(),
+        ));
+    }
+    let before_selection = read(0x00B0, 0, 0)?;
+    let mut text = vec![0u16; MAX_NATIVE_EDIT_UNITS + 1];
+    let copied = read(WM_GETTEXT, text.len(), text.as_mut_ptr() as isize)?;
+    if copied > MAX_NATIVE_EDIT_UNITS {
+        return Err(NativeEditReadError::Unavailable(
+            "Native CAD edit copy exceeds the bounded readback scope".into(),
+        ));
+    }
+    text.truncate(copied);
+    // EM_GETSEL is a system edit message (0x00B0). With both pointer
+    // arguments null its packed return suffices for our <=4096-unit scope.
+    let selection = read(0x00B0, 0, 0)?;
+    let after_length = read(WM_GETTEXTLENGTH, 0, 0)?;
+    let start = selection & 0xffff;
+    let end = (selection >> 16) & 0xffff;
+    let unicode_valid = String::from_utf16(&text).is_ok();
+    if length != copied
+        || copied != after_length
+        || before_selection != selection
+        || start > end
+        || end > text.len()
+        || !unicode_valid
+    {
+        return Err(NativeEditReadError::Unstable(format!(
+            "Native CAD edit snapshot could not be qualified (UTF-16 lengths before/copied/after {length}/{copied}/{after_length}, selection before {}..{}, after {start}..{end}, Unicode valid {unicode_valid})",
+            before_selection & 0xffff, (before_selection >> 16) & 0xffff
+        )));
+    }
+    Ok(NativeEditText { text, start, end })
+}
+
+fn read_guarded_native_edit(
+    observed: &Observation,
+    hwnd: HWND,
+    deadline: std::time::Instant,
+) -> Result<NativeEditText, String> {
+    loop {
+        guard_action(observed, hwnd, false, false)?;
+        guard_native_text_focus(observed, hwnd)?;
+        let readback = read_native_edit(observed, deadline);
+        guard_action(observed, hwnd, false, false)?;
+        guard_native_text_focus(observed, hwnd)?;
+        match readback {
+            Ok(edit) => return Ok(edit),
+            Err(NativeEditReadError::Unavailable(error)) => return Err(error),
+            Err(NativeEditReadError::Unstable(error)) => {
+                if std::time::Instant::now() >= deadline {
+                    return Err(error);
+                }
+            }
+        }
+        // Retry only the read-only snapshot, never the queued keyboard input.
+        std::thread::sleep(std::time::Duration::from_millis(NATIVE_TEXT_INTERVAL_MS));
+    }
+}
+
+fn verify_native_text(
+    observed: &Observation,
+    hwnd: HWND,
+    expected: &NativeTextVerification,
+    final_read: bool,
+) -> Result<(), String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
+    let exact: Vec<u16> = expected
+        .prefix
+        .iter()
+        .chain(&expected.suffix)
+        .copied()
+        .collect();
+    loop {
+        let current = read_guarded_native_edit(observed, hwnd, deadline)?;
+        let caret = expected.prefix.len();
+        let exact_text = current.text == exact && current.start == caret && current.end == caret;
+        // File dialogs may append a selected autocomplete suffix. Prove the
+        // typed prefix and selection before allowing the next human scalar
+        // to replace it. Final success still requires the exact whole text.
+        let selected_completion = !final_read
+            && expected.suffix.is_empty()
+            && current.text.starts_with(&expected.prefix)
+            && current.start == caret
+            && current.end == current.text.len()
+            && current.end > caret;
+        if exact_text || selected_completion {
+            return Ok(());
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(format!(
+                "Native edit text/selection did not match the requested replacement (expected UTF-16 length {}, actual {}, selection {}..{}); no further input was sent",
+                exact.len(), current.text.len(), current.start, current.end
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(NATIVE_TEXT_INTERVAL_MS));
+    }
+}
+
+fn guard_native_text_focus(observed: &Observation, hwnd: HWND) -> Result<(), String> {
+    let expected = observed
+        .layout
+        .as_ref()
+        .and_then(|layout| layout["focused_control"].as_u64())
+        .ok_or("Native text observation has no qualified edit focus")?;
+    let mut pid = 0;
+    let thread = unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+    let mut info = GUITHREADINFO {
+        cbSize: size_of::<GUITHREADINFO>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GetGUIThreadInfo(thread, &mut info) } == 0 {
+        return Err("Cannot verify native CAD edit focus during text input".into());
+    }
+    let focus = info.hwndFocus;
+    let mut focus_pid = 0;
+    unsafe {
+        GetWindowThreadProcessId(focus, &mut focus_pid);
+    }
+    if focus.is_null()
+        || focus as usize as u64 != expected
+        || focus_pid != pid
+        || unsafe { GetAncestor(focus, GA_ROOT) } != hwnd
+        || unsafe { IsWindowEnabled(focus) } == 0
+        || unsafe { IsWindowVisible(focus) } == 0
+        || (unsafe { GetWindowLongPtrW(focus, GWL_STYLE) } & ES_READONLY as isize) != 0
+        || !window_class(focus).is_ok_and(|class| {
+            class.eq_ignore_ascii_case("Edit") || class.to_ascii_uppercase().starts_with("RICHEDIT")
+        })
+    {
+        return Err("The observed native CAD edit no longer owns writable text focus".into());
+    }
+    Ok(())
 }
 
 fn guard_held_input() -> Result<(), String> {
@@ -1274,7 +1603,13 @@ fn plan<'a>(
                     }).to_string());
                 }
             }
-            steps.push(Step::Text(text));
+            if observed.native_dialog {
+                for (start, character) in text.char_indices() {
+                    steps.push(Step::Text(&text[start..start + character.len_utf8()]));
+                }
+            } else {
+                steps.push(Step::Text(text));
+            }
         }
         _ => return Err("Unknown computer control action".into()),
     }

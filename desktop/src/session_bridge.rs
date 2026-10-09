@@ -1932,6 +1932,33 @@ mod tests {
     /// Serialize bridge tests because they share `LIMO_CAD_SESSION_DIR`.
     pub(super) static TEST_LOCK: Mutex<()> = Mutex::new(());
 
+    struct SessionTestEnvironment(Option<std::ffi::OsString>);
+
+    impl Drop for SessionTestEnvironment {
+        fn drop(&mut self) {
+            if let Some(previous) = &self.0 {
+                std::env::set_var("LIMO_CAD_SESSION_DIR", previous);
+            } else {
+                std::env::remove_var("LIMO_CAD_SESSION_DIR");
+            }
+        }
+    }
+
+    /// For tests owning fresh fixtures with no detached workers or native-global
+    /// mutations. Unwind their fixtures, restore the environment under the unit
+    /// lock, then propagate the original panic after releasing that lock.
+    /// Production mutexes and poison from any other test remain untouched.
+    pub(super) fn with_isolated_session_test(test: impl FnOnce()) {
+        let serialization = TEST_LOCK.lock().unwrap();
+        let environment = SessionTestEnvironment(std::env::var_os("LIMO_CAD_SESSION_DIR"));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(test));
+        drop(environment);
+        drop(serialization);
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
     fn reserve(state: &SessionBridgeState, window_label: &str) -> (String, u64) {
         let result = state.reserve_for_window(window_label).unwrap();
         (

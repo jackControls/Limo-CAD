@@ -105,7 +105,8 @@ impl SessionBridgeState {
         use crate::session_bridge::{bump_engine_revision, native_history::HistoryState};
         if !matches!(
             operation,
-            "solid_edit_fillet"
+            "solid_edit_extrude"
+                | "solid_edit_fillet"
                 | "solid_edit_chamfer"
                 | "solid_edit_shell"
                 | "solid_edit_external_thread"
@@ -194,6 +195,7 @@ fn prepare(
     let stage = Arc::new(Stage::new(engine, &receipt, id)?);
     let definitions = parse_engine_envelope(stage.engine.engine_call(
         match kind {
+            SolidFormKind::Extrude => "extrude_definitions",
             SolidFormKind::Hole => "hole_definitions",
             SolidFormKind::Fillet => "fillet_definitions",
             SolidFormKind::Chamfer => "chamfer_definitions",
@@ -217,7 +219,11 @@ fn prepare(
         .and_then(|items| items.iter().find(|d| d["feature_id"].as_u64() == Some(id)))
         .ok_or("The feature no longer exists")?;
     let snapshot = Snapshot::capture(&stage.engine, receipt)?;
-    let form = if kind == SolidFormKind::MoveCopy {
+    let form = if kind == SolidFormKind::Extrude {
+        let definition: ExtrudeDefinitionDto =
+            serde_json::from_value(definition.clone()).map_err(|error| error.to_string())?;
+        SolidForm::edit(&definition, &snapshot.model(None))?
+    } else if kind == SolidFormKind::MoveCopy {
         SolidForm::edit_move(definition, &snapshot.model(None))?
     } else if kind == SolidFormKind::Hole {
         SolidForm::edit_hole(definition, &snapshot.model(None))?
@@ -255,7 +261,9 @@ fn install(
         .last_id
         .checked_add(1)
         .ok_or("Feature identities exhausted")?;
-    let pick_target = Some(if prepared.form.kind().selects_bodies() {
+    let pick_target = Some(if prepared.form.kind() == SolidFormKind::Extrude {
+        SolidField::Source
+    } else if prepared.form.kind().selects_bodies() {
         SolidField::Bodies
     } else if prepared.form.kind().is_plane() {
         SolidField::FirstPlane
