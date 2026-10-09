@@ -348,7 +348,9 @@ impl SketchSession {
             SlotMode::CenterToCenter => (p1, p2),
             SlotMode::Overall => {
                 if len <= width {
-                    return Err(SessionError::DegenerateSegment);
+                    return Err(SessionError::InvalidConstraint(
+                        "Overall slot width must be smaller than its outside length. Reduce the width or move the endpoints farther apart.".into(),
+                    ));
                 }
                 let offset = d * (width / (2.0 * len));
                 (p1 + offset, p2 - offset)
