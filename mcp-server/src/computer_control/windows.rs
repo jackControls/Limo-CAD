@@ -408,6 +408,12 @@ impl ComputerControl {
         let mut pointer = None;
         let mut pointer_start = None;
         let planned = plan.iter().filter(|step| step.is_input()).count();
+        let mut native_text = if observed.native_dialog && request.action == "text" {
+            guard_native_text_focus(&observed, hwnd)?;
+            Some(NativeTextVerification::new(&observed)?)
+        } else {
+            None
+        };
         for step in &plan {
             let guard = guard_action(&observed, hwnd, driver.holds_button(), completed == 0)
                 .and_then(|()| match *step {
@@ -450,19 +456,34 @@ impl ComputerControl {
             }
             completed += usize::from(step.is_input());
             if observed.native_dialog && matches!(step, Step::Text(_)) {
-                std::thread::sleep(std::time::Duration::from_millis(NATIVE_TEXT_INTERVAL_MS));
+                if let (Some(verification), Step::Text(text)) = (&mut native_text, step) {
+                    verification.prefix.extend(text.encode_utf16());
+                    if let Err(error) = verify_native_text(&observed, hwnd, verification, false) {
+                        let cleanup_errors = driver.release_all();
+                        return Ok(json!({"status":"input_incomplete","action":request.action,
+                            "backend":backend,"completed_primitives":completed,"planned_primitives":planned,
+                            "verified_text_scalars":verification.verified_scalars,
+                            "failed_primitive":"native_text_readback","error":error,"cleanup_errors":cleanup_errors,
+                            "input_may_have_been_inserted":true,"owner":observed.owner,
+                            "observation_consumed":true,"hint":"Native edit readback did not confirm the queued scalar. Observe the actual text; do not submit or blindly retry."}));
+                    }
+                    verification.verified_scalars += 1;
+                }
             }
         }
         if observed.native_dialog && request.action == "text" {
             if let Err(error) = guard_action(&observed, hwnd, false, false)
                 .and_then(|()| guard_native_text_focus(&observed, hwnd))
+                .and_then(|()| {
+                    verify_native_text(&observed, hwnd, native_text.as_ref().unwrap(), true)
+                })
             {
                 let cleanup_errors = driver.release_all();
                 return Ok(json!({"status":"input_incomplete","action":request.action,
                     "backend":backend,"completed_primitives":completed,"planned_primitives":planned,
                     "failed_primitive":"final_text_guard","error":error,"cleanup_errors":cleanup_errors,
                     "input_may_have_been_inserted":true,"owner":observed.owner,
-                    "observation_consumed":true,"hint":"Native text was queued, but final ownership or edit focus was lost. Observe and capture the partial result before any further input."}));
+                    "observation_consumed":true,"hint":"Final native edit ownership or exact text replacement could not be confirmed. Observe and capture the actual result before any further input."}));
             }
         }
         let client_point = |point: [i32; 2]| {
@@ -475,6 +496,8 @@ impl ComputerControl {
             "completed_primitives":completed,"owner":observed.owner,
             "mouse_button_primitives":plan.iter().filter(|step| matches!(step, Step::Button(_, _))).count(),
             "keyboard_primitives":plan.iter().filter(|step| matches!(step, Step::Key(_, _) | Step::Text(_))).count(),
+            "native_text_verified_scalars":native_text.as_ref().map(|verification| verification.verified_scalars),
+            "native_text_verification":native_text.as_ref().map(|_| "Exact edit text replacement verified by bounded read-only Win32 readback; this does not verify saving or CAD behavior."),
             "pointer_start_physical_client":pointer_start.and_then(client_point),
             "pointer_end_physical_client":pointer.and_then(client_point),
             "pointer_verification":"Cursor checked after movement and before pointer primitives; coordinates describe input, not the resulting product state.",
@@ -964,6 +987,125 @@ fn guard_action(
         return Err("Active CAD document or window owner changed during input".into());
     }
     guard_foreground(hwnd, owns_capture, observed.native_dialog)
+}
+
+struct NativeEditText {
+    text: Vec<u16>,
+    start: usize,
+    end: usize,
+}
+
+struct NativeTextVerification {
+    prefix: Vec<u16>,
+    suffix: Vec<u16>,
+    verified_scalars: usize,
+}
+
+impl NativeTextVerification {
+    fn new(observed: &Observation) -> Result<Self, String> {
+        let edit = read_native_edit(observed)?;
+        if String::from_utf16(&edit.text[..edit.start]).is_err()
+            || String::from_utf16(&edit.text[edit.end..]).is_err()
+        {
+            return Err(
+                "Native CAD edit selection splits a Unicode scalar; no input was sent".into(),
+            );
+        }
+        Ok(Self {
+            prefix: edit.text[..edit.start].to_vec(),
+            suffix: edit.text[edit.end..].to_vec(),
+            verified_scalars: 0,
+        })
+    }
+}
+
+fn read_native_edit(observed: &Observation) -> Result<NativeEditText, String> {
+    let edit = observed
+        .layout
+        .as_ref()
+        .and_then(|layout| layout["focused_control"].as_u64())
+        .ok_or("Native text observation has no qualified edit")? as usize as HWND;
+    let read = |message: u32, wparam: usize, lparam: isize| -> Result<usize, String> {
+        let mut result = 0;
+        if unsafe {
+            SendMessageTimeoutW(
+                edit,
+                message,
+                wparam,
+                lparam,
+                SMTO_ABORTIFHUNG,
+                100,
+                &mut result,
+            )
+        } == 0
+        {
+            return Err("Native CAD edit readback timed out or was unavailable".into());
+        }
+        Ok(result)
+    };
+    const MAX_NATIVE_EDIT_UNITS: usize = 4096;
+    let length = read(WM_GETTEXTLENGTH, 0, 0)?;
+    if length > MAX_NATIVE_EDIT_UNITS {
+        return Err("Native CAD edit text exceeds the bounded readback scope".into());
+    }
+    let mut text = vec![0u16; MAX_NATIVE_EDIT_UNITS + 1];
+    let copied = read(WM_GETTEXT, text.len(), text.as_mut_ptr() as isize)?;
+    if copied > MAX_NATIVE_EDIT_UNITS || copied != length {
+        return Err("Native CAD edit changed during text readback".into());
+    }
+    text.truncate(copied);
+    // EM_GETSEL is a system edit message (0x00B0). With both pointer
+    // arguments null its packed return suffices for our <=4096-unit scope.
+    let selection = read(0x00B0, 0, 0)?;
+    let start = selection & 0xffff;
+    let end = (selection >> 16) & 0xffff;
+    if start > end || end > text.len() || String::from_utf16(&text).is_err() {
+        return Err("Native CAD edit selection or Unicode text could not be qualified".into());
+    }
+    Ok(NativeEditText { text, start, end })
+}
+
+fn verify_native_text(
+    observed: &Observation,
+    hwnd: HWND,
+    expected: &NativeTextVerification,
+    final_read: bool,
+) -> Result<(), String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
+    let exact: Vec<u16> = expected
+        .prefix
+        .iter()
+        .chain(&expected.suffix)
+        .copied()
+        .collect();
+    loop {
+        guard_action(observed, hwnd, false, false)?;
+        guard_native_text_focus(observed, hwnd)?;
+        let current = read_native_edit(observed)?;
+        guard_action(observed, hwnd, false, false)?;
+        guard_native_text_focus(observed, hwnd)?;
+        let caret = expected.prefix.len();
+        let exact_text = current.text == exact && current.start == caret && current.end == caret;
+        // File dialogs may append a selected autocomplete suffix. Prove the
+        // typed prefix and selection before allowing the next human scalar
+        // to replace it. Final success still requires the exact whole text.
+        let selected_completion = !final_read
+            && expected.suffix.is_empty()
+            && current.text.starts_with(&expected.prefix)
+            && current.start == caret
+            && current.end == current.text.len()
+            && current.end > caret;
+        if exact_text || selected_completion {
+            return Ok(());
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(format!(
+                "Native edit text/selection did not match the requested replacement (expected UTF-16 length {}, actual {}, selection {}..{}); no further input was sent",
+                exact.len(), current.text.len(), current.start, current.end
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(NATIVE_TEXT_INTERVAL_MS));
+    }
 }
 
 fn guard_native_text_focus(observed: &Observation, hwnd: HWND) -> Result<(), String> {
