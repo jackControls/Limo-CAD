@@ -736,7 +736,12 @@ impl SketchSession {
         let distance = magnitude * side;
         let curve = self.to_offset_curve(entity)?;
         offset::offset_curve(&curve, distance)
-            .map_err(|e| SessionError::InvalidConstraint(format!("offset: {e:?}").to_lowercase()))
+            .map_err(|error| match error {
+                offset::OffsetError::CollapseToPoint => SessionError::InvalidConstraint(
+                    "Inward offset distance must be smaller than the circle or arc radius. Reduce the distance or reverse the offset direction.".into(),
+                ),
+                error => SessionError::InvalidConstraint(format!("offset: {error:?}").to_lowercase()),
+            })
     }
 
     fn to_offset_curve(&self, entity: EntityId) -> Result<offset::Curve, SessionError> {
