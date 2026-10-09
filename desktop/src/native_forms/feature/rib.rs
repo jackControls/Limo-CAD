@@ -153,7 +153,19 @@ impl SolidForm {
                 }
                 RibExtent::ToNext
             }
-            RibExtent::ThroughAll => RibExtent::ThroughAll,
+            RibExtent::ThroughAll => {
+                if matches!(
+                    self.operation,
+                    ExtrudeOperation::NewBody | ExtrudeOperation::Join
+                ) {
+                    errors.push((
+                        F::Extent,
+                        "Through All requires Subtract or Common. Choose Distance, To Next, or To Face for additive ribs."
+                            .into(),
+                    ));
+                }
+                RibExtent::ThroughAll
+            }
             RibExtent::ToFace { .. } => {
                 if let Some(face) = self.stop_face {
                     if let Err(e) = validate_face(face, model) {
