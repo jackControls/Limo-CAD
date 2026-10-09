@@ -99,7 +99,7 @@ pub(super) fn copy_card(
     Ok(())
 }
 
-fn prompt(panel: &FeaturePanel) -> Option<String> {
+fn prompt(world: &World, panel: &FeaturePanel) -> Option<String> {
     Some(match panel.pick_target? {
         F::Source if panel.kind == K::Extrude => {
             "Select closed profiles or a planar model face for Extrude".into()
@@ -120,6 +120,12 @@ fn prompt(panel: &FeaturePanel) -> Option<String> {
         F::Path | F::Guide => "Select finished sketch curves in the viewport".into(),
         F::Bodies if panel.kind == K::SplitBody => "Select the body to split".into(),
         F::Bodies => "Select bodies or a component occurrence in the viewport".into(),
+        F::TargetBody if panel.kind == K::Combine => {
+            crate::native_viewport::localization::translate(world, "bodyFeature.clickTargetBody").into()
+        }
+        F::ToolBodies if panel.kind == K::Combine => {
+            crate::native_viewport::localization::translate(world, "bodyFeature.clickToolBodies").into()
+        }
         F::Targets | F::TargetBody | F::ToolBodies => "Select target bodies in the viewport".into(),
         F::StopFace => "Select a planar stop face in the viewport".into(),
         field if field.is_move_point() => "Select a sketch point, body vertex or surface".into(),
@@ -139,7 +145,7 @@ pub(super) fn selection_prompt(
     theme: ViewportUiTheme,
     assets: &ViewportUiAssets,
 ) {
-    let Some(prompt) = prompt(panel) else {
+    let Some(prompt) = prompt(world, panel) else {
         return;
     };
     let Some(canvas) = world
