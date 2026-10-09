@@ -6,10 +6,8 @@ families and the assertions behind CI orchestration; it does not claim an
 individual adversarial rewrite of every product unit test. Manual UI qualification
 remains separate and paused during this CI task.
 
-The starting revision was `05917334`. Incoming `f78409fa` separates the independent
-agent-message-board tool from CAD. Preserve that ownership change: the final CAD
-inventory has 15 workflows and 36 top-level jobs, before matrix expansion. Removing
-the independent tool's application workflow does not remove CAD acceptance.
+The starting revision was `05917334`. The final CAD inventory has 15 workflows
+and 36 top-level jobs, before matrix expansion.
 
 ## Retained acceptance and its value
 
@@ -123,6 +121,4 @@ including security alerts, MCP aggregates and packages. Intentional opt-in/tag-o
 skips retain their documented applicability. Green CI does not complete the broad
 UI/MCP coverage ledger, physical gesture qualification or three-model walkthrough.
 
-The global shared-board skill was read. Its standalone CLI was initially
-unavailable, then became available during the task; relevant retained notices were
-read before pushing. CAD runtime, model, saved and recovery data were preserved.
+CAD runtime, model, saved and recovery data were preserved.
