@@ -39,7 +39,16 @@ retained dimension editing, creation/edit Undo/Redo, Cancel and exact UI reopen.
 Its functional receipt passes; drawing-tool dimension readability fails.
 `6f24e148` preserves dimension ink while construction disables editing, without
 changing interaction guards. This source fix remains undeployed, and typed angle
-locking is still an unqualified line variant. The survey continues to arcs.
+locking is still an unqualified line variant.
+
+Three-point arc creation, endpoint dragging, draft Cancel, creation/edit
+Undo/Redo and exact UI save/reopen now have functional receipts on `a3cebb9c`.
+Distinct collinear picks commit no geometry, but their validation incorrectly
+says that a segment has zero length. `58949424` changes only the determinant
+rejection message; the geometric checks and mutation behavior stay unchanged.
+The source fix awaits deployment and visible recheck. The survey continues to
+center-point arcs. Hosted Windows native CI for `6f24e148` passed 937 tests with
+zero failures and ten ignored; it does not qualify the repaired live UI.
 
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,

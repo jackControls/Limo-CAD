@@ -14,6 +14,11 @@ tool, including numeric validation, retained dimension edit, Cancel, Undo/Redo
 and exact UI reopen. Its active-tool dimension text has a recorded polish defect;
 the committed color fix still needs deployed qualification.
 
+[`surface-ui-three-point-arc-human-ui.limo`](../checkpoints/surface-ui-three-point-arc-human-ui.limo)
+retains a three-point arc after endpoint editing, creation/edit Undo/Redo,
+Cancel and exact UI save/reopen. Collinear picks are safely rejected, but the
+runtime's misleading validation message still needs the committed fix deployed.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
