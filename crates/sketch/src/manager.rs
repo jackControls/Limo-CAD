@@ -4290,9 +4290,7 @@ impl SketchManager {
             .iter()
             .filter_map(|finished| match finished.session.plane() {
                 PlaneRef::PlanarFace { face_id }
-                    if active.contains(&finished.feature_id)
-                        && self.scene_matches_history_stage(finished.feature_id)
-                        && !self.solids.has_face(face_id) =>
+                    if active.contains(&finished.feature_id) && !self.solids.has_face(face_id) =>
                 {
                     Some((
                         finished.feature_id,
