@@ -140,6 +140,20 @@ names, Rename, archive/recovery, dirty state and geometry remain unchanged. Root
 and peer reviewed the source; deployed title and dependent presentation checks
 remain pending under the existing bounded build blocker.
 
+Inscribed Polygon passes side-count rejection, regular six-vertex creation,
+exact form Cancel, retained vertex drag, creation/edit Undo/Redo and whole-model
+native save/reopen. Its twelve DOF and zero constraints allow subsequent shape
+changes; no retained regularity claim is made. Zero radius safely rejects but
+displays the opaque `polygon: notpositive`. `3f745d96` translates only that shared
+polygon error to positive-radius guidance before any mutation; root and peer
+reviewed it, with deployed validation still pending. Circumscribed mode is next.
+
+`45ce0569` Windows native CI completed 937 passes, zero failures and ten ignored
+at 16:17:46 UTC; macOS has 942 passes and only the known strict thread failure.
+`8660ca5e` passed all six automatic Ubuntu/Windows core/vise/turbine MCP acceptance
+jobs and their aggregator; the final Ubuntu MCP-tests job remains pending at this
+receipt. These checks do not complete the manual MCP surface survey.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;

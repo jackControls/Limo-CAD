@@ -69,6 +69,11 @@ retains the initially symmetric center/end capsule after zero-width rejection,
 typed 10 mm width, retained 12 mm width edit, Cancel, Undo/Redo and exact native
 reopen. Four DOF remain free; the shared dimension-ink recheck awaits deployment.
 
+[`surface-ui-inscribed-polygon-human-ui.limo`](../checkpoints/surface-ui-inscribed-polygon-human-ui.limo)
+retains the six-edge polygon after side-count/radius validation, form Cancel,
+free vertex edit, Undo/Redo and exact native reopen. It has twelve DOF and no
+regularity constraints. The committed radius-message repair awaits deployment.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
