@@ -74,7 +74,7 @@ fn real_drilled_hole_metadata_labels_exports_and_archive_remain_exact() {
             .exact_interference(posed(), posed())
             .unwrap()
             .overlap_volume_mm3;
-        let depth = if through { 10. } else { 8. + 1e-4 };
+        let depth = if through { 10. } else { 8. };
         assert!(
             (actual - (24_000. - 2. * std::f64::consts::PI * 9. * depth)).abs() < 1e-6,
             "The fixture must contain two physical drilled cavities: actual={actual}, depth={depth}, definitions={:?}",

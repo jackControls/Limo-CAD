@@ -308,6 +308,13 @@ fn check_revision(editor: &Editor, receipt: &DocumentReceipt) -> Result<(), Stri
 pub(crate) fn panel(world: &World) -> Option<FeaturePanel> {
     let editor = world.get_resource::<NativeFeature>()?.editor.as_ref()?;
     let model = editor.snapshot.model(editor.form.parameter_sketch());
+    let fields = editor.form.fields(&model);
+    let preview_notice = editor.preview_notice.clone().filter(|message| {
+        editor.form.kind() != SolidFormKind::Revolve
+            || !fields
+                .iter()
+                .any(|field| field.visible && field.error.as_ref() == Some(message))
+    });
     Some(FeaturePanel {
         title: format!(
             "{}{}{}",
@@ -328,19 +335,85 @@ pub(crate) fn panel(world: &World) -> Option<FeaturePanel> {
         ),
         kind: editor.form.kind(),
         form_id: editor.id,
-        fields: editor.form.fields(&model),
+        fields,
         can_apply: editor.form.can_apply(&model),
         busy: editor.form.is_busy(),
         error: editor
             .interaction_error
             .clone()
             .or_else(|| editor.form.engine_error().map(str::to_owned)),
-        preview_notice: editor.preview_notice.clone(),
+        preview_notice,
         notes: editor.form.feature_notes(),
         pick_target: editor.pick_target,
         choice_field: editor.choice_field,
         presentation: editor.form.presentation(&model),
     })
+}
+
+/// Only the explicitly successful visibility transaction may advance this
+/// new draft; ordinary model changes still invalidate its exact receipt.
+pub(crate) fn profile_feature_visibility_draft(
+    world: &World,
+    receipt: &DocumentReceipt,
+) -> Option<u64> {
+    let editor = world.get_resource::<NativeFeature>()?.editor.as_ref()?;
+    (editor.snapshot.receipt == *receipt
+        && editor.stage.is_none()
+        && matches!(
+            editor.form.kind(),
+            SolidFormKind::Revolve | SolidFormKind::Sweep
+        )
+        && !editor.form.is_feature_edit()
+        && !editor.form.is_busy())
+    .then_some(editor.id)
+}
+
+pub(crate) fn advance_profile_feature_visibility(
+    engine: &AppState,
+    bridge: &SessionBridgeState,
+    world: &mut World,
+    from: &DocumentReceipt,
+    form_id: u64,
+    to: u64,
+) -> Result<(), String> {
+    let mut state = world.remove_resource::<NativeFeature>().unwrap_or_default();
+    let result = with_receipt(bridge, engine, &from.owner, |receipt| {
+        if receipt.revision != to || from.revision.checked_add(1) != Some(to) {
+            return Err("The visibility receipt was superseded".into());
+        }
+        let editor = state
+            .editor
+            .as_mut()
+            .filter(|editor| {
+                editor.id == form_id && editor.snapshot.receipt == *from && editor.stage.is_none()
+            })
+            .ok_or("The visibility change no longer owns this feature draft")?;
+        let snapshot = Snapshot::capture(engine, receipt)?;
+        editor
+            .form
+            .advance_profile_feature_visibility(&from.owner, from.revision, to)?;
+        editor.snapshot = snapshot;
+        editor.hovered_body = None;
+        editor.hovered_face = None;
+        editor.hovered_profile = None;
+        update_preview(editor, world)
+    });
+    if result.is_err()
+        && state.editor.as_ref().is_some_and(|editor| {
+            editor.id == form_id && editor.snapshot.receipt.owner == from.owner
+        })
+    {
+        let editor = state.editor.take().unwrap();
+        if native_viewport::interface_preview_revision(world) == editor.preview_revision {
+            let _ = native_viewport::apply_interface_preview(
+                world,
+                &from.owner.document_id,
+                ViewportPreview::default(),
+            );
+        }
+    }
+    world.insert_resource(state);
+    result
 }
 
 /// A form cannot follow a model change, tab switch or project replacement.
@@ -862,7 +935,10 @@ pub(crate) fn reduce(
                 owner,
                 &FeatureCommand::Control {
                     form_id: *form_id,
-                    action: FeatureControl::Cancel,
+                    action: panel(world)
+                        .filter(|panel| panel.form_id == *form_id)
+                        .and_then(|panel| panel.choice_field)
+                        .map_or(FeatureControl::Cancel, FeatureControl::Field),
                 },
                 &ControlInput::Click,
                 validate_control,
@@ -1366,6 +1442,15 @@ fn reduce_owned(
                         if super::is_activation(input) {
                             editor.choice_field =
                                 (editor.choice_field != Some(*field)).then_some(*field);
+                            if editor.choice_field.is_some() {
+                                panel::reveal_choices(
+                                    world,
+                                    owner,
+                                    *form_id,
+                                    *field,
+                                    options.len(),
+                                );
+                            }
                             return Ok(
                                 json!({"form_id":form_id,"choices_open":editor.choice_field.is_some()}),
                             );

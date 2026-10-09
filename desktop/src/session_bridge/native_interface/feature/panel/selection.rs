@@ -7,6 +7,15 @@ pub(super) fn text_height(text: &str, width: f32) -> f32 {
     (text.chars().count().div_ceil(columns).max(1) as f32) * 16.
 }
 
+fn component_selection(panel: &FeaturePanel, field: F) -> bool {
+    field == F::Bodies
+        && panel.kind == K::MoveCopy
+        && panel.fields.iter().any(|row| {
+            row.field == F::MoveObjectType
+                && matches!(&row.value, limo_cad_interface::Field::Choice { value, .. } if value == "component")
+        })
+}
+
 fn hint(panel: &FeaturePanel, field: F) -> &'static str {
     match field {
         F::Source if panel.kind == K::Extrude => "Click a closed sketch region or an existing planar solid face. Picking one source type clears the other.",
@@ -19,6 +28,7 @@ fn hint(panel: &FeaturePanel, field: F) -> &'static str {
         F::Faces => "Click faces on one body to add or remove openings.",
         F::TargetBody => "Click the body that will receive the result.",
         F::Bodies if panel.kind == K::SplitBody => "Click the body to divide at the reference plane.",
+        F::Bodies if component_selection(panel, field) => "The clicked occurrence is selected by its visible geometry.",
         F::Bodies => "Selected bodies are highlighted in the model. Continue clicking to select more than one.",
         F::ToolBodies => "The target stays separate from the tool bodies.",
         F::FirstPlane | F::SecondPlane => "Choose in the browser or click a planar face.",
@@ -50,6 +60,7 @@ fn legend(panel: &FeaturePanel, field: F) -> &'static str {
         F::HolePositions => "POSITIONS",
         F::TargetBody => "TARGET BODY",
         F::Bodies if panel.kind == K::SplitBody => "BODY TO SPLIT",
+        F::Bodies if component_selection(panel, field) => "COMPONENT",
         F::Bodies => "BODIES",
         F::ToolBodies => "TOOL BODIES",
         F::FirstPlane if panel.kind == K::Midplane => "FIRST REFERENCE",
@@ -107,6 +118,12 @@ pub(super) fn render(
     let key = format!("{:?}", row.field);
     let selected = panel.presentation.references.get(&row.field);
     let active = panel.pick_target == Some(row.field);
+    let component = component_selection(panel, row.field);
+    let heading = if component {
+        crate::native_viewport::localization::translate(world, "bodyFeature.component")
+    } else {
+        legend(panel, row.field)
+    };
     label(
         world,
         state,
@@ -114,7 +131,7 @@ pub(super) fn render(
         &format!("{key}-label"),
         body,
         camera,
-        legend(panel, row.field),
+        heading,
         node(0., *y - state.scroll, inner, 18.),
         theme,
         assets,
@@ -168,6 +185,11 @@ pub(super) fn render(
     world
         .entity_mut(icon)
         .insert(node(8., (card_height - 14.) * 0.5, 14., 14.));
+    let guidance = if component {
+        crate::native_viewport::localization::translate(world, "bodyFeature.componentHint")
+    } else {
+        hint(panel, row.field)
+    };
     label(
         world,
         state,
@@ -175,7 +197,7 @@ pub(super) fn render(
         &format!("{key}-hint"),
         body,
         camera,
-        hint(panel, row.field),
+        guidance,
         node(31., *y + 24. - state.scroll, inner - 39., card_height - 30.),
         theme,
         assets,

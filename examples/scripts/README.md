@@ -1,5 +1,29 @@
 # Bundled script examples
 
+The separate human UI survey uses saved fixtures under
+[`examples/checkpoints`](../checkpoints), without replaying these plans.
+[`surface-ui-rigid-joint-human-ui.limo`](../checkpoints/surface-ui-rigid-joint-human-ui.limo)
+retains two stock definitions and a rigid face-to-face joint after retained
+editing, Undo/Redo, Cancel and exact UI save/reopen. Its acceptance scope and
+remaining joint modes are recorded in the
+[surface coverage ledger](../../docs/qualification/surface-coverage.json).
+
+[`surface-ui-line-chain-human-ui.limo`](../checkpoints/surface-ui-line-chain-human-ui.limo)
+retains a fully constrained 25 by 10 mm triangular sketch made through the Line
+tool, including numeric validation, retained dimension edit, Cancel, Undo/Redo
+and exact UI reopen. Its active-tool dimension text has a recorded polish defect;
+the committed color fix still needs deployed qualification.
+
+[`surface-ui-three-point-arc-human-ui.limo`](../checkpoints/surface-ui-three-point-arc-human-ui.limo)
+retains a three-point arc after endpoint editing, creation/edit Undo/Redo,
+Cancel and exact UI save/reopen. Collinear picks are safely rejected, but the
+runtime's misleading validation message still needs the committed fix deployed.
+
+[`surface-ui-center-arc-human-ui.limo`](../checkpoints/surface-ui-center-arc-human-ui.limo)
+retains a center-point arc after safe zero-radius rejection, draft cancellation,
+endpoint dragging, Undo/Redo and exact UI save/reopen. Active toolbar feedback
+and stale validation status have separate recorded polish defects.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

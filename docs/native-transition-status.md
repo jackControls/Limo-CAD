@@ -9,10 +9,64 @@ into `main`. Passing required checks and an external approval remain merge gates
 
 Manual development resumed with the user's approval on **2026-10-09 UTC**.
 The durable UI-first/MCP-second policy is in `.cursor/rules/surface-qualification.mdc`;
-`docs/qualification/surface-coverage.json` records 356 explicit UI cases and
+`docs/qualification/surface-coverage.json` records 443 explicit UI cases and
 256 registered MCP tools. This is an active breadth survey, not complete
 program qualification. Local test suites, recipe replay and direct model
 mutations remain outside this manual session's scope.
+
+The clean matched `a3cebb9c` pair now qualifies the representative rigid joint:
+missing/same-component rejection, Clear/repick, preview Cancel, same-ID retained
+name/direction editing, Undo/Redo and actual UI save/reopen. The human-built
+`surface-ui-rigid-joint-human-ui.limo` checkpoint preserves the two definitions
+and solved joint. Other joint kinds and dynamic assembly cases remain untested.
+Current `aa0a41db` Windows native CI passed 937 tests with zero failures and ten
+ignored; Ubuntu/macOS retain their sole known strict modeled-thread failure.
+These hosted receipts compile the newest source fixes, which remain undeployed.
+
+`369164c6` retains active native-host, interface-contract and Linux-engine CI
+qualification across new checkpoint pushes. D: exhaustion temporarily truncated
+one uncommitted workflow write; it was restored exactly before any commit.
+Lossless compression of generated Rust caches recovered about 2.8 GB free space.
+CAD documents, recovery and sessions were preserved, and exact model equality
+was checked before UI operation resumed. The bounded local build blocker remains
+open; storage recovery does not qualify a new executable.
+
+The same matched `a3cebb9c` runtime qualifies ordinary solid Select, including
+same-occurrence Ctrl/Shift selection, clearing and pointer-only hover with exact
+model preservation. The separate line-chain fixture contains a fully constrained
+25 by 10 mm triangular profile after numeric validation, chained line creation,
+retained dimension editing, creation/edit Undo/Redo, Cancel and exact UI reopen.
+Its functional receipt passes; drawing-tool dimension readability fails.
+`6f24e148` preserves dimension ink while construction disables editing, without
+changing interaction guards. This source fix remains undeployed, and typed angle
+locking is still an unqualified line variant.
+
+Three-point arc creation, endpoint dragging, draft Cancel, creation/edit
+Undo/Redo and exact UI save/reopen now have functional receipts on `a3cebb9c`.
+Distinct collinear picks commit no geometry, but their validation incorrectly
+says that a segment has zero length. `58949424` changes only the determinant
+rejection message; the geometric checks and mutation behavior stay unchanged.
+The source fix awaits deployment and visible recheck. The survey continues to
+center-point arcs. Hosted Windows native CI for `6f24e148` passed 937 tests with
+zero failures and ten ignored; it does not qualify the repaired live UI.
+
+The center-point arc fixture also passes safe zero-radius rejection, partial
+draft cancellation, retained endpoint drag, creation/edit Undo/Redo and exact
+native UI save/reopen. Its toolbar mode identity and stale error feedback fail
+the separate polish check. `dc131d00` fixes the active Center arc toolbar binding;
+the controller's stale sketch-error lifecycle repair is under review. These
+repairs remain undeployed, and the broad survey moves on to fit-point splines.
+
+The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
+now respects its selected signed stop plane despite retained Flip metadata. Preview,
+same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
+all four saved feature statuses are OK. The separate Common final-status defect
+remains queued. Revolve's four axis modes and signed half/full turns produce
+expected geometry. The clean `5b10cdc3` pair additionally qualifies Add/Subtract/
+Common targets, retained Cancel/Undo/Redo and exact save/UI-reopen with four OK
+features. Its narrow fix preserves new Revolve drafts across browser visibility
+changes and removes duplicated inline validation; both have actual UI receipts.
+Two human-built Revolve checkpoints retain the axis and boolean fixtures.
 
 The clean `8fdd5fd7` GUI/MCP pair verified all 70 payload hashes. Settings scrolling
 and translated document units pass the exercised normal-window flows. A full
@@ -25,8 +79,22 @@ The small human-built fixtures under `examples/checkpoints/surface-ui-*` retain
 the block, origin-plane sketches and a Common result whose supporting face is
 valid before its consuming extrusion. Editing that extrusion again falsely
 rejected its sketch support in the completed scene. `d9719134` uses the existing
-isolated pre-feature editor; actual clean-runtime qualification is pending.
-This does not qualify arbitrary upstream support-loss reporting.
+isolated pre-feature editor. The broad accompanying status exemption violated
+an existing broken-reference CI contract and was fully reverted at `0a8915e8`.
+That final clean GUI/MCP pair passes the reported edit, exact Cancel preservation,
+Undo/Redo with hidden Sketch2, and save/UI-reopen equality. The resulting
+two-body model is retained as `surface-ui-retained-extrusion-fixed-human-ui.limo`.
+The Linux contract and Ubuntu/macOS retained-edit checks pass. False error status
+on the valid Common result remains separately queued; genuine missing support
+continues to be reported.
+
+The next meaningful mode exposed a separate To Face direction error: top Z=8
+to selected bottom Z=0 with retained Flip produced Z=8..16 while reporting no
+errors. `b41645b1` preserves the selected plane's signed endpoint in geometry
+and preview and hides Flip only for that mode; runtime qualification passes on
+`b71665d7`, including same-plane validation, editing and exact save/UI-reopen.
+The saved human fixture is `surface-ui-to-face-flip-human-ui.limo`. Analogous
+Rib logic remains unqualified and will be checked at its normal catalog position.
 
 Hosted native CI on `0bb6257b` confirms the test-only isolation repair: Windows
 937 passed/zero failed; Ubuntu 937 passed/one failed; macOS 942 passed/one failed.

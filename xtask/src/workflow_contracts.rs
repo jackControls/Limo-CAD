@@ -316,7 +316,7 @@ fn native_shards_keep_geometry_workshop_and_exact_same_run_artifact_provenance()
 }
 
 #[test]
-fn windows_package_keyboard_checks_enable_both_native_input_features() {
+fn windows_package_keyboard_checks_use_an_isolated_control_host() {
     let workflow = read(".github/workflows/desktop-packages.yml");
     let windows = job(&workflow, "build-windows-portable");
     ordered(
@@ -324,8 +324,31 @@ fn windows_package_keyboard_checks_enable_both_native_input_features() {
         "git status --porcelain --untracked-files=normal",
         "cargo xtask package --target",
     );
-    assert!(windows
+    assert!(windows.contains("cargo xtask package --target \"${{ matrix.rust_target }}\""));
+    assert!(!windows
         .contains("cargo xtask package --target \"${{ matrix.rust_target }}\" --computer-control"));
+    ordered(
+        &windows,
+        "Expand-Archive -LiteralPath $archive.FullName",
+        "$archiveHash = (Get-FileHash",
+    );
+    ordered(
+        &windows,
+        "$archiveHash = (Get-FileHash",
+        "cargo build --locked --release --manifest-path desktop/Cargo.toml --bin limo-cad --features native-computer-control",
+    );
+    ordered(
+        &windows,
+        "Copy-Item -LiteralPath $executable.DirectoryName -Destination $probeRoot -Recurse",
+        "-PackageDirectory $probeRoot",
+    );
+    assert!(windows.contains("-ControlledSourceHost"));
+    for failure in [
+        "Source host qualification changed the default packaged executable",
+        "Source host qualification changed the default portable ZIP",
+    ] {
+        assert!(windows.contains(failure));
+    }
     let verify = read("scripts/verify-windows-viewport.ps1");
     assert!(verify.contains("cargo run --quiet --locked -p xtask --features native-control-harness -- test-mcp native-platform"));
     ordered(
@@ -334,8 +357,9 @@ fn windows_package_keyboard_checks_enable_both_native_input_features() {
         "cargo run --quiet --locked",
     );
     assert!(verify.contains(
-        "if ($LASTEXITCODE -ne 0) { throw 'Packaged native input verification failed' }"
+        "if ($LASTEXITCODE -ne 0) { throw 'Controlled source host native input verification failed' }"
     ));
+    assert!(verify.contains("if (-not $ControlledSourceHost) { throw"));
     assert!(!verify.contains("continue-on-error"));
     let fixture = read("xtask/src/native_platform_test.rs");
     ordered(

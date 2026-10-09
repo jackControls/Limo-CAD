@@ -30,6 +30,7 @@ struct Lease {
     process_instance: String,
     window_id: String,
     session: String,
+    document: String,
 }
 
 impl Driver {
@@ -79,12 +80,42 @@ impl Driver {
     }
 
     fn observe(&self) -> Result<Value> {
-        self.check_process()?;
-        let lease = active_lease(&self.sessions, self.pid)?;
-        ensure!(
-            lease.process_instance == self.process_instance && lease.window_id == self.window_id,
-            "Owned CAD process or window instance changed"
-        );
+        // Interface readiness can precede the heartbeat's bootstrap-to-document
+        // promotion. Wait for publication; never retry an OS-input operation.
+        let deadline = Instant::now() + Duration::from_secs(45);
+        let lease = loop {
+            self.check_process()?;
+            let lease = active_lease(&self.sessions, self.pid)?;
+            ensure!(
+                lease.process_instance == self.process_instance
+                    && lease.window_id == self.window_id,
+                "Owned CAD process or window instance changed"
+            );
+            let heartbeat = fs::read(self.sessions.join(&lease.session).join("heartbeat.json"))
+                .ok()
+                .and_then(|body| serde_json::from_slice::<Value>(&body).ok());
+            let now = u64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())?;
+            if heartbeat.as_ref().is_some_and(|value| {
+                value["interface_version"] == 1
+                    && value["session_id"] == lease.session
+                    && value["document_id"] == lease.document
+                    && value["project_session_id"] == lease.document
+                    && value["process_instance_id"] == self.process_instance
+                    && value["window_id"] == self.window_id
+                    && value["updated_ms"]
+                        .as_u64()
+                        .is_some_and(|updated| now.saturating_sub(updated) <= 30_000)
+            }) {
+                break lease;
+            }
+            ensure!(
+                Instant::now() < deadline,
+                "Owned desktop publication did not match the current lease within 45 seconds: session {} document {}; heartbeat {heartbeat:?}",
+                lease.session,
+                lease.document
+            );
+            thread::sleep(Duration::from_millis(100));
+        };
         let observed = self.client.borrow_mut().call(
             "cad_computer_control",
             json!({"action":"observe","session_id":lease.session}),
@@ -94,6 +125,7 @@ impl Driver {
                 && observed["owner"]["pid"] == self.pid
                 && observed["owner"]["process_instance_id"] == self.process_instance
                 && observed["owner"]["window_id"] == self.window_id
+                && observed["owner"]["document_id"] == lease.document
                 && observed["owner"]["session_id"] == lease.session,
             "Computer observation did not qualify the owned CAD window: {observed}"
         );
@@ -129,6 +161,10 @@ impl Driver {
         request["session_id"] = observed["owner"]["session_id"].clone();
         request["observation"] = observed["observation"].clone();
         let action = request["action"].clone();
+        let focus = request["action"] == "focus";
+        if focus {
+            self.record_focus_state("focus-before", observed, None);
+        }
         let result = self
             .client
             .borrow_mut()
@@ -136,14 +172,19 @@ impl Driver {
         let receipt = match result {
             Ok(receipt) => receipt,
             Err(error) => {
-                self.record(
+                if focus {
+                    self.record_focus_state("focus-failed", observed, Some(&error));
+                }
+                if let Err(diagnostic_error) = self.record(
                     "computer-control",
                     &json!({"status":"failed","action":action,
                     "error":format!("{error:#}"),"observed_owner":observed["owner"],
                     "observed_foreground":observed["foreground"],
                     "observed_window_handle":observed["window_handle"],
                     "native_window_diagnostics":observed["native_window_diagnostics"]}),
-                )?;
+                ) {
+                    eprintln!("Could not retain input refusal diagnostics: {diagnostic_error:#}");
+                }
                 return Err(error);
             }
         };
@@ -153,6 +194,47 @@ impl Driver {
             "OS input did not complete; inspect its receipt and do not retry blindly: {receipt}"
         );
         Ok(receipt)
+    }
+
+    fn record_focus_state(&self, operation: &str, observed: &Value, error: Option<&anyhow::Error>) {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
+        };
+
+        // Observational only: never activate another window or retry input.
+        let hwnd = unsafe { GetForegroundWindow() };
+        let mut pid = 0;
+        let mut title = [0_u16; 256];
+        let (window_thread, title_length) = if hwnd.0.is_null() {
+            (0, 0)
+        } else {
+            unsafe {
+                (
+                    GetWindowThreadProcessId(hwnd, Some(&mut pid)),
+                    GetWindowTextW(hwnd, &mut title),
+                )
+            }
+        };
+        let receipt = json!({
+            "owner":observed["owner"],
+            "observed_foreground":observed["foreground"],
+            "presented":observed["presented"],
+            "minimized":observed["minimized"],
+            "target_kind":observed["target_kind"],
+            "window_handle":observed["window_handle"],
+            "main_window_handle":observed["main_window_handle"],
+            "harness_pid":std::process::id(),
+            "worker_pid":self.client.borrow().process_id(),
+            "foreground_window_handle":hwnd.0 as usize,
+            "foreground_pid":pid,
+            "foreground_thread":window_thread,
+            "foreground_title":String::from_utf16_lossy(&title[..title_length.max(0) as usize]),
+            "error":error.map(|error|format!("{error:#}")),
+        });
+        if let Err(error) = self.record(operation, &receipt) {
+            // A diagnostics failure must not replace the original focus refusal.
+            eprintln!("Could not retain read-only focus diagnostics: {error:#}");
+        }
     }
 
     fn record(&self, operation: &str, receipt: &Value) -> Result<()> {
@@ -812,6 +894,10 @@ fn active_lease(sessions: &Path, pid: u32) -> Result<Lease> {
             session: window["active_session_id"]
                 .as_str()
                 .context("Active session identity")?
+                .to_owned(),
+            document: window["active_document_id"]
+                .as_str()
+                .context("Active document identity")?
                 .to_owned(),
         });
     }

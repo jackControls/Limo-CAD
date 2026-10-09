@@ -320,6 +320,8 @@ pub(crate) fn reduce(
         }
         BrowserCommand::Visibility(_) => {
             let receipt = bridge.native_document_receipt(engine, &action.context)?;
+            let draft = feature::profile_feature_visibility_draft(world, &receipt);
+            let draft_receipt = receipt.clone();
             worker::enqueue_transaction(
                 world,
                 "project_set_visibility".into(),
@@ -336,14 +338,29 @@ pub(crate) fn reduce(
                         || guard.validate(),
                     )
                 },
-                |world, services, result| {
-                    Ok(finish_mutation(
+                move |world, services, result| {
+                    let result = result?;
+                    let revision = result.engine_revision;
+                    let value = finish_mutation(
                         &services.engine,
                         &services.bridge,
                         world,
                         "project_set_visibility",
-                        result?,
-                    ))
+                        result,
+                    );
+                    if value["render_error"].is_null() && value["publication_error"].is_null() {
+                        if let Some(form_id) = draft {
+                            feature::advance_profile_feature_visibility(
+                                &services.engine,
+                                &services.bridge,
+                                world,
+                                &draft_receipt,
+                                form_id,
+                                revision,
+                            )?;
+                        }
+                    }
+                    Ok(value)
                 },
             )
         }

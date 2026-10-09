@@ -668,7 +668,10 @@ impl SketchSession {
         };
         let deg = dir.y.atan2(dir.x).to_degrees();
         let mid = self.line_mid(line);
-        let pos = mid + perp_unit(dir) * default_angular_dimension_offset(dir.length());
+        // New typed angle labels start opposite the automatic length label.
+        // Existing/manual placements are retained; this is not a general
+        // collision guarantee across adjacent geometry, fonts or zoom levels.
+        let pos = mid - perp_unit(dir) * default_angular_dimension_offset(dir.length());
         let Ok(param) = self.param_from_text(ParamKind::Angle, Some(text), deg) else {
             return;
         };

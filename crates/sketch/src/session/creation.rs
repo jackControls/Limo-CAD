@@ -158,7 +158,9 @@ impl SketchSession {
         let (p3, p3_target) = self.snap_creation(p3, ctrl_held);
         let d = 2.0 * (p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y));
         if !d.is_finite() || d.abs() < MERGE_EPS {
-            return Err(SessionError::DegenerateSegment);
+            return Err(SessionError::InvalidConstraint(
+                "Choose three distinct, non-collinear points for the arc".into(),
+            ));
         }
         let (a2, b2, c2) = (p1.dot(p1), p2.dot(p2), p3.dot(p3));
         let ux = (a2 * (p2.y - p3.y) + b2 * (p3.y - p1.y) + c2 * (p1.y - p2.y)) / d;

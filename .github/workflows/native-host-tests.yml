@@ -132,7 +132,8 @@ permissions:
 
 concurrency:
   group: native-host-tests-${{ github.workflow }}-${{ github.ref }}${{ inputs.ime-probe-only && (inputs.ime-probe-macos && '-ime-probe-macos' || '-ime-probe') || inputs.ime-native-macos && '-ime-native-macos' || inputs.input-family == 'windows-ime' && '-windows-ime' || inputs.input-family == 'windows-print' && '-windows-print' || inputs.input-family == 'switching' && '-switching' || inputs.linux-only && format('-linux-only-{0}', inputs.input-family || 'all') || '' }}
-  cancel-in-progress: true
+  # Finish running qualification; newer pending checkpoints still consolidate.
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always

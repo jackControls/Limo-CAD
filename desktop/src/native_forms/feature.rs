@@ -524,6 +524,25 @@ impl SolidForm {
     pub(crate) fn model_revision(&self) -> u64 {
         self.stamp.model_revision
     }
+    pub(crate) fn advance_profile_feature_visibility(
+        &mut self,
+        owner: &DocumentContext,
+        from: u64,
+        to: u64,
+    ) -> Result<(), String> {
+        if !matches!(self.kind(), SolidFormKind::Revolve | SolidFormKind::Sweep)
+            || self.feature.is_some()
+            || self.phase != Phase::Editing
+            || self.stamp.owner != *owner
+            || self.stamp.model_revision != from
+            || from.checked_add(1) != Some(to)
+        {
+            return Err("The visibility change no longer owns this feature draft".into());
+        }
+        self.stamp.identity = Arc::new(());
+        self.stamp.model_revision = to;
+        Ok(())
+    }
     #[cfg(test)]
     pub(crate) fn is_open(&self) -> bool {
         self.phase != Phase::Closed
@@ -1107,7 +1126,7 @@ impl SolidForm {
                 F::Flip,
                 "Flip direction".into(),
                 Field::Toggle(self.flip),
-                true,
+                !matches!(self.extent, ExtrudeExtent::ToFace { .. }),
             ),
             (
                 F::Targets,

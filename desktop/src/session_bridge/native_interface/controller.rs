@@ -406,7 +406,8 @@ fn update_inner(
                 }
                 Err(error) => {
                     files::dialog_error(world, &error);
-                    state.status = format!("{}: {error}", outcome.operation);
+                    eprintln!("Native operation {} failed: {error}", outcome.operation);
+                    state.status = error;
                 }
             }
         }
@@ -1436,7 +1437,10 @@ pub(crate) fn reduce_control_input(
                     &action.context,
                     &feature::FeatureCommand::Control {
                         form_id: panel.form_id,
-                        action: feature::FeatureControl::Cancel,
+                        action: panel.choice_field.map_or(
+                            feature::FeatureControl::Cancel,
+                            feature::FeatureControl::Field,
+                        ),
                     },
                     &ControlInput::Click,
                     || handle.validate_action(action),

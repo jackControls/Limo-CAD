@@ -621,7 +621,51 @@ impl SolidForm {
             flip: f.flip,
         };
         if let Err(e) = limo_cad_solid::validate_hole(&request) {
-            errors.push((F::HoleDiameter, e.to_string()));
+            // Preserve the shared validator's message and acceptance rules;
+            // attach its known parameter errors to the control that owns them.
+            let field = match &e {
+                limo_cad_solid::SolidError::InvalidExtent(message) => {
+                    if message.starts_with("counterbore diameter") {
+                        F::CounterboreDiameter
+                    } else if message.starts_with("counterbore depth") {
+                        F::CounterboreDepth
+                    } else if message.starts_with("countersink diameter") {
+                        F::CountersinkDiameter
+                    } else if message.starts_with("countersink angle") {
+                        F::CountersinkAngle
+                    } else if message.starts_with("drill point angle") {
+                        F::DrillPointAngle
+                    } else if message.starts_with("hole depth") {
+                        F::HoleDepth
+                    } else if message.starts_with("hole positions") {
+                        F::HolePositions
+                    } else if message.starts_with("thread nominal diameter") {
+                        F::Diameter
+                    } else if message.starts_with("thread pitch")
+                        || message.starts_with("threads per inch")
+                        || message.starts_with("Unified thread pitch")
+                    {
+                        F::Pitch
+                    } else if message.starts_with("thread depth") {
+                        F::Distance
+                    } else if message.starts_with("thread designation") {
+                        F::Designation
+                    } else if message.starts_with("thread tolerance class") {
+                        F::ThreadClass
+                    } else if message.starts_with("thread series") {
+                        F::ThreadSeries
+                    } else if message.starts_with("predrill") {
+                        F::HoleDiameter
+                    } else if request.thread.is_some() && !message.starts_with("hole diameter") {
+                        F::ThreadPreset
+                    } else {
+                        F::HoleDiameter
+                    }
+                }
+                limo_cad_solid::SolidError::EmptySelection => F::HolePositions,
+                _ => F::HoleDiameter,
+            };
+            errors.push((field, e.to_string()));
         }
         if errors.is_empty() {
             Ok(request)

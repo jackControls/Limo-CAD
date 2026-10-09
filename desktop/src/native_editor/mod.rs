@@ -686,8 +686,10 @@ pub(crate) fn process_one(
                     &frame.context,
                     &crate::session_bridge::native_interface::feature::FeatureCommand::Control {
                         form_id: panel.form_id,
-                        action:
+                        action: panel.choice_field.map_or(
                             crate::session_bridge::native_interface::feature::FeatureControl::Cancel,
+                            crate::session_bridge::native_interface::feature::FeatureControl::Field,
+                        ),
                     },
                     &limo_cad_interface::ControlInput::Click,
                     || Ok(()),
@@ -1024,7 +1026,11 @@ pub(crate) fn synchronize_controls(
             if editor.stamp.as_ref().is_some_and(|s| s.sketch.is_some()) {
                 let mut rows = [
                     CreateTool::Line,
-                    CreateTool::Arc3Point,
+                    if editor.draft.tool == Some(CreateTool::ArcCenter) {
+                        CreateTool::ArcCenter
+                    } else {
+                        CreateTool::Arc3Point
+                    },
                     CreateTool::Rectangle(RectangleMode::TwoPoint),
                     CreateTool::Circle(CircleMode::CenterDiameter),
                     CreateTool::Spline,

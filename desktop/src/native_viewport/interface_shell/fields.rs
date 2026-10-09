@@ -106,6 +106,146 @@ pub(crate) struct DrawingDimension {
 #[derive(Component)]
 pub(crate) struct LiveValue;
 
+/// Presentation only: the real editor, owned value and selection stay exact.
+#[derive(Component)]
+struct CompactNumberCaption(Entity);
+
+pub(crate) fn compact_number_caption(
+    world: &mut World,
+    entity: Entity,
+    theme: ViewportUiTheme,
+    assets: &ViewportUiAssets,
+) {
+    if world.get::<NativeTextField>(entity).is_none()
+        || world.get::<CompactNumberCaption>(entity).is_some()
+    {
+        return;
+    }
+    let caption = world
+        .spawn((
+            Text::new(""),
+            TextLayout::no_wrap(),
+            theme.text(assets, 13., FontWeight::NORMAL),
+            TextColor(theme.ink),
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(7.),
+                right: px(22.),
+                top: px(3.),
+                height: px(20.),
+                overflow: Overflow::clip(),
+                display: Display::None,
+                ..default()
+            },
+            bevy::picking::Pickable::IGNORE,
+        ))
+        .id();
+    world
+        .entity_mut(entity)
+        .add_child(caption)
+        .insert(CompactNumberCaption(caption));
+}
+
+fn compact_numeric_text(raw: &str) -> Option<String> {
+    // Expressions and whitespace remain literal. Nine significant digits are
+    // a read-only presentation; focus always reveals the unchanged raw number.
+    if !raw
+        .bytes()
+        .all(|c| c.is_ascii_digit() || b"-+.eE".contains(&c))
+    {
+        return None;
+    }
+    let value: f64 = raw.parse().ok()?;
+    if !value.is_finite() {
+        return None;
+    }
+    if value == 0.
+        && raw
+            .split(['e', 'E'])
+            .next()?
+            .bytes()
+            .any(|c| (b'1'..=b'9').contains(&c))
+    {
+        // A literal below f64's range must never be presented as exact zero.
+        return None;
+    }
+    let scientific = format!("{value:.8e}");
+    let (mantissa, exponent) = scientific.split_once('e')?;
+    let exponent: i32 = exponent.parse().ok()?;
+    let compact = if value != 0. && !(-3..=8).contains(&exponent) {
+        format!(
+            "{}e{exponent}",
+            mantissa.trim_end_matches('0').trim_end_matches('.')
+        )
+    } else {
+        let decimals = (8 - exponent).max(0) as usize;
+        let fixed = format!("{value:.decimals$}");
+        if fixed.contains('.') {
+            fixed.trim_end_matches('0').trim_end_matches('.').to_owned()
+        } else {
+            fixed
+        }
+    };
+    (compact.len() < raw.len()).then_some(compact)
+}
+
+fn update_compact_numbers(world: &mut World) {
+    let focused = world.resource::<NativeInterfaceHandle>().focused_key();
+    let mut query = world.query::<(
+        Entity,
+        &CompactNumberCaption,
+        &NativeTextField,
+        &EditableText,
+    )>();
+    let updates: Vec<_> = query
+        .iter(world)
+        .map(|(entity, caption, field, editor)| {
+            let compact = (focused != Some(ControlKey(entity.to_bits()))
+                && field.queued.is_none()
+                && field.composition.is_none()
+                && !editor.is_composing()
+                && editor.value() == field.baseline.as_str())
+            .then(|| compact_numeric_text(field.baseline.as_str()))
+            .flatten();
+            (entity, caption.0, field.theme, compact)
+        })
+        .collect();
+    for (entity, caption, theme, compact) in updates {
+        let color = if compact.is_some() {
+            Color::NONE
+        } else {
+            theme.ink
+        };
+        if let Some(mut ink) = world.get_mut::<TextColor>(entity) {
+            if ink.0 != color {
+                ink.0 = color;
+            }
+        }
+        if let Some(mut node) = world.get_mut::<Node>(caption) {
+            let display = if compact.is_some() {
+                Display::Flex
+            } else {
+                Display::None
+            };
+            if node.display != display {
+                node.display = display;
+            }
+        }
+        if let Some(value) = compact {
+            if let Some(mut text) = world.get_mut::<Text>(caption) {
+                if text.0 != value {
+                    text.0 = value;
+                }
+            }
+            if let Some(mut ink) = world.get_mut::<TextColor>(caption) {
+                if ink.0 != theme.ink {
+                    ink.0 = theme.ink;
+                }
+            }
+        }
+    }
+}
+
 #[derive(Resource, Default)]
 struct RequestedFocus(Option<FocusRequest>);
 
@@ -202,6 +342,7 @@ pub(crate) fn install(app: &mut App) {
         .init_resource::<RequestedFocus>()
         .init_resource::<ime_popup::ImeCandidateWindow>()
         .add_systems(Update, synchronize_fields.after(super::InterfaceReduction))
+        .add_systems(Update, update_compact_numbers.after(synchronize_fields))
         .add_systems(
             PostUpdate,
             apply_requested_focus
@@ -237,7 +378,7 @@ pub(crate) fn install(app: &mut App) {
 }
 
 /// Root binds the returned real widget to its typed form field, exactly as it
-/// binds buttons. The editable value is not rendered by a hidden proxy.
+/// binds buttons. Optional unfocused captions never replace the editable value.
 pub(crate) fn spawn_text_field(
     commands: &mut Commands,
     camera: Entity,

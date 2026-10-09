@@ -529,6 +529,8 @@ impl SolidForm {
     pub(crate) fn feature_notes(&self) -> Vec<String> {
         if let Some(f) = &self.thread {
             f.notes()
+        } else if let Some(paths) = &self.paths {
+            paths.notes()
         } else {
             self.hole_notes()
         }
@@ -568,6 +570,16 @@ impl ThreadFields {
                 radial_clearance: number(F::RadialClearance, &f.rounded[2]),
                 axial_clearance: number(F::AxialClearance, &f.rounded[3]),
             });
+        if rounded_profile
+            .as_ref()
+            .is_some_and(|profile| !profile.radial_depth.is_finite() || profile.radial_depth <= 0.0)
+            && !issues.iter().any(|(field, _)| *field == F::RadialDepth)
+        {
+            issues.push((
+                F::RadialDepth,
+                "Radial depth must be greater than zero".into(),
+            ));
+        }
         let thread = HoleThreadDto {
             standard: f.standard,
             series: f.series,
@@ -669,7 +681,7 @@ impl ThreadFields {
                     pairs(&[
                         ("iso_metric", "ISO metric"),
                         ("unified_inch", "Unified inch"),
-                        ("custom_trapezoidal", "Custom trapezoidal"),
+                        ("custom_trapezoidal", "Trapezoidal"),
                     ]),
                 ),
                 true,
@@ -769,10 +781,7 @@ impl ThreadFields {
                 .into(),
                 choices(
                     key(f.representation),
-                    pairs(&[
-                        ("simplified", "Simplified / cosmetic"),
-                        ("modeled", "Modeled"),
-                    ]),
+                    pairs(&[("simplified", "Cosmetic"), ("modeled", "Modeled")]),
                 ),
                 true,
                 true,

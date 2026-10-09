@@ -61,6 +61,13 @@ pub(super) fn begin(
                             &stage,
                             || guard.validate(),
                         )
+                    } else if dispatch_ticket.operation() == "solid_split_body" {
+                        services.bridge.apply_native_prepared_split_at(
+                            &services.engine,
+                            (dispatch_ticket.owner(), dispatch_ticket.model_revision()),
+                            dispatch_ticket.arguments(),
+                            || guard.validate(),
+                        )
                     } else {
                         services.bridge.apply_native_mutation_at(
                             &services.engine,
@@ -101,6 +108,13 @@ pub(super) fn begin(
             ticket.operation(),
             ticket.arguments(),
             stage,
+            validate_control,
+        )
+    } else if ticket.operation() == "solid_split_body" {
+        bridge.apply_native_prepared_split_at(
+            engine,
+            (ticket.owner(), ticket.model_revision()),
+            ticket.arguments(),
             validate_control,
         )
     } else {

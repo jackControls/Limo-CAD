@@ -2237,14 +2237,18 @@ void Kernel::apply_job(const FfiJob& job) {
 
     const double finished_hole_diameter =
         job.thread_mode == 2 ? job.thread_minor_diameter : job.diameter;
-    BRepPrimAPI_MakeCylinder main_cylinder(axis, finished_hole_diameter * 0.5,
-                                           hole_depth + overlap * 2.0);
+    // Entrance overlap clears the support face; a blind stop must remain
+    // at the requested depth measured from that face. Through cuts retain
+    // their existing overlap at both ends.
+    BRepPrimAPI_MakeCylinder main_cylinder(
+        axis, finished_hole_diameter * 0.5,
+        hole_depth + overlap * (job.through_all ? 2.0 : 1.0));
     TopoDS_Shape cutter = main_cylinder.Shape();
     std::vector<TopoDS_Shape> thread_cutters;
     if (job.hole_style == 1) {
       BRepPrimAPI_MakeCylinder counterbore(
           axis, job.secondary_diameter * 0.5,
-          job.secondary_depth + overlap * 2.0);
+          job.secondary_depth + overlap * (job.through_all ? 2.0 : 1.0));
       BRepAlgoAPI_Fuse fuse(cutter, counterbore.Shape(),
                             Message_ProgressRange());
       if (!fuse.IsDone()) {
@@ -2305,11 +2309,12 @@ void Kernel::apply_job(const FfiJob& job) {
         throw std::runtime_error("drill point angle is invalid");
       }
       const gp_Pnt tip_start = support.Translated(
-          direction.Multiplied(hole_depth - overlap));
+          direction.Multiplied(hole_depth));
       const gp_Ax2 tip_axis(tip_start, gp_Dir(direction));
+      // Meet the cylinder at its exact stop disk. Extending the cone upward
+      // enlarges its radius beyond the bore and cuts an unintended radial lip.
       BRepPrimAPI_MakeCone drill_point(
-          tip_axis, finished_hole_diameter * 0.5, 0.0,
-          tip_depth + overlap);
+          tip_axis, finished_hole_diameter * 0.5, 0.0, tip_depth);
       BRepAlgoAPI_Fuse fuse(cutter, drill_point.Shape(),
                             Message_ProgressRange());
       if (!fuse.IsDone()) {
