@@ -6,7 +6,7 @@ use limo_cad_sketch::{
     BreakRequest, ChamferRequest, CircularPatternRequest, Constraint, EditDimensionRequest,
     EntityDto, EntityId, ExtendRequest, FilletRequest, MirrorRequest, MoveCopyRequest,
     OffsetRequest, OriginPlane, PlaneRef, PolygonRequest, RectangularPatternRequest, ScaleRequest,
-    SketchSession, TrimRequest, Vec2,
+    SessionError, SketchSession, TrimRequest, Vec2,
 };
 
 fn v(x: f64, y: f64) -> Vec2 {
@@ -215,6 +215,7 @@ fn offset_line_sign_rules_and_circle_collapse() {
             v(105.0, 100.0),
         )
         .unwrap();
+    let before_collapse = s.dto();
     let err = s
         .offset_curve_op(&OffsetRequest {
             entity: c.entities[0],
@@ -222,7 +223,11 @@ fn offset_line_sign_rules_and_circle_collapse() {
             cursor: v(100.0, 100.0),
         })
         .unwrap_err();
-    assert!(err.to_string().contains("collap"), "{err}");
+    assert!(matches!(&err, SessionError::InvalidConstraint(_)), "{err}");
+    let message = err.to_string();
+    assert!(message.contains("circle or arc radius"), "{message}");
+    assert!(message.contains("Reduce the distance"), "{message}");
+    assert_eq!(s.dto(), before_collapse);
 }
 
 #[test]
