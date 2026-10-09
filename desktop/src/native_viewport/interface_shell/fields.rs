@@ -205,7 +205,7 @@ fn update_compact_numbers(world: &mut World) {
                 && field.composition.is_none()
                 && !editor.is_composing()
                 && editor.value() == field.baseline.as_str())
-            .then(|| compact_numeric_text(editor.value()))
+            .then(|| compact_numeric_text(field.baseline.as_str()))
             .flatten();
             (entity, caption.0, field.theme, compact)
         })
