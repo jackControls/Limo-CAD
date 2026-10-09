@@ -68,6 +68,52 @@ pub(super) fn reveal_error(world: &mut World) {
     }
 }
 
+/// Choices expand inline inside the clipped body. Reveal their retained
+/// selector and rows before the next layout, without moving the footer.
+pub(super) fn reveal_choices(
+    world: &mut World,
+    owner: &DocumentContext,
+    form_id: u64,
+    field: super::SolidField,
+    count: usize,
+) {
+    let Some(state) = world.get_resource::<PanelWidgets>() else {
+        return;
+    };
+    if state.owner.as_ref() != Some(owner) || state.form_id != form_id {
+        return;
+    }
+    let Some((entity, _)) = state.controls.get(&format!("{field:?}")) else {
+        return;
+    };
+    let Some(Node {
+        top: Val::Px(top), ..
+    }) = world.get::<Node>(*entity)
+    else {
+        return;
+    };
+    let Some(Node {
+        height: Val::Px(height),
+        ..
+    }) = state.body.and_then(|body| world.get::<Node>(body))
+    else {
+        return;
+    };
+    let selector = *top + state.scroll;
+    let options_height = count as f32 * 30.;
+    let bottom = selector + 40. + options_height;
+    // Long lists stay scrollable; reveal the selector and the first rows.
+    let next = if options_height + 60. > *height {
+        (selector - 20.).max(0.)
+    } else if bottom - state.scroll > *height {
+        (bottom - *height).max(0.)
+    } else {
+        state.scroll
+    };
+    let max_scroll = state.max_scroll + options_height;
+    world.resource_mut::<PanelWidgets>().scroll = next.clamp(0., max_scroll);
+}
+
 /// Wheel coordinates are logical window pixels, just like the published
 /// panel. The controller must call this before orbit/zoom or canvas gestures.
 pub(crate) fn scroll_panel(world: &mut World, point: [f32; 2], delta: f32) -> bool {

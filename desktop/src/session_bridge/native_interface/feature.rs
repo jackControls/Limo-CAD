@@ -935,7 +935,10 @@ pub(crate) fn reduce(
                 owner,
                 &FeatureCommand::Control {
                     form_id: *form_id,
-                    action: FeatureControl::Cancel,
+                    action: panel(world)
+                        .filter(|panel| panel.form_id == *form_id)
+                        .and_then(|panel| panel.choice_field)
+                        .map_or(FeatureControl::Cancel, FeatureControl::Field),
                 },
                 &ControlInput::Click,
                 validate_control,
@@ -1439,6 +1442,15 @@ fn reduce_owned(
                         if super::is_activation(input) {
                             editor.choice_field =
                                 (editor.choice_field != Some(*field)).then_some(*field);
+                            if editor.choice_field.is_some() {
+                                panel::reveal_choices(
+                                    world,
+                                    owner,
+                                    *form_id,
+                                    *field,
+                                    options.len(),
+                                );
+                            }
                             return Ok(
                                 json!({"form_id":form_id,"choices_open":editor.choice_field.is_some()}),
                             );
