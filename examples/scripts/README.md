@@ -154,6 +154,11 @@ retains a midpoint on a translated horizontal40mm line. Relation, Cancel,
 retained inspector/history and native persistence passed. Re-edit framing
 hides the right endpoint; camera acceptance remains pending.
 
+[`surface-ui-sketch-collinear-human-ui.limo`](../checkpoints/surface-ui-sketch-collinear-human-ui.limo)
+retains correctly aligned free lines. Wrong-type selection/Cancel, readable
+inspector, relation history and native persistence passed. Endpoint dragging
+failed silently; saved reproduction stays available for the repair queue.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

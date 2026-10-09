@@ -339,6 +339,15 @@ being investigated separately from the relation. `9b70a83f` repository/WASM
 and Linux workspace passed; native Windows937/0/10 and Unix only known thread
 failure. Hosted `aa7d0000` automatic MCP passed; manual MCP stays not-run.
 
+Sketch Collinear passes wrong-type guidance/Cancel, aligned free-line creation,
+readable inspector, exact relation history and whole-model save/reopen. Two
+endpoint drags silently leave geometry unchanged and consume Undo entries.
+`983dbdb9` repairs failed discrete-drag feedback/history only; the Collinear
+solve remains failed and queued. `ea169f81` extends Begin framing to authored
+sketch bounds outside the palette; source acceptance awaits a matched runtime.
+`b0734d79` makes cache-lock test release explicit after intermittent hosted
+reacquire failure; production lock behavior is unchanged.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
