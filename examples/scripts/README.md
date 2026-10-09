@@ -1,5 +1,13 @@
 # Bundled script examples
 
+The separate human UI survey uses saved fixtures under
+[`examples/checkpoints`](../checkpoints), without replaying these plans.
+[`surface-ui-rigid-joint-human-ui.limo`](../checkpoints/surface-ui-rigid-joint-human-ui.limo)
+retains two stock definitions and a rigid face-to-face joint after retained
+editing, Undo/Redo, Cancel and exact UI save/reopen. Its acceptance scope and
+remaining joint modes are recorded in the
+[surface coverage ledger](../../docs/qualification/surface-coverage.json).
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

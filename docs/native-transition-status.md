@@ -9,10 +9,27 @@ into `main`. Passing required checks and an external approval remain merge gates
 
 Manual development resumed with the user's approval on **2026-10-09 UTC**.
 The durable UI-first/MCP-second policy is in `.cursor/rules/surface-qualification.mdc`;
-`docs/qualification/surface-coverage.json` records 356 explicit UI cases and
+`docs/qualification/surface-coverage.json` records 443 explicit UI cases and
 256 registered MCP tools. This is an active breadth survey, not complete
 program qualification. Local test suites, recipe replay and direct model
 mutations remain outside this manual session's scope.
+
+The clean matched `a3cebb9c` pair now qualifies the representative rigid joint:
+missing/same-component rejection, Clear/repick, preview Cancel, same-ID retained
+name/direction editing, Undo/Redo and actual UI save/reopen. The human-built
+`surface-ui-rigid-joint-human-ui.limo` checkpoint preserves the two definitions
+and solved joint. Other joint kinds and dynamic assembly cases remain untested.
+Current `aa0a41db` Windows native CI passed 937 tests with zero failures and ten
+ignored; Ubuntu/macOS retain their sole known strict modeled-thread failure.
+These hosted receipts compile the newest source fixes, which remain undeployed.
+
+`369164c6` retains active native-host, interface-contract and Linux-engine CI
+qualification across new checkpoint pushes. D: exhaustion temporarily truncated
+one uncommitted workflow write; it was restored exactly before any commit.
+Lossless compression of generated Rust caches recovered about 2.8 GB free space.
+CAD documents, recovery and sessions were preserved, and exact model equality
+was checked before UI operation resumed. The bounded local build blocker remains
+open; storage recovery does not qualify a new executable.
 
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
