@@ -29,6 +29,7 @@ struct Lease {
     process_instance: String,
     window_id: String,
     session: String,
+    document: String,
 }
 
 impl Driver {
@@ -76,12 +77,42 @@ impl Driver {
     }
 
     fn observe(&self) -> Result<Value> {
-        self.check_process()?;
-        let lease = active_lease(&self.sessions, self.pid)?;
-        ensure!(
-            lease.process_instance == self.process_instance && lease.window_id == self.window_id,
-            "Owned CAD process or window instance changed"
-        );
+        // Interface readiness can precede the heartbeat's bootstrap-to-document
+        // promotion. Wait for publication; never retry an OS-input operation.
+        let deadline = Instant::now() + Duration::from_secs(45);
+        let lease = loop {
+            self.check_process()?;
+            let lease = active_lease(&self.sessions, self.pid)?;
+            ensure!(
+                lease.process_instance == self.process_instance
+                    && lease.window_id == self.window_id,
+                "Owned CAD process or window instance changed"
+            );
+            let heartbeat = fs::read(self.sessions.join(&lease.session).join("heartbeat.json"))
+                .ok()
+                .and_then(|body| serde_json::from_slice::<Value>(&body).ok());
+            let now = u64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis())?;
+            if heartbeat.as_ref().is_some_and(|value| {
+                value["interface_version"] == 1
+                    && value["session_id"] == lease.session
+                    && value["document_id"] == lease.document
+                    && value["project_session_id"] == lease.document
+                    && value["process_instance_id"] == self.process_instance
+                    && value["window_id"] == self.window_id
+                    && value["updated_ms"]
+                        .as_u64()
+                        .is_some_and(|updated| now.saturating_sub(updated) <= 30_000)
+            }) {
+                break lease;
+            }
+            ensure!(
+                Instant::now() < deadline,
+                "Owned desktop publication did not match the current lease within 45 seconds: session {} document {}; heartbeat {heartbeat:?}",
+                lease.session,
+                lease.document
+            );
+            thread::sleep(Duration::from_millis(100));
+        };
         let observed = self.client.borrow_mut().call(
             "cad_computer_control",
             json!({"action":"observe","session_id":lease.session}),
@@ -91,6 +122,7 @@ impl Driver {
                 && observed["owner"]["pid"] == self.pid
                 && observed["owner"]["process_instance_id"] == self.process_instance
                 && observed["owner"]["window_id"] == self.window_id
+                && observed["owner"]["document_id"] == lease.document
                 && observed["owner"]["session_id"] == lease.session,
             "Computer observation did not qualify the owned CAD window: {observed}"
         );
@@ -663,6 +695,10 @@ fn active_lease(sessions: &Path, pid: u32) -> Result<Lease> {
             session: window["active_session_id"]
                 .as_str()
                 .context("Active session identity")?
+                .to_owned(),
+            document: window["active_document_id"]
+                .as_str()
+                .context("Active document identity")?
                 .to_owned(),
         });
     }
