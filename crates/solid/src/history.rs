@@ -2633,7 +2633,9 @@ fn make_jobs(
                     previous_scene,
                     definition.to_face_basis,
                 )?;
-                if definition.flip {
+                // The selected stop plane already determines a signed direction.
+                // Reflecting it would end at the opposite plane instead.
+                if definition.flip && !matches!(definition.extent, ExtrudeExtent::ToFace { .. }) {
                     (start_offset, end_offset) = (-end_offset, -start_offset);
                 }
                 if (end_offset - start_offset).abs() <= EPS {

@@ -1107,7 +1107,7 @@ impl SolidForm {
                 F::Flip,
                 "Flip direction".into(),
                 Field::Toggle(self.flip),
-                true,
+                !matches!(self.extent, ExtrudeExtent::ToFace { .. }),
             ),
             (
                 F::Targets,

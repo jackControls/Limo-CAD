@@ -662,7 +662,7 @@ fn offsets(
             if denominator.abs() < 1. - 1e-6 {
                 return Err("To Face currently requires a parallel planar face".into());
             }
-            let distance = dot(sub(stop.origin, basis.origin), stop.normal) / denominator * sign;
+            let distance = dot(sub(stop.origin, basis.origin), stop.normal) / denominator;
             if distance.abs() <= 1e-6 {
                 return Err("Stop face has no extrusion distance at the source origin".into());
             }
