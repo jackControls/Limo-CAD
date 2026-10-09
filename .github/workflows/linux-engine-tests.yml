@@ -42,7 +42,8 @@ permissions:
 
 concurrency:
   group: linux-engine-tests-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep an active engine receipt when a newer checkpoint arrives.
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always

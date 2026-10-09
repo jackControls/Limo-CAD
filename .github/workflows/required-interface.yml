@@ -9,7 +9,8 @@ permissions:
 
 concurrency:
   group: required-interface-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep an active contract receipt when a newer checkpoint arrives.
+  cancel-in-progress: false
 
 jobs:
   frontend_regressions:
