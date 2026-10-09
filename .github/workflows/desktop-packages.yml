@@ -128,7 +128,7 @@ jobs:
             throw "Headless MCP changed the desktop URI handler"
           }
 
-      - name: Verify packaged native viewport
+      - name: Verify default packaged desktop stdio
         shell: pwsh
         run: |
           $verifyRoot = Join-Path $env:RUNNER_TEMP "limo-cad-mcp-package-${{ matrix.architecture }}"
@@ -136,20 +136,55 @@ jobs:
           if (@($executable).Count -ne 1) { throw "Expected one extracted packaged executable" }
           cargo xtask verify-package-mcp --server $executable.FullName --server-arg --headless --desktop --out "$env:RUNNER_TEMP\limo-cad-viewport-diagnostics\${{ matrix.architecture }}\desktop-stdio.json"
           if ($LASTEXITCODE -ne 0) { throw "Default desktop stdio verification failed" }
+
+      - name: Qualify control-enabled source host with isolated packaged runtime
+        shell: pwsh
+        env:
+          OCCT_ROOT: ${{ steps.occt.outputs.root }}
+          VCPKG_TARGET_TRIPLET: ${{ matrix.vcpkg_triplet }}
+          LIMO_CAD_BUILD_REVISION: ${{ github.sha }}
+        run: |
+          $verifyRoot = Join-Path $env:RUNNER_TEMP "limo-cad-mcp-package-${{ matrix.architecture }}"
+          $executable = Get-ChildItem -LiteralPath $verifyRoot -Filter 'Limo-CAD.exe' -File -Recurse
+          if (@($executable).Count -ne 1) { throw "Expected one extracted packaged executable" }
+          $packageHash = (Get-FileHash -LiteralPath $executable.FullName -Algorithm SHA256).Hash
+          $archive = Get-ChildItem 'desktop/target/${{ matrix.rust_target }}/release/bundle/portable' -Filter '*.zip' -File
+          if (@($archive).Count -ne 1) { throw "Expected one default portable ZIP" }
+          $archiveHash = (Get-FileHash -LiteralPath $archive.FullName -Algorithm SHA256).Hash
+          # Reuse compilation cache; the archived and extracted default payloads are already frozen.
+          $probeTarget = Join-Path $env:GITHUB_WORKSPACE 'desktop/target'
+          cargo build --locked --release --manifest-path desktop/Cargo.toml --bin limo-cad --features native-computer-control --target "${{ matrix.rust_target }}" --target-dir $probeTarget
+          if ($LASTEXITCODE -ne 0) { throw "Control-enabled source host build failed" }
+          $probeRoot = Join-Path $env:RUNNER_TEMP "limo-cad-control-source-host-${{ matrix.architecture }}"
+          if (Test-Path -LiteralPath $probeRoot) { throw "Source host qualification directory already exists" }
+          Copy-Item -LiteralPath $executable.DirectoryName -Destination $probeRoot -Recurse
+          $probeExecutable = Join-Path $probeRoot 'Limo-CAD.exe'
+          Copy-Item -LiteralPath (Join-Path $probeTarget '${{ matrix.rust_target }}/release/limo-cad.exe') -Destination $probeExecutable -Force
+          $diagnostics = Join-Path $env:RUNNER_TEMP 'limo-cad-viewport-diagnostics/${{ matrix.architecture }}/controlled-source-host'
+          New-Item -ItemType Directory -Path $diagnostics -Force | Out-Null
+          @{scope='control-enabled source host; default artifact OS input is not qualified';revision=$env:LIMO_CAD_BUILD_REVISION;feature='native-computer-control';default_archive_sha256=$archiveHash;default_package_sha256=$packageHash;source_host_sha256=(Get-FileHash -LiteralPath $probeExecutable -Algorithm SHA256).Hash} | ConvertTo-Json |
+            Set-Content -LiteralPath (Join-Path $diagnostics 'host-identity.json')
           & .\scripts\verify-windows-viewport.ps1 `
-            -PackageDirectory $executable.DirectoryName `
-            -DiagnosticsDirectory "$env:RUNNER_TEMP\limo-cad-viewport-diagnostics\${{ matrix.architecture }}"
+            -PackageDirectory $probeRoot `
+            -DiagnosticsDirectory $diagnostics `
+            -ControlledSourceHost
+          if ((Get-FileHash -LiteralPath $executable.FullName -Algorithm SHA256).Hash -cne $packageHash) {
+            throw "Source host qualification changed the default packaged executable"
+          }
+          if ((Get-FileHash -LiteralPath $archive.FullName -Algorithm SHA256).Hash -cne $archiveHash) {
+            throw "Source host qualification changed the default portable ZIP"
+          }
           $uriBase = 'HKEY_CURRENT_USER\Software\Classes\limo-cad'
           $handler = [Microsoft.Win32.Registry]::GetValue("$uriBase\shell\open\command", '', $null)
-          $expected = '"' + $executable.FullName + '" "%1"'
+          $expected = '"' + $probeExecutable + '" "%1"'
           if (-not [string]::Equals($handler, $expected, [StringComparison]::OrdinalIgnoreCase)) {
-            throw "Recipe URI handler does not point to the extracted package: $handler"
+            throw "Recipe URI handler does not point to the controlled source host: $handler"
           }
           if ($null -eq [Microsoft.Win32.Registry]::GetValue($uriBase, 'URL Protocol', $null)) {
             throw "Recipe URI protocol marker is missing"
           }
-          @{scheme='limo-cad';command=$handler;status='registered'} | ConvertTo-Json |
-            Set-Content "$env:RUNNER_TEMP\limo-cad-viewport-diagnostics\${{ matrix.architecture }}\recipe-uri.json"
+          @{scheme='limo-cad';command=$handler;status='registered';scope='control-enabled source host'} | ConvertTo-Json |
+            Set-Content -LiteralPath (Join-Path $diagnostics 'recipe-uri.json')
 
       - name: Upload Windows viewport diagnostics
         if: always()
