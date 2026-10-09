@@ -126,6 +126,12 @@ pub(crate) fn busy(world: &World) -> bool {
         .get_resource::<NativeMutationWorker>()
         .is_some_and(|worker| worker.pending.is_some())
 }
+pub(super) fn pending_operation(world: &World) -> Option<&str> {
+    world
+        .get_resource::<NativeMutationWorker>()
+        .and_then(|worker| worker.pending.as_ref())
+        .map(|pending| pending.operation.as_str())
+}
 pub(crate) fn started(world: &World) -> bool {
     world
         .get_resource::<NativeMutationWorker>()

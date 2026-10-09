@@ -1263,7 +1263,12 @@ fn maintain_busy_window(
         let _ = handle.take_modal_keys()?;
     }
     let mut status_changed = false;
-    if !interface_only {
+    // Retention leaves the active model unchanged and preserves status on success.
+    // Do not replace that status with a modeling caption it will never retire.
+    if !interface_only
+        && (state.close_after_worker
+            || worker::pending_operation(world) != Some("memory-retention"))
+    {
         let message = if state.close_after_worker {
             "Finishing the current modeling operation before closing…"
         } else {
