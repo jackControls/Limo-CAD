@@ -925,6 +925,30 @@ fn synchronize_owned(
             false
         }
     });
+    if panel.kind == super::SolidFormKind::MoveCopy {
+        use super::SolidField as F;
+        for field in [
+            F::TranslationX,
+            F::TranslationY,
+            F::TranslationZ,
+            F::RotationX,
+            F::RotationY,
+            F::RotationZ,
+            F::PivotX,
+            F::PivotY,
+            F::PivotZ,
+            F::FromX,
+            F::FromY,
+            F::FromZ,
+            F::ToX,
+            F::ToY,
+            F::ToZ,
+        ] {
+            if let Some((entity, _)) = state.controls.get(&format!("{field:?}")) {
+                fields::compact_number_caption(world, *entity, theme, &assets);
+            }
+        }
+    }
     state.labels.retain(|key, entity| {
         if live_labels.contains(key) {
             true
