@@ -2,7 +2,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/agent-board",
     "crates/build-info",
     "crates/interface",
     "crates/project-file",

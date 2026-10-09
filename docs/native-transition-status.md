@@ -1485,9 +1485,10 @@ Main PRs #308 and #309 were consolidated into #262 through merge `80e6bc3`,
 preserving their original commits. They are closed as consolidated work; #262
 still requires Jack's approval before main. No main merge was performed.
 
-The [Rust agent board](agent-message-board.md) provides deployment notices through
-NATS JetStream. Publishing a notice does not prove that every agent acknowledged
-it, and the board does not replace the MCP document/session bridge.
+Deployment notices use the separately maintained
+[agent message board](https://github.com/jeffglousher/agent-message-board).
+Publishing a notice does not prove that every agent acknowledged it, and the board
+does not replace the MCP document/session bridge.
 
 ## Release qualification still open
 

@@ -23,9 +23,9 @@ before merging into `main`.
       `org.limocad.desktop`; conflicts preserve both profiles and report an error.
 - [x] Fresh leases and inboxes use `limo-cad-sessions`; installer-managed
       Cursor/Codex entries use `limo-cad` and retire duplicate old CAD entries.
-- [x] The independent Rust agent board uses `limo-cad-agent-board`,
-      `LIMO_CAD_AGENT_*` and `limo_cad_agents`. Its explicit migration copies
-      retained records without deleting either bucket.
+- [x] The agent board migration preserved retained records in both buckets.
+      The [agent message board](https://github.com/jeffglousher/agent-message-board)
+      is maintained separately from Limo CAD.
 - [x] Source package builders emit Limo-named Windows ZIPs, Linux DEB/AppImages
       and macOS bundles. Linux package conflicts retire the previous package.
 - [x] Thunder's installed desktop, MCP, Start menu, project/recipe associations

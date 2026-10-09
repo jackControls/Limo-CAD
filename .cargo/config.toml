@@ -1,3 +1,2 @@
 [alias]
-agent-board = "run --quiet --locked -p limo-cad-agent-board --"
 xtask = "run --quiet --locked -p xtask --"
