@@ -54,8 +54,19 @@ The center-point arc fixture also passes safe zero-radius rejection, partial
 draft cancellation, retained endpoint drag, creation/edit Undo/Redo and exact
 native UI save/reopen. Its toolbar mode identity and stale error feedback fail
 the separate polish check. `dc131d00` fixes the active Center arc toolbar binding;
-the controller's stale sketch-error lifecycle repair is under review. These
-repairs remain undeployed, and the broad survey moves on to fit-point splines.
+`b200a7a1` retires only superseded construction feedback with exact document,
+sketch and message provenance, preserving unrelated runtime errors. These
+repairs remain undeployed.
+
+Fit-point spline creation with the explicit Finish Spline button, partial draft
+Cancel, whole-curve dragging, creation/edit Undo/Redo and exact native save/open
+are retained in a separate checkpoint. The advertised Enter route instead
+reopens DRAW after a canvas pick, so the spline case fails interaction despite
+valid geometry. The committed canvas-focus repair clears retained toolbar focus
+only on a guarded primary viewport press; deployed Enter and text-field rechecks
+remain pending. The completion button also occupies visible constraint/select
+ribbon space. Both issues remain recorded; individual fit-point editing is
+unqualified. The breadth survey proceeds to rectangular sketch tools.
 
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,

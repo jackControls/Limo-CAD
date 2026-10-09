@@ -24,6 +24,12 @@ retains a center-point arc after safe zero-radius rejection, draft cancellation,
 endpoint dragging, Undo/Redo and exact UI save/reopen. Active toolbar feedback
 and stale validation status have separate recorded polish defects.
 
+[`surface-ui-fit-spline-human-ui.limo`](../checkpoints/surface-ui-fit-spline-human-ui.limo)
+retains an open four-point spline created with Finish Spline, then translated,
+cancelled, undone/redone and exactly reopened through the native UI. The
+advertised Enter completion route and completion-button layout have recorded
+interaction/polish failures; individual fit-point editing is not qualified.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
