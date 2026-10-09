@@ -14,6 +14,14 @@ The durable UI-first/MCP-second policy is in `.cursor/rules/surface-qualificatio
 program qualification. Local test suites, recipe replay and direct model
 mutations remain outside this manual session's scope.
 
+The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
+now respects its selected signed stop plane despite retained Flip metadata. Preview,
+same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
+all four saved feature statuses are OK. The separate Common final-status defect
+remains queued. Revolve's four axis modes and signed half/full turns produce
+expected geometry; boolean and persistence checks continue. Duplicate validation
+text and losing the feature draft on browser visibility changes are recorded.
+
 The clean `8fdd5fd7` GUI/MCP pair verified all 70 payload hashes. Settings scrolling
 and translated document units pass the exercised normal-window flows. A full
 71-character Unicode path saved and reopened a model matching the live state;
