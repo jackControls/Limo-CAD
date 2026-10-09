@@ -134,16 +134,70 @@ impl Driver {
         self.check_process()?;
         request["session_id"] = observed["owner"]["session_id"].clone();
         request["observation"] = observed["observation"].clone();
-        let receipt = self
+        let focus = request["action"] == "focus";
+        if focus {
+            self.record_focus_state("focus-before", observed, None);
+        }
+        let result = self
             .client
             .borrow_mut()
-            .call("cad_computer_control", request)?;
+            .call("cad_computer_control", request);
+        let receipt = match result {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                if focus {
+                    self.record_focus_state("focus-failed", observed, Some(&error));
+                }
+                return Err(error);
+            }
+        };
         self.record("computer-control", &receipt)?;
         ensure!(
             matches!(receipt["status"].as_str(), Some("input_sent" | "focused")),
             "OS input did not complete; inspect its receipt and do not retry blindly: {receipt}"
         );
         Ok(receipt)
+    }
+
+    fn record_focus_state(&self, operation: &str, observed: &Value, error: Option<&anyhow::Error>) {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
+        };
+
+        // Observational only: never activate another window or retry input.
+        let hwnd = unsafe { GetForegroundWindow() };
+        let mut pid = 0;
+        let mut title = [0_u16; 256];
+        let (window_thread, title_length) = if hwnd.0.is_null() {
+            (0, 0)
+        } else {
+            unsafe {
+                (
+                    GetWindowThreadProcessId(hwnd, Some(&mut pid)),
+                    GetWindowTextW(hwnd, &mut title),
+                )
+            }
+        };
+        let receipt = json!({
+            "owner":observed["owner"],
+            "observed_foreground":observed["foreground"],
+            "presented":observed["presented"],
+            "minimized":observed["minimized"],
+            "target_kind":observed["target_kind"],
+            "window_handle":observed["window_handle"],
+            "main_window_handle":observed["main_window_handle"],
+            "harness_pid":std::process::id(),
+            "worker_pid":self.client.borrow().process_id(),
+            "foreground_window_handle":hwnd.0 as usize,
+            "foreground_pid":pid,
+            "foreground_thread":window_thread,
+            "foreground_title":String::from_utf16_lossy(&title[..title_length.max(0) as usize]),
+            "error":error.map(|error|format!("{error:#}")),
+        });
+        if let Err(error) = self.record(operation, &receipt) {
+            // A diagnostics failure must not replace the original focus refusal.
+            eprintln!("Could not retain read-only focus diagnostics: {error:#}");
+        }
     }
 
     fn record(&self, operation: &str, receipt: &Value) -> Result<()> {
