@@ -122,8 +122,23 @@ Windows native CI for `230e9dc2` passed 937 tests, zero failures and ten ignored
 including exact thread and both visibility/history contracts. This compiles the
 earlier feedback/focus/layout/variant repairs; live presentation remains pending.
 Ubuntu has only the retained strict thread failure and no poison/new failure;
-macOS is still pending at this receipt. `15f6f407` Linux and repository/WASM checks
-passed, but its own native qualification remains pending.
+macOS subsequently completed 942 passes, the same sole known thread failure and
+ten ignored at 16:04:34 UTC, with no poison/other failures. `15f6f407` Linux and
+repository/WASM checks passed, but its own native qualification remains pending.
+
+Center-point slot completes the three slot modes' functional receipts: symmetric
+center/end creation, safe zero-width rejection, exact draft Cancel, retained width
+edit, creation/edit Undo/Redo and whole-model native save/reopen. The four DOF
+remain free; symmetry is the initial placement rather than a new retained midpoint
+constraint. Shared dimension ink remains its polish defect. Polygons are next.
+
+Multiple distinct saved/reopened scratch documents still display `Untitled` in
+tabs and Browser despite exact archive/live equality. `2411613a` adds a shared
+display-only saved filename fallback for that default name, including accessible
+close captions and confirmation headings. Explicit nondefault names, raw model
+names, Rename, archive/recovery, dirty state and geometry remain unchanged. Root
+and peer reviewed the source; deployed title and dependent presentation checks
+remain pending under the existing bounded build blocker.
 
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,

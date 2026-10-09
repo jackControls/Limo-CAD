@@ -64,6 +64,11 @@ width, retained 12 mm width edit, Cancel, Undo/Redo and exact native reopen.
 Its four DOF remain free. The misleading rejection message is repaired in source;
 deployed message and shared dimension-ink rechecks remain pending.
 
+[`surface-ui-center-point-slot-human-ui.limo`](../checkpoints/surface-ui-center-point-slot-human-ui.limo)
+retains the initially symmetric center/end capsule after zero-width rejection,
+typed 10 mm width, retained 12 mm width edit, Cancel, Undo/Redo and exact native
+reopen. Four DOF remain free; the shared dimension-ink recheck awaits deployment.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
