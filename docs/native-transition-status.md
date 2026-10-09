@@ -66,7 +66,15 @@ valid geometry. The committed canvas-focus repair clears retained toolbar focus
 only on a guarded primary viewport press; deployed Enter and text-field rechecks
 remain pending. The completion button also occupies visible constraint/select
 ribbon space. Both issues remain recorded; individual fit-point editing is
-unqualified. The breadth survey proceeds to rectangular sketch tools.
+unqualified. `0230d0bc` shares a two-slot completion reserve across Spline toolbar,
+header and menu layouts; other modes keep their original allocation. The layout
+repair is committed but undeployed.
+
+The two-point rectangle fixture retains a fully constrained30 by20 profile after
+zero-width rejection, typed width/height/Tab entry, exact draft Cancel, retained
+driving-dimension edit, creation/edit Undo/Redo and exact native UI save/reopen.
+The existing `6f24e148` dimension readability repair gains only these affected
+rectangle cases. Center rectangle remains next in the breadth survey.
 
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,

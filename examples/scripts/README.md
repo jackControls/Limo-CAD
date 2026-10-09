@@ -30,6 +30,11 @@ cancelled, undone/redone and exactly reopened through the native UI. The
 advertised Enter completion route and completion-button layout have recorded
 interaction/polish failures; individual fit-point editing is not qualified.
 
+[`surface-ui-two-point-rectangle-human-ui.limo`](../checkpoints/surface-ui-two-point-rectangle-human-ui.limo)
+retains a fully constrained 30 by 20 mm rectangle after size validation, typed
+width/height entry, retained dimension edit, Cancel, Undo/Redo and exact UI reopen.
+The existing dimension-ink repair also needs a deployed rectangle recheck.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source
