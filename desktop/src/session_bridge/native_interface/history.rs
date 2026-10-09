@@ -86,10 +86,59 @@ fn prepare_history_restore(
         target["views"] = serde_json::to_value(historical).map_err(|e| e.to_string())?;
     }
     if preserve_visibility {
-        target["visibility"] = current
+        let datum_ids = |model: &Value| -> Result<std::collections::BTreeSet<u64>, String> {
+            let Some(planes) = model.get("datum_planes") else {
+                return Ok(Default::default());
+            };
+            planes
+                .as_array()
+                .ok_or("History datum planes must be an array")?
+                .iter()
+                .map(|plane| {
+                    plane["datum_id"]
+                        .as_u64()
+                        .ok_or_else(|| "History datum plane omitted its stable identity".into())
+                })
+                .collect()
+        };
+        let current_ids = datum_ids(&current)?;
+        let target_ids = datum_ids(&target)?;
+        let mut visibility = current
             .get("visibility")
             .ok_or("Current history model omitted project visibility")?
             .clone();
+        let hidden_datums = |visibility: &Value| -> Result<Vec<u64>, String> {
+            let visibility = visibility
+                .as_object()
+                .ok_or("History visibility must be an object")?;
+            serde_json::from_value(
+                visibility
+                    .get("hidden_datum_plane_ids")
+                    .cloned()
+                    .unwrap_or_else(|| json!([])),
+            )
+            .map_err(|e| e.to_string())
+        };
+        let current_hidden = hidden_datums(&visibility)?;
+        let historical_hidden = hidden_datums(
+            &target
+                .get("visibility")
+                .cloned()
+                .unwrap_or_else(|| json!({})),
+        )?;
+        // Surviving planes retain their current eye state. A restored plane
+        // recovers its snapshot state, which removal had scrubbed from current.
+        let hidden: std::collections::BTreeSet<_> = current_hidden
+            .into_iter()
+            .filter(|id| current_ids.contains(id) && target_ids.contains(id))
+            .chain(
+                historical_hidden
+                    .into_iter()
+                    .filter(|id| target_ids.contains(id) && !current_ids.contains(id)),
+            )
+            .collect();
+        visibility["hidden_datum_plane_ids"] = json!(hidden);
+        target["visibility"] = visibility;
     }
     let metadata_only = current == target;
     if target_intent.is_null() {
