@@ -3,7 +3,7 @@ type: Concept
 title: AM supports, bridging, and overhangs
 description: Design-time choices that cut FDM support, tame overhangs, and use bridging — orientation and feature shaping before slicer heroics.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: dfam, am, fdm, print, dfm
 keywords: support strategy, overhang, bridging, bridge length, self-supporting, 45 degree, tree support, support interface, cleanup, FDM overhang angle
 related_recipes: turbine-fit-coupons, fillet-basics
@@ -16,7 +16,7 @@ Support material is a **design cost**: time, surface scars, trapped volumes, and
 failed thin walls after cleanup. Shape the part and pick orientation so the
 slicer needs less help.
 
-**Attribution:** high-level AM habits from DOE Module 3D (public domain) and
+**Attribution:** high-level AM habits from DOE Module 3D (mixed rights; link-only) and
 Guns / NWTC DFM ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).
 Exact overhang angles depend on nozzle, cooling, and material — confirm with
 your profile.

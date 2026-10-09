@@ -3,7 +3,7 @@ type: Concept
 title: AM ribs, gussets, and draft
 description: Stiffen FDM parts with ribs and gussets instead of solid bulk; draft and even sections for AM and molding-style habits.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: dfam, am, fdm, dfm
 keywords: rib, gusset, draft angle, stiffener, even wall, sink, boss support, FDM rib thickness, triangulate, brace
 related_recipes: mounting-plate, angle-bracket, fillet-basics
@@ -17,7 +17,7 @@ slowly, warp, and hide thin remaining walls after later cuts.
 
 **Attribution:** process habits adapted from Guns / NWTC LibreTexts DFM
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)) and DOE Module 3D
-(public domain). Numbers are **starting guidance**, not shop standards.
+(mixed rights; link-only). Numbers are **starting guidance**, not shop standards.
 
 ## Ribs vs gussets
 

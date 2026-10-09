@@ -1,5 +1,28 @@
 # noBS CAD knowledge update log
 
+## 2026-10-07
+
+- Challenged the session audit directly: separated artifact permissions from
+  repository-level evidence, recorded inspected source hashes and the unresolved
+  faer notice, and removed unsupported manual/figure licensing implications.
+- Tightened detent guidance for peak insertion/removal travel, minimum holding
+  force, constant-stiffness assumptions and tensile stress versus layer planes.
+- Added precise benchmark conditions/result links; reconciled copying policy,
+  the DOE link-only classification and stale branch maintenance wording.
+
+## 2026-10-06
+
+- Promoted general simulation verification, installed preload/tolerance,
+  bending-axis, slicer-path and material-revision lessons from the preserved
+  research into searchable Concepts. Numerical and private part evidence
+  remain in their repositories; no geometry was changed.
+- Added primary research/library/material references with artifact-specific
+  reuse decisions. Copying licensed content is permitted with its notices;
+  citations alone do not authorize copying proprietary material.
+- Corrected blanket public-domain labels for the mixed-source DOE deck.
+- See the repository's `docs/analysis/SESSION-KNOWLEDGE-AUDIT.md` for the audit,
+  priority recommendations and remaining rights-verification gaps.
+
 ## 2026-09-21
 
 ### critical: clamshell teeth↔cutouts + heat stake insert

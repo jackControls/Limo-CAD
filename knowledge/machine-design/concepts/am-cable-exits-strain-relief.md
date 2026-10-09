@@ -3,7 +3,7 @@ type: Concept
 title: AM cable exits, wire windows, and strain relief
 description: Design wire windows and cable exits for FDM enclosures so insulation survives assembly, flex, and print — with intentional strain relief.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: enclosures, cables, dfam, am, fdm
 keywords: cable exit, strain relief, grommet, wire window, cord grip
 related_recipes: turbine-fit-coupons, mounting-plate
@@ -18,7 +18,7 @@ an exit face, a minimum aperture for the cable bundle, edge treatment, and a
 
 **Attribution:** DFAM / enclosure hygiene adapted from Guns / NWTC LibreTexts
 DFM ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)) and DOE Module
-3D (public domain). Heuristics only — confirm with cable OD, jacket, and a
+3D (mixed rights; link-only). Heuristics only — confirm with cable OD, jacket, and a
 flex coupon.
 
 ## Name the exit class
