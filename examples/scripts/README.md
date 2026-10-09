@@ -8,6 +8,12 @@ editing, Undo/Redo, Cancel and exact UI save/reopen. Its acceptance scope and
 remaining joint modes are recorded in the
 [surface coverage ledger](../../docs/qualification/surface-coverage.json).
 
+[`surface-ui-line-chain-human-ui.limo`](../checkpoints/surface-ui-line-chain-human-ui.limo)
+retains a fully constrained 25 by 10 mm triangular sketch made through the Line
+tool, including numeric validation, retained dimension edit, Cancel, Undo/Redo
+and exact UI reopen. Its active-tool dimension text has a recorded polish defect;
+the committed color fix still needs deployed qualification.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

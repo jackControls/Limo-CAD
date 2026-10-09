@@ -31,6 +31,16 @@ CAD documents, recovery and sessions were preserved, and exact model equality
 was checked before UI operation resumed. The bounded local build blocker remains
 open; storage recovery does not qualify a new executable.
 
+The same matched `a3cebb9c` runtime qualifies ordinary solid Select, including
+same-occurrence Ctrl/Shift selection, clearing and pointer-only hover with exact
+model preservation. The separate line-chain fixture contains a fully constrained
+25 by 10 mm triangular profile after numeric validation, chained line creation,
+retained dimension editing, creation/edit Undo/Redo, Cancel and exact UI reopen.
+Its functional receipt passes; drawing-tool dimension readability fails.
+`6f24e148` preserves dimension ink while construction disables editing, without
+changing interaction guards. This source fix remains undeployed, and typed angle
+locking is still an unqualified line variant. The survey continues to arcs.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
