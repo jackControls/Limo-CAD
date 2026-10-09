@@ -7,6 +7,26 @@ one shared CAD/CAM command path. The integration is tracked by
 [PR #124](https://github.com/limo-cad/Limo-CAD/pull/124) and has not merged
 into `main`. Passing required checks and an external approval remain merge gates.
 
+Manual development stopped at the user's request on **2026-10-09 UTC**.
+The final code revision is `289aef988d9c33c1805ea2be5f1de187737b9089`;
+the stopping checkpoint is documentation only. Both working checkouts and remote
+integration branches were clean and synchronized before recording this receipt.
+The installed clean runtime's 70 payload hashes were verified, and its fresh
+GUI/MCP pair matched. The pending repeat annulus export dialog was cancelled
+without changing the saved model. No additional UI walkthrough, builds or
+local suites are authorized by this stopping receipt.
+
+Automatic CI on that code was still in progress at the stopping check: 17 jobs
+passed, eight were running and six were skipped, with no reported failures yet.
+This is a point-in-time observation, not final CI success. The last completed
+native-host run rejected the exact thread case; the follow-up fix remains
+pending hosted qualification. Actual human inspection was detailed for selected
+bench, Medix and annulus operations, saved-model equality and export integrity.
+It was not a systematic application-wide usability or polish audit, and the
+full bench/vise/turbine human walkthrough remains unfinished. Retained artifact
+identities and limitations are recorded in
+`docs/qualification/manual-ui-stop-20261009.json`.
+
 October 9 UTC thread investigation: the actual human UI built and saved the
 annular stock (20/10 mm diameters, 20 mm extrusion) and a modeled right-hand
 M20 x 2.5 external thread of length 8 mm at the opposite end. The saved archive
