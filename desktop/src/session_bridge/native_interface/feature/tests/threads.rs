@@ -2,7 +2,10 @@ use super::*;
 
 #[test]
 fn external_threads_reject_wrong_faces_validate_fits_and_edit_original_cylinder_atomically() {
-    let _lock = super::super::super::super::tests::TEST_LOCK.lock().unwrap();
+    super::super::super::super::tests::with_isolated_session_test(external_threads_case);
+}
+
+fn external_threads_case() {
     use SolidField as F;
     for rounded in [false, true] {
         let fixture = Fixture::new();
