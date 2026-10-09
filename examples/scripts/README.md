@@ -46,6 +46,12 @@ retains a fully constrained 24 mm origin-centered circle after zero-diameter
 validation, typed diameter, retained edit, Cancel, Undo/Redo and exact native
 UI reopen. Active construction still exposes the shared dimension-ink defect.
 
+[`surface-ui-two-point-circle-human-ui.limo`](../checkpoints/surface-ui-two-point-circle-human-ui.limo)
+retains a 16 mm circle centered at 10,0 after two-endpoint diameter creation,
+zero validation, retained diameter edit, Cancel, Undo/Redo and exact native reopen.
+Its two positional DOF remain free. Active variant and dimension ink have recorded
+presentation failures covered by committed, undeployed repairs.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

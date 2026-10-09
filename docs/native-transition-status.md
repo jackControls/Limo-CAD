@@ -93,6 +93,13 @@ is correct; the shared dimension-ink defect remains its polish failure. Two-poin
 circle remains next. Linux engine CI for `eb1e96bf` passed all 43 nonempty suite
 summaries with no failed summaries; live presentation is still unqualified.
 
+Two-point circle also passes zero validation, diameter creation, exact draft
+Cancel, retained 20 to 16 mm diameter edit, creation/edit Undo/Redo and exact native
+save/reopen. Its center remains 10,0 with two positional DOF; no fully constrained
+claim is made. This mode actually reproduces both existing dimension-ink and
+active-family toolbar defects, extending observed coverage without opening
+duplicate repairs. Slots are next in the UI breadth survey.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
