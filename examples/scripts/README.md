@@ -111,6 +111,10 @@ retains a manually trimmed line and independent crossing boundary after
 preview/Cancel, validation, endpoint edit, Undo/Redo and native reopen.
 The separate reopened-document modeling footer awaits live requalification.
 
+[`surface-ui-sketch-extend-human-ui.limo`](../checkpoints/surface-ui-sketch-extend-human-ui.limo)
+retains a line extended to its independent vertical boundary, including a
+point-on-line constraint, endpoint edit, Undo/Redo and exact native reopen.
+
 Recipes are bundled construction scripts in the same Scripts feature as your
 own `.limo.jsonc` files. Open **Scripts → Browse examples** in CAD, select an
 example to inspect its source, then choose **Run in new design** in the source

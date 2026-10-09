@@ -245,6 +245,19 @@ Linux/macOS jobs; ARM controlled-source-host input was denied foreground by
 Windows and sent no input. Default shipping artifact OS input remains
 unqualified. No local suites/builds were run for these repairs.
 
+Extend passes a representative finite-line boundary workflow: hover/Cancel and
+empty-pick preservation, stable endpoint extension with retained point-on-line
+constraint, subsequent endpoint drag, exact two-step Undo/Redo and whole-model
+native save/reopen. Three constraints/five DOF remain. Shared background footer
+was visible after saving; it remains separately queued for `3b079dc0` deployed
+acceptance. Break is next.
+
+Corrected `79b0cb00` Linux CI passed: all29 modification tests and the complete
+host-neutral workspace passed; the Offset rejection contract is verified.
+`e3e80ed8` Windows native passed937/0/10; both Unix hosts retain only the known
+strict thread failure and both history contracts pass without poisoning.
+These hosted receipts do not qualify undeployed native UI fixes.
+
 The clean `b71665d7` GUI/MCP pair verifies all 70 payload hashes. Extrude ToFace
 now respects its selected signed stop plane despite retained Flip metadata. Preview,
 same-plane validation, Cancel, Apply, Undo/Redo and actual UI save/reopen pass;
