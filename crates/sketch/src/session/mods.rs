@@ -2025,7 +2025,12 @@ impl SketchSession {
             request.rotation_deg.to_radians(),
             mode,
         )
-        .map_err(|e| SessionError::InvalidConstraint(format!("polygon: {e:?}").to_lowercase()))?;
+        .map_err(|error| match error {
+            polygon::PolyError::NotPositive => SessionError::InvalidConstraint(
+                "Polygon radius must be greater than zero. Enter a positive radius.".into(),
+            ),
+            error => SessionError::InvalidConstraint(format!("polygon: {error:?}").to_lowercase()),
+        })?;
         self.mutate_with_undo(move |s| {
             let mut point_ids = Vec::with_capacity(vertices.len());
             for v in &vertices {
