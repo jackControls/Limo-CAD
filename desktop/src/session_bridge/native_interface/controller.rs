@@ -1619,6 +1619,7 @@ fn request_close(
     named_views::ensure_exportable(world)?;
     print_intent::ensure_clean(world)?;
     let owner = bridge.native_document_context(&state.window_id, engine)?;
+    interface_shell::fields::guard_document_close(world, &owner)?;
     workbench::drawing_editor::guard_document_switch(world, &owner)?;
     let tabs = state
         .workspace

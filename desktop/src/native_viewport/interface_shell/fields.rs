@@ -278,6 +278,39 @@ pub(crate) fn has_uncommitted_edit(world: &World, entity: Entity) -> bool {
     })
 }
 
+/// OS close events can arrive before a field's blur/Enter commit. Inspect only
+/// the exact captured editor owner and binding; closing never submits its text.
+pub(crate) fn guard_document_close(world: &World, owner: &DocumentContext) -> Result<(), String> {
+    let Some(action) = world
+        .get_resource::<EditorSession>()
+        .and_then(|session| session.active.as_ref())
+        .filter(|action| &action.context == owner)
+    else {
+        return Ok(());
+    };
+    let entity = active_entity(action);
+    if world
+        .get::<NativeTextField>(entity)
+        .is_none_or(|field| field.binding != action.control.binding())
+        || world
+            .get::<InterfaceControl>(entity)
+            .is_none_or(|control| control.binding != action.control.binding())
+    {
+        return Ok(());
+    }
+    if has_uncommitted_edit(world, entity)
+        || world
+            .get::<EditableText>(entity)
+            .is_some_and(|editor| editor.pending_paste.is_some())
+    {
+        return Err(
+            "Finish the active text edit or use Undo, Reset or Cancel before closing the window"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 fn apply_requested_focus(world: &mut World) {
     let Some(request) = world.resource_mut::<RequestedFocus>().0.take() else {
         return;

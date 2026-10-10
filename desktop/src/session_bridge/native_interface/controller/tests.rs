@@ -4,6 +4,7 @@ use crate::session_bridge::parse_engine_envelope;
 use std::fs;
 
 mod playback_priority;
+mod window_close;
 
 #[test]
 fn mcp_and_keyboard_history_use_the_same_guarded_native_controls() {
