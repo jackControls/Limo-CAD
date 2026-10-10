@@ -7,6 +7,20 @@ has occurred. The user approved continued UI-first coverage and repair of all
 posted defects, including newly reported defects; passing CI does not close the
 remaining UI/MCP qualification gates.
 
+Additional implementation checkpoint: `26347ace` shares drawing editor snapshots;
+`34ca87bf` protects unapplied drawing drafts across document switches. `720c869c`
+avoids native placement-buffer copies on projection cache hits. `a1a384d4` borrows
+scene/assembly data during motion evaluation instead of cloning whole models;
+`612c6af6` removes unrelated print-document copies during height editing.
+`1b14e643` fixes the fixed-size chunk API lint reported by both hosted MCP jobs.
+Formatting/source review completed; new desktop regressions await hosted CI.
+No repeated local build or passing test sweep was run for this batch.
+
+Equal UI coverage is closed on matched clean `93823f6d`: line lengths, circle
+radii, invalid mixed geometry/cancel, retained deletion, exact Undo/Redo and
+complete native save/reopen equality pass. See `qualification/equal-human-ui-20261010.json`.
+UI coverage now has46 passed cases; MCP coverage remains pending after UI.
+
 Parallel implementation checkpoint: `27ebe7f0` checks face-hosted sketch support
 at its exact history prefix instead of incorrectly requiring the face to survive
 the final Common result. `69238177`, `f3b85652` and `a9d73ca9` share immutable CAM
