@@ -427,7 +427,7 @@ pub(in super::super) fn paint(
                 }
                 information(
                     &mut rows,
-                    &format!("{label} native {key}"),
+                    format!("{label} native {key}"),
                     format!(
                         "{value} · {:?}; read-only metadata, toolpath realization unverified",
                         part.native_effective_sources.get(key)
