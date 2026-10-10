@@ -94,6 +94,7 @@
 #include <OSD_Environment.hxx>
 #include <STEPControl_StepModelType.hxx>
 #include <STEPControl_Reader.hxx>
+#include <Standard_OutOfMemory.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <STEPControl_Writer.hxx>
 #include <ShapeFix_Shape.hxx>
@@ -122,6 +123,8 @@
 #include <gp_Ax1.hxx>
 #include <gp_Ax2.hxx>
 #include <gp_Circ.hxx>
+#include <gp_Cone.hxx>
+#include <gp_Cylinder.hxx>
 #include <gp_Dir.hxx>
 #include <gp_Dir2d.hxx>
 #include <gp_Pln.hxx>
@@ -129,6 +132,7 @@
 #include <gp_Pnt2d.hxx>
 #include <gp_Quaternion.hxx>
 #include <gp_Sphere.hxx>
+#include <gp_Torus.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
 
@@ -9494,8 +9498,7 @@ struct SectionFaces {
 
 static SectionFaces section_faces_only(const TopoDS_Shape& shape,
                                        SectionRegionBudget& budget,
-                                       const char* stage,
-                                       bool boundary_only = false) {
+                                       const char* stage) {
   SectionFaces result;
   budget.take(stage);
   BRep_Builder builder;
@@ -9504,8 +9507,6 @@ static SectionFaces section_faces_only(const TopoDS_Shape& shape,
   TopTools_IndexedMapOfShape faces;
   for (TopExp_Explorer explorer(shape, TopAbs_FACE); explorer.More(); explorer.Next()) {
     budget.take(stage);
-    if (boundary_only && (explorer.Current().Orientation() == TopAbs_INTERNAL ||
-                          explorer.Current().Orientation() == TopAbs_EXTERNAL)) continue;
     if (faces.Contains(explorer.Current())) continue;
     budget.take(stage, 2); // Face map and compound member, before either grows.
     faces.Add(explorer.Current());
@@ -9542,6 +9543,101 @@ static TopoDS_Shape section_region_boolean(const TopoDS_Shape& source,
     throw std::runtime_error(std::string("OCCT section material ") + stage + " failed: " + errors.str());
   }
   return operation.Shape();
+}
+
+static bool section_face_may_have_planar_area(const TopoDS_Face& face) {
+  const auto finite_frame = [](const gp_Ax3& frame) {
+    const auto& origin = frame.Location();
+    if (!std::isfinite(origin.X()) || !std::isfinite(origin.Y()) ||
+        !std::isfinite(origin.Z())) return false;
+    for (const auto& direction : {frame.Direction(), frame.XDirection(), frame.YDirection()}) {
+      if (!std::isfinite(direction.X()) || !std::isfinite(direction.Y()) ||
+          !std::isfinite(direction.Z())) return false;
+    }
+    return true;
+  };
+  // These finite, nondegenerate analytic supports contain no open planar
+  // patch. General/unknown supports (including planar splines) must still
+  // undergo exact Common; sampling or an origin/normal test is not proof.
+  try {
+    const BRepAdaptor_Surface surface(face, true);
+    switch (surface.GetType()) {
+      case GeomAbs_Cylinder: {
+        const auto cylinder = surface.Cylinder();
+        return !(finite_frame(cylinder.Position()) && std::isfinite(cylinder.Radius()) &&
+                 cylinder.Radius() > 0.);
+      }
+      case GeomAbs_Cone: {
+        const auto cone = surface.Cone();
+        const auto angle = std::abs(cone.SemiAngle());
+        return !(finite_frame(cone.Position()) && std::isfinite(cone.RefRadius()) &&
+                 cone.RefRadius() >= 0. && std::isfinite(angle) && angle > 0. && angle < kPi * 0.5);
+      }
+      case GeomAbs_Sphere: {
+        const auto sphere = surface.Sphere();
+        return !(finite_frame(sphere.Position()) && std::isfinite(sphere.Radius()) &&
+                 sphere.Radius() > 0.);
+      }
+      case GeomAbs_Torus: {
+        const auto torus = surface.Torus();
+        return !(finite_frame(torus.Position()) && std::isfinite(torus.MajorRadius()) &&
+                 std::isfinite(torus.MinorRadius()) && torus.MinorRadius() > 0. &&
+                 torus.MajorRadius() > torus.MinorRadius());
+      }
+      default: return true;
+    }
+  } catch (const Standard_OutOfMemory&) {
+    throw;
+  } catch (const Standard_Failure&) {
+    // Eligibility is an optional optimization. If introspection cannot prove
+    // exclusion, retain the exact Boolean path. Native memory exhaustion and
+    // budget failures outside this try block remain fatal.
+    return true;
+  }
+}
+
+static SectionFaces section_boundary_contact(const TopoDS_Shape& solid,
+                                              const TopoDS_Face& tool,
+                                              SectionRegionBudget& budget,
+                                              const Message_ProgressRange& range) {
+  TopTools_IndexedMapOfShape faces, contact_faces;
+  for (TopExp_Explorer explorer(solid, TopAbs_FACE); explorer.More(); explorer.Next()) {
+    budget.take("source boundary face traversal");
+    if (explorer.Current().Orientation() == TopAbs_INTERNAL ||
+        explorer.Current().Orientation() == TopAbs_EXTERNAL ||
+        faces.Contains(explorer.Current())) continue;
+    budget.take("source boundary face storage");
+    faces.Add(explorer.Current());
+  }
+  SectionFaces contact;
+  budget.take("coplanar boundary compound");
+  BRep_Builder builder;
+  builder.MakeCompound(contact.shape);
+  Message_ProgressScope members(range, "Coplanar boundary faces", faces.Extent());
+  for (int index = 1; index <= faces.Extent(); ++index) {
+    const auto face_range = members.Next();
+    const auto face = TopoDS::Face(faces.FindKey(index));
+    const auto complexity = section_shape_complexity(face, budget, "boundary face input");
+    if (!section_face_may_have_planar_area(face)) continue;
+    // Intersection distributes over the boundary-face union. Querying each
+    // face independently avoids unrelated source-face interference work;
+    // every actual Boolean still shares the original comparison allowance.
+    const auto common = section_region_boolean<BRepAlgoAPI_Common>(
+        face, complexity, tool, 9, budget, "coplanar boundary common", face_range);
+    if (common.IsNull()) continue;
+    for (TopExp_Explorer explorer(common, TopAbs_FACE); explorer.More(); explorer.Next()) {
+      budget.take("coplanar boundary result traversal");
+      if (contact_faces.Contains(explorer.Current())) continue;
+      budget.take("coplanar boundary result storage", 2);
+      contact_faces.Add(explorer.Current());
+      builder.Add(contact.shape, explorer.Current());
+      ++contact.count;
+    }
+  }
+  if (contact.count != 0) {
+    contact.complexity = section_shape_complexity(contact.shape, budget, "coplanar boundary faces");
+  }
+  return contact;
 }
 
 static TopoDS_Face bounded_section_face(const TopoDS_Shape& source,
@@ -9615,10 +9711,7 @@ static TopoDS_Shape material_section_boundary(const TopoDS_Shape& source,
         solid, complexity, tool, 9, budget, "plane common", member.Next()),
         budget, "plane common faces");
     if (material.count == 0) continue;
-    const auto boundary = section_faces_only(solid, budget, "source boundary faces", true);
-    const auto contact = section_faces_only(section_region_boolean<BRepAlgoAPI_Common>(
-        boundary.shape, boundary.complexity, tool, 9, budget,
-        "coplanar boundary common", member.Next()), budget, "coplanar boundary faces");
+    const auto contact = section_boundary_contact(solid, tool, budget, member.Next());
     if (contact.count != 0) {
       material = section_faces_only(section_region_boolean<BRepAlgoAPI_Cut>(
           material.shape, material.complexity, contact.shape, contact.complexity,
