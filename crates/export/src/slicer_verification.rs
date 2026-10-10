@@ -748,7 +748,7 @@ fn native_setting_readback(
                 let uuid = part.uuid.as_ref().ok_or("Native volume lacks a stable UUID")?;
                 let (native_values, native_sources) = crate::bambu_project::native_effective_settings(
                     &summary.native_process_settings, &object.settings, &part.settings,
-                );
+                ).map_err(|error| error.to_string())?;
                 let mut values = summary.native_process_settings.iter()
                     .filter(|(key,_)| ["wall_loops","sparse_infill_density","sparse_infill_pattern","top_shell_layers","bottom_shell_layers"].contains(&key.as_str()))
                     .filter_map(|(key,value)| value.as_str().map(|value| (key.clone(),value.to_owned())))

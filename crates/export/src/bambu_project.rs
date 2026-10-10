@@ -1248,7 +1248,7 @@ fn parse_template(bytes: &[u8]) -> Result<Template, ExportError> {
         printer_variant: profile_string(&profile, "printer_variant")?,
         process_settings_id: profile_string(&profile, "print_settings_id")?,
         process_defaults,
-        native_process_settings: native_process_settings(&profile),
+        native_process_settings: native_process_settings(&profile)?,
         process_capability_warnings,
         nozzle_diameter_mm,
         filament_settings_ids,
@@ -1592,25 +1592,50 @@ pub(crate) const NATIVE_PROCESS_KEYS: [&str; 23] = [
     "enable_prime_tower",
 ];
 
-fn native_process_settings(profile: &Value) -> BTreeMap<String, Value> {
-    NATIVE_PROCESS_KEYS
-        .iter()
-        .filter_map(|key| {
-            profile
-                .get(*key)
-                .map(|value| ((*key).into(), value.clone()))
-        })
-        .collect()
+fn validate_native_report_value(key: &str, value: &Value) -> Result<usize, ExportError> {
+    let scalar = |value: &Value| match value {
+        Value::String(value) => value.len() <= 256,
+        Value::Bool(_) | Value::Number(_) | Value::Null => true,
+        _ => false,
+    };
+    let valid = match value {
+        Value::Array(values) => values.len() <= 128 && values.iter().all(scalar),
+        value => scalar(value),
+    };
+    if !valid {
+        return Err(err(format!(
+            "Native read-only setting '{key}' exceeds the bounded scalar/vector report capability"
+        )));
+    }
+    // Serialization is bounded above by the scalar/vector limits before it runs.
+    Ok(serde_json::to_vec(value).map_err(err)?.len() + key.len() + 4)
 }
+
+fn native_process_settings(profile: &Value) -> Result<BTreeMap<String, Value>, ExportError> {
+    let mut values = BTreeMap::new();
+    let mut report_bytes = 0;
+    for key in NATIVE_PROCESS_KEYS {
+        if let Some(value) = profile.get(key) {
+            report_bytes += validate_native_report_value(key, value)?;
+            if report_bytes > 4096 {
+                return fail("Native read-only process settings exceed the 4 KiB report capability; the saved project remains unchanged");
+            }
+            values.insert(key.into(), value.clone());
+        }
+    }
+    Ok(values)
+}
+
+type NativeScopedSettings = (
+    BTreeMap<String, Value>,
+    BTreeMap<String, BambuSettingOrigin>,
+);
 
 pub(crate) fn native_effective_settings(
     process: &BTreeMap<String, Value>,
     object: &BTreeMap<String, String>,
     volume: &BTreeMap<String, String>,
-) -> (
-    BTreeMap<String, Value>,
-    BTreeMap<String, BambuSettingOrigin>,
-) {
+) -> Result<NativeScopedSettings, ExportError> {
     let mut values = process.clone();
     let mut sources = values
         .keys()
@@ -1622,12 +1647,17 @@ pub(crate) fn native_effective_settings(
     ] {
         for key in NATIVE_PROCESS_KEYS {
             if let Some(value) = scope.get(key) {
+                if value.len() > 256 {
+                    return Err(err(format!(
+                        "Native read-only setting '{key}' exceeds the bounded scalar report capability"
+                    )));
+                }
                 values.insert(key.into(), Value::String(value.clone()));
                 sources.insert(key.into(), origin);
             }
         }
     }
-    (values, sources)
+    Ok((values, sources))
 }
 pub(crate) fn settings_map(settings: &PrintSettingsDto) -> BTreeMap<String, String> {
     let mut values = BTreeMap::new();
@@ -1901,6 +1931,7 @@ fn update_config(
         template.profile[&key] = Value::String(value);
     }
     let global = profile_settings(&template.profile);
+    let native_global = native_process_settings(&template.profile)?;
     let config_source = text(&template.entries, CONFIG)?.to_string();
     let config = xml(&config_source)?;
     let mut edits = Vec::new();
@@ -1976,10 +2007,10 @@ fn update_config(
             validate_effective(&effective)?;
             let old = metadata(part)?;
             let (mut native_inherited, mut native_sources) = native_effective_settings(
-                &native_process_settings(&template.profile),
+                &native_global,
                 &object_settings,
                 &old,
-            );
+            )?;
             // A refresh restores reviewed managed baselines before applying CAD
             // overrides. Native read-only fields retain their untouched scopes.
             for (key, value) in &inherited {
@@ -3478,6 +3509,20 @@ pub(crate) mod tests {
         settings["sparse_infill_density"] = json!("NaN%");
         entries.insert(PROFILE.into(), serde_json::to_vec(&settings).unwrap());
         assert!(inspect_bambu_template(&write_archive(&entries).unwrap()).is_err());
+        for oversized in [
+            json!(vec!["0.5"; 129]),
+            json!("0".repeat(257)),
+            json!({"unexpected": "object"}),
+        ] {
+            let mut settings = profile();
+            settings["line_width"] = oversized;
+            entries.insert(PROFILE.into(), serde_json::to_vec(&settings).unwrap());
+            assert!(inspect_bambu_template(&write_archive(&entries).unwrap())
+                .err()
+                .unwrap()
+                .0
+                .contains("bounded scalar/vector report capability"));
+        }
     }
     #[test]
     fn native_read_only_fields_keep_effective_scope_and_survive_mesh_refresh() {
