@@ -890,6 +890,12 @@ fn replace_file(source: &Path, destination: &Path) -> Result<()> {
     create_directory(owner)?;
     if destination.exists() {
         ordinary_file(destination)?;
+        // Loaded SDK DLLs can reject replacement even when the staged payload
+        // is already installed. Compare complete contents before any write;
+        // changed payloads still follow the ordinary replacement path below.
+        if crate::hash::file(source)? == crate::hash::file(destination)? {
+            return Ok(());
+        }
     }
     let mut temporary = tempfile::NamedTempFile::new_in(owner)?;
     std::io::copy(&mut fs::File::open(source)?, &mut temporary)?;
@@ -924,7 +930,7 @@ fn replace_file(source: &Path, destination: &Path) -> Result<()> {
         .map_err(|error| error.error);
     persisted.with_context(|| {
         format!(
-            "Cannot replace {}; close the installed CAD/MCP runtime or use --restart",
+            "Cannot replace {}; check file permissions or close any process using this payload (--restart stops only the canonical CAD/MCP runtime)",
             destination.display()
         )
     })
@@ -979,5 +985,49 @@ fn stop_runtime(executable: &Path, restart: bool) -> Result<()> {
             "Installed runtime did not stop; nothing was promoted"
         );
         std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[cfg(all(test, windows))]
+mod replacement_tests {
+    use super::replace_file;
+    use std::{fs, os::windows::fs::OpenOptionsExt};
+
+    #[test]
+    fn identical_payload_can_remain_installed_under_a_replacement_lock() {
+        let scratch = tempfile::tempdir().expect("scratch directory");
+        let source = scratch.path().join("staged.dll");
+        let destination = scratch.path().join("installed.dll");
+        fs::write(&source, b"same payload").expect("staged payload");
+        fs::write(&destination, b"same payload").expect("installed payload");
+        // FILE_SHARE_READ allows hashing but denies writes and delete/rename.
+        let _lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&destination)
+            .expect("replacement-denying handle");
+
+        replace_file(&source, &destination).expect("identical payload needs no replacement");
+        assert_eq!(fs::read(&destination).unwrap(), b"same payload");
+    }
+
+    #[test]
+    fn changed_same_length_payload_is_rejected_and_preserved_under_a_replacement_lock() {
+        let scratch = tempfile::tempdir().expect("scratch directory");
+        let source = scratch.path().join("staged.dll");
+        let destination = scratch.path().join("installed.dll");
+        fs::write(&source, b"new payload").expect("staged payload");
+        fs::write(&destination, b"old payload").expect("installed payload");
+        let _lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(1)
+            .open(&destination)
+            .expect("replacement-denying handle");
+
+        let error = replace_file(&source, &destination).expect_err("changed payload stays guarded");
+        assert!(error
+            .to_string()
+            .contains("--restart stops only the canonical"));
+        assert_eq!(fs::read(&destination).unwrap(), b"old payload");
     }
 }
