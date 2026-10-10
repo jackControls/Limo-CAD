@@ -3311,6 +3311,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       // Reserve its aggregate work before clearing or allocating any pcurve.
       budget.sample(static_cast<std::size_t>(edge->GetCurve()->ParametersNb()),
                     static_cast<std::size_t>(edge->PCurvesNb()));
+      // The retained endpoints and affected-face tracking also grow here.
+      budget.sample(static_cast<std::size_t>(edge->PCurvesNb()), 2);
       struct Endpoints {
         IMeshData::IPCurveHandle pcurve;
         gp_Pnt2d first;
@@ -3355,14 +3357,18 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     // Collapse only a crossing's contiguous samples inside the shared CAD
     // vertex's tolerance neighborhood. Every adjacent face must still pass.
     const auto repair_junction = [&](const IMeshData::IFaceHandle& face,
-                                    const Handle(IMeshData::MapOfIEdgePtr)& crossings) {
+                                    const Handle(IMeshData::MapOfIEdgePtr)& crossings,
+                                    int face_index) {
       try {
         if (crossings.IsNull() || junction_attempts >= 16 ||
             face->GetSurface()->IsUPeriodic() || face->GetSurface()->IsVPeriodic() ||
             (face->GetStatusMask() & unrelated_errors) != 0 ||
             (face->IsSet(IMeshData_Failure) && intersection_failures.count(face.get()) == 0))
           return false;
+        budget.context = std::string(healed ? "after" : "before") +
+            " standard healing, junction repair, face " + std::to_string(face_index);
         for (int wi = 0; wi < face->WiresNb(); ++wi) {
+          budget.compare();
           const auto& wire = face->GetWire(wi);
           if ((wire->GetStatusMask() & unrelated_errors) != 0 ||
               (wire->IsSet(IMeshData_Failure) && !wire->IsSet(IMeshData_SelfIntersectingWire)))
@@ -3376,10 +3382,13 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         };
         const double deflection = GetParameters().Deflection;
         if (!std::isfinite(deflection) || deflection <= 0.0) return false;
-        std::size_t comparisons = 0;
         for (int wi = 0; wi < face->WiresNb(); ++wi) {
           const auto& wire = face->GetWire(wi);
           for (int ei = 0; ei < wire->EdgesNb(); ++ei) {
+            budget.context = std::string(healed ? "after" : "before") +
+                " standard healing, junction repair, face " + std::to_string(face_index) +
+                ", wire " + std::to_string(wi) + ", edge " + std::to_string(ei);
+            budget.compare();
             const int ni = (ei + 1) % wire->EdgesNb();
             auto a = wire->GetEdge(ei), b = wire->GetEdge(ni);
             if (a == b || !crossings->Contains(a) || !crossings->Contains(b) ||
@@ -3417,9 +3426,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             BRepAdaptor_Curve ac(a->GetEdge()), bc(b->GetEdge());
             BRepAdaptor_Curve af(TopoDS::Edge(a->GetEdge().Oriented(ap->GetOrientation())), face->GetFace());
             BRepAdaptor_Curve bf(TopoDS::Edge(b->GetEdge().Oriented(bp->GetOrientation())), face->GetFace());
+            budget.compare(static_cast<std::size_t>(ap->ParametersNb() - 1),
+                           static_cast<std::size_t>(bp->ParametersNb() - 1));
             for (int ai = 1; ai < ap->ParametersNb(); ++ai) {
               for (int bi = 1; bi < bp->ParametersNb(); ++bi) {
-                if (++comparisons > 16000000) return false;
                 const auto& p = ap->GetPoint(ai - 1); const auto& q = ap->GetPoint(ai);
                 const auto& r = bp->GetPoint(bi - 1); const auto& s = bp->GetPoint(bi);
                 if (!finite_uv(p) || !finite_uv(q) || !finite_uv(r) || !finite_uv(s)) continue;
@@ -3472,6 +3482,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                   const gp_Vec chord(center, retained);
                   const double length_squared = chord.SquareMagnitude();
                   if (!std::isfinite(length_squared)) return false;
+                  if (last >= first)
+                    budget.compare(static_cast<std::size_t>(last - first + 1));
                   for (int index = first; index <= last; ++index) {
                     const auto& point = curve->GetPoint(index);
                     if (!finite_point(point) || !std::isfinite(curve->GetParameter(index))) return false;
@@ -3500,17 +3512,23 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                   std::vector<PCurveState> pcurves;
                 };
                 struct FaceState { IMeshData::IFacePtr face; int status; std::vector<int> wires; };
+                budget.sample(2); // saved EdgeState records
                 std::vector<EdgeState> saved_edges;
                 std::map<IMeshData::IFacePtr, FaceState> saved_faces;
                 for (auto edge : {a, b}) {
                   EdgeState saved{edge, edge->GetStatusMask(), {}, {}, {}};
                   const auto& curve = edge->GetCurve();
+                  // Two snapshot arrays plus a possible native restoration.
+                  budget.sample(static_cast<std::size_t>(curve->ParametersNb()), 3);
                   for (int index = 0; index < curve->ParametersNb(); ++index) {
                     saved.points.push_back(curve->GetPoint(index));
                     saved.parameters.push_back(curve->GetParameter(index));
                   }
+                  budget.sample(static_cast<std::size_t>(edge->PCurvesNb()));
                   for (int pi = 0; pi < edge->PCurvesNb(); ++pi) {
                     const auto& pc = edge->GetPCurve(pi);
+                    // Three snapshot arrays plus a possible native restoration.
+                    budget.sample(static_cast<std::size_t>(pc->ParametersNb()), 4);
                     PCurveState saved_pc{pc, {}, {}, {}};
                     for (int index = 0; index < pc->ParametersNb(); ++index) {
                       saved_pc.points.push_back(pc->GetPoint(index));
@@ -3520,6 +3538,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                     saved.pcurves.push_back(std::move(saved_pc));
                     auto* adjacent = pc->GetFace();
                     if (saved_faces.count(adjacent) == 0) {
+                      budget.sample(); // saved FaceState map entry
+                      budget.sample(static_cast<std::size_t>(adjacent->WiresNb()));
                       FaceState state{adjacent, adjacent->GetStatusMask(), {}};
                       for (int index = 0; index < adjacent->WiresNb(); ++index)
                         state.wires.push_back(adjacent->GetWire(index)->GetStatusMask());
@@ -3528,6 +3548,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                   }
                   saved_edges.push_back(std::move(saved));
                 }
+                // Include the snapshot and its restoration before copying.
+                budget.sample(affected_faces.size(), 2);
                 const auto old_affected_faces = affected_faces;
                 const auto restore_status = [](auto* item, int status) {
                   item->UnsetStatus(static_cast<IMeshData_Status>(item->GetStatusMask()));
@@ -3577,6 +3599,14 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                     if (!after.Perform()) { valid = false; break; }
                   }
                   if (valid) { ++junction_repairs; return true; }
+                } catch (const RefinementBudgetExceeded& error) {
+                  try {
+                    rollback();
+                  } catch (...) {
+                    throw RefinementBudgetExceeded(std::string(error.what()) +
+                        " Junction rollback also failed; meshing was aborted.");
+                  }
+                  throw;
                 } catch (const Standard_Failure&) {
                   rollback();
                   continue;
@@ -3590,6 +3620,8 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
           }
         }
         return false;
+      } catch (const RefinementBudgetExceeded&) {
+        throw;
       } catch (const Standard_Failure&) {
         return false;
       } catch (const std::exception&) {
@@ -3609,7 +3641,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
               !face->IsSet(IMeshData_SelfIntersectingWire)) continue;
           BRepMesh_FaceChecker checker(face, GetParameters());
           bool valid = checker.Perform();
-          if (!valid && repair_junction(face, checker.GetIntersectingEdges()))
+          if (!valid && repair_junction(face, checker.GetIntersectingEdges(), fi))
             valid = checker.Perform();
           if (!valid) {
             if (!face->IsSet(IMeshData_Failure) &&

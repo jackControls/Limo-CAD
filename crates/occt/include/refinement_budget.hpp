@@ -5,6 +5,12 @@
 #include <string>
 
 namespace limo_cad_occt {
+// Resource exhaustion is fatal for this meshing operation. Geometry recovery
+// may catch ordinary runtime errors, but must not swallow this diagnostic.
+struct RefinementBudgetExceeded final : std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
+
 // One instance belongs to an entire HealModel operation, including both
 // circular repair calls. Charge work before loops and storage before growth.
 struct RefinementBudget {
@@ -14,7 +20,7 @@ struct RefinementBudget {
   std::string context;
 
   [[noreturn]] void exhausted(const char* resource) const {
-    throw std::runtime_error(std::string("OCCT circular-boundary refinement exhausted ") +
+    throw RefinementBudgetExceeded(std::string("OCCT circular-boundary refinement exhausted ") +
         resource + " budget (" + context +
         "). Simplify or split the source boundary before retrying.");
   }
