@@ -353,6 +353,7 @@ fn route_window_input(world: &mut World) {
                 .filter(|event| Some(event.window_id) == window_id)
                 .map(|event| event.event.clone())
                 .collect::<Vec<_>>();
+            handle.record_raw_file_shortcuts(&raw);
             ordered_modifiers = ordered_modifier_snapshots(&mut state.raw_modifiers, window, raw);
         }
         let events: Vec<_> = state

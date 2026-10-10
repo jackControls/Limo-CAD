@@ -402,6 +402,24 @@ impl NativeInterfaceHandle {
         }
     }
 
+    /// The host already filtered this raw batch to the primary Winit window.
+    /// Keep its trace distinct from converted ingress and use only the laid-out
+    /// owner, never the pending desired document. Disabled tracing changes no input.
+    pub(crate) fn record_raw_file_shortcuts(&self, events: &[winit::event::WindowEvent]) {
+        if let Ok(mut shared) = self.shared.lock() {
+            let Shared {
+                shortcut_diagnostics,
+                presented_frame,
+                ..
+            } = &mut *shared;
+            if let (Some(trace), Some(frame)) = (shortcut_diagnostics, presented_frame) {
+                for event in events {
+                    trace.record_raw(event, &frame.context);
+                }
+            }
+        }
+    }
+
     pub fn inspect(&self) -> Result<serde_json::Value, String> {
         let mut shared = self
             .shared
