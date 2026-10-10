@@ -17,6 +17,15 @@ struct Panel {
     max_scroll: f32,
     form_area: Option<InterfaceRect>,
 }
+
+pub(super) fn retry_dimension_focus(world: &mut World) {
+    if let Some(mut panel) = world.get_resource_mut::<Panel>() {
+        // Modeling's busy frame disables controls and retires field focus.
+        // Let the next enabled presentation focus the surviving editor again.
+        panel.dimension_focused = false;
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct RibbonGroup {
     pub key: &'static str,

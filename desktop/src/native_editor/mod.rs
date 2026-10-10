@@ -590,6 +590,11 @@ fn queue_mutation(
                         editor.error = error.clone();
                         editor.creation_error = matches!(kind, Completion::Primitive)
                             .then(|| error.clone());
+                        if editor.stamp.as_ref() == Some(&expected)
+                            && matches!(operation, "sketch_add_dimension" | "sketch_edit_dimension")
+                        {
+                            panel::retry_dimension_focus(world);
+                        }
                         return Err(error);
                     }
                 };
