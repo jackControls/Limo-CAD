@@ -8,6 +8,10 @@ contracts, and the document caches they feed. It is not a census of every clone
 in the repository, a benchmark, or live UI qualification. Test fixtures and
 JSON-schema construction are excluded from production copy counts.
 
+The narrow active-sketch browser-name follow-up below is based on
+`96b642b9fb481daa77351e7eedccd917ee112fc1`; its source review is separate from
+runtime or performance qualification.
+
 ## Copy inventory
 
 Each entry records the consumer, owned data and scale, owner/lifetime,
@@ -186,7 +190,10 @@ The covered native entrypoint groups and their lifetime dispositions are:
   retained geometry. A mechanism drag validates `can_drag_occurrence` from a
   decoded assembly under the receipt fence, then owns scalar pose/camera state.
   That predicate is another projection candidate; do not hold a host guard
-  across the drag. Browser sketch-name lookup is a further scalar-only read.
+  across the drag. Browser sketch-name lookup now borrows the manager's active
+  session name under the existing engine guard and owns only that optional
+  string. It no longer serializes/parses a complete SketchDto for the name;
+  browser receipt/revision refresh and retained document lifetimes are unchanged.
 
 - **Browser/history/feature ingress**: `native/feature.rs`,
   `native/feature/editing.rs`, `native/controller.rs`, `controller/browser.rs`,

@@ -562,7 +562,7 @@ pub(crate) fn synchronize(
                     }
                 }
             }
-            let active = crate::native_editor::active(&services.engine)?.map(|s| s.name);
+            let active = services.engine.active_sketch_name();
             if state.active_sketch != active {
                 if active.is_some() {
                     for folder in &doc.browser {

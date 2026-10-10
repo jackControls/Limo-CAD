@@ -417,6 +417,16 @@ impl NativeEngineHost {
             .to_owned()
     }
 
+    /// Browser refresh needs an owned name, not a serialized sketch snapshot.
+    pub fn active_sketch_name(&self) -> Option<String> {
+        let inner = self.inner.lock().expect("engine lock poisoned");
+        inner
+            .active()
+            .manager
+            .active_sketch_name()
+            .map(str::to_owned)
+    }
+
     pub fn document_units(&self) -> limo_cad_core::UnitSystem {
         self.inner
             .lock()

@@ -718,6 +718,11 @@ impl SketchManager {
         self.active.as_ref().map(SketchSession::dto)
     }
 
+    /// Borrow only the active sketch's name, without constructing its DTO.
+    pub fn active_sketch_name(&self) -> Option<&str> {
+        self.active.as_ref().map(SketchSession::name)
+    }
+
     pub fn has_active_sketch(&self) -> bool {
         self.active.is_some()
     }
