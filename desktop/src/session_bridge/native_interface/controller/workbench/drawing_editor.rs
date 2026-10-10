@@ -29,13 +29,25 @@ pub(crate) enum Command {
 struct Editor {
     owner: Option<DocumentContext>,
     revision: u64,
-    document: DrawingDocumentDto,
+    document: Arc<DrawingDocumentDto>,
     draft: Option<Draft>,
     pending_selection: Option<Selection>,
     page: usize,
     message: String,
     widgets: Widgets,
 }
+pub(super) fn retire_document(world: &mut World, owner: &DocumentContext, closed: bool) {
+    let retire = world.get_resource::<Editor>().is_some_and(|editor| {
+        super::same_document(editor.owner.as_ref(), owner)
+            && (closed || !editor.draft.as_ref().is_some_and(Draft::dirty))
+    });
+    if retire {
+        let mut editor = world.remove_resource::<Editor>().unwrap();
+        editor.widgets.begin();
+        editor.widgets.finish(world);
+    }
+}
+
 fn options(rows: Vec<(u64, String)>) -> Vec<ChoiceOption> {
     rows.into_iter()
         .map(|(id, label)| ChoiceOption {
@@ -392,14 +404,27 @@ pub(super) fn synchronize(
     camera: Entity,
     services: &NativeServices,
     owner: &DocumentContext,
-    height: f32,
-    side: f32,
+    (height, side): (f32, f32),
     active: bool,
+    state: &Workbench,
 ) -> Result<(), String> {
     let mut editor = world.remove_resource::<Editor>().unwrap_or_default();
     editor.widgets.begin();
     let result = (|| {
         if !active {
+            if editor
+                .owner
+                .as_ref()
+                .is_some_and(|previous| previous != owner)
+            {
+                // A hidden editor must not retain a retired incarnation or
+                // block edits in the replacement document with its old draft.
+                editor.owner = None;
+                editor.document = Arc::default();
+                editor.draft = None;
+                editor.pending_selection = None;
+                editor.message.clear();
+            }
             return Ok(());
         }
         let receipt = services
@@ -418,7 +443,12 @@ pub(super) fn synchronize(
                         .or_else(|| editor.draft.as_ref().map(|d| d.selection))
                 })
                 .flatten();
-            editor.document = services.engine.drawing_snapshot();
+            editor.document = state
+                .paper_document
+                .as_ref()
+                .filter(|(previous, _)| previous == &receipt)
+                .map(|(_, document)| Arc::clone(document))
+                .unwrap_or_else(|| Arc::new(services.engine.drawing_snapshot()));
             editor.owner = Some(owner.clone());
             editor.revision = receipt.revision;
             let selected = selected

@@ -272,7 +272,16 @@ fn drawing_editor_panel_exposes_all_sheets_and_preserves_dirty_draft_until_histo
     });
     let camera = world.spawn(InterfaceCamera).id();
     for height in [600., 860.] {
-        synchronize(world, camera, &services, &f.owner(), height, 248., true).unwrap();
+        synchronize(
+            world,
+            camera,
+            &services,
+            &f.owner(),
+            (height, 248.),
+            true,
+            &Workbench::default(),
+        )
+        .unwrap();
         let sheet = world
             .query::<&InterfaceControl>()
             .iter(world)
@@ -307,7 +316,16 @@ fn drawing_editor_panel_exposes_all_sheets_and_preserves_dirty_draft_until_histo
         let mut editor = world.resource_mut::<Editor>();
         edit(editor.draft.as_mut().unwrap(), "/name", "Unapplied text");
     }
-    synchronize(world, camera, &services, &f.owner(), 860., 248., true).unwrap();
+    synchronize(
+        world,
+        camera,
+        &services,
+        &f.owner(),
+        (860., 248.),
+        true,
+        &Workbench::default(),
+    )
+    .unwrap();
     assert!(world.resource::<Editor>().draft.as_ref().unwrap().dirty());
     for operation in [
         "drawing_create_sheet",
@@ -326,11 +344,96 @@ fn drawing_editor_panel_exposes_all_sheets_and_preserves_dirty_draft_until_histo
     f.bridge
         .apply_native_history(&f.engine, &f.owner(), false, || Ok(()))
         .unwrap();
-    synchronize(world, camera, &services, &f.owner(), 860., 248., true).unwrap();
+    synchronize(
+        world,
+        camera,
+        &services,
+        &f.owner(),
+        (860., 248.),
+        true,
+        &Workbench::default(),
+    )
+    .unwrap();
     assert!(world.resource::<Editor>().draft.is_none());
     f.bridge
         .apply_native_history(&f.engine, &f.owner(), true, || Ok(()))
         .unwrap();
-    synchronize(world, camera, &services, &f.owner(), 860., 248., true).unwrap();
+    synchronize(
+        world,
+        camera,
+        &services,
+        &f.owner(),
+        (860., 248.),
+        true,
+        &Workbench::default(),
+    )
+    .unwrap();
     assert!(!world.resource::<Editor>().draft.as_ref().unwrap().dirty());
+}
+
+#[test]
+fn sheet_editor_shares_paper_and_retires_hidden_replaced_document() {
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let f = Fixture::new();
+    seed(&f);
+    let owner = f.owner();
+    let services = NativeServices {
+        engine: f.engine.clone(),
+        bridge: f.bridge.clone(),
+    };
+    let receipt = f.bridge.native_document_receipt(&f.engine, &owner).unwrap();
+    let document = Arc::new(f.engine.drawing_snapshot());
+    let retired = Arc::downgrade(&document);
+    let mut state = Workbench {
+        paper_document: Some((receipt, document)),
+        ..default()
+    };
+    let mut app = native_viewport::interface_scene_fixture();
+    let world = app.world_mut();
+    let camera = world.spawn(InterfaceCamera).id();
+    synchronize(world, camera, &services, &owner, (860., 248.), true, &state).unwrap();
+    assert!(Arc::ptr_eq(
+        &world.resource::<Editor>().document,
+        &state.paper_document.as_ref().unwrap().1
+    ));
+    edit(
+        world.resource_mut::<Editor>().draft.as_mut().unwrap(),
+        "/name",
+        "Unapplied sheet name",
+    );
+    synchronize(
+        world,
+        camera,
+        &services,
+        &owner,
+        (860., 248.),
+        false,
+        &state,
+    )
+    .unwrap();
+    assert!(guard_sheet_edit(world).is_err());
+    let mut foreign = owner.clone();
+    foreign.window_id.push_str("-other");
+    retire_document(world, &foreign, true);
+    assert!(guard_sheet_edit(world).is_err());
+    retire_document(world, &owner, false);
+    assert!(
+        guard_sheet_edit(world).is_err(),
+        "Pressure must preserve the unapplied draft"
+    );
+    state.paper_document = None;
+    let mut replacement = owner;
+    replacement.epoch += 1;
+    synchronize(
+        world,
+        camera,
+        &services,
+        &replacement,
+        (860., 248.),
+        false,
+        &state,
+    )
+    .unwrap();
+    assert!(retired.upgrade().is_none());
+    assert!(guard_sheet_edit(world).is_ok());
 }

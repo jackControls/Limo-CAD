@@ -144,11 +144,13 @@ pub(super) fn cancel_navigation(world: &mut World) {
 
 pub(super) fn evict_document_geometry(world: &mut World, owner: &DocumentContext) {
     cam::retire_document(world, owner, false);
+    drawing_editor::retire_document(world, owner, false);
     drawing_paper::evict_document_geometry(world, owner);
 }
 
 pub(super) fn retire_document(world: &mut World, owner: &DocumentContext) {
     cam::retire_document(world, owner, true);
+    drawing_editor::retire_document(world, owner, true);
     let Some(mut state) = world.get_resource_mut::<Workbench>() else {
         return;
     };
@@ -442,9 +444,9 @@ pub(super) fn synchronize(
             camera,
             services,
             owner,
-            height,
-            side,
+            (height, side),
             state.workspace == Workspace::Drawing && !sketch,
+            &state,
         )?;
         cam::synchronize_library(
             world,
