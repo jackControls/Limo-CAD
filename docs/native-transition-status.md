@@ -11,8 +11,12 @@ The user handed over shared runtime ownership on 2026-10-10. Prior documents
 were saved/closed or owners confirmed no unsaved work; the older GUI PID 36700 was
 preserved and closed before deployment. Saved files, recovery/session data and
 the other branch's models remain preserved. Root is the sole guarded Rust GUI
-operator. The ready notice `f7a165a5-2b00-4291-b180-0e9e9813ef99` supersedes the
-previous ownership hold. NATS retained notice reads now succeed again.
+operator. Continued hold `c666491d-03f9-491c-9ae8-f151be102eb4` supersedes the
+earlier ready notice while this repair batch is rebuilt. The two later Vita
+BD/BE windows were saved and normally closed through guarded File actions;
+their before/after archives have verified preservation-copy hashes. No
+canonical GUI remained at that inventory checkpoint. NATS retained notice
+reads succeed; the hold does not claim that every recipient has read it.
 
 Clean **9cfa76a7 is installed with all 70 payload hashes verified**; executable
 SHA256 is `cc2127e2867841bed41bb28e58580bd329e9abb17150e30c1bc95e991df83ca8`.
@@ -37,11 +41,27 @@ publication was skipped normally. The ledger records all workflow URLs and
 retained logs. Both core shards passed all 118 native tests and 262 core MCP tests.
 These results qualify f19 and their automated scopes, separately from human UI
 and the still-unstarted manual MCP phase. No passing local suite was rerun for
-this reconciliation. These are historical f19 results. Current 9cfa workflows
-are still in progress; its CodeQL aggregate failure is under investigation.
-Fourteen focused repair regression passes are retained/newly executed across
-the batches; `repair-batch-9cfa-tests.json` records the six affected final
-regressions. The new shortcut-observability tests have not run.
+this reconciliation. These are historical f19 results. All 11 current 9cfa
+workflow runs also completed successfully, including all six MCP lanes and
+native hosts/packages. Its separate CodeQL security aggregate remains red for
+high alert189; green workflow jobs do not make that aggregate green. The exact
+SARIF identifies wholesale result-summary assertion logging. No actual session
+data leak was demonstrated. `c547037d` removes that output while preserving
+every assertion and native geometry diagnostic; `24dbb309` pins the same Rust
+action to its verified immutable SHA for medium alert188. Their hosted analysis
+is pending the next coherent push; no alert was dismissed or query weakened.
+
+Fourteen earlier focused repair passes remain retained; none was rerun. At
+clean source `278025a5`, one Windows release compile and five newly affected
+cases passed: four bounded/private shortcut-ingress diagnostics cases and one
+real native Drawing field lifecycle case. The latter verifies local text
+Undo/Redo, first-click SetValue-before-Apply ordering, exact drawing content and
+one guarded revision increment. `278025a5` enables Apply for pending native
+text through the existing shared edit predicate, retaining read-only and
+owner/revision fences. Live first-click acceptance and the original missing
+shortcut cause remain pending. Receipts are
+`repair-batch-9cfa-tests.json`, `apply-shortcut-278025a5-tests.json` and
+`ci-9cfa-latest-status.json` in the outside evidence directory.
 
 For #348, native hole candidates retain body/face provenance and ambiguous
 reasons without increasing authored bore counts. Blind/recess depth requires
