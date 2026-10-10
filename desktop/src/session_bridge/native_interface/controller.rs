@@ -2545,7 +2545,9 @@ fn synchronize(
         && feature::panel(world).is_none()
         && !assembly::joint::active(world)
         && !named_views::active(world)
-        && !print_intent::active(world);
+        && !print_intent::active(world)
+        && section_review::modal(world).is_none()
+        && !section_review::in_3d(world);
     body_appearance::synchronize(
         world,
         camera,

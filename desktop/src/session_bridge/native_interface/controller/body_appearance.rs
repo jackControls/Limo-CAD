@@ -33,6 +33,7 @@ struct Key {
 #[derive(Resource, Default)]
 struct State {
     key: Option<Key>,
+    visible: bool,
     generation: u64,
     name: String,
     draft: Option<Draft>,
@@ -168,7 +169,7 @@ pub(crate) fn reduce(
     let mut state = world
         .get_resource_mut::<State>()
         .ok_or("Select a body to edit its appearance")?;
-    if state.key.as_ref() != Some(&key) || state.generation != generation {
+    if !state.visible || state.key.as_ref() != Some(&key) || state.generation != generation {
         return Err("The body changed before the appearance edit was applied".into());
     }
     state.refresh_preference(true);
@@ -310,11 +311,26 @@ pub(super) fn synchronize(
     height: f32,
     active: bool,
 ) -> Result<(), String> {
-    let body = active.then(|| selected(world)).flatten();
+    let body = selected(world);
     let mut state = world.remove_resource::<State>().unwrap_or_default();
+    let same_selection = state
+        .key
+        .as_ref()
+        .is_some_and(|key| key.owner == *owner && Some(key.body) == body);
+    if !state.visible && !same_selection {
+        state.key = None;
+        state.draft = None;
+        state.errors.clear();
+    }
+    state.visible = false;
     state.widgets.begin();
     let result = (|| {
-        let Some(body) = body else {
+        // Temporarily hidden inspectors retain their draft only while the exact
+        // document owner and body selection still match. Widgets retire below.
+        if !active && same_selection {
+            return Ok(());
+        }
+        let Some(body) = body.filter(|_| active) else {
             state.key = None;
             state.draft = None;
             state.errors.clear();
@@ -377,7 +393,9 @@ pub(super) fn synchronize(
             }
             state.key = Some(key);
         }
-        panel::paint(world, camera, &mut state, width, height)
+        panel::paint(world, camera, &mut state, width, height)?;
+        state.visible = true;
+        Ok(())
     })();
     state.widgets.finish(world);
     world.insert_resource(state);
@@ -405,6 +423,9 @@ fn slicer_choices() -> Vec<ChoiceOption> {
 
 pub(crate) fn caption(world: &World) -> Option<String> {
     let state = world.get_resource::<State>()?;
+    if !state.visible {
+        return None;
+    }
     state.key.as_ref()?;
     let mut text = format!(
         "Body appearance: {}. 3MF target: {}.",
