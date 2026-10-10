@@ -913,9 +913,9 @@ fn request_intent(
     receipt: DocumentReceipt,
     intent: Intent,
 ) -> Result<Value, String> {
-    if matches!(intent, Intent::Open(_)) {
-        workbench::drawing_editor::guard_document_switch(world, &receipt.owner)?;
-    }
+    // Unapplied drawing fields are not part of the model's dirty state. Check
+    // before deciding a clean tab can close without a confirmation dialog.
+    workbench::drawing_editor::guard_document_switch(world, &receipt.owner)?;
     if services
         .bridge
         .native_document_receipt(&services.engine, &receipt.owner)?
@@ -985,6 +985,7 @@ fn save_all_and_exit(
     services: &NativeServices,
     receipt: &DocumentReceipt,
 ) -> Result<Value, String> {
+    workbench::drawing_editor::guard_document_switch(world, &receipt.owner)?;
     let all_tabs = tabs(world, services, &receipt.owner)?;
     let next = all_tabs
         .iter()

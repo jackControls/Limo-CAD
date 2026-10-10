@@ -453,3 +453,68 @@ fn sheet_editor_shares_paper_and_retires_hidden_replaced_document() {
     assert!(retired.upgrade().is_none());
     assert!(guard_sheet_edit(world).is_ok());
 }
+
+#[test]
+fn unapplied_drawing_draft_blocks_tab_and_window_close_without_losing_text() {
+    use crate::session_bridge::native_interface::{controller, workspace::DocumentWorkspace};
+    use std::sync::{atomic::AtomicBool, Mutex};
+
+    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    let f = Fixture::new();
+    seed(&f);
+    let owner = f.owner();
+    let services = NativeServices {
+        engine: f.engine.clone(),
+        bridge: f.bridge.clone(),
+    };
+    let mut app = native_viewport::interface_scene_fixture();
+    let world = app.world_mut();
+    let workspace = Arc::new(Mutex::new(DocumentWorkspace::default()));
+    controller::files::initialize(world, Arc::clone(&workspace));
+    let camera = world.spawn(InterfaceCamera).id();
+    synchronize(
+        world,
+        camera,
+        &services,
+        &owner,
+        (860., 248.),
+        true,
+        &Workbench::default(),
+    )
+    .unwrap();
+    edit(
+        world.resource_mut::<Editor>().draft.as_mut().unwrap(),
+        "/name",
+        "Unapplied close test",
+    );
+    let before = export(&f);
+    let handle = NativeInterfaceHandle::new(|| {});
+    let error = controller::files::request(
+        world,
+        &handle,
+        &services,
+        &owner,
+        &json!({"command":"close"}),
+    )
+    .unwrap_err();
+    assert!(error.contains("Apply or reset the drawing edit"), "{error}");
+    assert!(!controller::files::awaiting(world));
+
+    let mut state =
+        controller::Controller::new("main".into(), None, Arc::new(AtomicBool::new(false)));
+    state.workspace = workspace;
+    let error = controller::request_close(world, &mut state, &f.bridge, &f.engine).unwrap_err();
+    assert!(error.contains("Apply or reset the drawing edit"), "{error}");
+    assert!(!state.close_pending && !state.exit_after_receipt);
+    assert_eq!(export(&f), before);
+    assert_eq!(f.owner(), owner);
+    assert!(world.resource::<Editor>().draft.as_ref().unwrap().dirty());
+
+    // Reset remains the explicit way to discard an unapplied editor draft.
+    let editor = world.resource_mut::<Editor>().into_inner();
+    let selection = editor.draft.as_ref().unwrap().selection;
+    editor.draft = Some(Draft::new(&editor.document, selection).unwrap());
+    assert!(guard_document_switch(world, &owner).is_ok());
+    controller::request_close(world, &mut state, &f.bridge, &f.engine).unwrap();
+    assert!(state.close_pending || state.exit_after_receipt);
+}
