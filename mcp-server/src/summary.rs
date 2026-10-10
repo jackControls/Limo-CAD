@@ -488,9 +488,9 @@ fn counterbore_extent(body: &BodyDto, ids: &[u64]) -> Option<CounterboreExtent> 
             .total_cmp(&b.cylinder.as_ref().unwrap().radius)
     });
     let [small, large] = [walls[0], walls[1]];
-    // Restrict extent inference to unsplit, two-ring walls. Trimmed walls and
-    // additional boundary topology remain recognized with unknown dimensions.
-    if small.edge_keys.len() != 2 || large.edge_keys.len() != 2 {
+    // An unsplit wall has two rings and optionally one native-proven linear
+    // seam. Other boundary topology retains unknown dimensions.
+    if !(2..=3).contains(&small.edge_keys.len()) || !(2..=3).contains(&large.edge_keys.len()) {
         return None;
     }
     let shoulder = body.faces.iter().find(|f| {
@@ -507,12 +507,18 @@ fn counterbore_extent(body: &BodyDto, ids: &[u64]) -> Option<CounterboreExtent> 
     let ends = |wall: &FaceDto| -> Option<([f64; 3], [f64; 3])> {
         let mut joint = None;
         let mut outer = None;
+        let mut seam = None;
         let cylinder = wall.cylinder.as_ref()?;
         let axis = normalize([cylinder.axis.x, cylinder.axis.y, cylinder.axis.z]);
         let origin = [cylinder.origin.x, cylinder.origin.y, cylinder.origin.z];
         for key in &wall.edge_keys {
             let edge = body.edges.iter().find(|edge| &edge.key == key)?;
-            let circle = edge.circle.as_ref()?;
+            let Some(circle) = edge.circle.as_ref() else {
+                if seam.replace(edge).is_some() {
+                    return None;
+                }
+                continue;
+            };
             let center = [circle.center.x, circle.center.y, circle.center.z];
             let delta = sub(center, origin);
             if !(circle.closed
@@ -529,12 +535,24 @@ fn counterbore_extent(body: &BodyDto, ids: &[u64]) -> Option<CounterboreExtent> 
                 return None;
             }
             if shoulder.edge_keys.contains(key) {
+                if joint.is_some() {
+                    return None;
+                }
                 joint = Some(center);
             } else {
+                if outer.is_some() {
+                    return None;
+                }
                 outer = Some(center);
             }
         }
-        Some((joint?, outer?))
+        let (joint, outer) = (joint?, outer?);
+        if let Some(edge) = seam {
+            if !valid_axial_seam(body, wall, edge, joint, outer, axis, cylinder.radius) {
+                return None;
+            }
+        }
+        Some((joint, outer))
     };
     let (small_joint, bottom) = ends(small)?;
     let (large_joint, mouth) = ends(large)?;
@@ -581,6 +599,56 @@ fn counterbore_extent(body: &BodyDto, ids: &[u64]) -> Option<CounterboreExtent> 
         outward,
         blind,
     })
+}
+
+fn valid_axial_seam(
+    body: &BodyDto,
+    face: &FaceDto,
+    edge: &limo_cad_solid::EdgeDto,
+    first_ring: [f64; 3],
+    second_ring: [f64; 3],
+    axis: [f64; 3],
+    radius: f64,
+) -> bool {
+    if edge.refinable
+        || edge.circle.is_some()
+        || edge.points.len() < 2
+        || !face.linear_seam_edge_keys.contains(&edge.key)
+        || body
+            .faces
+            .iter()
+            .filter(|other| other.edge_keys.contains(&edge.key))
+            .count()
+            != 1
+    {
+        return false;
+    }
+    let point = |p: &limo_cad_solid::Point3Dto| [p.x, p.y, p.z];
+    let first = point(&edge.points[0]);
+    let last = point(edge.points.last().unwrap());
+    let matches = |a, b| {
+        let radial_a = sub(a, first_ring);
+        let radial_b = sub(b, second_ring);
+        dot(radial_a, axis).abs() <= 1e-6
+            && dot(radial_b, axis).abs() <= 1e-6
+            && (norm(radial_a) - radius).abs() <= 1e-6
+            && norm(sub(radial_a, radial_b)) <= 1e-6
+    };
+    let span = dot(sub(second_ring, first_ring), axis).abs();
+    if !(span.is_finite() && span > 1e-6 && (matches(first, last) || matches(last, first))) {
+        return false;
+    }
+    // Kernel metadata proves a line; also reject inconsistent transferred
+    // samples rather than silently accepting a bent or truncated seam DTO.
+    let delta = sub(last, first);
+    let length_squared = dot(delta, delta);
+    length_squared.is_finite()
+        && length_squared > 0.
+        && edge.points.iter().all(|p| {
+            let offset = sub(point(p), first);
+            let t = dot(offset, delta) / length_squared;
+            (0. ..=1.).contains(&t) && norm(sub(offset, scale(delta, t))) <= 1e-6
+        })
 }
 
 fn blind_depth(
@@ -1202,6 +1270,59 @@ mod tests {
         assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
         scene.bodies[0].faces[2].plane.as_mut().unwrap().normal = [0., 0., 1.];
         scene.bodies[0].edges[3].circle.as_mut().unwrap().center.z = 4.;
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
+        scene.bodies[0].edges[3].circle.as_mut().unwrap().center.z = 12.;
+        // Native full cylinders commonly include an axial seam in addition
+        // to the two rings. Only kernel-proven seams permit that third edge.
+        for (index, radius, z0, z1) in [(0, 2., 0., 5.), (1, 4., 5., 12.)] {
+            let key = format!("seam{index}");
+            let edge = serde_json::from_value(json!({"id":10+index,"key":key,
+                "refinable":false,"points":[{"x":radius,"y":0.,"z":z0},
+                    {"x":radius,"y":0.,"z":z1}]}))
+            .unwrap();
+            scene.bodies[0].edges.push(edge);
+            scene.bodies[0].faces[index].edge_keys.push(key.clone());
+            scene.bodies[0].faces[index].linear_seam_edge_keys.push(key);
+        }
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, Some(7.));
+        scene.bodies[0].edges[4].points.reverse();
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, Some(7.));
+        let native_seams = scene.clone();
+        scene.bodies[0].faces[0].linear_seam_edge_keys.clear();
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
+        scene = native_seams.clone();
+        scene.bodies[0].edges[4].refinable = true;
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
+        scene = native_seams.clone();
+        let mut unrelated = scene.bodies[0].faces[2].clone();
+        unrelated.id = limo_cad_core::FaceId(99);
+        unrelated.plane = None;
+        unrelated.edge_keys = vec!["seam0".into()];
+        scene.bodies[0].faces.push(unrelated);
+        assert_eq!(
+            counterbore_extent(&scene.bodies[0], &[1, 2]).map(|e| e.depth),
+            None
+        );
+        scene = native_seams.clone();
+        scene.bodies[0].edges[4].points[1].x = -2.;
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
+        scene = native_seams.clone();
+        scene.bodies[0].edges[4].points[1].z = 1.;
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
+        scene = native_seams.clone();
+        scene.bodies[0].edges[4].points.insert(
+            1,
+            limo_cad_solid::Point3Dto {
+                x: 1.,
+                y: 0.,
+                z: 2.5,
+            },
+        );
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
+        scene = native_seams;
+        scene.bodies[0].faces[0]
+            .edge_keys
+            .push("another_seam".into());
         assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
     }
 
