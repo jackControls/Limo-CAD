@@ -14,11 +14,14 @@ the other branch's models remain preserved. Root is the sole guarded Rust GUI
 operator. The ready notice `f7a165a5-2b00-4291-b180-0e9e9813ef99` supersedes the
 previous ownership hold. NATS retained notice reads now succeed again.
 
-Clean **f19f6e0d is installed with all 70 payload hashes verified**. A freshly
-launched GUI PID 6940/MCP PID 36540 pair reports `build_pair.status=matched`, unmodified
-source and native computer control enabled. The fresh-launch observation was
-initially in the background; foreground/session ownership must be observed
-again during operation and after Undo/Redo or document replacement. Identity,
+Clean **9cfa76a7 is installed with all 70 payload hashes verified**; executable
+SHA256 is `cc2127e2867841bed41bb28e58580bd329e9abb17150e30c1bc95e991df83ca8`.
+Fresh GUI PID 41172, process `fe9b3bd4-f0b1-47b6-ac16-3135f7358417`, and its
+MCP pair reported `build_pair.status=matched`, unmodified source and native
+computer control enabled. **That GUI has now exited through verified human
+Save all and close**; the matched-pair receipts qualify the recorded gates and
+are not a live session. Observe a fresh pair/foreground/session before any
+later operation; follow replacements and Undo/Redo. Identity,
 fresh pair and targeted UI receipts are retained outside the repository at
 `D:/limo-cad-maintenance/backlog-autonomous-20261010`. Verified preservation
 copies remain outside the repository. Earlier bounded lossless artifact
@@ -34,7 +37,11 @@ publication was skipped normally. The ledger records all workflow URLs and
 retained logs. Both core shards passed all 118 native tests and 262 core MCP tests.
 These results qualify f19 and their automated scopes, separately from human UI
 and the still-unstarted manual MCP phase. No passing local suite was rerun for
-this reconciliation. Source `9090057a` awaits its own hosted execution/deployment.
+this reconciliation. These are historical f19 results. Current 9cfa workflows
+are still in progress; its CodeQL aggregate failure is under investigation.
+Fourteen focused repair regression passes are retained/newly executed across
+the batches; `repair-batch-9cfa-tests.json` records the six affected final
+regressions. The new shortcut-observability tests have not run.
 
 For #348, native hole candidates retain body/face provenance and ambiguous
 reasons without increasing authored bore counts. Blind/recess depth requires
@@ -62,8 +69,10 @@ unchanged shared allowance/deadline. Planar/general supports retain exact
 Booleans; only proven nondegenerate curved analytic supports are excluded.
 Both real-vise/drawing shards pass f19 (Ubuntu job 114273045597,
 Windows job 114273045662), clearing the demonstrated efficiency regression. Limits
-remain cooperative, not hard process containment. Actual posted-file/runtime
-section acceptance and the separate wall-thickness feature remain incomplete.
+remain cooperative, not hard process containment. The actual pinned clamshell
+Section Analysis exact180 gate now passes on 9cfa as recorded below. Persistent
+Drawing section creation/placement and the separate wall-thickness feature
+remain incomplete.
 
 For #363, `f2f07958` shares junction recovery comparison/storage allowances and
 preserves typed exhaustion through rollback. Its strict standalone helper check
@@ -81,7 +90,7 @@ Unsupported process patterns still prevent managed qualification. Hosted checks
 pass f19; targeted native display acceptance remains pending. Preserve prior
 successful print workflows and historical failed repeat-identity receipts.
 
-Targeted human repaired gates now pass on clean matched f19:
+Historical targeted human repaired gates passed on clean matched f19:
 
 - Menu Save As accepts a visibly verified full path containing spaces, saves
   the 1157-byte archive and renames the selected tab. The initial Ctrl+Shift+S
@@ -117,23 +126,65 @@ captures and saved archives for these scopes. Source `9090057a` adds a keyboard-
 only null-focus guard and bounded read-only owned-thread focus telemetry.
 Pointer recovery and existing foreground/ownership guards remain intact; there
 are no activation hacks or typed-text logging. Root and peer source review plus
-scoped formatting passed; hosted execution and deployment are pending. A fresh-
-launch targeted guard/telemetry check is needed. This does not establish the
-cause of the initial shortcut or guarantee later foreground ownership.
+scoped formatting passed; that guard is included in deployed 9cfa. The direct
+first Ctrl+Shift+S on 9cfa again opened no picker and recorded no eligible event;
+later Ctrl+O worked after ordinary pointer/dialog use. The cause remains
+unattributed. Reviewed bounded observability `1aecad59` awaits deployment and
+test execution; no shortcut fix or universal gesture timing is established.
 
-Current UI totals: **47 passed, 329 not run, 26 failed, 9 needs_recheck, 30 in
+Three additional narrow human gates passed on clean matched 9cfa:
+
+- Section Analysis on the pinned clamshell Body 46 uses XZ at Y180 mm,
+  Probe Z=-10 mm and deflection 0.01 mm. The signed probe survives field switching.
+  Both retained halves report `material_section` with spans 2.9979800677171795
+  and 3.016546167520165 mm, identical SVG/probes/bounds and visible material hatch;
+  Above shows an orange 3D cut face. Body Appearance has 0 controls during both
+  Section modes and 11 after Close. Complete 1,247,810-character **published
+  model snapshots** and the pinned archive hash remain unchanged. First plane-
+  choice input was ineffective; explicit pointer move, fresh observation and
+  a single click recovered it. Its cause remains unattributed.
+- An unapplied new Note blocks File Exit and New with usable Apply/Reset guidance,
+  retains the visible text and exact 11,855-character published model snapshot,
+  and permits a fresh document/session after Reset. This qualifies draft
+  protection and recovery; Note placement/style/persistence, complete Drawing,
+  physical OS-close interaction and manual MCP mutations remain unqualified.
+- File Exit shows both applied-dirty scratch tabs and all three choices.
+  Save all and close writes both existing paths and exits GUI 41172. Independent
+  archive reads show **parsed models identical** to captured expected published
+  models; raw JSON differs in formatting. Names/Title are retained and both
+  archive hashes change; byte backups and the original f19 drawing hash remain
+  preserved. Keep Working/Discard, unsaved/failing saves, OS-close and reopening
+  are separate unqualified cases. The broader `/012` leaf stays in progress.
+
+Receipts are `section-9cfa-exact180-*`,
+`clamshell-9cfa-exact180{-above}-read-review.json`,
+`section-9cfa-closed-restored-observe.json`, `annotation-9cfa-*`,
+`saveall-before-9cfa-audit.json` and `saveall-exit-9cfa-{input,audit}.json` in
+the outside evidence directory. Read-only project-model receipts are completed
+published snapshots, not instantaneous reads of the live engine.
+
+Sheet Title's first Apply left the published Title empty despite the full
+visible text. Explicit move/fresh observation/click later produced the verified
+Title used by Save All. This remains a failed first-Apply issue with unattributed
+cause, under source investigation; it does not qualify full Sheet metadata.
+See `saveall-drawing-applied-model-9cfa.json`, the Apply recovery input and
+`saveall-drawing-applied-model-9cfa-after-recovery.json`. This pointer recovery
+and the Section plane-choice recovery are distinct from the missing shortcut.
+
+Current UI totals: **50 passed, 329 not run, 26 failed, 9 needs_recheck, 30 in
 progress, 2 restricted**. All 256 manual MCP cases remain not run. Equal and
 Concentric passes on 938 remain preserved in their receipts. Symmetry is the next
 untouched catalog item and remains paused. Remaining finite acceptance includes
-actual imported-hole inference, exact-plane sections/drawings, managed print/
-native display and complete Save All/Exit; other unresolved leaves remain visible.
+actual imported-hole inference, persistent Drawing sections, managed print/
+native display, complete Save All/Exit choices and first-click Sheet Apply;
+other unresolved leaves remain visible.
 The complete human bench/vise/turbine walkthrough and UI-then-MCP gates are
 unfinished. Passing CI and these narrow repairs do not imply full qualification.
 
 Equal UI coverage is closed on matched clean `93823f6d`: line lengths, circle
 radii, invalid mixed geometry/cancel, retained deletion, exact Undo/Redo and
 complete native save/reopen equality pass. See `qualification/equal-human-ui-20261010.json`.
-Equal increased UI coverage to46 passed cases; subsequent Concentric brings the current total to47. MCP coverage remains pending after UI.
+Equal increased UI coverage to46 passed cases; subsequent Concentric brought that historical total to47. MCP coverage remains pending after UI.
 
 Parallel implementation checkpoint: `27ebe7f0` checks face-hosted sketch support
 at its exact history prefix instead of incorrectly requiring the face to survive
