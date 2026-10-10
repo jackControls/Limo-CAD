@@ -387,7 +387,9 @@ impl OcctKernel {
                     .planar_face_keys()
                     .map_err(|error| OcctError(error.to_string()))?;
                 let faces = keys
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|key| {
                         limo_cad_solid::stable_face_id(
                             limo_cad_core::BodyId(key[0]),
