@@ -7,6 +7,29 @@ has occurred. The user approved continued UI-first coverage and repair of all
 posted defects, including newly reported defects; passing CI does not close the
 remaining UI/MCP qualification gates.
 
+Parallel implementation checkpoint: `27ebe7f0` checks face-hosted sketch support
+at its exact history prefix instead of incorrectly requiring the face to survive
+the final Common result. `69238177`, `f3b85652` and `a9d73ca9` share immutable CAM
+geometry/toolpath snapshots and release inactive documents while preserving
+dirty drafts. `5847c981` retains dimension-editor focus across repeated label
+clicks. These source changes are not yet deployed or manually qualified.
+
+Native filename reproduction on matched `93823f6d` now has a preserved
+`input_incomplete` receipt: four completed input scalars, three verified, visible
+`D:\`. `e46cb42e` requires unchanged acceptable readback samples before the next
+scalar, resets after unstable snapshots, and never resends input. Two focused
+settling/selection logic tests pass; Windows integration and a targeted live
+recheck remain pending. The Save As dialog was cancelled without saving, with
+closure confirmed by a fresh Bevy-window observation. An earlier Escape only
+dismissed transient dialog state and did not close it.
+
+The isolated five-DOF collinear drag regression reproduces nonconvergence.
+A proposed damping-floor change did not fix it and was reverted; that defect
+remains open. Ctrl+Shift+S also reproduced its no-dialog failure on a fresh
+foreground empty document; source routing investigation continues. Neither
+failure reopens the passing Parallel or fillet geometry cases. Broad tests and
+manual replay of passing cases were not run for this implementation batch.
+
 Posted-defect repairs: 18a863f6 addresses #363 with a shared circular-refinement
 comparison/sample/insertion budget across both healing stages. The standalone
 C++ exhaustion/overflow checks and freshly compiled native rounded-thread mating
