@@ -378,12 +378,20 @@ impl SessionBridgeState {
             }
             outcome?
         } else {
-            let document = engine.document_snapshot();
+            let (rollback_index, feature_count, last_feature_id) =
+                engine.with_document(|document| {
+                    let history = document.features();
+                    (
+                        history.rollback_index,
+                        history.features.len(),
+                        history.features.last().map(|feature| feature.id.0),
+                    )
+                });
             if redo {
                 match publisher
                     .active_mut()
                     .native_history
-                    .redo_step(&before, document.rollback_index, document.features.len())?
+                    .redo_step(&before, rollback_index, feature_count)?
                     .ok_or(nothing)?
                 {
                     RedoStep::Rollback(index) => mutate(
@@ -436,9 +444,7 @@ impl SessionBridgeState {
                     }
                 }
             } else {
-                match native_history::undo_step(document.rollback_index, document.features.len())?
-                    .ok_or(nothing)?
-                {
+                match native_history::undo_step(rollback_index, feature_count)?.ok_or(nothing)? {
                     UndoStep::Rollback(index) => mutate(
                         engine,
                         publisher,
@@ -448,7 +454,7 @@ impl SessionBridgeState {
                         &json!({"rollback_index":index}),
                     )?,
                     UndoStep::DeleteLatest => {
-                        let feature = document.features.last().ok_or(nothing)?;
+                        let feature_id = last_feature_id.ok_or(nothing)?;
                         let model =
                             parse_engine_envelope(engine.engine_call("project_export_model", ""))?;
                         let model = model
@@ -471,7 +477,7 @@ impl SessionBridgeState {
                             expected,
                             &self.process_instance_id,
                             "solid_delete_feature",
-                            &json!({"feature_id":feature.id.0}),
+                            &json!({"feature_id":feature_id}),
                         )?;
                         publisher.active_mut().native_history = committed;
                         value

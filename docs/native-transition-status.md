@@ -1397,8 +1397,11 @@ The conversion includes:
   The title-block cache borrows only rendered metadata during lookup and retains
   an owned snapshot after successful rendering. Annotation edits reuse frame
   artwork; rejected frames move the existing sheet snapshot into the error receipt.
-  Pose-vector copies, per-body replay invalidation and presentation resource
-  granularity remain tracked in [#333](https://github.com/limo-cad/Limo-CAD/issues/333).
+  Body and occurrence pose vectors already share independent placement caches.
+  Per-body replay invalidation and justified presentation resource granularity
+  remain tracked in [#333](https://github.com/limo-cad/Limo-CAD/issues/333); the
+  [snapshot ownership audit](qualification/snapshot-ownership-audit.md) records
+  remaining production copies, retention boundaries and lock order.
 - An explicit Winit window-icon binding (#259). The deployed Windows small-icon
   handle and native chrome capture confirm the title-bar fix. The packaged MCP
   passed schema-7 attach, rendered inspect and a read-only assembly query.

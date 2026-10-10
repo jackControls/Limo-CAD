@@ -26,14 +26,17 @@ fn prepare(
                 return Err("The drawing changed before printing could start".into());
             }
             check()?;
-            let drawing = services.engine.drawing_snapshot();
-            let sheet = drawing
-                .sheets
-                .iter()
-                .find(|sheet| Some(sheet.id) == drawing.active_sheet_id)
-                .ok_or("Select a drawing sheet to print")?;
+            // Release the borrowed engine read before drawing_export reenters it.
+            let (sheet_id, sheet_name) = services.engine.with_drawing(|drawing| {
+                drawing
+                    .sheets
+                    .iter()
+                    .find(|sheet| Some(sheet.id) == drawing.active_sheet_id)
+                    .map(|sheet| (sheet.id, sheet.name.clone()))
+                    .ok_or("Select a drawing sheet to print")
+            })?;
             let request = DrawingExportRequest {
-                sheet_id: sheet.id,
+                sheet_id,
                 format: DrawingExportFormat::Svg,
             };
             let output = parse_engine_envelope(
@@ -44,8 +47,8 @@ fn prepare(
             let svg = output["content"]
                 .as_str()
                 .ok_or("Drawing export returned no page")?;
-            let title = format!("{} — {}", services.engine.document_name(), sheet.name);
-            Ok((native_print::Page::prepare(title, svg)?, sheet.id))
+            let title = format!("{} — {}", services.engine.document_name(), sheet_name);
+            Ok((native_print::Page::prepare(title, svg)?, sheet_id))
         })
 }
 
