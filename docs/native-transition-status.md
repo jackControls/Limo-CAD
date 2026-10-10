@@ -18,7 +18,85 @@ their before/after archives have verified preservation-copy hashes. No
 canonical GUI remained at that inventory checkpoint. NATS retained notice
 reads succeed; the hold does not claim that every recipient has read it.
 
-Clean **9cfa76a7 is installed with all 70 payload hashes verified**; executable
+Reviewed source repairs through **0db1e476** include borrowed CAM/drawing metadata
+(`5635204f`), borrowed active-sketch Browser name (`cd35dcc3`), planar inner-wire
+opening proof (`96b642b9`) and exact-hash unchanged-payload promotion
+(`a793993e`). `88d4b6f5` isolates the production file-replacement helper and its
+Windows lock checks in a small library, preserving the helper used by deployment
+and the native-control harness gate. These source changes are not packaged UI
+acceptance. Their first results and the new gate repair are recorded below.
+
+The `5635204f` production compile finished in 6m38s, but promotion failed replacing
+canonical `TKBO.dll` with access denied (OS error 5). Root's historical read-only
+OS inspection found foreign `Roller-CAD-refit.exe` PID 6148 loading that exact
+canonical DLL. Source and installed SHA256 both were
+`3903080ED5FF3E05DAFF91DE794B0FF70177B42E256B264A574EE7472A47E681`.
+Retained notice `6b5760ba-9360-4996-b589-2f7f7da36c59` records the confirmed
+foreign SDK lock. PID 6148 is absent from the later inventory: this is historical
+attribution, not a current process/lock claim. Foreign Vita copies were left
+untouched. **The interrupted installed payload is unqualified**; no fresh matched
+clean 563/0db pair or complete installed-hash verification is claimed here. The
+exact-hash skip preserves unchanged ordinary payloads; changed locked payloads
+still reject. Final promotion and complete hash verification remain required.
+
+Monolithic xtask binary-test compiles at `96b642b9` and `cd35dcc3` both failed with
+rustc-LLVM out of memory/allocation failure, exit 101, **before any tests executed**.
+They are compiler resource failures, not test passes or assertion failures.
+At clean `88d4b6f5`, the small production-library Windows replacement-lock checks
+passed: 2 passed, 0 failed, 0 ignored; 7.81s compile and 5.02s runtime. They preserve
+identical read-share-only locked payloads and reject/preserve changed same-length
+locked payloads. The new native MCP test compile completed successfully in
+8m28s. The rectangular-through-bore positive **failed** at its first whole-shell
+proof: all seven faces had `outer_shell=None`; extent and STEP-roundtrip
+assertions were not reached. It ran once in 0.09s, exit 101. Root separately ran
+the previously unexecuted tangent-boundary negative once: **1 passed, 0 failed,
+0 ignored**, 0.03s. These are original clean 88 results, not a repaired-wrapper pass.
+
+The source audit traced the missing proof to nested-profile extrusion retaining
+OCCT's one-direct-solid COMPOUND result. The earlier metadata gate rejected that
+wrapper before later proof checks. Repair `0db1e476` accepts a forward SOLID or
+exactly one direct forward SOLID child of a forward
+COMPOUND, with complete oriented/location-aware body face/edge identity equality
+and the unchanged analytic, validity, all-shell closure, outward and budget
+gates. Multi-solid, mixed, nested and reversed wrappers remain unknown; geometry
+and body counts are not normalized. At clean `0db1e476`, all three specifically
+affected native cases passed: rectangular-through-bore with STEP round-trip
+(0.11s), tangent-boundary rejection (0.03s), and shell membership including
+single-solid Boolean, multi-solid and mixed solid/open-shell results (0.09s).
+The first package incrementally compiled in 22.22s; the native shell test package
+compiled in 5m14s. Each case ran once after this repair. The tangent case was
+rerun because wrappers now reach its validity gate. No passing deployment-lock,
+earlier repair suite or unrelated case was rerun. Nested/reversed-wrapper
+rejection is source-reviewed rather than newly exercised. No fresh paired/live
+runtime acceptance is claimed.
+
+No previously passing repair case was rerun for the original 88 checks. Receipts
+are `deploy-5635204f.log`, `deployer-96b642b9-tests.json`,
+`deployer-cd35dcc3-tests.json`, `deployer-88d4b6f5-tests.json`,
+`geometry-88d4b6f5-compile.jsonl`, `geometry-88d4b6f5-tests.json` and
+`geometry-88d4b6f5-tangent-test.json` and `geometry-wrapper-0db1e476-tests.json`
+in the outside evidence directory. Current
+hosted and installed-runtime acceptance remains separate; this checkpoint makes
+no later-source all-green or live-pair claim.
+
+The terminal CI observation at **22:31:17 UTC** records source `5635204f` with
+**all 12 workflows passed**. All 43 visible checks are terminal: 35 succeeded,
+eight optional/opt-in checks skipped, zero failed and zero pending. Desktop
+packages and all MCP shards completed. The [CodeQL aggregate](https://github.com/limo-cad/Limo-CAD/runs/114319368048)
+passed with no new alerts. Fresh Rust analysis 1929843325, uploaded 22:18:23 UTC,
+ran on exact PR merge `0f3b7621924b413b51d40bc0263064beac569a20` for that source:
+28 rules, 146 results and no analysis error. Alerts 188 and 189 have fixed exact
+merge instances. `ci-563-terminal-evidence.json` (SHA256
+`E7C3003C204462D7F2D643BEDD6994E256E44D0AA35D4FC44D071987C44B8056`),
+`codeql-563-security-fix-evidence.json`, `codeql-563-current-analyses.json` and
+`pull-124-563-analysis-identity.json` retain that evidence. The earlier 11-of-12
+observation is historical; the watcher stopped after terminal success. These
+results qualify the 563 hosted scopes only. They do not qualify the later 0db
+wrapper repair source, physical input, or the interrupted installation.
+Historical f19/9cfa results below remain preserved.
+
+The last fully hash-verified live qualification was **clean 9cfa76a7 with all 70
+payload hashes verified**; its historical executable
 SHA256 is `cc2127e2867841bed41bb28e58580bd329e9abb17150e30c1bc95e991df83ca8`.
 Fresh GUI PID 41172, process `fe9b3bd4-f0b1-47b6-ac16-3135f7358417`, and its
 MCP pair reported `build_pair.status=matched`, unmodified source and native
@@ -41,15 +119,15 @@ publication was skipped normally. The ledger records all workflow URLs and
 retained logs. Both core shards passed all 118 native tests and 262 core MCP tests.
 These results qualify f19 and their automated scopes, separately from human UI
 and the still-unstarted manual MCP phase. No passing local suite was rerun for
-this reconciliation. These are historical f19 results. All 11 current 9cfa
-workflow runs also completed successfully, including all six MCP lanes and
-native hosts/packages. Its separate CodeQL security aggregate remains red for
+this reconciliation. These are historical f19 results. All 11 workflow runs at 9cfa
+also completed successfully, including all six MCP lanes and native hosts/packages.
+Its separate CodeQL security aggregate was red at that checkpoint for
 high alert189; green workflow jobs do not make that aggregate green. The exact
 SARIF identifies wholesale result-summary assertion logging. No actual session
 data leak was demonstrated. `c547037d` removes that output while preserving
 every assertion and native geometry diagnostic; `24dbb309` pins the same Rust
-action to its verified immutable SHA for medium alert188. Their hosted analysis
-is pending the next coherent push; no alert was dismissed or query weakened.
+action to its verified immutable SHA for medium alert188. Their fresh hosted
+analysis at 563 is recorded above; no alert was dismissed or query weakened.
 
 Fourteen earlier focused repair passes remain retained; none was rerun. At
 clean source `278025a5`, one Windows release compile and five newly affected
@@ -149,8 +227,10 @@ are no activation hacks or typed-text logging. Root and peer source review plus
 scoped formatting passed; that guard is included in deployed 9cfa. The direct
 first Ctrl+Shift+S on 9cfa again opened no picker and recorded no eligible event;
 later Ctrl+O worked after ordinary pointer/dialog use. The cause remains
-unattributed. Reviewed bounded observability `1aecad59` awaits deployment and
-test execution; no shortcut fix or universal gesture timing is established.
+unattributed. Bounded observability `1aecad59` is in the current source batch;
+its four focused checks passed at clean 278025a5 as recorded above. Packaged
+fresh-launch acceptance remains pending; no shortcut fix or universal gesture
+timing is established.
 
 Three additional narrow human gates passed on clean matched 9cfa:
 
@@ -185,11 +265,23 @@ published snapshots, not instantaneous reads of the live engine.
 
 Sheet Title's first Apply left the published Title empty despite the full
 visible text. Explicit move/fresh observation/click later produced the verified
-Title used by Save All. This remains a failed first-Apply issue with unattributed
-cause, under source investigation; it does not qualify full Sheet metadata.
+Title used by Save All. Source `278025a5` repairs the demonstrated pending-field
+lifecycle and its focused regression passed; packaged first-click acceptance
+remains pending. The historical receipt alone does not establish an OS
+input/timing cause or qualify full Sheet metadata.
 See `saveall-drawing-applied-model-9cfa.json`, the Apply recovery input and
 `saveall-drawing-applied-model-9cfa-after-recovery.json`. This pointer recovery
 and the Section plane-choice recovery are distinct from the missing shortcut.
+
+The two reported sketch-framing repair cores already passed human rechecks on
+clean matched 93823f6d and are now reconciled as scoped issue passes without new
+input. Coincident Browser re-edit exposes both saved points; zero-extent Fit has
+an approximately 8px grip and cyan hover. Midpoint Browser re-edit exposes the
+whole 40mm line, both endpoints, midpoint and relation glyphs outside the palette.
+Recorded Finish preserves the exact whole model. Retained `coincident-938-*`
+and `midpoint-938-*` captures/state receipts still exist. Widely separated Point,
+circles/splines and empty-entry variants remain unqualified. Every catalog/leaf
+status, UI/MCP count and paused phase gate below remains unchanged.
 
 Current UI totals: **50 passed, 329 not run, 26 failed, 9 needs_recheck, 30 in
 progress, 2 restricted**. All 256 manual MCP cases remain not run. Equal and
