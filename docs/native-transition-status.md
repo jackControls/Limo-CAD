@@ -13,6 +13,12 @@ Preserve earlier passes; do not advance to untouched catalog items or rerun pass
 cases. Shared runtime ownership remains withheld: no deployment, restart or live
 acceptance proceeds until ownership and saved-work readiness are established.
 
+The existing automated matrix is green at `f7aacc2c`: native hosts on all three
+platforms, MCP acceptance, package targets and CodeQL passed. Those results
+qualify that source and their stated automated scopes. They do not qualify the
+new repairs below or replace the outstanding human UI receipts. No passing
+suite was rerun locally.
+
 The automated `native-exact-thread-precision` blocker is superseded by existing
 hosted evidence at `43c20c30c66c3cdadc34256747376222333ca5ba`, run
 [38055144113](https://github.com/limo-cad/Limo-CAD/actions/runs/38055144113).
@@ -36,15 +42,43 @@ unsplit walls and a proven annular shoulder, plus total blind depth when a termi
 disk proves it. `b0b01d0f` publishes exact face-owned analytic linear-seam evidence
 from OCCT; `e3a19f89` accepts that evidence with strict ownership and axial endpoint
 checks, retaining unknown depth for unsupported topology. Independent source
-reviews found no remaining blocker. Imported through classification and real
-assembly/touching-topology acceptance remain unqualified; local assertions have
-not been run and hosted validation remains pending. No GUI deployment is claimed.
+reviews found no remaining blocker in that earlier patch. `3ae8a846` now derives
+through status only from two exact annular openings on a proven native outer
+shell. Validity, closed-shell membership and outward solid orientation are
+required; legacy data, sealed cavities, compounds, open surfaces and unsupported
+opening topology retain unknown status. `83559707` bounds this optional analysis
+to small analytic topology, skips disposable section/export meshes, and keeps it
+out of UI frames and borrowed summary reads. Native positive and negative
+regressions are committed but not run locally. Real imported assembly/touching
+acceptance and new-head hosted validation remain pending. No GUI deployment is
+claimed.
 
 For #363, `a48a2f33` strengthens the existing tangent-arch/circular-hole native
 fixture with exact volume and default/fine closed-mesh export checks. The fixture
 exercises circular-boundary comparison; it does not prove inserted-sample or
 exhaustion paths execute. Existing budget-helper evidence covers exhaustion and
-shared allowances. Post-fix hosted native acceptance remains pending.
+shared allowances. A deeper audit found that junction recovery reset a local
+comparison allowance and swallowed resource exhaustion. `f2f07958` charges
+comparisons and recovery storage to the shared budget and preserves the typed
+exhaustion error through rollback. Its standalone C++ budget-helper check passed
+once with strict warnings; this is not native geometry or GUI acceptance. See
+`qualification/refinement-budget-helper-20261010.json`. New-head hosted native
+acceptance remains pending.
+
+For #316, `a74bc03c` permits read-only inspection of native process patterns
+outside the managed writer's typed capability. Raw layer, width, shell and
+support settings retain process/object/volume provenance in the handoff report;
+unsupported patterns still prevent managed qualification. `5dba77aa` bounds the
+report before per-part copies, and `2f0c6ae6` requires complete managed scalar
+readback. Hosted checks and one targeted native display acceptance are pending.
+Prior successful print workflows remain preserved; failed repeat-identity
+receipts are not reclassified as passes.
+
+For #360, `c0e1b3b0` adds focused shared-request policy regressions for rejected
+Add/Create Body Through All requests and edits. Exact model/document preservation,
+finite recovery and subsequent ID allocation are compared with an untouched
+control. These planning-stub checks do not claim native geometry or manual MCP
+acceptance. Existing human UI acceptance remains valid for its covered behavior.
 
 Concentric UI coverage is also closed on clean matched `93823f6d`: distinct
 radii preserved, shared center, invalid selection/cancel, retained deletion,
