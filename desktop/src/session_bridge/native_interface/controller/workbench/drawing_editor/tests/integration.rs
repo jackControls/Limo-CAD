@@ -421,6 +421,22 @@ fn sheet_editor_shares_paper_and_retires_hidden_replaced_document() {
         guard_sheet_edit(world).is_err(),
         "Pressure must preserve the unapplied draft"
     );
+    assert!(guard_document_switch(world, &owner).is_err());
+    assert!(guard_document_switch(world, &foreign).is_ok());
+    let mut other_tab = owner.clone();
+    other_tab.document_id.push_str("-another-live-tab");
+    synchronize(
+        world,
+        camera,
+        &services,
+        &other_tab,
+        (860., 248.),
+        false,
+        &state,
+    )
+    .unwrap();
+    assert!(world.resource::<Editor>().draft.as_ref().unwrap().dirty());
+    assert_eq!(world.resource::<Editor>().owner.as_ref(), Some(&owner));
     state.paper_document = None;
     let mut replacement = owner;
     replacement.epoch += 1;

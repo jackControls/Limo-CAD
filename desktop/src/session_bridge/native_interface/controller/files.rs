@@ -795,6 +795,7 @@ fn execute(
             request_intent(world, services, receipt, Intent::Close)
         }
         FileCommand::CloseTab(target) => {
+            workbench::drawing_editor::guard_document_switch(world, owner)?;
             remember_view(world, owner);
             let workspace = world.resource::<Files>().workspace.clone();
             worker::enqueue_transaction(
@@ -912,6 +913,9 @@ fn request_intent(
     receipt: DocumentReceipt,
     intent: Intent,
 ) -> Result<Value, String> {
+    if matches!(intent, Intent::Open(_)) {
+        workbench::drawing_editor::guard_document_switch(world, &receipt.owner)?;
+    }
     if services
         .bridge
         .native_document_receipt(&services.engine, &receipt.owner)?
@@ -1054,6 +1058,9 @@ fn transition(
     target: Option<DocumentContext>,
     close: Option<bool>,
 ) -> Result<Value, String> {
+    if close.is_none() {
+        workbench::drawing_editor::guard_document_switch(world, &receipt.owner)?;
+    }
     remember_view(world, &receipt.owner);
     let closed_document = close.map(|_| receipt.owner.clone());
     let workspace = world.resource::<Files>().workspace.clone();

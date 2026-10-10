@@ -70,6 +70,18 @@ pub(crate) fn guard_ribbon_edit(world: &World, operation: &str) -> Result<(), St
     }
     Ok(())
 }
+/// Tab/file transitions must not discard an unapplied sheet/view draft.
+/// Keep this owner-scoped so an unrelated window cannot block the transition.
+pub(crate) fn guard_document_switch(world: &World, owner: &DocumentContext) -> Result<(), String> {
+    if world.get_resource::<Editor>().is_some_and(|editor| {
+        super::same_document(editor.owner.as_ref(), owner)
+            && editor.draft.as_ref().is_some_and(Draft::dirty)
+    }) {
+        return Err("Apply or reset the drawing edit before switching documents".into());
+    }
+    Ok(())
+}
+
 pub(super) fn guard_sheet_edit(world: &World) -> Result<(), String> {
     if world
         .get_resource::<Editor>()
@@ -416,9 +428,12 @@ pub(super) fn synchronize(
                 .owner
                 .as_ref()
                 .is_some_and(|previous| previous != owner)
+                && (super::same_document(editor.owner.as_ref(), owner)
+                    || !editor.draft.as_ref().is_some_and(Draft::dirty))
             {
-                // A hidden editor must not retain a retired incarnation or
-                // block edits in the replacement document with its old draft.
+                // Retire replaced incarnations and clean inactive snapshots.
+                // A different live tab must never silently discard a dirty
+                // draft; ordinary tab/file switches are guarded before enqueue.
                 editor.owner = None;
                 editor.document = Arc::default();
                 editor.draft = None;
