@@ -1,4 +1,5 @@
 #include "limo-cad-occt/src/native.rs.h"
+#include "refinement_budget.hpp"
 
 #include <APIHeaderSection_MakeHeader.hxx>
 #include <BRepAdaptor_Curve.hxx>
@@ -3262,13 +3263,15 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
     // Prepare compatible circular chords before OCCT amplifies intersecting
     // edges. Then repair any remaining crossings without replacing the
     // boundary joins produced by the standard healer.
-    if (!RefineBoundaries(false)) return false;
+    RefinementBudget budget;
+    if (!RefineBoundaries(false, budget)) return false;
     if (!BRepMesh_Context::HealModel()) return false;
-    return RefineBoundaries(true);
+    return RefineBoundaries(true, budget);
   }
 
  private:
-  Standard_Boolean RefineBoundaries(bool healed) {
+  Standard_Boolean RefineBoundaries(bool healed, RefinementBudget& budget) {
+    budget.context = healed ? "after standard healing" : "before standard healing";
     const auto& model = GetModel();
     std::set<IMeshData::IFacePtr> affected_faces;
     std::set<IMeshData::IFacePtr> intersection_failures;
@@ -3289,6 +3292,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
       }
     }
     const auto rebuild_pcurves = [&](IMeshData::IEdgePtr edge) {
+      // Tessellate2d regenerates each owner pcurve from the full edge samples.
+      // Reserve its aggregate work before clearing or allocating any pcurve.
+      budget.sample(static_cast<std::size_t>(edge->GetCurve()->ParametersNb()),
+                    static_cast<std::size_t>(edge->PCurvesNb()));
       struct Endpoints {
         IMeshData::IPCurveHandle pcurve;
         gp_Pnt2d first;
@@ -3651,6 +3658,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             const double middle = first + (last - first) * 0.5;
             if (!std::isfinite(middle) || middle == first || middle == last)
               continue;
+            budget.insert(static_cast<std::size_t>(points->ParametersNb()));
             points->InsertPoint(index, curve.Value(middle), middle);
             ++added_points;
             inserted = true;
@@ -3697,6 +3705,12 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             if (a_circle == (bc.GetType() == GeomAbs_Circle)) continue;
             const auto& ap = a->GetPCurve(face.get(), wire->GetEdgeOrientation(ei));
             const auto& bp = b->GetPCurve(face.get(), wire->GetEdgeOrientation(ni));
+            budget.context = std::string(healed ? "after" : "before") +
+                " standard healing, face " + std::to_string(fi) + ", wire " +
+                std::to_string(wi) + ", edges " + std::to_string(ei) + '/' +
+                std::to_string(ni) + ", pass " + std::to_string(pass);
+            budget.compare(static_cast<std::size_t>(std::max(0, ap->ParametersNb() - 1)),
+                           static_cast<std::size_t>(std::max(0, bp->ParametersNb() - 1)));
             TopoDS_Vertex shared_vertex;
             const bool has_shared_vertex =
                 TopExp::CommonVertex(a->GetEdge(), b->GetEdge(), shared_vertex);
@@ -3776,6 +3790,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                 const auto& other_pcurve = a_circle ? bp : ap;
                 const double first = curve.FirstParameter(), last = curve.LastParameter();
                 const double middle = (other_pcurve->GetParameter(oi-1) + other_pcurve->GetParameter(oi)) * 0.5;
+                budget.sample();
                 additions[other].push_back(middle);
                 for (double sample : {other_pcurve->GetParameter(oi-1), middle, other_pcurve->GetParameter(oi)}) {
 
@@ -3783,8 +3798,10 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
                   const gp_Pnt point = other_curve.Value(sample);
                   double parameter = ElCLib::Parameter(curve.Circle(), point);
                   parameter += kTau * std::ceil((first - parameter) / kTau);
-                  if (parameter > first+1e-10 && parameter < last-1e-10)
+                  if (parameter > first+1e-10 && parameter < last-1e-10) {
+                    budget.sample();
                     additions[circular].push_back(parameter);
+                  }
                 }
               }
             }
@@ -3809,12 +3826,14 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             points->GetParameter(points->ParametersNb()-1);
         bool edge_inserted = false;
         for (double parameter : parameters) {
+          budget.compare(static_cast<std::size_t>(points->ParametersNb()));
           int index = 0;
           while (index < points->ParametersNb() &&
                  (ascending ? points->GetParameter(index) < parameter :
                               points->GetParameter(index) > parameter)) ++index;
           if ((index < points->ParametersNb() && std::abs(points->GetParameter(index)-parameter) < 1e-10) ||
               (index > 0 && std::abs(points->GetParameter(index-1)-parameter) < 1e-10)) continue;
+          budget.insert(static_cast<std::size_t>(points->ParametersNb()));
           points->InsertPoint(index, curve.Value(parameter), parameter);
           inserted = true;
           edge_inserted = true;

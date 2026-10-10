@@ -62,6 +62,11 @@ jobs:
       - name: Check packaged viewport fixture isolation
         run: bash scripts/ci/verify-linux-viewport.test.sh
 
+      - name: Check native refinement resource limits
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -I crates/occt/include crates/occt/tests/refinement_budget.cpp -o "$RUNNER_TEMP/refinement-budget"
+          "$RUNNER_TEMP/refinement-budget"
+
       - name: Install Rust
         uses: ./.github/actions/setup-rust
 

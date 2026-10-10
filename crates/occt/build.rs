@@ -12,7 +12,12 @@ fn main() {
 #[cfg(feature = "native-occt")]
 fn native() {
     use std::{env, path::PathBuf};
-    for path in ["src/native.rs", "src/shim.cpp", "include/shim.hpp"] {
+    for path in [
+        "src/native.rs",
+        "src/shim.cpp",
+        "include/shim.hpp",
+        "include/refinement_budget.hpp",
+    ] {
         println!("cargo:rerun-if-changed={path}");
     }
     for name in [
