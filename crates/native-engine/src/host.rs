@@ -379,6 +379,7 @@ impl NativeEngineHost {
     }
 
     /// Inspect drawing intent without copying sheets, views or annotations.
+    /// Retained asynchronous consumers should use `shared_drawing_snapshot`.
     /// The callback runs under the engine guard and must not reenter this host.
     pub fn with_drawing<R>(
         &self,
@@ -386,6 +387,18 @@ impl NativeEngineHost {
     ) -> R {
         let inner = self.inner.lock().expect("engine lock poisoned");
         inspect(inner.active().manager.drawing_document_ref())
+    }
+
+    /// Retain immutable drawing intent without copying sheets, projected view
+    /// definitions or annotation records. The active engine owns publication;
+    /// edits invalidate drawing storage independently of viewport metadata.
+    pub fn shared_drawing_snapshot(&self) -> Arc<limo_cad_sketch::DrawingDocumentDto> {
+        self.inner
+            .lock()
+            .expect("engine lock poisoned")
+            .active()
+            .manager
+            .drawing_document_snapshot()
     }
 
     pub fn document_snapshot(&self) -> DocumentDto {

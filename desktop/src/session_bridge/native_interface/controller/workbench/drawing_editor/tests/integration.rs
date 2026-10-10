@@ -18,6 +18,46 @@ fn seed(f: &Fixture) {
 }
 
 #[test]
+fn sheet_editor_without_paper_shares_engine_snapshot_and_preserves_unapplied_draft() {
+    crate::session_bridge::tests::with_isolated_session_test(|| {
+        let f = Fixture::new();
+        seed(&f);
+        let owner = f.owner();
+        let services = NativeServices {
+            engine: f.engine.clone(),
+            bridge: f.bridge.clone(),
+        };
+        let shared = f.engine.shared_drawing_snapshot();
+        let mut app = native_viewport::interface_scene_fixture();
+        let world = app.world_mut();
+        let camera = world.spawn(InterfaceCamera).id();
+        let state = Workbench::default();
+        synchronize(world, camera, &services, &owner, (860., 248.), true, &state).unwrap();
+        assert!(Arc::ptr_eq(&shared, &world.resource::<Editor>().document));
+        edit(
+            world.resource_mut::<Editor>().draft.as_mut().unwrap(),
+            "/name",
+            "Unapplied name",
+        );
+        synchronize(world, camera, &services, &owner, (860., 248.), true, &state).unwrap();
+        assert!(Arc::ptr_eq(&shared, &world.resource::<Editor>().document));
+        assert!(Arc::ptr_eq(&shared, &f.engine.shared_drawing_snapshot()));
+        assert!(world.resource::<Editor>().draft.as_ref().unwrap().dirty());
+        retire_document(world, &owner, false);
+        assert!(
+            world.resource::<Editor>().draft.as_ref().unwrap().dirty(),
+            "Pressure must retain required edit/cancel ownership"
+        );
+        retire_document(world, &owner, true);
+        assert!(world.get_resource::<Editor>().is_none());
+        assert!(
+            Arc::ptr_eq(&shared, &f.engine.shared_drawing_snapshot()),
+            "Editor retirement must not retire the engine's live drawing"
+        );
+    });
+}
+
+#[test]
 fn native_view_draft_uses_shared_update_and_restores_aligned_history() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let f = Fixture::new();

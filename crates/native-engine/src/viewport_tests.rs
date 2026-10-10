@@ -8,6 +8,198 @@ fn value(response: String) -> Value {
 }
 
 #[test]
+fn shared_drawing_snapshot_reuses_reads_and_invalidates_only_drawing_intent() {
+    let host = NativeEngineHost::new();
+    let empty = host.shared_drawing_snapshot();
+    let viewport = host.viewport_frame();
+    assert!(Arc::ptr_eq(&empty, &host.shared_drawing_snapshot()));
+    value(host.engine_call("document_set_name", r#""Unrelated metadata""#));
+    assert!(Arc::ptr_eq(&empty, &host.shared_drawing_snapshot()));
+    value(host.engine_call("assembly_set_document", "{}"));
+    assert!(
+        Arc::ptr_eq(&empty, &host.shared_drawing_snapshot()),
+        "Assembly invalidation without a released assembly sheet must preserve drawing identity"
+    );
+    value(
+        host.engine_call(
+            "drawing_set_document",
+            &json!({"sheets":[
+        {"id":1,"name":"Original","format":"a4","orientation":"landscape"}],
+        "active_sheet_id":1,"next_sheet_id":2})
+            .to_string(),
+        ),
+    );
+    let original = host.shared_drawing_snapshot();
+    assert!(!Arc::ptr_eq(&empty, &original) && empty.sheets.is_empty());
+    let geometry = host.viewport_frame().document.scene.clone();
+    let mut edited = (*original).clone();
+    edited.sheets[0].name = "Edited".into();
+    value(host.engine_call(
+        "drawing_set_document",
+        &serde_json::to_string(&edited).unwrap(),
+    ));
+    let current = host.shared_drawing_snapshot();
+    assert!(!Arc::ptr_eq(&original, &current));
+    assert!(original.sheets[0].name == "Original" && current.sheets[0].name == "Edited");
+    assert!(Arc::ptr_eq(
+        &geometry,
+        &host.viewport_frame().document.scene
+    ));
+    value(host.engine_call(
+        "drawing_set_document",
+        &serde_json::to_string(current.as_ref()).unwrap(),
+    ));
+    assert!(
+        Arc::ptr_eq(&current, &host.shared_drawing_snapshot()),
+        "An identical document must not republish storage"
+    );
+    let mut invalid = (*current).clone();
+    invalid.sheets.push(invalid.sheets[0].clone());
+    let rejected: Value = serde_json::from_str(&host.engine_call(
+        "drawing_set_document",
+        &serde_json::to_string(&invalid).unwrap(),
+    ))
+    .unwrap();
+    assert!(rejected["ok"] == false && Arc::ptr_eq(&current, &host.shared_drawing_snapshot()));
+    let mut owned = host.drawing_snapshot();
+    owned.sheets.clear();
+    assert!(
+        host.shared_drawing_snapshot().sheets.len() == 1,
+        "Compatibility edit copies remain independently owned"
+    );
+    assert!(viewport.document.scene.bodies.is_empty());
+
+    // Exercise both authoritative release-status mutation paths while readers
+    // retain the issued drawing. Neither path may edit a retained snapshot.
+    let mut released = (*current).clone();
+    released.sheets[0].views.push(
+        serde_json::from_value(json!({
+            "id":1,"name":"Placed assembly","kind":"top","scope":"assembly",
+            "occurrence_ids":[],"direction":[0,0,1],"up":[0,1,0],
+            "position":[80,60],"scale":1
+        }))
+        .unwrap(),
+    );
+    released.next_view_id = 2;
+    released.sheets[0].release = limo_cad_sketch::DrawingReleaseDto {
+        status: limo_cad_sketch::DrawingReleaseStatus::Released,
+        released_revision: "A".into(),
+        released_at: "2026-10-10".into(),
+    };
+    value(host.engine_call(
+        "drawing_set_document",
+        &serde_json::to_string(&released).unwrap(),
+    ));
+    let issued_assembly = host.shared_drawing_snapshot();
+    value(host.engine_call("assembly_set_document", "{}"));
+    let assembly_draft = host.shared_drawing_snapshot();
+    let mut expected = (*issued_assembly).clone();
+    expected.sheets[0].release.status = limo_cad_sketch::DrawingReleaseStatus::Draft;
+    assert!(!Arc::ptr_eq(&issued_assembly, &assembly_draft));
+    assert!(
+        issued_assembly.sheets[0].release.status == limo_cad_sketch::DrawingReleaseStatus::Released
+    );
+    assert!(
+        *assembly_draft == expected,
+        "Assembly invalidation changes only the existing release policy status"
+    );
+    value(host.engine_call("assembly_set_document", "{}"));
+    assert!(Arc::ptr_eq(
+        &assembly_draft,
+        &host.shared_drawing_snapshot()
+    ));
+
+    value(host.engine_call("begin_sketch", r#"{"type":"origin_plane","plane":"xy"}"#));
+    value(host.engine_call(
+        "add_rectangle",
+        r#"{"mode":"two_point","p1":{"x":0,"y":0},"p2":{"x":10,"y":6},"ctrl_held":false}"#,
+    ));
+    value(host.engine_call("end_sketch", ""));
+    assert!(Arc::ptr_eq(
+        &assembly_draft,
+        &host.shared_drawing_snapshot()
+    ));
+    let mut reissued = (*assembly_draft).clone();
+    reissued.sheets[0].release.status = limo_cad_sketch::DrawingReleaseStatus::Released;
+    value(host.engine_call(
+        "drawing_set_document",
+        &serde_json::to_string(&reissued).unwrap(),
+    ));
+    let issued_geometry = host.shared_drawing_snapshot();
+    let extrude = |distance| {
+        host.solid_extrude(
+            &json!({
+                "sketch_name":"Sketch1","profile_indices":[0],"operation":"new_body",
+                "extent":{"type":"distance","distance":distance},"taper_angle_deg":0,
+                "flip":false,"target_body_ids":[]
+            })
+            .to_string(),
+        )
+    };
+    value(extrude(3));
+    let geometry_draft = host.shared_drawing_snapshot();
+    let mut expected = (*issued_geometry).clone();
+    expected.sheets[0].release.status = limo_cad_sketch::DrawingReleaseStatus::Draft;
+    assert!(!Arc::ptr_eq(&issued_geometry, &geometry_draft));
+    assert!(
+        issued_geometry.sheets[0].release.status == limo_cad_sketch::DrawingReleaseStatus::Released
+    );
+    assert!(
+        *geometry_draft == expected,
+        "Geometry invalidation changes only the existing release policy status"
+    );
+    let bodies = host.viewport_frame().document.scene.bodies.len();
+    value(extrude(4));
+    assert!(host.viewport_frame().document.scene.bodies.len() > bodies);
+    assert!(
+        Arc::ptr_eq(&geometry_draft, &host.shared_drawing_snapshot()),
+        "A further real geometry edit must not copy an already-Draft drawing"
+    );
+}
+
+#[test]
+fn shared_drawing_snapshot_respects_tab_close_and_cold_retirement_lifetimes() {
+    let host = NativeEngineHost::new();
+    value(host.bind_project_session("drawing-a"));
+    value(
+        host.engine_call(
+            "drawing_set_document",
+            &json!({"sheets":[
+        {"id":1,"name":"Retained","format":"a4","orientation":"landscape"}],
+        "active_sheet_id":1,"next_sheet_id":2})
+            .to_string(),
+        ),
+    );
+    let first = host.shared_drawing_snapshot();
+    let weak = Arc::downgrade(&first);
+    value(host.create_project_session("drawing-b"));
+    let second = host.shared_drawing_snapshot();
+    value(host.activate_project_session("drawing-a"));
+    assert!(Arc::ptr_eq(&first, &host.shared_drawing_snapshot()));
+    value(host.activate_project_session("drawing-b"));
+    assert!(host.evict_inactive_project_session("drawing-a").unwrap());
+    assert!(
+        weak.upgrade().is_some() && first.sheets[0].name == "Retained",
+        "A reader retains an immutable value after engine eviction"
+    );
+    drop(first);
+    assert!(
+        weak.upgrade().is_none(),
+        "The cold engine must not retain an extra drawing cache"
+    );
+    assert!(Arc::ptr_eq(&second, &host.shared_drawing_snapshot()));
+    value(host.activate_project_session("drawing-a"));
+    let restored = host.shared_drawing_snapshot();
+    assert!(restored.sheets[0].name == "Retained" && restored.active_sheet_id == Some(1));
+    let restored_weak = Arc::downgrade(&restored);
+    value(host.activate_project_session("drawing-b"));
+    value(host.drop_project_session("drawing-a"));
+    assert!(restored.sheets[0].name == "Retained");
+    drop(restored);
+    assert!(restored_weak.upgrade().is_none());
+}
+
+#[test]
 fn viewport_reads_share_authored_data_without_advancing_revisions() {
     let host = NativeEngineHost::new();
     let before = host.viewport_frame();

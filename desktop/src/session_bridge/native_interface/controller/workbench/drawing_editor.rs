@@ -464,7 +464,7 @@ pub(super) fn synchronize(
                 .as_ref()
                 .filter(|(previous, _)| previous == &receipt)
                 .map(|(_, document)| Arc::clone(document))
-                .unwrap_or_else(|| Arc::new(services.engine.drawing_snapshot()));
+                .unwrap_or_else(|| services.engine.shared_drawing_snapshot());
             editor.owner = Some(owner.clone());
             editor.revision = receipt.revision;
             let selected = selected

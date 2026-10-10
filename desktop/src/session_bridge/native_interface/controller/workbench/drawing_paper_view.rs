@@ -183,10 +183,8 @@ pub(in super::super) fn paint(
                     .as_ref()
                     .is_none_or(|(previous, _)| previous != &receipt)
                 {
-                    state.paper_document = Some((
-                        receipt.clone(),
-                        Arc::new(services.engine.drawing_snapshot()),
-                    ));
+                    state.paper_document =
+                        Some((receipt.clone(), services.engine.shared_drawing_snapshot()));
                 }
                 Ok((receipt, state.paper_document.as_ref().unwrap().1.clone()))
             })?;

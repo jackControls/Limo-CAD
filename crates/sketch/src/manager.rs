@@ -126,7 +126,7 @@ pub struct SketchManager {
     /// Per-body color/material for viewport and manufacturing export.
     body_appearances: Vec<BodyAppearance>,
     /// Persistent technical-drawing sheets and view definitions.
-    drawings: DrawingDocumentDto,
+    drawings: std::sync::Arc<DrawingDocumentDto>,
     /// Persistent assembly/joint intent. Kinematic display poses are derived
     /// by the assembly solver at runtime and never baked into solid history.
     assembly: AssemblyDocumentDto,
@@ -218,7 +218,7 @@ impl SketchManager {
             grid_snap: true,
             grid_step: GRID_STEP_MM,
             body_appearances: Vec::new(),
-            drawings: DrawingDocumentDto::default(),
+            drawings: std::sync::Arc::new(DrawingDocumentDto::default()),
             assembly: AssemblyDocumentDto::default(),
             assembly_solution_cache: RefCell::new(None),
             project_visibility: ProjectVisibilityDto::default(),
@@ -342,7 +342,7 @@ impl SketchManager {
             datum_planes: self.datum_planes.clone(),
             body_features: self.solids.body_feature_definitions().to_vec(),
             body_appearances: self.scrubbed_body_appearances(),
-            drawings: self.drawings.clone(),
+            drawings: (*self.drawings).clone(),
             assembly: self.assembly.clone(),
             visibility: self.scrubbed_project_visibility(),
             views: self.scrubbed_named_views(),
@@ -478,7 +478,7 @@ impl SketchManager {
             grid_snap: model.preferences.grid_snap,
             grid_step: GRID_STEP_MM,
             body_appearances: model.body_appearances,
-            drawings: model.drawings,
+            drawings: std::sync::Arc::new(model.drawings),
             assembly: model.assembly,
             assembly_solution_cache: RefCell::new(None),
             project_visibility: model.visibility,
@@ -763,7 +763,13 @@ impl SketchManager {
     }
 
     pub fn drawing_document(&self) -> DrawingDocumentDto {
-        self.drawings.clone()
+        (*self.drawings).clone()
+    }
+
+    /// Share the authoritative immutable drawing intent. Retained readers keep
+    /// their original value when a drawing mutation publishes its successor.
+    pub fn drawing_document_snapshot(&self) -> std::sync::Arc<DrawingDocumentDto> {
+        std::sync::Arc::clone(&self.drawings)
     }
 
     /// Borrow authored sheets for synchronous inspection under the host guard.
@@ -806,7 +812,16 @@ impl SketchManager {
 
     fn invalidate_assembly_solution(&mut self) {
         self.clear_assembly_solution();
-        for sheet in &mut self.drawings.sheets {
+        if !self.drawings.sheets.iter().any(|sheet| {
+            sheet.release.status == crate::DrawingReleaseStatus::Released
+                && sheet
+                    .views
+                    .iter()
+                    .any(|view| view.scope == crate::DrawingViewScope::Assembly)
+        }) {
+            return;
+        }
+        for sheet in &mut std::sync::Arc::make_mut(&mut self.drawings).sheets {
             if sheet.release.status == crate::DrawingReleaseStatus::Released
                 && sheet
                     .views
@@ -1864,13 +1879,16 @@ impl SketchManager {
         drawing: DrawingDocumentDto,
     ) -> Result<DrawingDocumentDto, SessionError> {
         drawing.validate().map_err(SessionError::Solid)?;
-        self.drawings = crate::drawing_topology::capture_drawing_topology(
+        let drawing = crate::drawing_topology::capture_drawing_topology(
             drawing,
             self.solid_scene_ref(),
-            Some(&self.drawings),
+            Some(self.drawings.as_ref()),
         )
         .map_err(SessionError::Solid)?;
-        Ok(self.drawings.clone())
+        if drawing != *self.drawings {
+            self.drawings = std::sync::Arc::new(drawing);
+        }
+        Ok((*self.drawings).clone())
     }
 
     pub fn geometry_edge_chain(
@@ -4260,11 +4278,10 @@ impl SketchManager {
         }
 
         let issued_scene = (!restoring_project
-            && self
-                .drawings
-                .sheets
-                .iter()
-                .any(|sheet| sheet.release.status == crate::DrawingReleaseStatus::Released))
+            && self.drawings.sheets.iter().any(|sheet| {
+                sheet.release.status == crate::DrawingReleaseStatus::Released
+                    && !sheet.views.is_empty()
+            }))
         .then(|| self.solids.scene_snapshot());
         let scene = self
             .solids
@@ -4275,7 +4292,7 @@ impl SketchManager {
             .as_ref()
             .is_some_and(|prior| prior.bodies != scene.bodies || prior.errors != scene.errors)
         {
-            for sheet in &mut self.drawings.sheets {
+            for sheet in &mut std::sync::Arc::make_mut(&mut self.drawings).sheets {
                 if sheet.release.status == crate::DrawingReleaseStatus::Released
                     && !sheet.views.is_empty()
                 {
