@@ -3,7 +3,7 @@ type: Concept
 title: AM ventilation grille and finger-trap openings
 description: FDM grille, slot, and louver design for airflow vs finger/tool ingress — bar width, pitch, edge treatment, and print orientation.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: enclosures, dfam, am, fdm, print
 keywords: ventilation grille, finger trap, louvers, bar pitch, slot width, airflow
 related_recipes: mounting-plate, turbine-fit-coupons
@@ -18,7 +18,7 @@ leave sub-min bars fail on the printer or in the field.
 
 **Attribution:** DFM habits from Guns / NWTC LibreTexts
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)) and DOE Module 3D
-(public domain). Safety aperture limits are **application / regulatory** —
+(mixed rights; link-only). Safety aperture limits are **application / regulatory** —
 verify for your product; this page is geometry hygiene only.
 
 ## Opening classes

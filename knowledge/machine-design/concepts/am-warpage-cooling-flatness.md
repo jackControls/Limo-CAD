@@ -3,7 +3,7 @@ type: Concept
 title: AM warpage, cooling, and flatness for large plates
 description: Keep large FDM plates and lids flatter — orientation, ribbing, cooling, and when to split or fixture instead of fighting curl.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: dfam, am, fdm, print, enclosures
 keywords: warpage, curling, flatness, large plate FDM, cooling, bed adhesion
 related_recipes: mounting-plate, garden-bench, turbine-fit-coupons
@@ -18,7 +18,7 @@ accuracy when thermal gradients and residual stress win. Flatness is a
 
 **Attribution:** process habits adapted from Guns / NWTC LibreTexts DFM
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)) and DOE Module 3D
-(public domain). Machine-specific bed/enclosure settings are **link-out**.
+(mixed rights; link-only). Machine-specific bed/enclosure settings are **link-out**.
 
 ## What fails first
 

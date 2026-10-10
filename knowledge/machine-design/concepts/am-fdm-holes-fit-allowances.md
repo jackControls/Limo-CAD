@@ -3,7 +3,7 @@ type: Concept
 title: FDM holes and printed-fit allowances
 description: Role-based clearance, locate, and press allowances for FDM printed holes; prefer coupons; XY shrink habits without universal mm tables.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: dfam, am, fdm, fits, clearances, print
 keywords: FDM hole, printed hole, hole shrink, XY compensation, clearance hole print, press fit print, locate fit FDM, printed-fit allowance
 related_recipes: turbine-fit-coupons, d-screw-vise-fit, revolved-spacer
@@ -18,7 +18,7 @@ Treat fit as a **role + process pair**, not a single global offset.
 
 **Attribution:** process habits from Guns / NWTC DFM
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)) and DOE Module 3D
-(public domain). Fit-class vocabulary aligns with
+(mixed rights; link-only). Fit-class vocabulary aligns with
 [fits & clearances](fits-clearances.md) (NIST / Berez teaching rewrite,
 CC BY 4.0). **No invented universal millimeter charts** — numbers you see in
 vendor notes or shop folklore are **starting guidance**; lock on coupons.

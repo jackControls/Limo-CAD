@@ -3,11 +3,11 @@ type: Concept
 title: AM thin walls and print orientation
 description: FDM min wall, thin-wall traps, layer-line anisotropy, and bed-face orientation before locking geometry.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: dfam, am, fdm, dfm, print
 keywords: thin wall, min wall, FDM, anisotropy, print orientation, overhang
 related_recipes: turbine-fit-coupons
-sources: nwtc-guns-dfm, doe-3d
+sources: nwtc-guns-dfm, doe-3d, session-simulation
 ---
 
 # AM thin walls and print orientation
@@ -18,7 +18,22 @@ only whether the solid is manifold.
 
 **Attribution:** process habits adapted from Guns / NWTC LibreTexts DFM
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)) and DOE Module 3D
-(public domain). Numbers below are **starting guidance**, not shop standards.
+(mixed rights; link-only). Numbers below are **starting guidance**, not shop standards.
+
+## Flex thickness and actual wall paths
+
+For a flexure, label the bending axis and measure thickness across that axis;
+the narrow dimension visible in a plan view may instead be its width. Inspect
+the actual sliced wall paths, seams and gap-fill transitions around the nub and
+its root using the intended nozzle/material/profile. A small feature lying in
+the layer plane need not be an integer multiple of layer height, but still
+needs a continuous printable extrusion path.
+
+A round relief cutter does not guarantee a tangent transition where it meets
+the original wall. Check normals/continuity at the actual cut junction and
+inspect sections for accidental ridges or necks before treating the relief as
+a smooth flex region. See [AM snap-fits](am-snap-fit.md) and
+[simulation verification](simulation-verification.md).
 
 ## Min wall (role-based)
 

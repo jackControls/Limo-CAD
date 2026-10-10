@@ -3,7 +3,7 @@ type: Concept
 title: AM assembly join choice — glue, weld, screw, or snap
 description: When FDM enclosures should use screws, solvent/glue, ultrasonic-style joints, or snaps — and when not to snap.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: dfam, am, fdm, joints, fasteners, enclosures, dfa
 keywords: glue joint, solvent weld, screw assembly, snap vs glue, DFMA join
 related_recipes: turbine-fit-coupons, d-screw-vise, mounting-plate
@@ -18,7 +18,7 @@ detailing a clip. Snap-fits are not the default for every FDM enclosure.
 **Attribution:** DFA principles from PALNI DFMA
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), DFM habits from
 Guns / NWTC ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), DOE
-Module 3D (public domain), fastener thinking from NASA RP-1228 (public domain).
+Module 3D (mixed rights; link-only), fastener thinking from NASA RP-1228 (public domain).
 Adhesive and ultrasonic **process windows** are vendor-/material-specific —
 link out; prefer vendor cure schedules over inventing them here.
 

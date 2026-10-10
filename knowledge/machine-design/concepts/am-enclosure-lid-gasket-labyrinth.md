@@ -3,7 +3,7 @@ type: Concept
 title: AM enclosure lid, gasket, and labyrinth seal
 description: Generic FDM enclosure lid strategies — flat gasket seat, printed labyrinth, crush lip — and when each beats a bare snap or screw stack.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: enclosures, dfam, am, fdm, seals, joints
 keywords: enclosure lid, gasket seat, labyrinth seal, crush lip, O-ring groove, mating flange
 related_recipes: turbine-fit-coupons, mounting-plate
@@ -19,7 +19,7 @@ mating path is intentional.
 
 **Attribution:** enclosure / DFA habits adapted from Guns / NWTC LibreTexts
 DFM ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), DOE Module 3D
-(public domain), and PALNI DFMA ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).
+(mixed rights; link-only), and PALNI DFMA ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).
 Heuristics only — IP / weather ratings need a measured coupon, not this page.
 
 ## Seal classes (pick one primary)

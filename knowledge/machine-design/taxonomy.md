@@ -118,6 +118,12 @@ Provenance: [SOURCES](SOURCES.md). Browse note:
 
 ## Still thin / planned (honest)
 
+Structural evidence is now seeded in
+[`machine-design.concepts.simulation-verification`](concepts/simulation-verification.md):
+CAD/contact interpretation, same-mesh comparison, mesh convergence, numerical
+checks and physical qualification. This is experimental verification guidance;
+production structural analysis and certified material allowables remain planned.
+
 | Gap | Notes |
 |-----|-------|
 | Deep Y14.41 / semantic PMI export recipes | drawing-vs-mbd-pmi seeded (CAD-time packs); vendor/tutorial dumps **out**; inspection bridge seeded (roles); deep CMM/GR&R still out |

@@ -1,24 +1,53 @@
 # Distill versus link — machine-design knowledge
 
-Policy for `knowledge/machine-design/`. Verified 2026-09-11.
+Policy for `knowledge/machine-design/`. Session reuse audit updated 2026-10-07;
+older catalog rows are not newly verified by that date.
 Companion table: [`knowledge/machine-design/SOURCES.md`](../knowledge/machine-design/SOURCES.md).
 
 ## Rule of thumb
 
 | We do | We do not |
 |-------|-----------|
-| Write **our own** thin help pages in our voice | Paste chapters, slides, or standard text |
+| Write **our own** thin help pages in our voice | Copy chapters, slides or standards without applicable permission |
+| **Copy** selected licensed passages, code or figures with their notices and attribution | Treat a source link or software license as permission for unrelated content |
 | **Distill** ideas from PD / CC BY / Apache sources with attribution | Bundle CC BY-**NC** / NC-SA text into the product help corpus |
 | **Link** to great NC books, OCW courses, and buy-pages for standards | Scrape MatWeb / MakeItFrom or copy ASME / ISO |
 | Point agents at local KB first, then these links | Claim allowables, load ratings, or “ASME-compliant” from help text |
 
-**Distill** = rewrite into short OKF concepts + recipes; cite the source; keep attribution in frontmatter / SOURCES.
+**Distill** = write short OKF concepts and recipes with source attribution.
+Rewording a protected passage is not automatically independent authorship or a
+way around license terms. An explanation of ideas, methods or formulas written
+independently differs from copying their particular expression; see
+[U.S. Copyright Office Circular 31](https://www.copyright.gov/circs/circ31.pdf).
 
 **Link** = URL + one-line why it is useful; no substantial quotation.
 
+**Copy** = retain the source's expression, either unchanged or with identified
+edits. Copying is supported when the license covers the exact artifact. Preserve
+author, title, original URL, version/commit, copyright and license notices;
+identify changes and separately credited/excluded content. Keep copies under
+their source license and include required license/NOTICE files. CC BY permits
+commercial copying with attribution and no extra restrictions on licensed
+rights; MIT/Apache code and associated documentation
+can be copied subject to their terms. A thin authored page remains preferable to
+a bulk manual when it serves the Help task better, but that is a product choice,
+not a claim that permitted copying is prohibited.
+
+See the [session knowledge audit](analysis/SESSION-KNOWLEDGE-AUDIT.md) for
+artifact-specific decisions, including OCCT release-level licensing evidence
+and the limits on vendor datasheets. GPL/AGPL/ShareAlike content is not forbidden
+to use: copying or integrating it needs its applicable distribution obligations
+and a compatible destination license, rather than relabeling it LGPL.
+Those obligations can extend to an adapted or combined work, so preserving
+one file's notice is not automatically sufficient for the shipped bundle.
+
 ## Why this split
 
-noBS CAD ships under **LGPL-2.1-or-later**. Help that rides with the app must not quietly include NonCommercial content. ShareAlike (SA) can force derivative licensing — we avoid SA as a primary spine until Jack/Jeff decide on a docs license exception. Proprietary standards are contractual references, not open textbooks.
+Limo CAD ships under **LGPL-2.1-or-later**. Help that rides with the app must not
+quietly include NonCommercial content. ShareAlike can permit commercial copying,
+with its attribution and derivative-licensing obligations. Preserve the copied
+artifact's license and applicable terms; the project license does not replace
+them. Proprietary standards are contractual references, not open textbooks.
 
 ---
 
@@ -41,7 +70,6 @@ These are the **primary spine**. Prefer them when filling pages.
 |--------|-------------------|--------------|
 | [NWTC LibreTexts — Design for Various Manufacturing Methods](https://eng.libretexts.org/Courses/Northeast_Wisconsin_Technical_College/Design_for_Various_Manufacturing_Methods) (Bryan Guns) | **CC BY 4.0** (page footer on DFM chapter) | Process families, DFM principles, AM notes — rewrite, do not paste Boothroyd tables (book already avoids copyrighted tables) |
 | [PALNI — Design for Manufacture and Assembly](https://pressbooks.palni.org/designmanufactureassembly/) (Gagnon & Bearman) | **CC BY 4.0** | DFA heuristics (part count, orientation, snap fits) |
-| [DOE Module 3D DFM/DFA/reliability](https://www.energy.gov/sites/default/files/2021-07/Module_3D.pdf) | US gov work (generally PD) | High-level checklists; strip any third-party figures |
 
 ### Machine elements
 
@@ -100,14 +128,15 @@ Agents may **read** these when the user is learning; we still do not **ship** th
 |--------|------|
 | NASA GSFC Drawing Standards Manual (1994) | Often PD gov work but **outdated** vs ASME Y14.5-2018 — do not teach as current |
 | LibreTexts pages without a clear BY footer | Verify each page; default to link-only |
+| [DOE Module 3D](https://www.energy.gov/sites/default/files/2021-07/Module_3D.pdf) | Mixed third-party credits; link-only pending verification of a selected item. Government hosting is not a copying grant for the whole deck |
 
-### ShareAlike — parked (not primary spine)
+### ShareAlike — copying needs its own license retained
 
 | Source | Note |
 |--------|------|
-| Baughman Iowa State ME design (reported CC BY-SA) | Commercial-OK attribution but SA may infect derivatives — **link** until we decide SA policy |
-| Mechanics Map (CC BY-SA) | Same |
-| Wikipedia GD&T (CC BY-SA) | Short paraphrase OK; large reuse → SA |
+| Baughman Iowa State ME design (reported CC BY-SA) | Verify the particular artifact before copying; a reported license is not sufficient evidence |
+| Mechanics Map (CC BY-SA) | Commercial copying can be permitted; preserve attribution and applicable ShareAlike terms for copies/adaptations |
+| Wikipedia GD&T (CC BY-SA) | Check the article/version and separately licensed media; preserve attribution and applicable ShareAlike terms rather than relabeling copied prose LGPL |
 
 ---
 
@@ -131,6 +160,9 @@ MCP / agent order:
 2. Open linked sources from SOURCES (including NC links)
 3. Web search last — still no pasting standards into the repo
 
-## Decision for this branch
+## Maintenance
 
-Branch `docs/machine-design-kb` tracks the corpus; keep SOURCES and distill policy in sync until a first `kb-*` recipe is ready. SOURCES stays the machine-readable table; this file is the human explanation.
+Keep the source inventory and this policy in sync with the maintained
+`knowledge/` corpus. The source inventory resolves stable IDs; this document
+explains reuse policy. A policy or source row is not proof that a particular
+artifact was copied or that all of its rights were verified.

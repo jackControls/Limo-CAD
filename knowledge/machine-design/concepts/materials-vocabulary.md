@@ -3,11 +3,11 @@ type: Concept
 title: Materials vocabulary
 description: CAD-time property vocabulary — E, Sy, Sut, hardness, anisotropy, print vs isotropic, CTE — roles and golden path; not certified allowables or MatWeb scrapes.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: materials, dfm, manufacturing, print, anisotropy
 keywords: modulus, E, yield, Sy, Sut, hardness, fatigue, endurance, CTE, density, alloy, polymer, anisotropy, isotropic, print vs isotropic, orthotropic, corrosion, allowables, filament, temper, grade, educational range, datasheet
 related_recipes: turbine-fit-coupons, garden-bench
-sources: kittycad-materials, doe-3d, nwtc-guns-dfm, materials-project
+sources: kittycad-materials, doe-3d, nwtc-guns-dfm, materials-project, bambu-petg-basic, session-simulation
 ---
 
 # Materials vocabulary
@@ -19,11 +19,29 @@ Prefer a named **process + grade/condition** over viewport metal color or
 filament appearance.
 
 **Attribution:** process-first / buy-before-invent habits from DOE Module 3D
-(`doe-3d`, public domain) and NWTC Guns DFM distill (`nwtc-guns-dfm`,
+(`doe-3d`, mixed rights; link-only) and NWTC Guns DFM distill (`nwtc-guns-dfm`,
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)). Open datasets
 (`kittycad-materials`, `materials-project`) are **patterns or computed props**,
 not drawing allowables. Materials Project is crystalline DFT data, not shop
 steel charts; KittyCAD JSON is a *schema pattern* only.
+
+## Preserve the material evidence
+
+Record manufacturer, exact grade/formulation, datasheet revision/date, test
+method, specimen direction/condition and units with every property used in a
+calculation. A brand name alone cannot identify a dataset. The manufacturer's
+[PETG Basic sheet](https://store.bblcdn.com/s1/default/cb94589bf7994fdcbfa833badefae9cd/Bambu_PETG_Basic_Technical_Data_Sheet.pdf)
+is a reference, not a redistribution grant or a universal printed-part allowable.
+Keep older revisions distinguishable when comparing prior calculations.
+
+For linear isotropic elasticity with fixed Poisson ratio and unchanged supports,
+when loading is entirely **prescribed displacement** with no independent force
+or body loads, scaling E scales reactions/stresses but leaves the displacement/
+strain field unchanged. Under **prescribed forces** with homogeneous supports,
+displacement instead scales inversely with E. Neither rule replaces anisotropy,
+contact, creep or printed coupon measurements. Preserve the slicer profile,
+orientation and actual wall paths with the coupon result. See
+[simulation verification](simulation-verification.md).
 
 ## Vocabulary (roles for discovery)
 
