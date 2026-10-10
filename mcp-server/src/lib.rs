@@ -9776,18 +9776,42 @@ mod tests {
         assert_eq!(model["revolves"].as_array().unwrap().len(), 1);
 
         let summary = server.feature_summary(&json!({})).unwrap();
+        let native_body = &server.manager.solid_scene_ref().bodies[0];
+        let native_topology = json!({
+            "faces": native_body.faces.iter().map(|face| json!({
+                "id": face.id.0,
+                "outer_shell": face.outer_shell,
+                "plane": face.plane,
+                "cylinder": face.cylinder,
+                "edge_keys": face.edge_keys,
+                "linear_seam_edge_keys": face.linear_seam_edge_keys,
+            })).collect::<Vec<_>>(),
+            "edges": native_body.edges.iter().map(|edge| json!({
+                "key": edge.key,
+                "circle": edge.circle,
+                "refinable": edge.refinable,
+                "first": edge.points.first(),
+                "last": edge.points.last(),
+            })).collect::<Vec<_>>(),
+        });
+        assert!(
+            native_body
+                .faces
+                .iter()
+                .all(|face| face.outer_shell == Some(true)),
+            "Revolved tube lacks native exterior-shell evidence: {native_topology}"
+        );
         assert_eq!(
             summary["hole_count"], 1,
             "revolved cavity must be counted as one hole"
         );
         assert_eq!(summary["holes"][0]["diameter"], 20.0);
         assert_eq!(summary["holes"][0]["style"], "simple");
-        assert_eq!(summary["holes"][0]["through"], true);
+        assert_eq!(
+            summary["holes"][0]["through"], true,
+            "Revolved tube extent was not recognized: {summary}; topology: {native_topology}"
+        );
         assert_eq!(summary["holes"][0]["depth"], 15.0);
-        assert!(server.manager.solid_scene_ref().bodies[0]
-            .faces
-            .iter()
-            .all(|face| face.outer_shell == Some(true)));
         assert_eq!(
             summary["hole_detection_scope"],
             "closed_cylindrical_cavities"
