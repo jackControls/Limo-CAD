@@ -26,7 +26,11 @@ pub(super) struct Context {
 }
 
 impl Context {
-    pub(super) fn new(setup: &CamSetupDto, scene: &SolidSceneDto, sketches: &[SketchDto]) -> Self {
+    pub(super) fn new(
+        setup: &CamSetupDto,
+        scene: &Arc<SolidSceneDto>,
+        sketches: &[SketchDto],
+    ) -> Self {
         let options = |source| {
             limo_cad_sketch::edge_chain_candidates(scene, sketches, source, &setup.body_ids)
                 .into_iter()
@@ -68,7 +72,7 @@ impl Context {
         };
         Self {
             setup: setup.clone(),
-            scene: Arc::new(scene.clone()),
+            scene: Arc::clone(scene),
             sketches: sketches.to_vec().into(),
             model_options: options(ChainSource::Model),
             sketch_options: options(ChainSource::Sketch),

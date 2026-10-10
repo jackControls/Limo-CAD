@@ -15,7 +15,14 @@ pub(super) struct Context {
     operation: Option<operations::Context>,
 }
 impl Context {
-    pub(super) fn new(scene: &SolidSceneDto, _cam: &CamDocumentDto) -> Result<Self, String> {
+    #[cfg(test)]
+    pub(super) fn new(scene: &SolidSceneDto, cam: &CamDocumentDto) -> Result<Self, String> {
+        Self::shared(&Arc::new(scene.clone()), cam)
+    }
+    pub(super) fn shared(
+        scene: &Arc<SolidSceneDto>,
+        _cam: &CamDocumentDto,
+    ) -> Result<Self, String> {
         let bodies = scene
             .bodies
             .iter()
@@ -43,7 +50,7 @@ impl Context {
         Ok(Self {
             bodies,
             model_valid: scene.errors.is_empty(),
-            scene: Arc::new(scene.clone()),
+            scene: Arc::clone(scene),
             sketches: Arc::from([]),
             operation: None,
         })

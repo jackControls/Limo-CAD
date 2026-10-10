@@ -307,3 +307,41 @@ fn native_cam_each_toolpath_type_can_be_created_only_with_explicit_geometry() {
         assert_eq!(next.toolpath_generations, cam.toolpath_generations);
     }
 }
+
+#[test]
+fn cam_forms_share_viewport_geometry_and_release_their_retained_scene() {
+    let cam = cam("contour2d");
+    let scene = std::sync::Arc::new(scene());
+    let retired = std::sync::Arc::downgrade(&scene);
+    let mut existing = Draft::new(&cam, Selection::Operation(7)).unwrap();
+    operation_editor::extend_shared(&mut existing, &cam, &scene, &[]).unwrap();
+    assert!(std::sync::Arc::ptr_eq(
+        &operation_editor::geometry(&existing).unwrap().scene,
+        &scene,
+    ));
+
+    let mut creating = creation::draft(
+        Tab::Toolpaths,
+        &cam,
+        creation::Context::shared(&scene, &cam).unwrap(),
+    );
+    set(&mut creating, "/native/create/setup_id", "3");
+    set(&mut creating, "/tool_id", "5");
+    for kind in ["contour2d", "pocket2d", "contour2d"] {
+        set(&mut creating, "/native/create/kind", kind);
+        creation::seed_choices(&mut creating, &cam).unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            &operation_editor::geometry(&creating).unwrap().scene,
+            &scene,
+        ));
+    }
+
+    // A replacement viewport can release its reference while an open draft
+    // keeps a coherent old scene. Closing both drafts releases that snapshot.
+    drop(scene);
+    assert!(retired.upgrade().is_some());
+    drop(existing);
+    assert!(retired.upgrade().is_some());
+    drop(creating);
+    assert!(retired.upgrade().is_none());
+}

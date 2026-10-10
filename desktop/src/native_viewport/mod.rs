@@ -668,7 +668,7 @@ pub(crate) use limo_cad_native_engine::NativeViewportFrame as ViewportModel;
 /// Borrowed rendered geometry for framing; this also includes isolated feature
 /// edit inputs, and never copies the meshes to move a camera.
 pub(crate) struct ViewportGeometry<'a> {
-    pub scene: &'a SolidSceneDto,
+    pub scene: &'a std::sync::Arc<SolidSceneDto>,
     pub active_sketch: Option<&'a SketchDto>,
     pub finished_sketches: &'a [SketchDto],
     pub instance_body_poses: &'a [InstanceBodyPoseDto],

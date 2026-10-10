@@ -296,7 +296,7 @@ fn draft_for(world: &World, cam: &CamDocumentDto, selection: Selection) -> Resul
     let geometry = native_viewport::interface_geometry(world);
     setup::extend(&mut draft, cam, geometry.scene, geometry.finished_sketches)?;
     machine::extend(&mut draft, cam, machine::snapshot(world))?;
-    operation_editor::extend(&mut draft, cam, geometry.scene, geometry.finished_sketches)?;
+    operation_editor::extend_shared(&mut draft, cam, geometry.scene, geometry.finished_sketches)?;
     Ok(draft)
 }
 
@@ -853,7 +853,7 @@ pub(crate) fn reduce(
                 {
                     return Err("Finish the current modeling edit before creating CAM items".into());
                 }
-                let context = creation::Context::new(
+                let context = creation::Context::shared(
                     native_viewport::interface_geometry(world).scene,
                     &editor.cam,
                 )?

@@ -19,10 +19,20 @@ pub(super) fn geometry(draft: &Draft) -> Option<&operation_geometry::Context> {
     draft.operation_edit.as_ref()?.geometry.as_ref()
 }
 
+#[cfg(test)]
 pub(super) fn extend(
     draft: &mut Draft,
     cam: &CamDocumentDto,
     scene: &SolidSceneDto,
+    sketches: &[SketchDto],
+) -> Result<(), String> {
+    extend_shared(draft, cam, &Arc::new(scene.clone()), sketches)
+}
+
+pub(super) fn extend_shared(
+    draft: &mut Draft,
+    cam: &CamDocumentDto,
+    scene: &Arc<SolidSceneDto>,
     sketches: &[SketchDto],
 ) -> Result<(), String> {
     let Selection::Operation(id) = draft.selection else {
@@ -38,10 +48,7 @@ pub(super) fn extend(
         .then(|| operation_geometry::Context::new(setup, scene, sketches));
     let source = Arc::new(heights::picking::Source {
         setup: setup.clone(),
-        scene: geometry.as_ref().map_or_else(
-            || Arc::new(scene.clone()),
-            |geometry| geometry.scene.clone(),
-        ),
+        scene: Arc::clone(scene),
         sketches: geometry
             .as_ref()
             .map_or_else(|| Arc::from(sketches), |geometry| geometry.sketches.clone()),

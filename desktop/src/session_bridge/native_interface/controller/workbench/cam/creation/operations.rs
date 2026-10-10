@@ -127,7 +127,7 @@ pub(super) fn changed(draft: &mut Draft, cam: &CamDocumentDto, path: &str) -> Re
         .push(record);
     temporary.height_expressions.push(heights.clone());
     let mut next = Draft::new(&temporary, Selection::Operation(0))?;
-    operation_editor::extend(&mut next, &temporary, &context.scene, &context.sketches)?;
+    operation_editor::extend_shared(&mut next, &temporary, &context.scene, &context.sketches)?;
     let name = draft.fields.iter().find(|field| field.path == "/name");
     let keep_name = name
         .filter(|field| field.text != field.original)

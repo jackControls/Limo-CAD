@@ -314,7 +314,7 @@ pub(super) fn execute(
                     .as_ref()
                     .ok_or("Load the central library first")?;
                 let cam = snapshot.form_document(state.project.units);
-                let context = creation::Context::new(&Default::default(), &cam)?;
+                let context = creation::Context::shared(&Default::default(), &cam)?;
                 state.draft = Some(creation::draft(Tab::Tools, &cam, context));
                 state.creating = true;
                 state.copied_from = None;
