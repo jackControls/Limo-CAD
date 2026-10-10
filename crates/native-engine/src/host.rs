@@ -456,6 +456,16 @@ impl NativeEngineHost {
         ))
     }
 
+    /// Read the setup warning without copying CAM intent for a UI refresh.
+    pub fn cam_toolpath_safety_warning(&self, setup_id: u64) -> Result<Option<String>, String> {
+        let workspace = self.inner.lock().expect("engine lock poisoned");
+        workspace
+            .active()
+            .manager
+            .cam_toolpath_safety_warning(setup_id)
+            .map_err(|error| error.to_string())
+    }
+
     /// One lock acquisition gives the native viewport a coherent model
     /// snapshot. The OCCT triangle buffers stay in Rust and never make a
     /// JSON round-trip through the shared engine dispatch.

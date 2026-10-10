@@ -2,7 +2,8 @@
 
 Source review for [#333](https://github.com/limo-cad/Limo-CAD/issues/333), based on
 `9cfa76a7043989d341ec1de49488379ab0e1c92a` plus the borrowed native print/history
-reads described below, on 2026-10-10. This is a concrete inventory of the
+and CAM warning reads described below, on 2026-10-10. This is a concrete inventory
+of the
 production snapshot APIs and their desktop consumers, shared host/MCP read
 contracts, and the document caches they feed. It is not a census of every clone
 in the repository, a benchmark, or live UI qualification. Test fixtures and
@@ -98,13 +99,16 @@ invalidation boundary, and remaining disposition. Paths under
    until the next Open or resource destruction. `cam_export.rs` temporarily
    owns CAM intent to derive retained posting fields/summary. These copies
    scale with tools/setups/operations, not NativeViewportFrame geometry.
-   `cam_view.rs` additionally discards the DTO returned by `cam_snapshot`
-   when reading its warning; a warning-only borrowed accessor is a concrete
-   remaining copy candidate. The host's actual background `cam_snapshot`
-   boundary owns CAM intent so voxel work can run after the engine guard ends.
-   Do not remove those required worker snapshots. CAM posting/editor/library
+   `cam_view.rs` previously discarded the DTO returned by `cam_snapshot`
+   when reading its warning. Its warning-only accessor now reads the same
+   setup validation under a short engine guard without copying CAM intent.
+   The existing owner/revision fence still covers that read. The unchanged
+   compatibility `cam_snapshot` accessor still returns owned CAM intent.
+   The actual `cam_view.rs` worker retains the existing Arc document so voxel
+   work can run after the engine guard ends. Preserve that worker snapshot.
+   CAM posting/editor/library
    reads remain candidates for narrower borrowed accessors; this patch does
-   not introduce a new CAM API or change retained draft behavior.
+   not change the external CAM schema or retained draft behavior.
 
 9. **Borrowed menus and actions**: `native/controller/browser.rs::action_node`,
    history validation/rename/edit preparation, file export readiness, sketch
@@ -226,7 +230,7 @@ this audit or recreate the already shared metadata/pose caches.
 Existing identity/retention tests cover shared frames, independent metadata and
 placement invalidation, drawing edits/tab reuse/eviction, mesh reuse and dirty
 archive/history retention. The issue records historical focused passes; this
-source audit did not rerun them. The two scalar/metadata-only fixes received
+source audit did not rerun them. The three scalar/metadata-only fixes received
 source review and scoped edition-2021 rustfmt/diff checks. No tests, builds,
 benchmarks or live GUI/MCP qualification were performed here, and no FPS,
 latency, universal cache-release or current deployed-build claim is made.

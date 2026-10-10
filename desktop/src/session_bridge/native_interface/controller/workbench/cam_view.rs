@@ -982,12 +982,7 @@ pub(super) fn synchronize(
                     let document = services.engine.cam_document_snapshot();
                     let (setup, operation) = selection(&document, key.selection);
                     let warning = setup
-                        .map(|id| {
-                            services
-                                .engine
-                                .cam_snapshot(id)
-                                .map(|(_, _, warning)| warning)
-                        })
+                        .map(|id| services.engine.cam_toolpath_safety_warning(id))
                         .transpose()?
                         .flatten();
                     Ok((document, setup, operation, warning))
