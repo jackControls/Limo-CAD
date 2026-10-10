@@ -274,13 +274,14 @@ fn native_completion_original_ticket_survives_replacement_and_strips_stale_prese
 }
 
 #[test]
-fn native_query_claims_before_execution_and_retains_failed_transport() {
+fn native_owned_query_publishes_exact_read_only_result_and_original_admission() {
     super::super::tests::with_isolated_session_test(|| {
         let f = Fixture::new();
         let id = "600-1";
         let path = f.root.join(&f.session).join("controls/600-1.request.json");
-        let response_path = path.with_file_name("600-1.result.json");
-        fs::create_dir(&response_path).unwrap();
+        let expected = parse_engine_envelope(f.engine.engine_call("document", "")).unwrap();
+        let before = serde_json::to_string(&f.engine.document_snapshot()).unwrap();
+        let geometry_revision = f.engine.geometry_revision();
         let owner = json!({"session_id":f.session,"window_id":"main","document_id":f.owner.document_id,
             "process_instance_id":f.state.process_instance_id,"base_generation":f.revision});
         atomic_write(
@@ -290,29 +291,39 @@ fn native_query_claims_before_execution_and_retains_failed_transport() {
             .to_string(),
         )
         .unwrap();
-        assert!(
-            control_for_window_owned(&f.state, "main", &f.engine, None, Some((&f.owner, id)))
-                .is_err()
-        );
+        control_for_window_owned(&f.state, "main", &f.engine, None, Some((&f.owner, id))).unwrap();
         assert!(!path.exists());
-        let ticket = ticket_for(&f.state, &f.owner, &f.session, id).unwrap();
-        let publishers = f.state.publishers.lock().unwrap();
-        let admitted = publishers["main"].native_control.as_ref().unwrap();
-        assert!(admitted.started && admitted.pending_receipt.is_some());
-        let produced = admitted.pending_receipt.as_ref().unwrap().0.clone();
-        assert!(
-            produced["status"] == "applied"
-                && produced["value"]["name"] == f.engine.document_name()
-        );
-        drop(publishers);
-        fs::remove_dir(&response_path).unwrap();
-        retry_pending(&f.state, &f.engine, "main").unwrap();
         let result = f.read_result(id);
         assert!(
-            result["status"] == "applied" && result["value"] == produced["value"],
-            "Retry retains the exact produced query value"
+            result["status"] == "applied" && result["value"] == expected,
+            "The owned query publishes its exact actual read-only value"
         );
-        assert!(validate_start(&f.state, &f.engine, &ticket).is_err());
+        let admission =
+            NativeControlAdmission::decode(&result["control_admission"].to_string()).unwrap();
+        assert!(
+            admission.request_id == id
+                && admission.session_id == f.session
+                && admission.window_id == f.owner.window_id
+                && admission.document_id == f.owner.document_id
+                && admission.epoch == f.owner.epoch
+                && admission.revision == f.revision
+                && admission.process_instance_id == f.state.process_instance_id
+        );
+        assert!(result["active_session_id"] == f.session);
+        assert!(!path.with_file_name("600-1.admitted.json").exists());
+        assert!(!has_pending(&f.state, "main").unwrap());
+        assert!(ticket_for(&f.state, &f.owner, &f.session, id).is_err());
+        assert!(
+            control_for_window_owned(&f.state, "main", &f.engine, None, Some((&f.owner, id)))
+                .unwrap()
+                .is_null()
+        );
+        assert!(
+            f.read_result(id) == result,
+            "A consumed query must retain its original result"
+        );
+        assert!(serde_json::to_string(&f.engine.document_snapshot()).unwrap() == before);
+        assert!(f.engine.geometry_revision() == geometry_revision);
     });
 }
 
@@ -353,5 +364,67 @@ fn native_rejected_completion_retries_transport_without_restarting_action() {
         assert!(f.state.publishers.lock().unwrap()["main"]
             .native_control
             .is_none());
+
+        // Claim and start first; only then create a publication collision. A
+        // pre-existing result path correctly prevents queue admission entirely.
+        let ticket = f.admit("400-2");
+        validate_start(&f.state, &f.engine, &ticket).unwrap();
+        let produced = parse_engine_envelope(f.engine.engine_call("document", "")).unwrap();
+        let before = serde_json::to_string(&f.engine.document_snapshot()).unwrap();
+        let mut response = json!({"request_id":"400-2","session_id":f.session,
+            "status":"applied","value":produced});
+        let result_path = marker_path(&ticket).with_file_name("400-2.result.json");
+        fs::create_dir(&result_path).unwrap();
+        assert!(matches!(
+            complete(
+                &f.state,
+                &f.engine,
+                &ticket,
+                Some((&f.owner, f.revision)),
+                &mut response
+            ),
+            Err(CompletionError::Publication(_))
+        ));
+        let retained = f.state.publishers.lock().unwrap()["main"]
+            .native_control
+            .as_ref()
+            .unwrap()
+            .pending_receipt
+            .as_ref()
+            .unwrap()
+            .0
+            .clone();
+        assert!(retained["value"] == produced && retained["status"] == "applied");
+        assert!(
+            validate_start(&f.state, &f.engine, &ticket).is_err(),
+            "Retained transport proof never authorizes a second dispatch"
+        );
+        let mut competing = retained.clone();
+        competing["value"] = json!({"different":"outcome"});
+        assert!(matches!(
+            complete(
+                &f.state,
+                &f.engine,
+                &ticket,
+                Some((&f.owner, f.revision)),
+                &mut competing
+            ),
+            Err(CompletionError::Rejected(_))
+        ));
+        fs::remove_dir(&result_path).unwrap();
+        retry_pending(&f.state, &f.engine, "main").unwrap();
+        let result = f.read_result("400-2");
+        assert!(
+            result["status"] == "applied" && result["value"] == produced,
+            "Retry publishes the exact previously produced query outcome"
+        );
+        assert!(serde_json::to_string(&f.engine.document_snapshot()).unwrap() == before);
+        assert!(!has_pending(&f.state, "main").unwrap());
+        assert!(!marker_path(&ticket).exists());
+        assert!(!f
+            .root
+            .join(&f.session)
+            .join("controls/400-2.request.json")
+            .exists());
     });
 }
