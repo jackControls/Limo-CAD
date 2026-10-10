@@ -9926,6 +9926,197 @@ mod tests {
     }
 
     #[test]
+    fn native_rectangular_through_bore_keeps_exact_extent_after_step_import() {
+        fn assert_native_extent(server: &CadServer) {
+            let scene = server.manager.solid_scene_ref();
+            assert!(scene.errors.is_empty());
+            assert_eq!(scene.bodies.len(), 1);
+            let body = &scene.bodies[0];
+            let provenance = body
+                .faces
+                .iter()
+                .map(|face| {
+                    (
+                        &face.key,
+                        face.outer_shell,
+                        face.edge_keys.len(),
+                        &face.planar_inner_ring_edge_keys,
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert!(
+                body.faces.iter().all(|face| face.outer_shell == Some(true)),
+                "rectangular bore needs proven native shell membership: {provenance:?}"
+            );
+            let caps = body
+                .faces
+                .iter()
+                .filter(|face| face.plane.is_some_and(|plane| plane.normal[2].abs() > 0.9))
+                .collect::<Vec<_>>();
+            assert_eq!(caps.len(), 2);
+            for cap in caps {
+                assert_eq!(cap.edge_keys.len(), 5, "four outer lines and one bore ring");
+                assert_eq!(
+                    cap.planar_inner_ring_edge_keys.len(),
+                    1,
+                    "rectangular cap needs a complete native inner wire: {provenance:?}"
+                );
+                let ring = body
+                    .edges
+                    .iter()
+                    .find(|edge| edge.key == cap.planar_inner_ring_edge_keys[0])
+                    .unwrap()
+                    .circle
+                    .unwrap();
+                assert!(ring.closed);
+                assert!((ring.radius - 3.0).abs() < 1e-6);
+            }
+            assert!(server.manager.hole_definitions().is_empty());
+            let inferred = summary::summarize(scene, &[]);
+            assert_eq!(inferred.holes.len(), 1);
+            assert!(inferred.ambiguous_hole_candidates.is_empty());
+            let hole = &inferred.holes[0];
+            assert_eq!(hole.feature_id, None);
+            assert!((hole.diameter - 6.0).abs() < 1e-6);
+            assert_eq!(hole.through, Some(true));
+            assert!((hole.depth.unwrap() - 8.0).abs() < 1e-6);
+            assert_eq!(
+                hole.through_evidence,
+                Some("native_outer_shell_and_planar_inner_ring_openings")
+            );
+            assert_eq!(
+                hole.depth_evidence,
+                Some("two_analytic_rings_and_native_planar_inner_wire_openings")
+            );
+            // A legacy payload must retain the candidate/count while withholding
+            // extent; its rectangular caps have no old concentric annular proof.
+            let mut legacy = scene.clone();
+            for face in &mut legacy.bodies[0].faces {
+                face.planar_inner_ring_edge_keys.clear();
+            }
+            let unknown = summary::summarize(&legacy, &[]);
+            assert_eq!(unknown.holes.len(), 1);
+            assert_eq!(unknown.holes[0].through, None);
+            assert_eq!(unknown.holes[0].depth, None);
+            for cap_index in body.faces.iter().enumerate().filter_map(|(index, face)| {
+                (!face.planar_inner_ring_edge_keys.is_empty()).then_some(index)
+            }) {
+                let mut incomplete = scene.clone();
+                incomplete.bodies[0].faces[cap_index]
+                    .planar_inner_ring_edge_keys
+                    .clear();
+                assert_eq!(summary::summarize(&incomplete, &[]).holes[0].through, None);
+                let mut sealed = scene.clone();
+                sealed.bodies[0].faces[cap_index].outer_shell = Some(false);
+                assert_eq!(summary::summarize(&sealed, &[]).holes[0].through, None);
+                let mut reversed = scene.clone();
+                reversed.bodies[0].faces[cap_index]
+                    .plane
+                    .as_mut()
+                    .unwrap()
+                    .normal[2] *= -1.0;
+                assert_eq!(summary::summarize(&reversed, &[]).holes[0].through, None);
+            }
+        }
+
+        let mut donor = CadServer::new().unwrap();
+        donor
+            .call_tool(
+                "sketch_begin",
+                json!({"plane": {"type": "origin_plane", "plane": "xy"}}),
+            )
+            .unwrap();
+        donor
+            .call_tool(
+                "sketch_add_rectangle",
+                json!({"mode":"two_point", "p1":{"x":-10.0,"y":-10.0},
+                    "p2":{"x":10.0,"y":10.0}, "ctrl_held":true}),
+            )
+            .unwrap();
+        donor
+            .call_tool(
+                "sketch_add_circle",
+                json!({"mode":"center_diameter", "p1":{"x":0.0,"y":0.0},
+                    "p2":{"x":3.0,"y":0.0}, "ctrl_held":true}),
+            )
+            .unwrap();
+        donor.call_tool("sketch_finish", json!({})).unwrap();
+        let catalog = donor.manager.profile_catalog();
+        assert_eq!(catalog[0].profiles.len(), 2);
+        let outer_index = catalog[0]
+            .profiles
+            .iter()
+            .max_by(|a, b| a.area.total_cmp(&b.area))
+            .unwrap()
+            .index;
+        donor
+            .call_tool(
+                "solid_extrude",
+                json!({"sketch_name":"Sketch1", "profile_indices":[outer_index],
+                    "operation":"new_body", "extent":{"type":"distance","distance":8.0},
+                    "taper_angle_deg":0.0, "flip":false, "target_body_ids":[]}),
+            )
+            .unwrap();
+        assert_native_extent(&donor);
+
+        // One exported solid becomes one native result; unsupported compound
+        // wrappers stay unknown and are not normalized by this reporting fix.
+        let exported = donor.call_tool("solid_export_step", json!({})).unwrap();
+        let mut imported = CadServer::new().unwrap();
+        imported
+            .call_tool(
+                "solid_import_step",
+                json!({"file_name":"rectangular-through-bore.step",
+                    "data_base64":exported["bytes_base64"].as_str().unwrap()}),
+            )
+            .unwrap();
+        assert_native_extent(&imported);
+    }
+
+    #[test]
+    fn native_bore_tangent_to_stock_boundary_has_no_inner_wire_through_proof() {
+        let (mut server, _) = mcp_box();
+        let body = &server.manager.solid_scene_ref().bodies[0];
+        let cap = body
+            .faces
+            .iter()
+            .find(|face| face.plane.is_some_and(|plane| plane.normal[2] > 0.9))
+            .unwrap();
+        let plane = cap.plane.unwrap();
+        // R3 at X7 touches the stock's X10 boundary exactly.
+        let delta = [
+            7.0 - plane.origin[0],
+            -plane.origin[1],
+            10.0 - plane.origin[2],
+        ];
+        let project = |axis: [f64; 3]| delta.iter().zip(axis).map(|(a, b)| a * b).sum::<f64>();
+        let request = json!({"body_id":body.id.0, "face_id":cap.id.0,
+            "position":{"x":project(plane.u),"y":project(plane.v)}, "diameter":6.0,
+            "extent":{"type":"through_all"}, "style":"simple", "counterbore_diameter":0.0,
+            "counterbore_depth":0.0, "countersink_diameter":0.0, "countersink_angle_deg":90.0,
+            "thread":null, "flip":false});
+        server.call_tool("solid_hole", request).unwrap();
+        let scene = server.manager.solid_scene_ref();
+        assert!(scene.errors.is_empty());
+        assert_eq!(scene.bodies.len(), 1);
+        assert!(scene.bodies[0].faces.iter().any(|face| {
+            face.cylinder
+                .is_some_and(|cylinder| (cylinder.radius - 3.0).abs() < 1e-6)
+        }));
+        assert!(scene.bodies[0]
+            .faces
+            .iter()
+            .all(|face| face.planar_inner_ring_edge_keys.is_empty()));
+        // Do not read the authored Hole feature's extent as geometry evidence.
+        let inferred = summary::summarize(scene, &[]);
+        assert!(!inferred.holes.is_empty() || !inferred.ambiguous_hole_candidates.is_empty());
+        assert!(inferred
+            .holes
+            .iter()
+            .all(|hole| hole.through.is_none() && hole.depth.is_none()));
+    }
+
+    #[test]
     fn mcp_tools_create_solid_fillets_chamfers_and_holes() {
         for (tool, value_name) in [("solid_fillet", "radius"), ("solid_chamfer", "distance")] {
             let (mut server, base) = mcp_box();

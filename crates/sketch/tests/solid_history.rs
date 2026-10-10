@@ -47,6 +47,7 @@ fn planar_body(body_id: BodyId, key: &str, z: f64) -> KernelBodyDto {
         indices: vec![0, 1, 2],
         faces: vec![KernelFaceDto {
             linear_seam_edge_keys: Vec::new(),
+            planar_inner_ring_edge_keys: Vec::new(),
             outer_shell: None,
             key: key.to_string(),
             first_index: 0,

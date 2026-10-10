@@ -1501,6 +1501,11 @@ pub struct KernelFaceDto {
     /// Empty for legacy/unsupported producers; never infer this from samples.
     #[serde(default)]
     pub linear_seam_edge_keys: Vec<String>,
+    /// Exact complete single-circle inner wires on a proven native outer-shell
+    /// planar face. Only these keys are affirmative evidence; empty or missing
+    /// metadata remains unknown and says nothing about other boundaries.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub planar_inner_ring_edge_keys: Vec<String>,
     /// Exact membership in the outer shell of one valid, closed, outward
     /// oriented native solid. None for legacy or unsupported producers.
     /// An inner cavity's faces carry Some(false), never exterior evidence.
@@ -1616,6 +1621,10 @@ pub struct FaceDto {
     /// Empty for legacy/unsupported producers; never infer this from samples.
     #[serde(default)]
     pub linear_seam_edge_keys: Vec<String>,
+    /// Exact complete single-circle inner wires on a proven native outer-shell
+    /// planar face. Empty or missing metadata supplies no opening evidence.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub planar_inner_ring_edge_keys: Vec<String>,
     /// Exact membership in the outer shell of one valid, closed, outward
     /// oriented native solid. None does not establish exterior passage.
     #[serde(default, skip_serializing_if = "Option::is_none")]

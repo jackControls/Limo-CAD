@@ -140,6 +140,9 @@ mod ffi {
         face_edge_indices: Vec<u32>,
         /// One flag per face-edge incidence: exact closed-on-face analytic line.
         face_edge_linear_seams: Vec<u8>,
+        /// One flag per face-edge incidence: proven complete circular inner wire
+        /// on a planar face in a valid closed outward native solid's outer shell.
+        face_edge_planar_inner_rings: Vec<u8>,
         /// Per face: 0 unknown, 1 proven outer shell, 2 proven inner shell.
         face_outer_shell: Vec<u8>,
         /// Prefix offsets into `edge_points`, measured in 3D points.
@@ -1544,6 +1547,11 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
         || raw.face_cone_data.len() != raw.face_first_indices.len() * 5
         || raw.face_edge_linear_seams.len() != raw.face_edge_indices.len()
         || raw.face_edge_linear_seams.iter().any(|flag| *flag > 1)
+        || raw.face_edge_planar_inner_rings.len() != raw.face_edge_indices.len()
+        || raw
+            .face_edge_planar_inner_rings
+            .iter()
+            .any(|flag| *flag > 1)
         || raw.face_outer_shell.len() != raw.face_first_indices.len()
         || raw.face_outer_shell.iter().any(|flag| *flag > 2)
         || raw.face_edge_offsets.len() != raw.face_first_indices.len() + 1
@@ -1591,6 +1599,11 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
                 linear_seam_edge_keys: (raw.face_edge_offsets[index] as usize
                     ..raw.face_edge_offsets[index + 1] as usize)
                     .filter(|slot| raw.face_edge_linear_seams[*slot] == 1)
+                    .map(|slot| format!("edge:{}", raw.face_edge_indices[slot]))
+                    .collect(),
+                planar_inner_ring_edge_keys: (raw.face_edge_offsets[index] as usize
+                    ..raw.face_edge_offsets[index + 1] as usize)
+                    .filter(|slot| raw.face_edge_planar_inner_rings[*slot] == 1)
                     .map(|slot| format!("edge:{}", raw.face_edge_indices[slot]))
                     .collect(),
                 key: format!("face:{index}"),

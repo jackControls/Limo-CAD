@@ -326,17 +326,26 @@ fn infer_scene(scene: &SolidSceneDto) -> (Vec<Hole>, Vec<Value>) {
                     .as_ref()
                     .map(|_| false)
                     .or_else(|| through_extent.as_ref().map(|_| true)),
-                through_evidence: if through_extent.is_some() {
-                    Some("native_outer_shell_and_two_analytic_annular_openings")
-                } else {
-                    depth.map(|_| "analytic_terminal_disk")
-                },
+                through_evidence: through_extent
+                    .as_ref()
+                    .map(|extent| {
+                        if extent.uses_native_inner_wire() {
+                            "native_outer_shell_and_planar_inner_ring_openings"
+                        } else {
+                            "native_outer_shell_and_two_analytic_annular_openings"
+                        }
+                    })
+                    .or_else(|| depth.map(|_| "analytic_terminal_disk")),
                 depth,
                 depth_evidence: depth.map(|_| {
                     if through_extent.is_some() && recess.is_some() {
                         "analytic_counterbore_rings_shoulder_and_outer_shell_openings"
-                    } else if through_extent.is_some() {
-                        "two_analytic_rings_and_outer_shell_annular_openings"
+                    } else if let Some(extent) = &through_extent {
+                        if extent.uses_native_inner_wire() {
+                            "two_analytic_rings_and_native_planar_inner_wire_openings"
+                        } else {
+                            "two_analytic_rings_and_outer_shell_annular_openings"
+                        }
                     } else if recess.is_some() {
                         "analytic_counterbore_rings_shoulder_and_terminal_disk"
                     } else {
@@ -478,11 +487,25 @@ fn connected_walls(body: &BodyDto, face: &FaceDto, other_id: u64) -> bool {
         })
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OpeningProof {
+    AnalyticAnnulus,
+    NativeInnerWire,
+}
+
 #[derive(Clone)]
 struct CavityExtent {
     depth: f64,
     mouth: [f64; 3],
     outward: [f64; 3],
+    openings: Option<[OpeningProof; 2]>,
+}
+
+impl CavityExtent {
+    fn uses_native_inner_wire(&self) -> bool {
+        self.openings
+            .is_some_and(|openings| openings.contains(&OpeningProof::NativeInnerWire))
+    }
 }
 
 struct CounterboreExtent {
@@ -583,31 +606,36 @@ fn counterbore_extent(body: &BodyDto, ids: &[u64]) -> Option<CounterboreExtent> 
         depth: depth + stem,
         mouth,
         outward,
+        openings: None,
     });
     let through = (small.outer_shell == Some(true)
         && large.outer_shell == Some(true)
-        && annular_outer_opening(
+        && (depth + stem).is_finite())
+    .then(|| {
+        let bottom_proof = planar_outer_opening(
             body,
             small,
             bottom_edge,
             bottom,
             scale(outward, -1.),
             small.cylinder.as_ref()?.radius,
-        )
-        && annular_outer_opening(
+        )?;
+        let mouth_proof = planar_outer_opening(
             body,
             large,
             mouth_edge,
             mouth,
             outward,
             large.cylinder.as_ref()?.radius,
-        )
-        && (depth + stem).is_finite())
-    .then_some(CavityExtent {
-        depth: depth + stem,
-        mouth,
-        outward,
-    });
+        )?;
+        Some(CavityExtent {
+            depth: depth + stem,
+            mouth,
+            outward,
+            openings: Some([bottom_proof, mouth_proof]),
+        })
+    })
+    .flatten();
     Some(CounterboreExtent {
         depth,
         mouth,
@@ -731,16 +759,41 @@ fn through_depth(
     }
     let [first, second] = cylinder_rings(body, face, origin, axis, radius)?;
     let direction = normalize(sub(second.1, first.1));
-    if !annular_outer_opening(body, face, first.0, first.1, scale(direction, -1.), radius)
-        || !annular_outer_opening(body, face, second.0, second.1, direction, radius)
-    {
-        return None;
-    }
+    let first_proof =
+        planar_outer_opening(body, face, first.0, first.1, scale(direction, -1.), radius)?;
+    let second_proof = planar_outer_opening(body, face, second.0, second.1, direction, radius)?;
     Some(CavityExtent {
         depth: norm(sub(second.1, first.1)),
         mouth: first.1,
         outward: scale(direction, -1.),
+        openings: Some([first_proof, second_proof]),
     })
+}
+
+fn planar_outer_opening(
+    body: &BodyDto,
+    wall: &FaceDto,
+    ring: &limo_cad_solid::EdgeDto,
+    center: [f64; 3],
+    outward: [f64; 3],
+    radius: f64,
+) -> Option<OpeningProof> {
+    // Preserve the original strict annular witness and legacy payload behavior.
+    if annular_outer_opening(body, wall, ring, center, outward, radius) {
+        return Some(OpeningProof::AnalyticAnnulus);
+    }
+    let mut adjacent = body
+        .faces
+        .iter()
+        .filter(|face| face.id != wall.id && face.edge_keys.contains(&ring.key));
+    let face = adjacent.next()?;
+    let plane = face.plane?;
+    (adjacent.next().is_none()
+        && face.outer_shell == Some(true)
+        && face.planar_inner_ring_edge_keys.contains(&ring.key)
+        && dot(normalize(plane.normal), outward) > 0.999999
+        && dot(sub(center, plane.origin), outward).abs() <= 1e-6)
+        .then_some(OpeningProof::NativeInnerWire)
 }
 
 fn valid_axial_seam(
@@ -827,6 +880,7 @@ fn blind_depth(
             depth,
             mouth,
             outward,
+            openings: None,
         })
 }
 

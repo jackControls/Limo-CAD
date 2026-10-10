@@ -2018,6 +2018,7 @@ impl SolidDocument {
                 .map(|face| FaceDto {
                     outer_shell: face.outer_shell,
                     linear_seam_edge_keys: face.linear_seam_edge_keys,
+                    planar_inner_ring_edge_keys: face.planar_inner_ring_edge_keys,
                     id: stable::face_id(raw.body_id, &face.key),
                     key: face.key,
                     first_index: face.first_index,
@@ -5508,6 +5509,7 @@ mod tests {
             indices: vec![0, 1, 2],
             faces: vec![KernelFaceDto {
                 linear_seam_edge_keys: Vec::new(),
+                planar_inner_ring_edge_keys: Vec::new(),
                 outer_shell: None,
                 key: "face:0".to_string(),
                 first_index: 0,

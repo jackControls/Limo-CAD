@@ -5415,6 +5415,7 @@ mod tests {
                     },
                     faces: vec![FaceDto {
                         linear_seam_edge_keys: Vec::new(),
+                        planar_inner_ring_edge_keys: Vec::new(),
                         outer_shell: None,
                         id: FaceId(id * 10),
                         key: format!("face-{id}"),
@@ -5652,6 +5653,7 @@ mod tests {
                     },
                     faces: vec![FaceDto {
                         linear_seam_edge_keys: Vec::new(),
+                        planar_inner_ring_edge_keys: Vec::new(),
                         outer_shell: None,
                         id: FaceId(id * 10),
                         key: format!("face-{id}"),

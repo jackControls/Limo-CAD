@@ -9324,6 +9324,19 @@ static std::vector<std::uint8_t> face_outer_shell_flags(
     const auto finite_point = [](const gp_Pnt& p) {
       return std::isfinite(p.X()) && std::isfinite(p.Y()) && std::isfinite(p.Z());
     };
+    // Count even empty/repeated wires before trim-bound queries or validation.
+    // Unique edge counts alone do not bound invalid topology traversal.
+    int wire_uses = 0, boundary_uses = 0, vertex_uses = 0;
+    for (int i = 1; i <= faces.Extent(); ++i) {
+      const TopoDS_Face face = TopoDS::Face(faces.FindKey(i));
+      for (TopExp_Explorer wire(face, TopAbs_WIRE); wire.More(); wire.Next())
+        if (++wire_uses > 1024) return flags;
+      for (TopExp_Explorer use(face, TopAbs_EDGE); use.More(); use.Next()) {
+        if (++boundary_uses > 1024) return flags;
+        for (TopExp_Explorer vertex(use.Current(), TopAbs_VERTEX); vertex.More(); vertex.Next())
+          if (++vertex_uses > 2048) return flags;
+      }
+    }
     for (int i = 1; i <= edges.Extent(); ++i) {
       BRepAdaptor_Curve edge(TopoDS::Edge(edges.FindKey(i)));
       if (!std::isfinite(edge.FirstParameter()) || !std::isfinite(edge.LastParameter()))
@@ -9338,7 +9351,6 @@ static std::vector<std::uint8_t> face_outer_shell_flags(
             circle.Radius() <= 0.0) return flags;
       } else return flags;
     }
-    int boundary_uses = 0;
     for (int i = 1; i <= faces.Extent(); ++i) {
       const TopoDS_Face face = TopoDS::Face(faces.FindKey(i));
       BRepAdaptor_Surface surface(face, true);
@@ -9353,7 +9365,6 @@ static std::vector<std::uint8_t> face_outer_shell_flags(
             cylinder.Radius() <= 0.0) return flags;
       } else return flags;
       for (TopExp_Explorer use(face, TopAbs_EDGE); use.More(); use.Next()) {
-        if (++boundary_uses > 1024) return flags;
         double first, last;
         const auto curve = BRep_Tool::CurveOnSurface(TopoDS::Edge(use.Current()), face, first, last);
         if (curve.IsNull() || !std::isfinite(first) || !std::isfinite(last)) return flags;
@@ -9391,6 +9402,83 @@ static std::vector<std::uint8_t> face_outer_shell_flags(
   }
   // Unsupported/invalid geometry keeps its original scene and unknown evidence.
   return flags;
+}
+
+// Affirmative, face-scoped evidence only. Call after the bounded whole-body
+// proof above and only for an outer-shell face; no second solid validation.
+// A complete circular inner wire also proves an opening in a rectangular cap,
+// whereas sampled geometry or a cached Closed flag cannot prove wire closure.
+static std::set<int> planar_inner_ring_edges(
+    const TopoDS_Face& face, const TopTools_IndexedMapOfShape& body_edges) {
+  std::set<int> rings;
+  try {
+    if ((face.Orientation() != TopAbs_FORWARD && face.Orientation() != TopAbs_REVERSED) ||
+        BRepAdaptor_Surface(face, true).GetType() != GeomAbs_Plane) return rings;
+    const TopoDS_Wire outer = BRepTools::OuterWire(face);
+    if (outer.IsNull()) return rings;
+    TopTools_IndexedMapOfShape seen_wires, seen_edges, prior_wire_vertices;
+    int wire_uses = 0, edge_uses = 0, vertex_uses = 0;
+    bool saw_outer = false;
+    for (TopExp_Explorer wire_use(face, TopAbs_WIRE); wire_use.More(); wire_use.Next()) {
+      if (++wire_uses > 1024) return {};
+      const TopoDS_Wire wire = TopoDS::Wire(wire_use.Current());
+      if ((wire.Orientation() != TopAbs_FORWARD && wire.Orientation() != TopAbs_REVERSED) ||
+          seen_wires.Contains(wire)) return {};
+      seen_wires.Add(wire);
+      const bool is_outer = wire.IsSame(outer);
+      saw_outer = saw_outer || is_outer;
+      TopTools_IndexedMapOfShape wire_vertices;
+      int wire_edges = 0;
+      TopoDS_Edge single_edge;
+      for (TopExp_Explorer edge_use(wire, TopAbs_EDGE); edge_use.More(); edge_use.Next()) {
+        if (++edge_uses > 1024) return {};
+        const TopoDS_Edge edge = TopoDS::Edge(edge_use.Current());
+        if ((edge.Orientation() != TopAbs_FORWARD && edge.Orientation() != TopAbs_REVERSED) ||
+            BRep_Tool::Degenerated(edge) || !body_edges.Contains(edge) ||
+            seen_edges.Contains(edge)) return {};
+        seen_edges.Add(edge);
+        ++wire_edges;
+        single_edge = edge;
+        for (TopExp_Explorer vertex_use(edge, TopAbs_VERTEX); vertex_use.More(); vertex_use.Next()) {
+          if (++vertex_uses > 2048) return {};
+          const TopoDS_Shape& vertex = vertex_use.Current();
+          if (vertex.Orientation() != TopAbs_FORWARD && vertex.Orientation() != TopAbs_REVERSED)
+            return {};
+          wire_vertices.Add(vertex);
+        }
+      }
+      if (wire_edges == 0) return {};
+      // Inner/outer wires sharing a vertex are touching, not independent mouths.
+      for (int i = 1; i <= wire_vertices.Extent(); ++i) {
+        const auto& vertex = wire_vertices.FindKey(i);
+        if (prior_wire_vertices.Contains(vertex)) return {};
+        prior_wire_vertices.Add(vertex);
+      }
+      if (is_outer || wire_edges != 1) continue;
+      const BRepAdaptor_Curve curve(single_edge);
+      if (curve.GetType() != GeomAbs_Circle) continue;
+      const double first = curve.FirstParameter(), last = curve.LastParameter();
+      const double radius = curve.Circle().Radius();
+      TopoDS_Vertex first_vertex, last_vertex;
+      TopExp::Vertices(single_edge, first_vertex, last_vertex);
+      if (!std::isfinite(first) || !std::isfinite(last) ||
+          std::abs(std::abs(last - first) - kTau) > 1e-7 ||
+          !std::isfinite(radius) || radius <= 0.0 || first_vertex.IsNull() ||
+          last_vertex.IsNull() || !first_vertex.IsSame(last_vertex)) continue;
+      rings.insert(body_edges.FindIndex(single_edge));
+    }
+    if (!saw_outer) return {};
+    int complete_uses = 0;
+    for (TopExp_Explorer edge_use(face, TopAbs_EDGE); edge_use.More(); edge_use.Next()) {
+      if (++complete_uses > 1024 || !seen_edges.Contains(edge_use.Current())) return {};
+    }
+    if (complete_uses != edge_uses) return {};
+  } catch (const Standard_OutOfMemory&) {
+    throw;
+  } catch (const Standard_Failure&) {
+    rings.clear();
+  }
+  return rings;
 }
 
 static FfiMesh mesh_shape(std::uint64_t body_id,
@@ -10115,6 +10203,8 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
     }
     TopTools_IndexedMapOfShape boundary;
     TopExp::MapShapes(face, TopAbs_EDGE, boundary);
+    const auto inner_rings = outer_shell_flags[static_cast<std::size_t>(face_index - 1)] == 1
+        ? planar_inner_ring_edges(face, edge_map) : std::set<int>{};
     for (int i = 1; i <= boundary.Extent(); ++i) {
       const int index = edge_map.FindIndex(boundary.FindKey(i));
       if (index <= 0) throw std::runtime_error("face boundary edge is absent from body topology");
@@ -10123,6 +10213,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
       const bool linear_seam = !BRep_Tool::Degenerated(edge) &&
           BRep_Tool::IsClosed(edge, face) && BRepAdaptor_Curve(edge).GetType() == GeomAbs_Line;
       output.face_edge_linear_seams.push_back(linear_seam ? 1 : 0);
+      output.face_edge_planar_inner_rings.push_back(inner_rings.count(index) ? 1 : 0);
     }
     output.face_edge_offsets.push_back(static_cast<std::uint32_t>(output.face_edge_indices.size()));
     TopLoc_Location location;
