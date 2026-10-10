@@ -6,10 +6,11 @@ use crate::{
 };
 use anyhow::{bail, ensure, Context, Result};
 use serde_json::{json, Value};
+#[cfg(any(not(windows), feature = "native-control-harness"))]
+use std::io::{Read, Seek, SeekFrom};
 use std::{
     collections::BTreeSet,
     fs,
-    io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     process::Command,
     thread,
@@ -602,6 +603,7 @@ impl Driver {
     }
 }
 
+#[cfg(any(not(windows), feature = "native-control-harness"))]
 fn helper_output(file: &mut fs::File) -> Result<Vec<u8>> {
     const LIMIT: u64 = 1024 * 1024;
     ensure!(

@@ -106,6 +106,26 @@ fn render_scale(world: &World, camera: Entity) -> f32 {
             .get_resource::<bevy::ui::UiScale>()
             .map_or(1., |s| s.0)
 }
+/// Read the completed paper layout, separately from the Fit toggle. These
+/// measurements let an observer distinguish a zoom from a state-only change.
+pub(in super::super) fn navigation_snapshot(world: &World, state: &Workbench) -> Option<Value> {
+    let (_, sheet, _) = state.paper_key.as_ref()?;
+    let owner = state.owner.as_ref()?;
+    let view = state.paper_view.as_ref()?;
+    let transform = view.navigation.transform();
+    let paper = state.widgets.entity("drawing-paper")?;
+    let node = world.get::<ComputedNode>(paper)?;
+    Some(json!({
+        "owner": {"window_id":owner.window_id,"document_id":owner.document_id,"epoch":owner.epoch},
+        "sheet_id": sheet.id,
+        "paper_scale": transform.scale,
+        "sheet_mm": transform.sheet_mm,
+        "origin": transform.origin,
+        "render_scale": node.inverse_scale_factor().recip(),
+        "rendered_size_px": node.size().to_array(),
+        "client_size": [view.width, view.height]
+    }))
+}
 fn raster(world: &World, view: &PaperView) -> Result<edges::RasterKey, String> {
     let transform = view.navigation.transform();
     Ok(edges::RasterKey {

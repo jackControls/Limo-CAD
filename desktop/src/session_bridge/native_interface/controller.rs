@@ -2874,6 +2874,8 @@ fn complete_control(world: &mut World) {
                     Ok(snapshot) => {
                         pending.response["ui"] = snapshot;
                         if pending.inspect {
+                            pending.response["paper_navigation"] =
+                                workbench::inspect_paper_navigation(world).unwrap_or(Value::Null);
                             pending.response["desktop_build"] =
                                 json!(limo_cad_build_info::build_info());
                             #[cfg(all(windows, feature = "native-computer-control"))]

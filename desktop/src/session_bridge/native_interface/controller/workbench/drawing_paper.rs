@@ -17,6 +17,7 @@ mod view;
 pub(super) use annotations::resolved_center_circle;
 pub(super) use annotations::{chamfer_caption, valid_line_dimension, valid_point_line};
 pub(super) use view::diagnostics::snapshot as diagnostics;
+pub(super) use view::navigation_snapshot;
 pub(super) use view::{canvas, paint, repaint, PaperView};
 
 type PaperPlane = Option<(f64, [f64; 2], [f64; 2], [f64; 2], [f64; 2])>;

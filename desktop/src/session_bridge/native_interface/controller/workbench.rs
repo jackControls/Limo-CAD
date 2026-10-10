@@ -25,6 +25,10 @@ pub(super) fn capture_paper_diagnostics(world: &World) -> Option<Value> {
     drawing_paper::diagnostics(world, state)
 }
 
+pub(super) fn inspect_paper_navigation(world: &World) -> Option<Value> {
+    drawing_paper::navigation_snapshot(world, world.get_resource::<Workbench>()?)
+}
+
 /// Called inside the publisher fence after an exact SelectSheet completion.
 pub(crate) fn advance_sheet_selection(
     world: &mut World,
