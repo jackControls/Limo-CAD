@@ -8,7 +8,6 @@
 mod build_tools;
 mod deploy_native;
 mod desktop_changes;
-mod hash;
 mod icon_audit;
 mod install_mcp;
 mod knowledge;
@@ -77,6 +76,7 @@ mod workflow_contracts;
 use anyhow::{bail, Result};
 use std::env;
 use std::process::ExitCode;
+use xtask::hash;
 
 fn main() -> ExitCode {
     match run() {
