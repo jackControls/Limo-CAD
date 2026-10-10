@@ -41,12 +41,14 @@ fn physical_picker_visibility_restores_stock_hiding_and_retains_user_visibility(
         vec![99, 1, 88],
         "a newer user visibility change defeats the old restoration receipt"
     );
-    app.world_mut()
-        .resource_mut::<State>()
-        .document
-        .as_mut()
-        .unwrap()
-        .setups[0]
+    Arc::make_mut(
+        app.world_mut()
+            .resource_mut::<State>()
+            .document
+            .as_mut()
+            .unwrap(),
+    )
+    .setups[0]
         .resolved_stock = CamResolvedStockDto::ModelBody { body_id: 7 };
     assert_eq!(
         geometry_hidden_bodies(app.world()).unwrap(),
@@ -137,7 +139,7 @@ pub(super) fn state(
             revision: receipt.revision,
             selection: None,
         }),
-        document: Some(document),
+        document: Some(Arc::new(document)),
         setup: Some(1),
         generation: 7,
         paths: true,
@@ -588,4 +590,46 @@ fn cam_overlay_restores_its_own_values_and_preserves_a_newer_overlay() {
     assert!(!presentation.cam_stock_visible);
     assert_eq!(presentation.ghosted_body_ids, vec![1]);
     assert_eq!(presentation.selected_body_ids, vec![1]);
+}
+
+#[test]
+fn leaving_cam_releases_the_completed_preview_document() {
+    let document = Arc::new(job());
+    let retired = Arc::downgrade(&document);
+    let owner = DocumentContext {
+        window_id: "main".into(),
+        document_id: "preview-document".into(),
+        epoch: 1,
+    };
+    let mut world = World::new();
+    world.insert_resource(State {
+        key: Some(Key {
+            owner: owner.clone(),
+            revision: 1,
+            selection: None,
+        }),
+        document: Some(document),
+        setup: Some(1),
+        operation: Some(2),
+        ..default()
+    });
+    let services = NativeServices {
+        engine: Arc::new(AppState::new()),
+        bridge: Arc::new(SessionBridgeState::default()),
+    };
+    synchronize(
+        &mut world,
+        Entity::PLACEHOLDER,
+        &services,
+        &owner,
+        (1000., 700., 260.),
+        false,
+    )
+    .unwrap();
+    assert!(retired.upgrade().is_none());
+    let state = world.resource::<State>();
+    assert!(state.key.is_none());
+    assert!(state.document.is_none());
+    assert!(state.setup.is_none());
+    assert!(state.operation.is_none());
 }

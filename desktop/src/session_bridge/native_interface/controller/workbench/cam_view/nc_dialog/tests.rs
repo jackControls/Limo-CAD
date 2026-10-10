@@ -22,7 +22,7 @@ fn fixture() -> (World, Entity, DocumentContext, u64) {
             selection: None,
         }),
         setup: Some(1),
-        document: Some(document),
+        document: Some(Arc::new(document)),
         ..default()
     });
     reduce(
@@ -63,7 +63,7 @@ fn source_entity(world: &World) -> Entity {
 #[test]
 fn oversized_source_blocks_rename_and_run_until_an_explicit_valid_replacement() {
     let (mut world, _, owner, revision) = fixture();
-    let before = serde_json::to_value(&world.resource::<State>().document).unwrap();
+    let before = serde_json::to_value(world.resource::<State>().document.as_deref()).unwrap();
     command(&mut world, &owner, revision, Command::Source, Some(SOURCE)).unwrap();
     let oversized = "\u{e9}".repeat(limo_cad_cam::MAX_GCODE_BYTES / 2) + "x";
     assert_eq!(oversized.len(), limo_cad_cam::MAX_GCODE_BYTES + 1);
@@ -116,7 +116,7 @@ fn oversized_source_blocks_rename_and_run_until_an_explicit_valid_replacement() 
     assert_eq!(queued.file_name.as_deref(), Some("renamed.nc"));
     assert_eq!(queued.dialect, CamGcodeDialectDto::Iso);
     assert_eq!(
-        serde_json::to_value(&world.resource::<State>().document).unwrap(),
+        serde_json::to_value(world.resource::<State>().document.as_deref()).unwrap(),
         before
     );
 }

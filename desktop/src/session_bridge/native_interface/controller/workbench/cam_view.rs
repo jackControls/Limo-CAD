@@ -10,7 +10,7 @@ use limo_cad_cam::{
     CamDocumentDto, CamResolvedStockDto, CamSetupDto, CamSimulationCancellation,
     CamSimulationRequestDto, CamSimulationResultDto, CamSimulationTargetDto, CamStockMeshDto,
 };
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 
 mod geometry;
 pub(crate) mod nc_dialog;
@@ -89,7 +89,7 @@ struct Applied {
 #[derive(Resource, Default)]
 struct State {
     key: Option<Key>,
-    document: Option<CamDocumentDto>,
+    document: Option<Arc<CamDocumentDto>>,
     setup: Option<u64>,
     operation: Option<u64>,
     warning: Option<String>,
@@ -806,7 +806,9 @@ fn advance_playback(world: &World, state: &mut State) -> Result<bool, String> {
                     .ok_or("CAM setup changed")?;
                 let request =
                     simulation_request(world, document, setup, state.operation, state.settings)?;
-                playback::Player::new(document.clone(), request, wake)?
+                // The simulation kernel owns mutable playback state; its document
+                // copy is intentional, unlike read-only preview preparation.
+                playback::Player::new(document.as_ref().clone(), request, wake)?
             };
             player.seek(start, duration);
             state.player = Some(player);
@@ -943,6 +945,10 @@ pub(super) fn synchronize(
             }
             restore(world, services, &mut state)?;
             state.key = None;
+            state.document = None;
+            state.setup = None;
+            state.operation = None;
+            state.warning = None;
             state.report = false;
             state.settings_open = false;
             state.prepared = None;
@@ -999,7 +1005,7 @@ pub(super) fn synchronize(
             state.key = Some(key.clone());
             state.report = false;
             state.settings_open = false;
-            state.document = Some(document);
+            state.document = Some(Arc::new(document));
             state.setup = setup;
             state.operation = operation;
             state.prepared = None;
