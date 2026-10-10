@@ -264,6 +264,7 @@ pub(super) fn paint(
         .collect();
     let page_size = (((bottom - field_top - 117.) / 46.).floor() as usize).clamp(1, 9);
     editor.page = editor.page.min(visible.len().saturating_sub(1) / page_size);
+    let mut pending_text_edit = false;
     for (position, (index, field)) in visible
         .iter()
         .copied()
@@ -321,7 +322,7 @@ pub(super) fn paint(
                 read_only: draft.read_only(),
                 selection: None,
             };
-            editor.widgets.button(
+            let entity = editor.widgets.button(
                 world,
                 camera,
                 &key,
@@ -332,8 +333,12 @@ pub(super) fn paint(
                 None,
                 46,
             )?;
+            pending_text_edit |= interface_shell::fields::has_uncommitted_edit(world, entity);
         }
     }
+    // Native text stays local until blur. Keep Apply available so its first
+    // click can queue that field commit before the existing guarded command.
+    let dirty = draft.dirty() || pending_text_edit;
     let y = field_top + 2. + page_size as f32 * 46.;
     if visible.len() > page_size {
         button(
@@ -359,7 +364,7 @@ pub(super) fn paint(
         "Apply",
         Command::Apply,
         rect(10., y + 32., (width - 26.) / 2., 28.),
-        draft.read_only() || !draft.dirty(),
+        draft.read_only() || !dirty,
     )?;
     button(
         (world, camera, &mut editor.widgets),
@@ -376,7 +381,7 @@ pub(super) fn paint(
     let message = if editor.message.is_empty() {
         if draft.read_only() {
             "Released revisions are read-only. Add a new revision to record a change."
-        } else if draft.dirty() {
+        } else if dirty {
             "Apply or reset to keep editing another item"
         } else {
             "Paper placement uses millimetres"

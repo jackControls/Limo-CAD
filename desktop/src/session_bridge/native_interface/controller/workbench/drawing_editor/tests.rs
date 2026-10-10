@@ -2,6 +2,7 @@ use super::model::*;
 use limo_cad_sketch::*;
 use serde_json::json;
 mod integration;
+mod native_fields;
 mod tables;
 
 fn document() -> DrawingDocumentDto {
