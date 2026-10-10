@@ -334,6 +334,10 @@ fn native_rejected_completion_retries_transport_without_restarting_action() {
             .unwrap()
             .pending_receipt
             .is_some());
+        assert!(
+            validate_start(&f.state, &f.engine, &ticket).is_err(),
+            "A produced rejection awaiting transport cannot start an action"
+        );
         let mut competing = response.clone();
         competing["error"] = json!("different outcome");
         assert!(matches!(

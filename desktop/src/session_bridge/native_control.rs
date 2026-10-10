@@ -223,7 +223,7 @@ pub(super) fn validate_start_locked(
     let admission = publisher
         .native_control
         .as_mut()
-        .filter(|a| a.ticket == *ticket && !a.started)
+        .filter(|a| a.ticket == *ticket && !a.started && a.pending_receipt.is_none())
         .ok_or("Native control was already started or its private admission changed")?;
     admission.started = true;
     Ok(())
