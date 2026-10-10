@@ -235,6 +235,13 @@ pub(super) fn execute(
     validate: impl FnOnce() -> Result<(), String>,
 ) -> Result<Value, String> {
     bridge.with_native_document_owner(engine, owner, validate)?;
+    if matches!(command, InteractionCommand::EditDimension(id) if annotations::editing_dimension(editor, id))
+    {
+        // Repeated activation belongs to the same retained edit: restore its
+        // field focus without replacing a pending expression or generation.
+        panel::retry_dimension_focus(world);
+        return Ok(json!({"handled":true,"dimension_refocused":true}));
+    }
     if matches!(
         command,
         InteractionCommand::EditDimension(_) | InteractionCommand::ConstraintInfo(_)

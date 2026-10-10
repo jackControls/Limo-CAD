@@ -37,6 +37,10 @@ pub(super) fn geometry_tool_active(editor: &Editor) -> bool {
         || editor.interaction.form.is_some()
 }
 
+pub(super) fn editing_dimension(editor: &Editor, id: limo_cad_sketch::ConstraintId) -> bool {
+    editor.interaction.dimension.is_some() && editor.interaction.dimension_id == Some(id)
+}
+
 fn annotation_input(world: &mut World, entity: Entity, geometry_tool: bool) {
     if world
         .get::<interface_shell::InterfaceCanvasAnnotation>(entity)
@@ -278,6 +282,12 @@ pub(super) fn synchronize(
             .map(|c| c.id.0)
             .unwrap_or(u64::MAX);
         key.extend([selected as u32, (selected >> 32) as u32]);
+        let editing = editor
+            .interaction
+            .dimension_id
+            .map(|id| id.0)
+            .unwrap_or(u64::MAX);
+        key.extend([editing as u32, (editing >> 32) as u32]);
         key.extend([
             visibility.hide_dimensions as u32,
             visibility.hide_constraints as u32,
@@ -369,7 +379,11 @@ pub(super) fn synchronize(
                     "sketch/dimension",
                     format!("Edit dimension {}: {}", dim.constraint_id.0, dim.text),
                 );
-                c.disabled = geometry_tool;
+                // The first click opens the value editor. Keep that label
+                // interactive so the second click cannot fall through to the
+                // canvas and blur the editor it just opened.
+                let blocked = geometry_tool && !editing_dimension(editor, dim.constraint_id);
+                c.disabled = blocked;
                 let entity = state.widgets.button(
                     world,
                     camera,
@@ -383,7 +397,7 @@ pub(super) fn synchronize(
                     None,
                     22,
                 )?;
-                annotation_input(world, entity, geometry_tool);
+                annotation_input(world, entity, blocked);
                 interface_shell::dimension_label(
                     world,
                     entity,

@@ -52,7 +52,7 @@ fn cached_dimension_labels_restyle_without_refetching_sketch_or_rebinding_contro
         document_id: String::new(),
         epoch: 0,
     };
-    let editor = Editor {
+    let mut editor = Editor {
         stamp: Some(Stamp {
             owner: owner.clone(),
             revision,
@@ -132,6 +132,48 @@ fn cached_dimension_labels_restyle_without_refetching_sketch_or_rebinding_contro
             )
         );
         assert_eq!(state.stamp, editor.stamp);
+        assert_eq!(engine.geometry_revision(), revision);
+        assert_eq!(engine.engine_call("project_export_model", ""), model);
+    }
+    // Opening a dimension makes other annotations passthrough, but the active
+    // label must still catch the second click of a double-click. Changing the
+    // active dimension must invalidate that routing even with the same camera.
+    editor.interaction.dimension = Some("20 + 1".into());
+    for (id, blocked) in [
+        (Some(sketch.dimensions[0].constraint_id), false),
+        (None, true),
+        (Some(sketch.dimensions[0].constraint_id), false),
+    ] {
+        editor.interaction.dimension_id = id;
+        let world = app.world_mut();
+        synchronize(world, camera, &services, &owner, &editor, canvas).unwrap();
+        let entity = world
+            .resource::<AnnotationState>()
+            .widgets
+            .entity(&dimension_key)
+            .unwrap();
+        assert_eq!(
+            world.get::<InterfaceControl>(entity).unwrap().disabled,
+            blocked
+        );
+        assert_eq!(
+            world
+                .get::<interface_shell::InterfacePointerPassthrough>(entity)
+                .is_some(),
+            blocked
+        );
+        assert_eq!(
+            Some(
+                world
+                    .resource::<AnnotationState>()
+                    .sketch
+                    .as_ref()
+                    .unwrap()
+                    .entities
+                    .as_ptr() as usize
+            ),
+            cache_allocation
+        );
         assert_eq!(engine.geometry_revision(), revision);
         assert_eq!(engine.engine_call("project_export_model", ""), model);
     }
