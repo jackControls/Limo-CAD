@@ -449,8 +449,10 @@ fn legacy_thread_partial_depth_does_not_cut_the_unthreaded_shank_or_bore() {
         assert!(!radii.is_empty());
         let min = radii.iter().copied().fold(f64::INFINITY, f64::min);
         let max = radii.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        assert!((min-expected_radius).abs()<0.01 && (max-expected_radius).abs()<0.01,
-            "body{body_id}: requested2mmthread altered unthreaded radius {min}..{max}, expected{expected_radius}");
+        assert!(
+            (min - expected_radius).abs() < 0.01 && (max - expected_radius).abs() < 0.01,
+            "body{body_id}: requested2mmthread altered unthreaded radius {min}..{max}, expected{expected_radius}"
+        );
     }
 }
 
@@ -639,9 +641,11 @@ fn assert_threaded_shoulder(mut thread: HoleThreadDto) {
                 .iter()
                 .filter(|(r, z)| *z > 4.001 && *z < 7.999 && *r < shaft_radius + 1.9)
                 .collect();
-            assert!(shoulder_cuts.is_empty(),
+            assert!(
+                shoulder_cuts.is_empty(),
                 "toward_shoulder={toward_shoulder}, depth={depth:?}: thread cut into adjacent shoulder at {:?}",
-                &shoulder_cuts[..shoulder_cuts.len().min(4)]);
+                &shoulder_cuts[..shoulder_cuts.len().min(4)]
+            );
             let end = depth.unwrap_or(4.0);
             assert!(
                 points.iter().any(|(r, z)| *r < shaft_radius - 0.05

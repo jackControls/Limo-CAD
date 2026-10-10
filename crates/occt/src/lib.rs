@@ -80,7 +80,9 @@ pub struct DrawingProjectionDto {
     pub anchors: Vec<DrawingProjectionAnchorDto>,
     #[serde(default)]
     pub circles: Vec<DrawingProjectedCircleDto>,
-    /// Exact OCCT intersection curves when a cutting plane was requested.
+    /// Exact planar cut-material boundaries when a cutting plane was requested.
+    /// Coplanar exterior termination faces contribute no hatch area; pure
+    /// boundary-contact outlines remain in visible geometry.
     #[serde(default)]
     pub section: Vec<DrawingPolylineDto>,
     /// min x, min y, max x, max y in model millimetres.

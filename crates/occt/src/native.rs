@@ -1809,6 +1809,262 @@ mod tests {
     }
 
     #[test]
+    fn section_material_region_excludes_exact_pocket_endpoint_without_selecting_a_side() {
+        use crate::section_review::{SectionOutcome, SectionPlane, SectionReviewRequest};
+
+        let mut stock = box_job(1, 1);
+        let KernelJobDto::Extrude(job) = &mut stock else {
+            unreachable!()
+        };
+        job.profiles = vec![rectangle_profile(0, 0., 12., 0., 12.)];
+        job.end_offset = 8.;
+        let mut pocket = box_job(2, 1);
+        let KernelJobDto::Extrude(job) = &mut pocket else {
+            unreachable!()
+        };
+        job.operation = ExtrudeOperation::Cut;
+        job.target_body_ids = vec![BodyId(1)];
+        job.profiles = vec![rectangle_profile(0, 8., 14., 0., 6.)];
+        job.end_offset = 4.;
+        let plan = RecomputePlanDto {
+            transaction_id: 1,
+            errors: vec![],
+            jobs: vec![stock, pocket],
+        };
+        let mut kernel = OcctKernel::new().unwrap();
+        let source = kernel.recompute(&plan).unwrap();
+        assert!(source.errors.is_empty(), "{:?}", source.errors);
+        assert!((mesh_volume(&source.bodies[0]) - 1056.).abs() < 1e-5);
+        for keep_positive in [false, true] {
+            let request = SectionReviewRequest {
+                body_id: BodyId(1),
+                plane: SectionPlane::Xz,
+                offset_mm: 6.,
+                probe_mm: Some(2.),
+                deflection_mm: 0.01,
+                include_cutaway: true,
+                keep_positive,
+            };
+            let geometry = kernel.section_geometry(&request).unwrap();
+            assert_eq!(geometry.outcome, SectionOutcome::MaterialSection);
+            assert!((simply_connected_section_area(&geometry.section) - 80.).abs() < 1e-6);
+            assert_section_probe(&geometry.section, 2., 0., 8.);
+            assert_section_probe(&geometry.section, 6., 0., 12.);
+            // The positive retained cap also contains the old 16 mm² exterior
+            // pocket-end face. It must not become cut-material hatching.
+            let half = geometry.cutaway.as_ref().unwrap();
+            let expected = if keep_positive { 576. } else { 480. };
+            assert!((mesh_volume(half) - expected).abs() < 1e-5);
+            assert!(half.positions.as_chunks::<3>().0.iter().all(|point| {
+                if keep_positive {
+                    f64::from(point[1]) >= 6. - 1e-6
+                } else {
+                    f64::from(point[1]) <= 6. + 1e-6
+                }
+            }));
+            let report = crate::section_review::present(
+                &request,
+                section_projection(geometry.section),
+                geometry.outcome,
+            )
+            .unwrap();
+            assert!(
+                !report.svg.is_empty(),
+                "The exact endpoint must hatch successfully"
+            );
+            assert_eq!(report.probe_spans.len(), 1);
+            assert!((report.probe_spans[0].length_mm - 8.).abs() < 1e-6);
+            assert_eq!(kernel.recompute(&plan).unwrap(), source);
+            assert_eq!(
+                kernel.last_applied_jobs, 0,
+                "Verification must read the retained source"
+            );
+
+            let mut boundary = request;
+            for offset in [0., 12.] {
+                boundary.offset_mm = offset;
+                let geometry = kernel.section_geometry(&boundary).unwrap();
+                assert_eq!(geometry.outcome, SectionOutcome::BoundaryContact);
+                assert!(geometry.cutaway.is_none());
+                let report = crate::section_review::present(
+                    &boundary,
+                    section_projection(geometry.section),
+                    geometry.outcome,
+                )
+                .unwrap();
+                assert!(report.probe_spans.is_empty());
+            }
+        }
+        for normal_y in [-1., 1.] {
+            let mut request = DrawingProjectionRequest {
+                scope: Default::default(),
+                occurrence_ids: vec![],
+                resolved_occurrences: None,
+                body_ids: vec![BodyId(1)],
+                direction: [0., -1., 0.],
+                up: [0., 0., 1.],
+                include_hidden: true,
+                include_tangent_edges: false,
+                deflection: 0.01,
+                section_plane: Some(crate::DrawingSectionPlaneDto {
+                    point: [0., 6., 0.],
+                    normal: [0., normal_y, 0.],
+                    depth: None,
+                }),
+            };
+            let projection = kernel.drawing_projection(&request).unwrap();
+            assert!((simply_connected_section_area(&projection.section) - 80.).abs() < 1e-6);
+            assert_section_probe(&projection.section, 2., 0., 8.);
+            assert_section_probe(&projection.section, 6., 0., 12.);
+            for offset in [0., 12.] {
+                request.section_plane.as_mut().unwrap().point[1] = offset;
+                let contact = kernel.drawing_projection(&request).unwrap();
+                assert!(
+                    contact.section.is_empty(),
+                    "Exterior contact must not hatch"
+                );
+                assert!(
+                    !contact.visible.is_empty(),
+                    "Keep exterior contact outlines visible"
+                );
+            }
+        }
+        assert_eq!(kernel.recompute(&plan).unwrap(), source);
+        assert_eq!(kernel.last_applied_jobs, 0);
+    }
+
+    #[test]
+    fn section_compound_end_face_does_not_remove_another_solids_interior() {
+        use crate::section_review::{SectionOutcome, SectionPlane, SectionReviewRequest};
+
+        let mut crossing = box_job(1, 1);
+        let KernelJobDto::Extrude(job) = &mut crossing else {
+            unreachable!()
+        };
+        job.profiles = vec![rectangle_profile(0, 0., 12., 0., 12.)];
+        job.end_offset = 8.;
+        let mut contact = box_job(2, 2);
+        let KernelJobDto::Extrude(job) = &mut contact else {
+            unreachable!()
+        };
+        job.profiles = vec![rectangle_profile(0, 2., 6., 0., 6.)];
+        job.start_offset = 2.;
+        job.end_offset = 4.;
+        let mut overlap = box_job(3, 3);
+        let KernelJobDto::Extrude(job) = &mut overlap else {
+            unreachable!()
+        };
+        job.profiles = vec![rectangle_profile(0, 8., 16., 0., 12.)];
+        job.start_offset = 2.;
+        job.end_offset = 6.;
+        let mut exporter = OcctKernel::new().unwrap();
+        let source = exporter
+            .recompute(&RecomputePlanDto {
+                transaction_id: 1,
+                errors: vec![],
+                jobs: vec![crossing, contact, overlap],
+            })
+            .unwrap();
+        assert!(source.errors.is_empty());
+        assert_eq!(source.bodies.len(), 3);
+        // Preserve all overlapping members as one imported compound; a
+        // modeling Join would merge them and fail to exercise the mask bug.
+        let step = exporter.export_step(&StepExportRequest::default()).unwrap();
+        let plan = RecomputePlanDto {
+            transaction_id: 2,
+            errors: vec![],
+            jobs: vec![KernelJobDto::ImportStep(KernelImportStepJobDto {
+                feature_id: FeatureId(4),
+                result_body_id: BodyId(4),
+                data_base64: encode_base64(&step),
+            })],
+        };
+        let mut kernel = OcctKernel::new().unwrap();
+        let source = kernel.recompute(&plan).unwrap();
+        assert!(source.errors.is_empty(), "{:?}", source.errors);
+        for keep_positive in [false, true] {
+            let request = SectionReviewRequest {
+                body_id: BodyId(4),
+                plane: SectionPlane::Xz,
+                offset_mm: 6.,
+                probe_mm: Some(3.),
+                deflection_mm: 0.01,
+                include_cutaway: false,
+                keep_positive,
+            };
+            let geometry = kernel.section_geometry(&request).unwrap();
+            assert_eq!(geometry.outcome, SectionOutcome::MaterialSection);
+            assert!(geometry.cutaway.is_none());
+            // Union the two crossing members, including their overlapping
+            // strip, without subtracting the contact-only member's end face.
+            assert!((simply_connected_section_area(&geometry.section) - 112.).abs() < 1e-6);
+            assert_section_probe(&geometry.section, 3., 0., 16.);
+            assert_section_probe(&geometry.section, 7., 0., 12.);
+            let report = crate::section_review::present(
+                &request,
+                section_projection(geometry.section),
+                geometry.outcome,
+            )
+            .unwrap();
+            assert!(!report.svg.is_empty());
+            assert_eq!(report.probe_spans.len(), 1);
+        }
+        assert_eq!(kernel.recompute(&plan).unwrap(), source);
+        assert_eq!(kernel.last_applied_jobs, 0);
+    }
+
+    fn section_projection(section: Vec<DrawingPolylineDto>) -> DrawingProjectionDto {
+        DrawingProjectionDto {
+            topology_signatures: Default::default(),
+            visible: vec![],
+            hidden: vec![],
+            anchors: vec![],
+            circles: vec![],
+            section,
+            bounds: [0.; 4],
+        }
+    }
+
+    fn assert_section_probe(lines: &[DrawingPolylineDto], at: f64, start: f64, end: f64) {
+        let spans = crate::section_review::probe_spans(lines, at).unwrap();
+        assert_eq!(spans.len(), 1, "Probe {at}: {spans:?}");
+        assert!((spans[0].start_mm - start).abs() < 1e-6, "{spans:?}");
+        assert!((spans[0].end_mm - end).abs() < 1e-6, "{spans:?}");
+    }
+
+    // These analytic fixtures have one simply connected, straight-edged
+    // region. Reconstruct its complete closed boundary; reject leftover lines.
+    fn simply_connected_section_area(lines: &[DrawingPolylineDto]) -> f64 {
+        let near =
+            |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).abs() < 1e-8 && (a[1] - b[1]).abs() < 1e-8;
+        let mut segments = lines
+            .iter()
+            .flat_map(|line| line.points.windows(2).map(|p| (p[0], p[1])))
+            .collect::<Vec<_>>();
+        assert!(
+            segments.len() <= 64,
+            "Unexpected analytic boundary complexity"
+        );
+        let (first, mut current) = segments.pop().expect("Missing material boundary");
+        let mut twice_area = first[0] * current[1] - current[0] * first[1];
+        while !near(first, current) {
+            let index = segments
+                .iter()
+                .position(|(a, b)| near(*a, current) || near(*b, current))
+                .expect("Material boundary is not a closed region");
+            let (a, b) = segments.swap_remove(index);
+            let next = if near(a, current) { b } else { a };
+            twice_area += current[0] * next[1] - next[0] * current[1];
+            current = next;
+        }
+        assert!(
+            segments.is_empty(),
+            "Material region has unexpected seams or extra loops"
+        );
+        twice_area.abs() / 2.
+    }
+
+    #[test]
     fn section_native_limits_and_deadline_fail_without_changing_source() {
         let mut kernel = OcctKernel::new().unwrap();
         let plan = RecomputePlanDto {
@@ -2385,7 +2641,6 @@ mod tests {
             .faces
             .iter()
             .all(|face| face.outer_shell.is_none()));
-
         // Use the production STEP writer's exact box faces to form a valid
         // five-face surface shell, rather than an invalid unclosed solid.
         let mut box_kernel = OcctKernel::new().unwrap();
@@ -2446,6 +2701,32 @@ mod tests {
             .faces
             .iter()
             .all(|face| face.outer_shell.is_none()));
+        let section = imported
+            .drawing_projection(&DrawingProjectionRequest {
+                scope: Default::default(),
+                occurrence_ids: vec![],
+                resolved_occurrences: None,
+                body_ids: vec![BodyId(1)],
+                direction: [0., -1., 0.],
+                up: [0., 0., 1.],
+                include_hidden: true,
+                include_tangent_edges: false,
+                deflection: 0.01,
+                section_plane: Some(crate::DrawingSectionPlaneDto {
+                    point: [0., 0., 5.],
+                    normal: [0., 1., 0.],
+                    depth: None,
+                }),
+            })
+            .unwrap();
+        assert!(
+            section.section.is_empty(),
+            "Open surfaces have no cut-material area"
+        );
+        assert!(
+            !section.visible.is_empty(),
+            "Keep open-surface section outlines visible"
+        );
     }
 
     #[test]
@@ -2895,10 +3176,12 @@ mod tests {
             .unwrap();
         assert!(scene.errors.is_empty(), "{:?}", scene.errors);
         let body = &scene.bodies[0];
-        assert!(body.faces.iter().all(|f| !f.edge_keys.is_empty()
-            && f.edge_keys
-                .iter()
-                .all(|k| body.edges.iter().any(|e| &e.key == k))));
+        assert!(body.faces.iter().all(|f| {
+            !f.edge_keys.is_empty()
+                && f.edge_keys
+                    .iter()
+                    .all(|k| body.edges.iter().any(|e| &e.key == k))
+        }));
         let top = body
             .faces
             .iter()
@@ -3466,9 +3749,10 @@ mod tests {
 
         assert!(scene.errors.is_empty(), "{:?}", scene.errors);
         assert_eq!(scene.bodies.len(), 1);
-        assert!(scene.bodies[0].faces.iter().any(|face| face
-            .cylinder
-            .is_some_and(|cylinder| (cylinder.radius - 5.0).abs() < 1e-6)));
+        assert!(scene.bodies[0].faces.iter().any(|face| {
+            face.cylinder
+                .is_some_and(|cylinder| (cylinder.radius - 5.0).abs() < 1e-6)
+        }));
 
         // The semicircle joins its vertical sides tangentially. Preserve the
         // analytic domain, including the circular void, through refinement.
@@ -3593,7 +3877,9 @@ mod tests {
             "the inner hole rim must remain an exact selectable OCCT circle: {closed_radii:?}"
         );
         assert!(
-            closed_radii.iter().any(|radius| (*radius - 4.0).abs() < 2e-4),
+            closed_radii
+                .iter()
+                .any(|radius| (*radius - 4.0).abs() < 2e-4),
             "the outer countersink rim must remain an exact selectable OCCT circle: {closed_radii:?}"
         );
     }

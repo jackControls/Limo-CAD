@@ -57,6 +57,8 @@ pub struct SectionReviewRequest {
     #[serde(default)]
     pub include_cutaway: bool,
     /// Retain coordinates above the plane; false retains those below it.
+    /// This selects only the 3D cutaway. Contours/probes describe cut material
+    /// on the exact plane, excluding coplanar exterior termination faces.
     #[serde(default)]
     pub keep_positive: bool,
 }
@@ -98,6 +100,8 @@ pub enum SectionOutcome {
     NoIntersection,
     /// Contact without splitting any connected source solid's volume.
     BoundaryContact,
+    /// Regularized plane / 3D-interior material; exterior coplanar faces do not
+    /// become hatch/probe area, even when another region cuts real material.
     MaterialSection,
 }
 

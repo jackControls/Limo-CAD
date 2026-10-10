@@ -1640,6 +1640,9 @@ void append_section_shape(
   if (shape.IsNull()) {
     return;
   }
+  if (coordinates.size() / 2 > point_limit) {
+    throw std::runtime_error("Section contour exceeds the native point budget before append");
+  }
   constexpr double kQuantize = 1.0e7;
   for (TopExp_Explorer explorer(shape, TopAbs_EDGE); explorer.More(); explorer.Next()) {
     const TopoDS_Edge edge = TopoDS::Edge(explorer.Current());
@@ -9427,6 +9430,318 @@ static TopoDS_Shape exact_section_shape(const TopoDS_Shape& source,
   return section.Shape();
 }
 
+// Section edges alone contain coplanar exterior-face terminations and seams.
+// Material hatching instead uses the regularized plane / 3D-interior region.
+// Its boundary is independent of which 3D half the caller retains.
+struct SectionRegionBudget {
+  std::size_t topology;
+  std::size_t comparisons = 16 * 1024 * 1024;
+  const SectionProgress* progress;
+
+  void take(const char* stage, std::size_t count = 1) {
+    if (progress) progress->check(stage);
+    if (count > topology) {
+      throw std::runtime_error(std::string("Section material topology exceeds the native budget during ") + stage);
+    }
+    topology -= count;
+  }
+
+  void boolean_work(std::size_t arguments, std::size_t tools, const char* stage) {
+    if (progress) progress->check(stage);
+    if (arguments > std::numeric_limits<std::size_t>::max() - tools) {
+      throw std::runtime_error("Section material Boolean input exceeds the native budget");
+    }
+    const auto count = arguments + tools;
+    // Conservatively bound potential pair work, including within each operand,
+    // before entering an OCCT operation. One allowance spans the whole query.
+    if (count != 0 && count > comparisons / count) {
+      throw std::runtime_error(std::string("Section material Boolean exceeds the native comparison budget during ") + stage);
+    }
+    comparisons -= count * count;
+  }
+};
+
+static std::size_t section_shape_complexity(const TopoDS_Shape& shape,
+                                            SectionRegionBudget& budget,
+                                            const char* stage) {
+  std::size_t count = 0;
+  if (shape.IsNull()) return count;
+  for (const auto kind : {TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX}) {
+    TopTools_IndexedMapOfShape seen;
+    for (TopExp_Explorer explorer(shape, kind); explorer.More(); explorer.Next()) {
+      budget.take(stage); // Bound traversal as well as unique storage growth.
+      if (seen.Contains(explorer.Current())) continue;
+      budget.take(stage);
+      seen.Add(explorer.Current());
+      ++count;
+    }
+  }
+  return count;
+}
+
+struct SectionFaces {
+  TopoDS_Compound shape;
+  std::size_t count = 0;
+  std::size_t complexity = 0;
+};
+
+static SectionFaces section_faces_only(const TopoDS_Shape& shape,
+                                       SectionRegionBudget& budget,
+                                       const char* stage,
+                                       bool boundary_only = false) {
+  SectionFaces result;
+  budget.take(stage);
+  BRep_Builder builder;
+  builder.MakeCompound(result.shape);
+  if (shape.IsNull()) return result;
+  TopTools_IndexedMapOfShape faces;
+  for (TopExp_Explorer explorer(shape, TopAbs_FACE); explorer.More(); explorer.Next()) {
+    budget.take(stage);
+    if (boundary_only && (explorer.Current().Orientation() == TopAbs_INTERNAL ||
+                          explorer.Current().Orientation() == TopAbs_EXTERNAL)) continue;
+    if (faces.Contains(explorer.Current())) continue;
+    budget.take(stage, 2); // Face map and compound member, before either grows.
+    faces.Add(explorer.Current());
+    builder.Add(result.shape, explorer.Current());
+    ++result.count;
+  }
+  if (result.count != 0) {
+    result.complexity = section_shape_complexity(result.shape, budget, stage);
+  }
+  return result;
+}
+
+template <typename Boolean>
+static TopoDS_Shape section_region_boolean(const TopoDS_Shape& source,
+                                           std::size_t source_complexity,
+                                           const TopoDS_Shape& tool,
+                                           std::size_t tool_complexity,
+                                           SectionRegionBudget& budget,
+                                           const char* stage,
+                                           const Message_ProgressRange& range) {
+  budget.boolean_work(source_complexity, tool_complexity, stage);
+  Boolean operation;
+  TopTools_ListOfShape arguments, tools;
+  arguments.Append(source);
+  tools.Append(tool);
+  operation.SetArguments(arguments);
+  operation.SetTools(tools);
+  operation.SetNonDestructive(true);
+  operation.Build(range);
+  if (budget.progress) budget.progress->check(stage);
+  if (!operation.IsDone() || operation.HasErrors()) {
+    std::ostringstream errors;
+    operation.DumpErrors(errors);
+    throw std::runtime_error(std::string("OCCT section material ") + stage + " failed: " + errors.str());
+  }
+  return operation.Shape();
+}
+
+static TopoDS_Face bounded_section_face(const TopoDS_Shape& source,
+                                        const gp_Pln& plane,
+                                        SectionRegionBudget& budget) {
+  budget.take("plane bounds");
+  Bnd_Box bounds;
+  BRepBndLib::Add(source, bounds, false);
+  if (bounds.IsVoid() || bounds.IsOpen()) {
+    throw std::runtime_error("Section material requires finite source bounds");
+  }
+  double low[3], high[3];
+  bounds.Get(low[0], low[1], low[2], high[0], high[1], high[2]);
+  const gp_Vec u(plane.Position().XDirection());
+  const gp_Vec v(plane.Position().YDirection());
+  double u_min = std::numeric_limits<double>::infinity();
+  double v_min = u_min;
+  double u_max = -u_min;
+  double v_max = -u_min;
+  for (int corner = 0; corner < 8; ++corner) {
+    const gp_Pnt point((corner & 1) ? high[0] : low[0],
+                       (corner & 2) ? high[1] : low[1],
+                       (corner & 4) ? high[2] : low[2]);
+    const gp_Vec relative(plane.Location(), point);
+    const double pu = relative.Dot(u), pv = relative.Dot(v);
+    u_min = std::min(u_min, pu); u_max = std::max(u_max, pu);
+    v_min = std::min(v_min, pv); v_max = std::max(v_max, pv);
+  }
+  const double extent = std::max(u_max - u_min, v_max - v_min);
+  if (!std::isfinite(extent) || extent <= 0.) {
+    throw std::runtime_error("Section material plane bounds are degenerate");
+  }
+  // Expand only the finite tool's in-plane edges, never the cutting plane.
+  const double margin = std::max(1.0, extent * 1e-6);
+  if (!std::isfinite(u_min - margin) || !std::isfinite(u_max + margin) ||
+      !std::isfinite(v_min - margin) || !std::isfinite(v_max + margin)) {
+    throw std::runtime_error("Section material plane bounds exceed the finite range");
+  }
+  budget.take("bounded plane storage", 9); // One face, four edges, four vertices.
+  BRepBuilderAPI_MakeFace face(plane, u_min - margin, u_max + margin,
+                             v_min - margin, v_max + margin);
+  if (!face.IsDone()) throw std::runtime_error("OCCT bounded section plane failed");
+  return face.Face();
+}
+
+static TopoDS_Shape material_section_boundary(const TopoDS_Shape& source,
+                                              const gp_Pln& plane,
+                                              SectionRegionBudget& budget,
+                                              const Message_ProgressRange& range) {
+  TopTools_IndexedMapOfShape solids;
+  for (TopExp_Explorer explorer(source, TopAbs_SOLID); explorer.More(); explorer.Next()) {
+    budget.take("material source solids");
+    if (solids.Contains(explorer.Current())) continue;
+    budget.take("material source solids");
+    solids.Add(explorer.Current());
+  }
+  if (solids.IsEmpty()) {
+    // Open imported surfaces have visible intersections but no 3D interior.
+    // Drawing callers keep those as contact lines; inspection separately
+    // retains its solid-only requirement before calling this helper.
+    return TopoDS_Shape();
+  }
+  const auto tool = bounded_section_face(source, plane, budget);
+  Message_ProgressScope stages(range, "Planar material regions", solids.Extent() + 1);
+  std::vector<SectionFaces> regions;
+  for (int index = 1; index <= solids.Extent(); ++index) {
+    Message_ProgressScope member(stages.Next(), "Source solid material", 3);
+    const auto& solid = solids.FindKey(index);
+    const auto complexity = section_shape_complexity(solid, budget, "solid material input");
+    auto material = section_faces_only(section_region_boolean<BRepAlgoAPI_Common>(
+        solid, complexity, tool, 9, budget, "plane common", member.Next()),
+        budget, "plane common faces");
+    if (material.count == 0) continue;
+    const auto boundary = section_faces_only(solid, budget, "source boundary faces", true);
+    const auto contact = section_faces_only(section_region_boolean<BRepAlgoAPI_Common>(
+        boundary.shape, boundary.complexity, tool, 9, budget,
+        "coplanar boundary common", member.Next()), budget, "coplanar boundary faces");
+    if (contact.count != 0) {
+      material = section_faces_only(section_region_boolean<BRepAlgoAPI_Cut>(
+          material.shape, material.complexity, contact.shape, contact.complexity,
+          budget, "exterior face subtraction", member.Next()), budget, "strict interior faces");
+    }
+    // Removing exterior patches must be per solid: another compound member
+    // may have genuine interior material in the same patch of the plane.
+    if (material.count != 0) {
+      budget.take("material region storage");
+      regions.push_back(std::move(material));
+    }
+  }
+  if (regions.empty()) return TopoDS_Shape();
+  TopoDS_Shape material = regions.front().shape;
+  if (regions.size() > 1) {
+    TopTools_ListOfShape arguments, tools;
+    budget.take("material union operands");
+    arguments.Append(material);
+    std::size_t tool_complexity = 0;
+    for (std::size_t index = 1; index < regions.size(); ++index) {
+      budget.take("material union operands");
+      tools.Append(regions[index].shape);
+      tool_complexity += regions[index].complexity; // Bounded by topology allowance.
+    }
+    budget.boolean_work(regions.front().complexity, tool_complexity, "material region union");
+    BRepAlgoAPI_Fuse unite;
+    unite.SetArguments(arguments);
+    unite.SetTools(tools);
+    unite.SetNonDestructive(true);
+    unite.Build(stages.Next());
+    if (budget.progress) budget.progress->check("material region union");
+    if (!unite.IsDone() || unite.HasErrors()) {
+      std::ostringstream errors;
+      unite.DumpErrors(errors);
+      throw std::runtime_error("OCCT section material union failed: " + errors.str());
+    }
+    material = section_faces_only(unite.Shape(), budget, "material union faces").shape;
+  }
+
+  // Boolean face regions already split shared boundaries exactly. Incidence
+  // removes only their topological internal seams, without a geometric unifier
+  // or suppression of unclosed/ambiguous section curves.
+  TopTools_IndexedMapOfShape faces, edges;
+  struct BoundaryIncidence {
+    unsigned count;
+    TopAbs_Orientation orientation;
+  };
+  std::vector<BoundaryIncidence> incidence;
+  for (TopExp_Explorer face_explorer(material, TopAbs_FACE);
+       face_explorer.More(); face_explorer.Next()) {
+    budget.take("material boundary faces");
+    if (faces.Contains(face_explorer.Current())) continue;
+    budget.take("material boundary faces");
+    faces.Add(face_explorer.Current());
+    auto face = TopoDS::Face(face_explorer.Current());
+    const auto face_complexity = section_shape_complexity(face, budget, "material face validation input");
+    budget.boolean_work(face_complexity, 0, "material face topology validation");
+    if (!BRepCheck_Analyzer(face, false).IsValid()) {
+      throw std::runtime_error("OCCT section material face has invalid boundary topology");
+    }
+    if (budget.progress) budget.progress->check("material face topology validation");
+    const BRepAdaptor_Surface surface(face, true);
+    if (surface.GetType() != GeomAbs_Plane) {
+      throw std::runtime_error("OCCT section material region is not planar");
+    }
+    const auto surface_plane = surface.Plane();
+    const double normal_dot = gp_Vec(surface_plane.Axis().Direction()).Dot(
+        gp_Vec(plane.Axis().Direction()));
+    const double distance = plane.Distance(surface_plane.Location());
+    const double tolerance = BRep_Tool::Tolerance(face);
+    if (!std::isfinite(normal_dot) || !std::isfinite(distance) || !std::isfinite(tolerance) ||
+        std::abs(normal_dot) < 1. - Precision::Angular() ||
+        distance > tolerance + Precision::Confusion()) {
+      throw std::runtime_error("OCCT section material region does not lie on the requested plane");
+    }
+    // Normalize only this derived TopoDS wrapper's orientation. With all face
+    // normals aligned, a genuine shared seam has two opposite oriented uses.
+    face.Orientation(normal_dot >= 0. ? TopAbs_FORWARD : TopAbs_REVERSED);
+    TopTools_IndexedMapOfShape face_edges;
+    for (TopExp_Explorer wire_explorer(face, TopAbs_WIRE);
+         wire_explorer.More(); wire_explorer.Next()) {
+      budget.take("material boundary wires");
+      const auto wire = TopoDS::Wire(wire_explorer.Current());
+      if (wire.Orientation() == TopAbs_INTERNAL || wire.Orientation() == TopAbs_EXTERNAL) continue;
+      for (TopExp_Explorer edge_explorer(wire, TopAbs_EDGE);
+           edge_explorer.More(); edge_explorer.Next()) {
+        budget.take("material boundary edges");
+        const auto edge = TopoDS::Edge(edge_explorer.Current());
+        // Ordered WireExplorer can stop at an unoriented use. Incidence needs
+        // every oriented boundary use, but no traversal order or internal marks.
+        if (edge.Orientation() == TopAbs_INTERNAL || edge.Orientation() == TopAbs_EXTERNAL) continue;
+        if (face_edges.Contains(edge)) {
+          throw std::runtime_error("OCCT section material boundary repeats an edge in a planar face");
+        }
+        budget.take("material boundary edge storage");
+        face_edges.Add(edge);
+        int edge_index = edges.FindIndex(edge);
+        if (edge_index == 0) {
+          budget.take("material boundary edge storage", 2);
+          edge_index = edges.Add(edge);
+          incidence.push_back({0, edge.Orientation()});
+        }
+        auto& use = incidence[static_cast<std::size_t>(edge_index - 1)];
+        if (++use.count > 2) {
+          throw std::runtime_error("OCCT section material boundary is non-manifold");
+        }
+        if (use.count == 2 && use.orientation == edge.Orientation()) {
+          throw std::runtime_error("OCCT section material shared boundary has ambiguous orientation");
+        }
+      }
+    }
+  }
+  budget.take("material boundary output");
+  BRep_Builder builder;
+  TopoDS_Compound result;
+  builder.MakeCompound(result);
+  bool has_boundary = false;
+  for (int index = 1; index <= edges.Extent(); ++index) {
+    budget.take("material boundary incidence");
+    if (incidence[static_cast<std::size_t>(index - 1)].count != 1) continue;
+    budget.take("material boundary output");
+    builder.Add(result, edges.FindKey(index));
+    has_boundary = true;
+  }
+  if (!has_boundary) {
+    throw std::runtime_error("OCCT section material region has no boundary");
+  }
+  return result;
+}
+
 FfiSectionGeometry Kernel::section_geometry(std::uint64_t body_id,
                                             const FfiSectionOptions& options) const {
   const auto found = impl_->bodies.find(body_id);
@@ -9439,7 +9754,10 @@ FfiSectionGeometry Kernel::section_geometry(std::uint64_t body_id,
   }
   Handle(SectionProgress) progress = new SectionProgress(options.timeout_ms);
   progress->check("dispatch");
-  Message_ProgressScope stages(progress->Start(), "Section inspection", 3);
+  Message_ProgressScope stages(progress->Start(), "Section inspection", 4);
+  SectionRegionBudget region_budget{options.contour_points, 16 * 1024 * 1024, progress.get()};
+  const auto source_complexity = section_shape_complexity(found->second, region_budget,
+                                                          "section source topology");
   double coordinates[3] = {0., 0., 0.};
   coordinates[axis] = offset;
   const gp_Pnt point(coordinates[0], coordinates[1], coordinates[2]);
@@ -9447,6 +9765,7 @@ FfiSectionGeometry Kernel::section_geometry(std::uint64_t body_id,
   normal[axis] = 1.;
   const gp_Vec direction(normal[0], normal[1], normal[2]);
   const gp_Pln plane(point, gp_Dir(direction));
+  region_budget.boolean_work(source_complexity, 1, "section intersection");
   const TopoDS_Shape section = exact_section_shape(found->second, plane, stages.Next());
   progress->check("intersection");
   const gp_Vec right = axis == 0 ? gp_Vec(0., 1., 0.) : gp_Vec(1., 0., 0.);
@@ -9456,16 +9775,14 @@ FfiSectionGeometry Kernel::section_geometry(std::uint64_t body_id,
   output.has_cutaway = false;
   output.cutaway.body_id = body_id;
   output.offsets.push_back(0);
-  std::set<std::vector<std::int64_t>> seen;
-  append_section_shape(section, right, up, options.deflection, output.offsets,
-                       output.points, seen, progress.get(), options.contour_points);
-  if (output.points.empty()) {
+  if (!TopExp_Explorer(section, TopAbs_EDGE).More()) {
     output.outcome = TopExp_Explorer(section, TopAbs_VERTEX).More() ? 1 : 0;
     return output;
   }
 
   TopoDS_Shape source = found->second;
   if (options.include_cutaway) {
+    region_budget.take("cutaway source copy", source_complexity);
     BRepBuilderAPI_Copy copy(source, true, false);
     if (!copy.IsDone() || copy.Shape().IsNull()) {
       throw std::runtime_error("OCCT section shape copy failed");
@@ -9488,6 +9805,8 @@ FfiSectionGeometry Kernel::section_geometry(std::uint64_t body_id,
   bool splits_material = false;
   for (int index = 1; index <= solids.Extent(); ++index) {
     const auto& solid = solids.FindKey(index);
+    const auto complexity = section_shape_complexity(solid, region_budget, "section clipping input");
+    region_budget.boolean_work(complexity, 1, "section clipping");
     const auto retained = retain_half_space(solid, plane,
         point.Translated(direction.Multiplied(options.keep_positive ? 1. : -1.)), clipping.Next());
     progress->check("clipping");
@@ -9504,6 +9823,18 @@ FfiSectionGeometry Kernel::section_geometry(std::uint64_t body_id,
     if (retained_volume > tolerance) builder.Add(clipped, retained);
   }
   output.outcome = splits_material ? 2 : 1;
+  const TopoDS_Shape boundaries = output.outcome == 2
+      ? material_section_boundary(found->second, plane, region_budget, stages.Next())
+      : section;
+  if (output.outcome == 2 && boundaries.IsNull()) {
+    throw std::runtime_error("OCCT section split source volume but produced no strict interior material region");
+  }
+  std::set<std::vector<std::int64_t>> seen;
+  append_section_shape(boundaries, right, up, options.deflection, output.offsets,
+                       output.points, seen, progress.get(), options.contour_points);
+  if (output.outcome == 2 && output.points.empty()) {
+    throw std::runtime_error("OCCT section material boundary produced no contour points");
+  }
   if (output.outcome == 2 && options.include_cutaway) {
     const SectionMeshBudget budget{options.vertices, options.edge_points, progress.get()};
     output.cutaway = mesh_shape(body_id, clipped, options.deflection, 0.25, false, &budget, stages.Next());
@@ -10119,10 +10450,30 @@ FfiDrawingProjection Kernel::drawing_projection(
     gp_Vec page_up = direction.Crossed(right);
     page_up.Normalize();
     std::set<std::vector<std::int64_t>> section_seen;
+    Handle(SectionProgress) progress = new SectionProgress(30'000);
+    SectionRegionBudget region_budget{100'000, 16 * 1024 * 1024, progress.get()};
+    Message_ProgressScope regions(progress->Start(), "Drawing material sections", source_shapes.size());
     for (const TopoDS_Shape& shape : source_shapes) {
-      append_section_shape(exact_section_shape(shape, cutting_plane), right, page_up,
+      Message_ProgressScope member(regions.Next(), "Drawing section body", 2);
+      section_shape_complexity(shape, region_budget, "drawing section source topology");
+      const auto boundaries = material_section_boundary(shape, cutting_plane,
+                                                        region_budget, member.Next());
+      if (boundaries.IsNull()) {
+        // Contact outlines remain visible geometry, never material hatching.
+        // A fresh child range still belongs to the original drawing deadline.
+        const auto complexity = section_shape_complexity(shape, region_budget,
+                                                          "drawing boundary input");
+        region_budget.boolean_work(complexity, 1, "drawing boundary intersection");
+        const auto outline = exact_section_shape(shape, cutting_plane, member.Next());
+        progress->check("drawing boundary intersection");
+        append_section_shape(outline, right, page_up, curve_deflection,
+                             output.visible_offsets, output.visible_points,
+                             section_seen, progress.get(), 100'000);
+        continue;
+      }
+      append_section_shape(boundaries, right, page_up,
                            curve_deflection, output.section_offsets,
-                           output.section_points, section_seen);
+                           output.section_points, section_seen, progress.get(), 100'000);
     }
   }
   return output;
