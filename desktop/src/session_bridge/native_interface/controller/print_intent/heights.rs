@@ -63,6 +63,24 @@ fn collection(profile: bool) -> &'static str {
         "height_ranges"
     }
 }
+pub(super) fn current_settings(
+    state: &State,
+    document: &PrintIntentDocumentDto,
+) -> PrintSettingsDto {
+    if state.height_editor.profile {
+        // Layer-height profiles contain samples, not settings.
+        PrintSettingsDto::default()
+    } else {
+        document
+            .height_ranges
+            .iter()
+            .find(|record| {
+                record.id == state.height_editor.selection && record.body_id.0 == state.body
+            })
+            .map(|record| record.settings.clone())
+            .unwrap_or_default()
+    }
+}
 fn records(document: &PrintIntentDocumentDto, profile: bool) -> Vec<Value> {
     // Only these records are editable here. Do not serialize unrelated part
     // settings/modifiers or duplicate their potentially large placement data.

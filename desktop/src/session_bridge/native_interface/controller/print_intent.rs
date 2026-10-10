@@ -81,19 +81,7 @@ impl State {
     }
     fn current(&self, document: &PrintIntentDocumentDto) -> PrintSettingsDto {
         if self.height_scope {
-            if self.height_editor.profile {
-                // Layer-height profiles contain samples, not settings.
-                PrintSettingsDto::default()
-            } else {
-                document
-                    .height_ranges
-                    .iter()
-                    .find(|record| {
-                        record.id == self.height_editor.selection && record.body_id.0 == self.body
-                    })
-                    .map(|record| record.settings.clone())
-                    .unwrap_or_default()
-            }
+            heights::current_settings(self, document)
         } else if self.modifier_scope {
             document
                 .modifiers
