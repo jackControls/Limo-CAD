@@ -7,6 +7,19 @@ has occurred. The user approved continued UI-first coverage and repair of all
 posted defects, including newly reported defects; passing CI does not close the
 remaining UI/MCP qualification gates.
 
+Adversarial review follow-up: `3221fd94` also guards ordinary tab/window close
+and Save All/Exit against losing unapplied drawing fields. `51850584` borrows
+retained archive JSON during cold-tab restoration; `2bc49000` releases stale
+assembly snapshots while the browser is hidden. These remain undeployed.
+
+New Tangent UI inspection found a real branch-roundoff defect: disjoint unequal
+circles jump to internal tangency. `d8796bc6` preserves the external branch at
+its solved floating-point boundary; a small exact-source arithmetic probe
+reproduced the old error and passed the correction. A session regression awaits
+CI and targeted live acceptance. Line-circle geometry/history/cancel and full
+native persistence passed; the overall command remains failed until repaired
+acceptance. Receipt: `qualification/tangent-human-ui-20261010.json`.
+
 Additional implementation checkpoint: `26347ace` shares drawing editor snapshots;
 `34ca87bf` protects unapplied drawing drafts across document switches. `720c869c`
 avoids native placement-buffer copies on projection cache hits. `a1a384d4` borrows
