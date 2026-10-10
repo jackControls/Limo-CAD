@@ -444,14 +444,16 @@ fn step_request(
     intent: &ExportIntent,
     expected_model_json: String,
 ) -> Result<StepExportRequest, String> {
-    let document = engine.document_snapshot();
-    let active: std::collections::HashSet<_> = document
-        .features
-        .iter()
-        .take(document.rollback_index)
-        .filter(|f| !f.suppressed)
-        .map(|f| f.id)
-        .collect();
+    let active: std::collections::HashSet<_> = engine.with_document(|document| {
+        let features = document.features();
+        features
+            .features
+            .iter()
+            .take(features.rollback_index)
+            .filter(|f| !f.suppressed)
+            .map(|f| f.id)
+            .collect()
+    });
     let holes: Vec<HoleDefinitionDto> = serde_json::from_value(parse_engine_envelope(
         engine.engine_call("hole_definitions", ""),
     )?)
