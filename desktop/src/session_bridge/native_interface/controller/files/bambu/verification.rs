@@ -212,8 +212,7 @@ pub(super) fn reduce(
             if let Some(dialog) = &world.resource::<Files>().dialog {
                 if dialog.receipt.owner == callback_owner {
                     if let DialogKind::Export(intent) = &dialog.kind {
-                        report.stale |= check_review(intent).is_ok()
-                            && key(intent).map_or(true, |current| current != request_key);
+                        report.stale |= key(intent).map_or(true, |current| current != request_key);
                     }
                 }
             }
@@ -244,8 +243,9 @@ pub(in super::super) fn observe(
     if !intent.bambu.enabled {
         return;
     }
+    // Editing project choices clears their preview; latch staleness even while
+    // those choices are unreviewed or temporarily incomplete.
     let current_key = key(intent);
-    let reviewed = check_review(intent).is_ok();
     let revision = services
         .bridge
         .native_document_receipt(&services.engine, owner)
@@ -259,7 +259,7 @@ pub(in super::super) fn observe(
     {
         job.report.stale |= &job.owner != owner
             || revision.as_ref().map_or(true, |r| *r != job.revision)
-            || (reviewed && (current_key.as_ref() != Ok(&job.request_key)));
+            || (current_key.as_ref() != Ok(&job.request_key));
     }
 }
 
@@ -547,6 +547,82 @@ mod tests {
             job(app.world()).unwrap().report.stale,
             "Returning to a previous document incarnation must not revive invalidated evidence"
         );
+    }
+
+    #[test]
+    fn unreviewed_export_edits_stay_stale_after_restoring_the_captured_choices() {
+        use super::super::super::tests::setup;
+        use crate::session_bridge::native_interface::tests::Fixture;
+        let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+        let fixture = Fixture::new();
+        let (mut app, services, _) = setup(&fixture);
+        let owner = fixture.owner();
+        let receipt = current(app.world(), &services, &owner).unwrap();
+        let intent = super::super::tests::intent();
+        let source = intent
+            .bambu
+            .document
+            .as_ref()
+            .unwrap()
+            .source_document_id
+            .as_deref()
+            .unwrap();
+        let dialog = Dialog {
+            token: 17,
+            receipt: receipt.clone(),
+            kind: DialogKind::Export(Arc::new(intent.clone())),
+            error: None,
+        };
+        let captured_key = key(&intent).unwrap();
+        for incomplete_template in [false, true] {
+            app.world_mut().resource_mut::<Files>().dialog = Some(dialog.clone());
+            save(
+                app.world_mut(),
+                owner.clone(),
+                receipt.revision,
+                captured_key.clone(),
+                report(source),
+            );
+            {
+                let mut files = app.world_mut().resource_mut::<Files>();
+                let DialogKind::Export(intent) = &mut files.dialog.as_mut().unwrap().kind else {
+                    unreachable!()
+                };
+                let intent = Arc::make_mut(intent);
+                intent.bambu.output = "D:/fixture/another-output.3mf".into();
+                intent.bambu.verifier_timeout = "240".into();
+            }
+            observe(app.world_mut(), &services, &owner);
+            assert!(
+                !job(app.world()).unwrap().report.stale,
+                "Output destination and verifier timeout do not change the captured project"
+            );
+            {
+                let mut files = app.world_mut().resource_mut::<Files>();
+                let DialogKind::Export(intent) = &mut files.dialog.as_mut().unwrap().kind else {
+                    unreachable!()
+                };
+                let intent = Arc::make_mut(intent);
+                if incomplete_template {
+                    intent.bambu.template = None;
+                } else {
+                    intent.bambu.allow_appearance = !intent.bambu.allow_appearance;
+                }
+                intent.bambu.invalidate();
+                assert!(check_review(intent).is_err());
+            }
+            observe(app.world_mut(), &services, &owner);
+            assert!(
+                job(app.world()).unwrap().report.stale,
+                "Changing project inputs invalidates evidence before another preview"
+            );
+            app.world_mut().resource_mut::<Files>().dialog = Some(dialog.clone());
+            observe(app.world_mut(), &services, &owner);
+            assert!(
+                job(app.world()).unwrap().report.stale,
+                "Restoring captured choices must not revive invalidated evidence"
+            );
+        }
     }
 
     #[test]
