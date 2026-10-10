@@ -9809,7 +9809,7 @@ mod tests {
         assert_eq!(summary["holes"][0]["style"], "simple");
         assert_eq!(
             summary["holes"][0]["through"], true,
-            "Revolved tube extent was not recognized: {summary}; topology: {native_topology}"
+            "Revolved tube extent was not recognized; topology: {native_topology}"
         );
         assert_eq!(summary["holes"][0]["depth"], 15.0);
         assert_eq!(
