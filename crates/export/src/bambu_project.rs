@@ -2006,11 +2006,8 @@ fn update_config(
             }
             validate_effective(&effective)?;
             let old = metadata(part)?;
-            let (mut native_inherited, mut native_sources) = native_effective_settings(
-                &native_global,
-                &object_settings,
-                &old,
-            )?;
+            let (mut native_inherited, mut native_sources) =
+                native_effective_settings(&native_global, &object_settings, &old)?;
             // A refresh restores reviewed managed baselines before applying CAD
             // overrides. Native read-only fields retain their untouched scopes.
             for (key, value) in &inherited {
