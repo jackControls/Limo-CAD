@@ -1690,16 +1690,20 @@ fn control_for_window_owned(
             .get("session_id")
             .and_then(Value::as_str)
             .ok_or("missing response session")?;
-        publisher
+        let id = response["request_id"]
+            .as_str()
+            .ok_or("missing request id")?;
+        let (session, expiry) = publisher
             .pending_controls
-            .get(
-                response["request_id"]
-                    .as_str()
-                    .ok_or("missing request id")?,
-            )
-            .filter(|(session, expiry)| session == requested && *expiry >= now_ms())
-            .map(|(session, _)| session.clone())
-            .ok_or("response belongs to another window")?
+            .get(id)
+            .ok_or("No pending control request matches this completion for the window")?;
+        if session != requested {
+            return Err("response belongs to another window".into());
+        }
+        if *expiry < now_ms() {
+            return Err("Control request expired before its completion could be delivered. The operation may already have completed; inspect the target before retrying.".into());
+        }
+        session.clone()
     } else {
         if publisher.active_project_session_id.as_deref()
             != Some(engine.active_project_session_id().as_str())
@@ -1723,7 +1727,7 @@ fn control_for_window_owned(
         }
         let request = dir.join(format!("{id}.request.json"));
         if !request.is_file() {
-            return Err("camera request expired".into());
+            return Err("Control request file is unavailable, so its completion was not delivered. The operation may already have completed; inspect the target before retrying.".into());
         }
         response["active_session_id"] = publisher
             .active_project_session_id
@@ -2041,6 +2045,99 @@ mod tests {
             assert!(control_for_window(&state, "main", &engine, Some(response)).is_err());
         }
         std::env::remove_var("LIMO_CAD_SESSION_DIR");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn control_completion_errors_distinguish_expiry_missing_request_and_foreign_session() {
+        let _test = TEST_LOCK.lock().unwrap();
+        let dir =
+            std::env::temp_dir().join(format!("limo-cad-control-delivery-{}", Uuid::new_v4()));
+        let previous = std::env::var_os("LIMO_CAD_SESSION_DIR");
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
+        {
+            let state = SessionBridgeState::default();
+            let engine = AppState::new();
+            envelope_ok(&state.with_project_session_transition("main", &engine, || {
+                engine.bind_project_session("drawing-a")
+            }));
+            let (session, _) = reserve(&state, "main");
+            let controls = dir.join(&session).join("controls");
+            fs::create_dir_all(&controls).unwrap();
+            let hand_off = |id: &str| {
+                atomic_write(
+                    &controls.join(format!("{id}.request.json")),
+                    &json!({"id":id,"expires_ms":now_ms()+30_000,
+                        "ui":{"action":"click","target":"workspace-drawing"}})
+                    .to_string(),
+                )
+                .unwrap();
+                let request = control_for_window(&state, "main", &engine, None).unwrap();
+                assert!(
+                    request["session_id"] == session,
+                    "Keep the request's session"
+                );
+                assert!(request["id"] == id, "Hand off the intended control request");
+            };
+
+            hand_off("123-1");
+            state
+                .publishers
+                .lock()
+                .unwrap()
+                .get_mut("main")
+                .unwrap()
+                .pending_controls
+                .get_mut("123-1")
+                .unwrap()
+                .1 = 0;
+            let response = json!({"request_id":"123-1","session_id":session,"status":"applied"});
+            let mut forged = response.clone();
+            forged["session_id"] = json!("foreign-session");
+            let foreign_error =
+                control_for_window(&state, "main", &engine, Some(forged)).unwrap_err();
+            assert!(foreign_error.contains("another window"));
+            let expired_error =
+                control_for_window(&state, "main", &engine, Some(response)).unwrap_err();
+            assert!(expired_error.contains("expired before its completion"));
+            assert!(expired_error.contains("may already have completed"));
+            assert!(!controls.join("123-1.result.json").exists());
+            assert!(controls.join("123-1.request.json").exists());
+            fs::remove_file(controls.join("123-1.request.json")).unwrap();
+
+            hand_off("123-2");
+            fs::remove_file(controls.join("123-2.request.json")).unwrap();
+            let missing_error = control_for_window(
+                &state,
+                "main",
+                &engine,
+                Some(json!({"request_id":"123-2","session_id":session,"status":"applied"})),
+            )
+            .unwrap_err();
+            assert!(missing_error.contains("request file is unavailable"));
+            assert!(missing_error.contains("may already have completed"));
+            assert!(!missing_error.contains("camera"));
+            assert!(!controls.join("123-2.result.json").exists());
+
+            // Expired tickets are pruned when the next request is handed off.
+            // A later response without a tracked ticket cannot establish which
+            // window originally owned it, and must not be classified as foreign.
+            let untracked_error = control_for_window(
+                &state,
+                "main",
+                &engine,
+                Some(json!({"request_id":"123-1","session_id":session,"status":"applied"})),
+            )
+            .unwrap_err();
+            assert!(untracked_error.contains("No pending control request matches"));
+            assert!(!untracked_error.contains("another window"));
+            assert!(!controls.join("123-1.result.json").exists());
+        }
+        if let Some(previous) = previous {
+            std::env::set_var("LIMO_CAD_SESSION_DIR", previous);
+        } else {
+            std::env::remove_var("LIMO_CAD_SESSION_DIR");
+        }
         let _ = fs::remove_dir_all(dir);
     }
 

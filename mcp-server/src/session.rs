@@ -318,7 +318,7 @@ fn request_control(
     let _ = fs::remove_file(session_path(session_id, &request_name)?);
     Ok(
         json!({"status":"timeout","request_id":ticket.request_id,"session_id":session_id,
-        "hint":"No UI acknowledgement. Check that the target tab is active and the desktop supports cad_interface."}),
+        "hint":"No UI completion acknowledgement before timeout. An operation that started may already have changed CAD; inspect the target window and model before retrying."}),
     )
 }
 
