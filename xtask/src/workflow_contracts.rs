@@ -224,6 +224,14 @@ fn check_mcp_provenance(source: &Value) -> Result<()> {
             job["strategy"]["matrix"]["include"] == expected,
             "{id} must run every named acceptance shard"
         );
+        let (lint_index, lint) = named_step(job, "Lint native Rust workspaces")?;
+        ensure!(
+            lint["id"].as_str() == Some("native-lint")
+                && lint["if"].as_str() == Some("matrix.shard == 'core'"),
+            "core native lint must retain the geometry prerequisite identity"
+        );
+        requires_command(lint, "cargo clippy --locked --workspace --all-targets --all-features --no-deps -- -D warnings")?;
+        requires_command(lint, "cargo clippy --locked --manifest-path mcp-server/Cargo.toml --all-targets --all-features --no-deps -- -D warnings")?;
         let (test_index, tests) = named_step(job, "MCP server tests")?;
         requires_command(tests, "cargo xtask ci mcp-shard ${{ matrix.shard }}")?;
         ensure!(
@@ -233,8 +241,8 @@ fn check_mcp_provenance(source: &Value) -> Result<()> {
         let (geometry_index, geometry) =
             named_step(job, "Native geometry integration regressions")?;
         ensure!(
-            geometry["if"].as_str() == Some("matrix.shard == 'core'"),
-            "native geometry must execute in the core shard"
+            geometry["if"].as_str() == Some("${{ !cancelled() && matrix.shard == 'core' && steps.native-lint.outcome == 'success' }}"),
+            "native geometry must survive MCP failure after successful native lint, but stop on cancellation"
         );
         requires_command(geometry, "cargo test --locked -p limo-cad-occt --features native-occt --tests -- --test-threads=1")?;
         ensure!(
@@ -267,8 +275,8 @@ fn check_mcp_provenance(source: &Value) -> Result<()> {
             "missing demo input must fail"
         );
         ensure!(
-            test_index < geometry_index && geometry_index < upload_index,
-            "native acceptance must finish before uploading a demo"
+            lint_index < test_index && test_index < geometry_index && geometry_index < upload_index,
+            "native lint and acceptance must finish before uploading a demo"
         );
     }
     for (id, native, platform) in [
@@ -568,7 +576,7 @@ fn native_shards_keep_geometry_workshop_and_exact_same_run_artifact_provenance()
             .next()
             .unwrap();
         assert!(
-            step.contains("if: matrix.shard == 'core'")
+            step.contains("if: ${{ !cancelled() && matrix.shard == 'core' && steps.native-lint.outcome == 'success' }}")
                 && step.contains("CARGO_TARGET_DIR: ${{ github.workspace }}/mcp-server/target")
         );
         assert!(step.contains("cargo test --locked -p limo-cad-occt --features native-occt --tests -- --test-threads=1") && !step.contains("continue-on-error:"));
@@ -827,6 +835,26 @@ fn mcp_provenance_rejects_missing_shards_bypassed_geometry_and_stale_inputs() {
     )
     .unwrap()
     .0;
+    for condition in [
+        "matrix.shard == 'core'",
+        "${{ !cancelled() && matrix.shard == 'core' }}",
+        "${{ matrix.shard == 'core' && steps.native-lint.outcome == 'success' }}",
+        "${{ always() && matrix.shard == 'core' && steps.native-lint.outcome == 'success' }}",
+    ] {
+        let mut suppressed_or_unprepared_geometry = valid.clone();
+        suppressed_or_unprepared_geometry["jobs"]["mcp-windows"]["steps"][geometry_index]["if"] =
+            Value::String(condition.into());
+        assert!(
+            check_mcp_provenance(&suppressed_or_unprepared_geometry).is_err(),
+            "{condition}"
+        );
+    }
+    let lint_index = named_step(&valid["jobs"]["mcp-windows"], "Lint native Rust workspaces")
+        .unwrap()
+        .0;
+    let mut missing_lint_identity = valid.clone();
+    missing_lint_identity["jobs"]["mcp-windows"]["steps"][lint_index]["id"] = Value::Null;
+    assert!(check_mcp_provenance(&missing_lint_identity).is_err());
     let mut ignored_geometry = valid.clone();
     ignored_geometry["jobs"]["mcp-windows"]["steps"][geometry_index]["continue-on-error"] =
         Value::Bool(true);

@@ -19,6 +19,23 @@ qualify that source and their stated automated scopes. They do not qualify the
 new repairs below or replace the outstanding human UI receipts. No passing
 suite was rerun locally.
 
+Post-checkpoint CI at `521f9e29` exposed two remaining failures: the native
+handoff panel borrowed an owned formatted caption (`a7ed584e` corrects that
+strict Clippy error), and the native revolved-tube summary returned unknown
+through extent on both Windows and Ubuntu. `7f516a04` moves shell evidence
+ahead of the extent assertion and includes bounded face/ring/seam context.
+The expected proof is unchanged; no unsupported topology is accepted to make
+the test pass. That regression remains unresolved until fresh diagnostics
+identify and validate the actual correction.
+
+Native geometry CI now retains independent core regressions after an MCP
+assertion failure, provided native lint succeeded and the run was not cancelled.
+MCP failures still fail their job and aggregate gate; workshop/demo publication
+keeps the normal success prerequisite. The two focused workflow contract checks
+passed once locally, including rejection of cancelled/unprepared execution and
+loss of the prerequisite identity. No application build or geometry replay was
+used for that check.
+
 The automated `native-exact-thread-precision` blocker is superseded by existing
 hosted evidence at `43c20c30c66c3cdadc34256747376222333ca5ba`, run
 [38055144113](https://github.com/limo-cad/Limo-CAD/actions/runs/38055144113).
@@ -52,6 +69,19 @@ out of UI frames and borrowed summary reads. Native positive and negative
 regressions are committed but not run locally. Real imported assembly/touching
 acceptance and new-head hosted validation remain pending. No GUI deployment is
 claimed.
+
+The concrete exact-plane hatch failure posted on #350 is distinct from that
+issue's deferred wall-thickness feature. The section repair constructs each
+solid's planar material region, subtracts coplanar exterior termination patches
+per solid, and unions material before extracting complete oriented boundaries.
+It does not move the section plane or change material based on the retained
+3D side. Pure contact and imported open-surface outlines remain visible drawing
+geometry without becoming hatch area. Shared topology/comparison allowances
+and cooperative OCCT progress checks bound the added work; this is not hard
+process containment. Focused native regressions cover the exact pocket endpoint,
+both cutaway volumes, overlapping compound regions, signed drawing normals,
+contact/open-surface compatibility and source preservation. Source review is
+complete; hosted execution and actual-file/runtime acceptance remain pending.
 
 For #363, `a48a2f33` strengthens the existing tangent-arch/circular-hole native
 fixture with exact volume and default/fine closed-mesh export checks. The fixture
