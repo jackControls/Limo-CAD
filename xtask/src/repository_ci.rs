@@ -67,16 +67,7 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
             let arguments = shard_arguments(&shard)?;
             let inventory = crate::build_tools::cargo()
                 .current_dir(root)
-                .args([
-                    "test",
-                    "--locked",
-                    "--manifest-path",
-                    "mcp-server/Cargo.toml",
-                    "--test",
-                    "recipes",
-                    "--",
-                    "--list",
-                ])
+                .args(mcp_inventory_arguments(false))
                 .stderr(std::process::Stdio::inherit())
                 .output()
                 .context("list compiled MCP recipe tests")?;
@@ -85,7 +76,23 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<()> {
                 "Cargo inventory failed ({})",
                 inventory.status
             );
-            verify_inventory(std::str::from_utf8(&inventory.stdout)?)?;
+            // libtest's ordinary --list includes ignored tests. A required
+            // flagship can therefore be listed while its exact shard runs 0.
+            let ignored = crate::build_tools::cargo()
+                .current_dir(root)
+                .args(mcp_inventory_arguments(true))
+                .stderr(std::process::Stdio::inherit())
+                .output()
+                .context("list ignored MCP recipe tests")?;
+            ensure!(
+                ignored.status.success(),
+                "ignored recipe inventory failed ({})",
+                ignored.status
+            );
+            verify_inventory(
+                std::str::from_utf8(&inventory.stdout)?,
+                std::str::from_utf8(&ignored.stdout)?,
+            )?;
             let status = crate::build_tools::cargo()
                 .current_dir(root)
                 .args(arguments)
@@ -196,10 +203,31 @@ fn shard_arguments(shard: &str) -> Result<Vec<String>> {
     Ok(args)
 }
 
-fn verify_inventory(output: &str) -> Result<()> {
+fn mcp_inventory_arguments(ignored: bool) -> Vec<String> {
+    let mut args = [
+        "test",
+        "--locked",
+        "--manifest-path",
+        "mcp-server/Cargo.toml",
+        "--test",
+        "recipes",
+        "--",
+        "--list",
+    ]
+    .map(String::from)
+    .to_vec();
+    if ignored {
+        args.push("--ignored".into());
+    }
+    args
+}
+
+fn verify_inventory(output: &str, ignored: &str) -> Result<()> {
     for (_, name) in FLAGSHIPS {
         ensure!(output.lines().filter_map(|line| line.strip_suffix(": test")).filter(|test| *test == name).count() == 1,
             "expected exactly one compiled recipe test named {name}; update CI sharding after a rename");
+        ensure!(!ignored.lines().filter_map(|line| line.strip_suffix(": test")).any(|test| test == name),
+            "required recipe test {name} is ignored; its exact acceptance shard would execute no test");
     }
     Ok(())
 }
@@ -341,10 +369,16 @@ mod tests {
         let inventory = FLAGSHIPS
             .map(|(_, name)| format!("{name}: test\r\n"))
             .concat();
-        verify_inventory(&inventory).unwrap();
-        assert!(verify_inventory("").is_err());
-        assert!(verify_inventory(&(inventory.clone() + &inventory)).is_err());
-        assert!(verify_inventory(&inventory.replace(FLAGSHIPS[0].1, "renamed_test")).is_err());
+        verify_inventory(&inventory, "0 tests, 0 benchmarks").unwrap();
+        assert!(verify_inventory("", "").is_err());
+        assert!(verify_inventory(&(inventory.clone() + &inventory), "").is_err());
+        assert!(verify_inventory(&inventory.replace(FLAGSHIPS[0].1, "renamed_test"), "").is_err());
+        for (_, name) in FLAGSHIPS {
+            assert!(verify_inventory(&inventory, &format!("{name}: test\n")).is_err());
+        }
+        verify_inventory(&inventory, "optional_gpu_example: test\n").unwrap();
+        assert_eq!(mcp_inventory_arguments(true).last().unwrap(), "--ignored");
+        assert_eq!(mcp_inventory_arguments(false).last().unwrap(), "--list");
         assert!(shard_arguments("toString").is_err());
         let core = shard_arguments("core").unwrap();
         assert!(!core.contains(&"--test".to_owned()));
@@ -362,6 +396,52 @@ mod tests {
                 ]
             );
         }
+    }
+    #[test]
+    fn real_libtest_ignored_flagship_is_listed_but_does_not_execute() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("inventory.rs");
+        let executable = root.path().join(if cfg!(windows) {
+            "inventory.exe"
+        } else {
+            "inventory"
+        });
+        fs::write(&source, format!(
+            "#[test] #[ignore] fn {}() {{ panic!(\"must not execute\"); }}\nmod vise {{ #[test] fn {}() {{}} }}\n",
+            FLAGSHIPS[0].1, FLAGSHIPS[1].1.strip_prefix("vise::").unwrap()
+        )).unwrap();
+        let compiled =
+            std::process::Command::new(env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()))
+                .args(["--edition=2021", "--test"])
+                .arg(&source)
+                .arg("-o")
+                .arg(&executable)
+                .status()
+                .unwrap();
+        assert!(compiled.success());
+        let listed = std::process::Command::new(&executable)
+            .arg("--list")
+            .output()
+            .unwrap();
+        let ignored = std::process::Command::new(&executable)
+            .args(["--list", "--ignored"])
+            .output()
+            .unwrap();
+        assert!(listed.status.success() && ignored.status.success());
+        let listed = std::str::from_utf8(&listed.stdout).unwrap();
+        let ignored = std::str::from_utf8(&ignored.stdout).unwrap();
+        verify_inventory(listed, "").expect("The old inventory would have accepted this fixture");
+        assert!(verify_inventory(listed, ignored).is_err());
+        let skipped = std::process::Command::new(&executable)
+            .args(["--exact", FLAGSHIPS[0].1])
+            .output()
+            .unwrap();
+        assert!(
+            skipped.status.success(),
+            "libtest reports success for an ignored exact filter"
+        );
+        let skipped = std::str::from_utf8(&skipped.stdout).unwrap();
+        assert!(skipped.contains("0 passed") && skipped.contains("1 ignored"));
     }
     #[test]
     fn platform_gate_rejects_every_non_success_result() {

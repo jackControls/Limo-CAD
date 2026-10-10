@@ -56,8 +56,12 @@ and 36 top-level jobs, before matrix expansion.
 - **Native switching:** matched baseline/candidate, shared compiler and inputs,
   reversed-order repeats and provenance establish a bounded latency comparison.
   It is not a universal timing guarantee.
-- **Native visual:** the GPU projected-boundary/thin-wall matrix is distinct from
-  semantic control and headless host tests. Captures require visual review.
+- **Native visual:** relevant renderer/geometry PR changes automatically run the
+  GPU projected-boundary/thin-wall matrix. Distributed pixel probes follow the
+  independently known stock arc and visible diagonal, comparing controls with
+  projected/all edges removed. Missing strokes fail; hidden-only removal must
+  leave the image identical. Retained captures support visual review. Manual
+  dispatch still includes full OS-input qualification.
 - **Knowledge Pages:** offline media tests, knowledge validation, search freshness
   and pinned public media establish help/reference correctness. Deployment is
   non-PR and depends on the successful build; it does not qualify CAD behavior.
@@ -106,6 +110,50 @@ and 36 top-level jobs, before matrix expansion.
 No CAD test is deleted, ignored, tolerance-relaxed or converted to
 `continue-on-error`. Auxiliary partial diagnostic uploads can remain warning-only;
 successful release/demo payload uploads and acceptance commands fail closed.
+
+## Deeper assertion audit
+
+Four false-green paths were addressed after the initial CI pass:
+
+1. Paper zoom previously checked only that Fit deselected. Inspection now reports
+   the presentation scale and completed Bevy paper-node size with its actual DPI,
+   sheet and document owner. One button input must enlarge both axes consistently;
+   out must shrink them, and Fit must restore the exact layout. One OS Ctrl-wheel
+   notch must enlarge the layout without retrying the input. Small inverse pan
+   checks retain pixel equality and the complete model must remain unchanged.
+   Counterexamples cover Fit-only changes, unapplied layout, DPI-only changes,
+   wrong direction and document/sheet/client replacement. This is bounded layout
+   evidence, not physical touchpad or universal gesture-timing qualification.
+2. PNG byte length and hidden-edge equality previously allowed all strokes to be
+   absent. The GPU matrix now requires RGB contrast of at least 24/255 near at
+   least three quarters of distributed known-edge probes. Five-pixel sampling
+   neighborhoods accommodate antialias coverage; unrelated art and sparse noise
+   cannot substitute for an edge. Pure counterexamples reject missing strokes,
+   unrelated art, sparse noise, truncated captures and invalid probe coordinates.
+3. libtest's normal inventory includes ignored tests. MCP shard setup now also
+   lists ignored recipe tests and rejects either required flagship if ignored.
+   A compiled miniature libtest regression proves the old inventory accepts an
+   ignored test and its exact execution returns success with zero tests passed;
+   the new guard rejects it. Optional ignored diagnostics keep their own scope.
+4. Small-part 3MF acceptance previously checked XML tags without measuring the
+   emitted build. The independent package reader now expands actual component
+   transforms and triangles before checking the known analytic bounds and volume
+   for the plate, spacer and bracket. Counterexamples preserve those XML tags but
+   omit the build or place the mesh incorrectly; both must fail. STEP round-trip,
+   STL geometry, source-model and independent restore assertions remain intact.
+
+Local deep verification passed all twelve GPU face/palette/zoom cases (16/16
+visible arc probes each) and three ordinary-edge controls (12/12 each), with
+unchanged hidden-edge images. Six retained-paper regressions, the missing-stroke
+counterexamples, eleven workflow contracts, five CI-orchestration tests, two
+navigation-oracle tests and both xtask feature-mode lints passed. Small-part
+acceptance passed actual private-process STEP/STL/3MF exports for all three parts;
+the empty-build/wrong-placement 3MF counterexamples also passed. The GPU evidence
+was captured by a windowless renderer, not the user's desktop. The changed OS
+paper-navigation fixture still requires its focused disposable-host receipt.
+
+These changes strengthen acceptance assertions and selection. They do not close
+the unfinished broad UI/MCP ledger or qualify the remaining human walkthrough.
 
 ## Validation and status boundaries
 

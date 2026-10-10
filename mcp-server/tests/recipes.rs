@@ -513,6 +513,27 @@ fn part_geometry(
     );
 }
 
+fn three_mf_geometry(bytes: &[u8], min: [f64; 3], max: [f64; 3], volume: f64, tolerance: f64) {
+    let meshes = limo_cad_export::test_reader::read_package(bytes)
+        .expect("decode actual 3MF build geometry and component transforms");
+    let bodies = meshes
+        .into_iter()
+        .map(|mesh| {
+            json!({"mesh": {
+                "positions": mesh.vertices.into_iter().flatten().collect::<Vec<_>>(),
+                "indices": mesh.triangles.into_iter().flatten().collect::<Vec<_>>()
+            }})
+        })
+        .collect::<Vec<_>>();
+    part_geometry(
+        &json!({"errors":[],"bodies":bodies}),
+        min,
+        max,
+        volume,
+        tolerance,
+    );
+}
+
 fn stl_mesh(bytes: &[u8]) -> Value {
     let mut positions = Vec::new();
     if bytes.starts_with(b"solid ") {
@@ -662,7 +683,7 @@ fn native_part_recipes_preserve_analytic_geometry_restore_and_export() {
                     );
                 }
                 "3mf" => {
-                    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+                    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&bytes)).unwrap();
                     let mut model = String::new();
                     archive
                         .by_name("3D/3dmodel.model")
@@ -674,6 +695,7 @@ fn native_part_recipes_preserve_analytic_geometry_restore_and_export() {
                             && model.contains("<triangle ")
                             && model.contains("<build>")
                     );
+                    three_mf_geometry(&bytes, min, max, volume, tolerance);
                 }
                 _ => unreachable!(),
             }
@@ -1153,6 +1175,44 @@ fn print_acceptance_checks_the_build_pose_and_rejects_an_off_bed_build() {
         );
     })
     .is_err());
+}
+
+#[test]
+fn three_mf_part_acceptance_rejects_empty_build_and_wrong_component_placement() {
+    let package = |item: &str| {
+        let xml = format!(
+            r#"<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="1"><mesh><vertices>
+<vertex x="0" y="0" z="43"/><vertex x="3" y="0" z="43"/>
+<vertex x="0" y="2" z="43"/><vertex x="0" y="0" z="48"/>
+</vertices><triangles><triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/>
+<triangle v1="0" v2="3" v3="2"/><triangle v1="1" v2="2" v3="3"/>
+</triangles></mesh></object><object id="2"><components><component objectid="1"/></components></object></resources><build>{item}</build></model>"#
+        );
+        // Every negative fixture still passes the historical XML-presence checks.
+        assert!(
+            xml.contains("unit=\"millimeter\"")
+                && xml.contains("<triangle ")
+                && xml.contains("<build>")
+        );
+        let mut archive = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        archive
+            .start_file("3D/3dmodel.model", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(xml.as_bytes()).unwrap();
+        archive.finish().unwrap().into_inner()
+    };
+    let placed = package(r#"<item objectid="2" transform="1 0 0 0 1 0 0 0 1 10 20 -43"/>"#);
+    three_mf_geometry(&placed, [10., 20., 0.], [13., 22., 5.], 5., 0.0001);
+    for incorrect in [package(""), package(r#"<item objectid="2"/>"#)] {
+        assert!(std::panic::catch_unwind(|| three_mf_geometry(
+            &incorrect,
+            [10., 20., 0.],
+            [13., 22., 5.],
+            5.,
+            0.0001
+        ))
+        .is_err());
+    }
 }
 
 #[test]
