@@ -26,6 +26,7 @@ mod geometry;
 mod ime_diagnostics;
 pub(crate) mod ranges;
 pub(crate) mod ribbon;
+mod shortcut_diagnostics;
 mod window_focus;
 
 use geometry::HitArea;
@@ -275,6 +276,7 @@ struct Capture {
 
 struct Shared {
     ime_diagnostics: Option<ime_diagnostics::Trace>,
+    shortcut_diagnostics: Option<shortcut_diagnostics::Trace>,
     registry: SurfaceRegistry,
     desired_frame: Option<InterfaceFrame>,
     presented_frame: Option<InterfaceFrame>,
@@ -299,6 +301,7 @@ impl Default for Shared {
     fn default() -> Self {
         Self {
             ime_diagnostics: ime_diagnostics::Trace::opt_in(),
+            shortcut_diagnostics: shortcut_diagnostics::Trace::opt_in(),
             registry: SurfaceRegistry::new(),
             desired_frame: None,
             presented_frame: None,
@@ -387,6 +390,18 @@ impl NativeInterfaceHandle {
         Ok(())
     }
 
+    pub(crate) fn record_file_shortcut(
+        &self,
+        event: &crate::native_viewport::winit_host::NativeHostInput,
+        decision: &'static str,
+    ) {
+        if let Ok(mut shared) = self.shared.lock() {
+            if let Some(trace) = &mut shared.shortcut_diagnostics {
+                trace.record(event, decision);
+            }
+        }
+    }
+
     pub fn inspect(&self) -> Result<serde_json::Value, String> {
         let mut shared = self
             .shared
@@ -414,6 +429,9 @@ impl NativeInterfaceHandle {
                         "document_id":context.document_id,"epoch":context.epoch}})
                 })
                 .unwrap_or(serde_json::Value::Null);
+            if let Some(trace) = &shared.shortcut_diagnostics {
+                snapshot["file_shortcut_diagnostics"] = trace.snapshot();
+            }
             if let Some(trace) = &shared.ime_diagnostics {
                 snapshot["ime_diagnostics"] = trace.snapshot();
                 snapshot["ime_diagnostics"]["focus"] = shared.registry.frame().controls.iter()

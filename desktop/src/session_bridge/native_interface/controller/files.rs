@@ -1580,6 +1580,7 @@ pub(super) fn shortcut(
             .frame()
             .is_some_and(|frame| !frame.modal_stack.is_empty())
     {
+        handle.record_file_shortcut(event, "blocked_modal_or_awaiting");
         return Ok(None);
     }
     let WindowEvent::KeyboardInput(key) = &event.event else {
@@ -1591,9 +1592,11 @@ pub(super) fn shortcut(
         || event.modifiers.alt_graph
         || !(event.modifiers.ctrl || event.modifiers.meta)
     {
+        handle.record_file_shortcut(event, "not_command_chord");
         return Ok(None);
     }
     let Key::Character(character) = &key.logical_key else {
+        handle.record_file_shortcut(event, "non_character_key");
         return Ok(None);
     };
     let character = if character.chars().all(char::is_control) {
@@ -1616,16 +1619,33 @@ pub(super) fn shortcut(
         ("s", true) => FileCommand::SaveAs,
         ("w", false) => FileCommand::Close,
         ("p", false) => FileCommand::PrintDrawing,
-        _ => return Ok(None),
+        _ => {
+            handle.record_file_shortcut(event, "unmapped_chord");
+            return Ok(None);
+        }
     };
+    handle.record_file_shortcut(event, "recognized_owner_check");
     let owner = event
         .context
         .as_ref()
         .ok_or("File shortcut has no document context")?;
-    services
+    if let Err(error) = services
         .bridge
-        .with_native_document_owner(&services.engine, owner, || Ok(()))?;
-    execute(world, handle, services, owner, command).map(Some)
+        .with_native_document_owner(&services.engine, owner, || Ok(()))
+    {
+        handle.record_file_shortcut(event, "rejected_owner");
+        return Err(error);
+    }
+    let result = execute(world, handle, services, owner, command);
+    handle.record_file_shortcut(
+        event,
+        if result.is_ok() {
+            "dispatched"
+        } else {
+            "command_error"
+        },
+    );
+    result.map(Some)
 }
 
 #[cfg(test)]

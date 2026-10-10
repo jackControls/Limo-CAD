@@ -1136,6 +1136,18 @@ fn process_busy_input(
     state: &mut Controller,
     event: &NativeHostInput,
 ) -> Result<(), String> {
+    handle.record_file_shortcut(
+        event,
+        if state
+            .polled_control
+            .as_ref()
+            .is_some_and(|poll| poll.interface_only)
+        {
+            "busy_read"
+        } else {
+            "busy_mutation"
+        },
+    );
     crate::native_editor::mechanism::observe_busy(world, event);
     if files::script_preview_input(world, handle, event)? {
         return Ok(());
@@ -1151,6 +1163,7 @@ fn process_busy_input(
                 event.context.as_ref() == Some(&frame.context) && frame.modal_stack.is_empty()
             })
         {
+            handle.record_file_shortcut(event, "deferred_save");
             state.deferred_save = Some(event.clone());
             return Ok(());
         }

@@ -393,18 +393,27 @@ fn route_window_input(world: &mut World) {
                 }
                 _ => (),
             }
-            world.write_message(NativeHostInput {
+            let original_modifiers = take_ordered_modifiers(&mut ordered_modifiers, event);
+            let input = NativeHostInput {
                 ui_scale: handle.presented_ui_scale(),
                 context: handle.presented_context(),
                 cursor: state
                     .cursor
                     .map(|cursor| cursor / handle.presented_ui_scale()),
-                modifiers: take_ordered_modifiers(&mut ordered_modifiers, event)
-                    .unwrap_or_else(|| state.modifiers.modifiers()),
+                modifiers: original_modifiers.unwrap_or_else(|| state.modifiers.modifiers()),
                 event: interface_event(event.clone(), handle.presented_ui_scale()),
                 consumed: false,
                 actions: Vec::new(),
-            });
+            };
+            handle.record_file_shortcut(
+                &input,
+                if original_modifiers.is_some() {
+                    "ingress_raw_modifiers"
+                } else {
+                    "ingress_reconstructed_modifiers"
+                },
+            );
+            world.write_message(input);
         }
     });
     if let Some(window) = world.get::<Window>(window) {
