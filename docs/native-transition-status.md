@@ -10,8 +10,9 @@ remaining UI/MCP qualification gates.
 Current direction: **new exploratory UI coverage is paused**. Work is limited to
 known-defect implementation and planned targeted acceptance of repaired behavior.
 Preserve earlier passes; do not advance to untouched catalog items or rerun passing
-cases. Shared runtime ownership remains withheld: no deployment, restart or live
-acceptance proceeds until ownership and saved-work readiness are established.
+cases. The user handed over shared runtime ownership on 2026-10-10. One guarded
+Rust GUI operator is saving and closing the open documents before deployment;
+saved/recovery data and the other branch's models remain preserved.
 
 The existing automated matrix is green at `f7aacc2c`: native hosts on all three
 platforms, MCP acceptance, package targets and CodeQL passed. Those results
@@ -25,8 +26,14 @@ strict Clippy error), and the native revolved-tube summary returned unknown
 through extent on both Windows and Ubuntu. `7f516a04` moves shell evidence
 ahead of the extent assertion and includes bounded face/ring/seam context.
 The expected proof is unchanged; no unsupported topology is accepted to make
-the test pass. That regression remains unresolved until fresh diagnostics
-identify and validate the actual correction.
+the test pass. Fresh Ubuntu and Windows core diagnostics at `647772c3` proved
+that all four faces have valid outer-shell evidence, but the lower annular cap
+incorrectly exports a +Y normal. OCCT can represent a plane with an indirect
+coordinate frame: its parametric normal is XDirection cross YDirection, rather
+than its main axis. `b1fa867a` corrects the shared normal transfer and extends
+the existing native revolve fixture with independent cap and mesh-normal checks.
+Validation of the correction is pending. Both core jobs ran all 118 native
+unit tests and their integration binaries successfully after the MCP failure.
 
 Native geometry CI now retains independent core regressions after an MCP
 assertion failure, provided native lint succeeded and the run was not cancelled.
@@ -80,8 +87,15 @@ geometry without becoming hatch area. Shared topology/comparison allowances
 and cooperative OCCT progress checks bound the added work; this is not hard
 process containment. Focused native regressions cover the exact pocket endpoint,
 both cutaway volumes, overlapping compound regions, signed drawing normals,
-contact/open-surface compatibility and source preservation. Source review is
-complete; hosted execution and actual-file/runtime acceptance remain pending.
+contact/open-surface compatibility and source preservation. Those focused native
+regressions passed on Windows and Ubuntu at `647772c3`. The hosted vise exposed
+a separate efficiency regression: querying the whole boundary compound charged
+near-whole-solid pair work twice. The repair distributes exact plane Common
+over each candidate boundary face under the same shared allowance and deadline,
+then collects only contact faces for the existing per-solid subtraction. Planar
+and unknown/general surfaces retain exact evaluation; only proven nondegenerate
+curved analytic supports are excluded. Source review is complete; corrected
+vise execution and actual-file/runtime acceptance remain pending.
 
 For #363, `a48a2f33` strengthens the existing tangent-arch/circular-hole native
 fixture with exact volume and default/fine closed-mesh export checks. The fixture
@@ -119,12 +133,14 @@ MCP cases remain not run. Symmetry is the next untouched catalog item, currently
 paused; only targeted known-repair acceptance remains planned.
 
 Deployment remains pending. Multiple recent Vita GUI windows share the canonical
-runtime; only surface-qualification PID21480 is owned here. NATS notice
-`0e11d4b0-8393-4b7a-8454-d62b57ba2f47` requests saved-work readiness before any
-restart. No foreign window was stopped. Bounded lossless compression of inactive
+runtime; the user's later handover supersedes the earlier ownership hold in NATS
+notice `0e11d4b0-8393-4b7a-8454-d62b57ba2f47`. The current live GUI/MCP pair was
+rediscovered and reports matched clean `93823f6d`; guarded focus succeeded.
+Document saving and window closure are underway before rebuilding the corrected
+source. Verified preservation copies are outside the repository. Bounded lossless compression of inactive
 archived compiler/runtime artifacts restored approximately1.3GiB on C: and3.2GiB
 on D:, with before/after hashes and hardlink identity preserved. No document,
-recovery or session data was moved/deleted; no native build has started.
+recovery or session data was moved/deleted; no native application build has started.
 
 Adversarial review follow-up: `3221fd94` also guards ordinary tab/window close
 and Save All/Exit against losing unapplied drawing fields. `51850584` borrows
