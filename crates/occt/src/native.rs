@@ -3262,6 +3262,41 @@ mod tests {
         assert!(scene.bodies[0].faces.iter().any(|face| face
             .cylinder
             .is_some_and(|cylinder| (cylinder.radius - 5.0).abs() < 1e-6)));
+
+        // The semicircle joins its vertical sides tangentially. Preserve the
+        // analytic domain, including the circular void, through refinement.
+        let pose = || PlacedBodyQueryDto {
+            body_id: BodyId(1),
+            translation: [0.0; 3],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        };
+        let volume = kernel
+            .exact_interference(pose(), pose())
+            .unwrap()
+            .overlap_volume_mm3;
+        let expected_volume = (600.0 + 25.0 * std::f64::consts::PI) * 10.0;
+        assert!(
+            (volume - expected_volume).abs() < 1e-5,
+            "tangent arch volume {volume}, expected {expected_volume}"
+        );
+        // Production export enforces directed mesh closure and requested
+        // source precision; a successful display mesh alone is insufficient.
+        for request in [
+            MeshExportRequest::default(),
+            MeshExportRequest {
+                linear_deflection: 0.0375,
+                angular_deflection: 0.175,
+                ..Default::default()
+            },
+        ] {
+            let exported = kernel.export_3mf(&request, &[]);
+            assert!(
+                exported.is_ok(),
+                "tangent arch export at linear/angular deflection {}/{}: {exported:?}",
+                request.linear_deflection,
+                request.angular_deflection
+            );
+        }
     }
 
     #[test]
