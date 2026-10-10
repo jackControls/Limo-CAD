@@ -217,6 +217,9 @@ impl ComputerControl {
                                 && control["disabled"] != true
                         })
                 };
+            let native_keyboard_focus = native_input_focus(hwnd, pid)
+                .map(|focus| focus.snapshot())
+                .unwrap_or_else(|error| json!({"available":false,"error":error}));
             self.observation = Some(Observation {
                 token: token.clone(),
                 expires_ms,
@@ -270,6 +273,7 @@ impl ComputerControl {
                 "owner":owner,"window_handle":hwnd as usize,"executable":std::env::current_exe().map_err(|e|e.to_string())?,
                 "main_window_handle":target.main as usize,"target_kind":if target.native_dialog {"native_dialog"} else {"bevy_window"},
                 "native_window_diagnostics":window_diagnostics(pid),
+                "native_keyboard_focus":native_keyboard_focus,
                 "presented":presented,"focus_only":!presented,"minimized":unsafe { IsIconic(hwnd) } != 0,
                 "client_screen_bounds":screen_bounds,
                 "coordinate_space":"physical_client_pixels","dpi":unsafe { GetDpiForWindow(hwnd) },
@@ -410,9 +414,20 @@ impl ComputerControl {
             );
         }
         guard_foreground(hwnd, false, observed.native_dialog)?;
+        let keyboard_input = matches!(request.action.as_str(), "key" | "text");
+        let owner_pid = observed.owner["pid"]
+            .as_u64()
+            .and_then(|pid| u32::try_from(pid).ok())
+            .ok_or("Owner has no PID")?;
+        if keyboard_input {
+            guard_keyboard_focus(&request.action, hwnd, owner_pid, observed.native_dialog)?;
+        }
         guard_held_input()?;
         let plan = plan(&request, &observed, hwnd)?;
         guard_foreground(hwnd, false, observed.native_dialog)?;
+        if keyboard_input {
+            guard_keyboard_focus(&request.action, hwnd, owner_pid, observed.native_dialog)?;
+        }
         if Some(client_bounds(hwnd)?) != observed.bounds
             || session::computer_control_owner(session_id)? != observed.owner
             || session::now_ms() > observed.expires_ms
@@ -426,6 +441,7 @@ impl ComputerControl {
             "enigo"
         };
         let mut driver = InputDriver::new()?;
+        let mut keyboard_focus = None;
         let mut completed = 0;
         let mut pointer = None;
         let mut pointer_start = None;
@@ -462,6 +478,17 @@ impl ComputerControl {
                         guard_native_text_focus(&observed, hwnd)
                     }
                     _ => Ok(()),
+                })
+                .and_then(|()| {
+                    if keyboard_input && step.is_input() {
+                        keyboard_focus = Some(guard_keyboard_focus(
+                            &request.action,
+                            hwnd,
+                            owner_pid,
+                            observed.native_dialog,
+                        )?);
+                    }
+                    Ok(())
                 });
             if let Err(error) = guard {
                 if completed == 0 {
@@ -523,8 +550,7 @@ impl ComputerControl {
                 .bounds
                 .map(|bounds| [point[0] - bounds[0], point[1] - bounds[1]])
         };
-        Ok(
-            json!({"status":"input_sent","action":request.action,"backend":backend,
+        let mut receipt = json!({"status":"input_sent","action":request.action,"backend":backend,
             "completed_primitives":completed,"owner":observed.owner,
             "mouse_button_primitives":plan.iter().filter(|step| matches!(step, Step::Button(_, _))).count(),
             "keyboard_primitives":plan.iter().filter(|step| matches!(step, Step::Key(_, _) | Step::Text(_))).count(),
@@ -533,8 +559,12 @@ impl ComputerControl {
             "pointer_start_physical_client":pointer_start.and_then(client_point),
             "pointer_end_physical_client":pointer.and_then(client_point),
             "pointer_verification":"Cursor checked after movement and before pointer primitives; coordinates describe input, not the resulting product state.",
-            "observation_consumed":true,"hint":"OS insertion does not confirm product behavior. Observe and capture before the next action; do not blindly retry."}),
-        )
+            "observation_consumed":true,"hint":"OS insertion does not confirm product behavior. Observe and capture before the next action; do not blindly retry."});
+        if let Some(focus) = keyboard_focus {
+            receipt["native_keyboard_focus"] = focus;
+            receipt["native_keyboard_focus"]["stage"] = json!("before_last_keyboard_primitive");
+        }
+        Ok(receipt)
     }
 }
 
@@ -987,6 +1017,100 @@ fn guard_foreground(hwnd: HWND, owns_capture: bool, native_dialog: bool) -> Resu
         }
     }
     Ok(())
+}
+
+/// A bounded, read-only snapshot of the qualified CAD window's own UI thread.
+/// This neither activates the window nor establishes eventual key delivery.
+struct NativeInputFocus {
+    target: HWND,
+    pid: u32,
+    thread: u32,
+    info: GUITHREADINFO,
+    focus_pid: u32,
+    focus_root: HWND,
+    foreground: bool,
+    sampled_ms: u64,
+}
+
+impl NativeInputFocus {
+    fn snapshot(&self) -> Value {
+        json!({"available":true,"target_hwnd":self.target as usize,"pid":self.pid,
+            "thread_id":self.thread,"active_hwnd":self.info.hwndActive as usize,
+            "focus_hwnd":self.info.hwndFocus as usize,"focus_pid":self.focus_pid,
+            "focus_root_hwnd":self.focus_root as usize,
+            "menu_owner_hwnd":self.info.hwndMenuOwner as usize,
+            "capture_hwnd":self.info.hwndCapture as usize,
+            "foreground_matches_target":self.foreground,"sampled_ms":self.sampled_ms,
+            "source":"Read-only qualified CAD UI-thread snapshot; focus may change after sampling and this does not prove keyboard delivery."})
+    }
+}
+
+fn native_input_focus(hwnd: HWND, expected_pid: u32) -> Result<NativeInputFocus, String> {
+    let mut pid = 0;
+    let thread = unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+    if thread == 0 || pid == 0 {
+        return Err("Cannot identify CAD native input thread".into());
+    }
+    if pid != expected_pid {
+        return Err("CAD native input window owner changed; observe again".into());
+    }
+    let mut info = GUITHREADINFO {
+        cbSize: size_of::<GUITHREADINFO>() as u32,
+        ..Default::default()
+    };
+    if unsafe { GetGUIThreadInfo(thread, &mut info) } == 0 {
+        return Err("Cannot inspect CAD native keyboard focus".into());
+    }
+    let mut focus_pid = 0;
+    let focus_root = if info.hwndFocus.is_null() {
+        std::ptr::null_mut()
+    } else {
+        unsafe {
+            GetWindowThreadProcessId(info.hwndFocus, &mut focus_pid);
+            GetAncestor(info.hwndFocus, GA_ROOT)
+        }
+    };
+    Ok(NativeInputFocus {
+        target: hwnd,
+        pid,
+        thread,
+        info,
+        focus_pid,
+        focus_root,
+        foreground: unsafe { GetForegroundWindow() } == hwnd,
+        sampled_ms: session::now_ms(),
+    })
+}
+
+fn guard_keyboard_focus(
+    action: &str,
+    hwnd: HWND,
+    expected_pid: u32,
+    native_dialog: bool,
+) -> Result<Value, String> {
+    let focus = native_input_focus(hwnd, expected_pid)?;
+    let error = super::require_keyboard_focus(action, focus.info.hwndFocus as usize)
+        .err()
+        .or_else(|| {
+            (!focus.foreground)
+                .then_some("CAD is not the foreground window; focus it and observe again")
+        })
+        .or_else(|| {
+            (focus.focus_pid != focus.pid
+                || if native_dialog {
+                    !target_contains(hwnd, focus.info.hwndFocus)
+                } else {
+                    focus.focus_root != hwnd
+                })
+            .then_some("CAD native keyboard focus belongs to another window")
+        });
+    if let Some(message) = error {
+        return Err(json!({"code":"computer_control_keyboard_focus_unavailable",
+            "message":message,"native_keyboard_focus":focus.snapshot(),
+            "hint":"Click the owned CAD target, then freshly observe before keyboard input. No automatic keyboard-focus activation is attempted."})
+        .to_string());
+    }
+    Ok(focus.snapshot())
 }
 
 fn wait_for_pointer_capture_clear(observed: &Observation, hwnd: HWND) -> Result<(), String> {

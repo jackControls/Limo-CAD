@@ -13,6 +13,14 @@ mod windows;
 #[cfg(all(windows, feature = "native-computer-control"))]
 pub(crate) use windows::ComputerControl;
 
+#[cfg(any(test, all(windows, feature = "native-computer-control")))]
+fn require_keyboard_focus(action: &str, focused_window: usize) -> Result<(), &'static str> {
+    if matches!(action, "key" | "text") && focused_window == 0 {
+        return Err("CAD has no native keyboard focus; click the owned CAD target and observe again before keyboard input");
+    }
+    Ok(())
+}
+
 #[cfg(not(all(windows, feature = "native-computer-control")))]
 #[derive(Default)]
 pub(crate) struct ComputerControl {}
@@ -42,7 +50,7 @@ pub(super) fn description() -> &'static str {
     if !cfg!(windows) {
         return "Native computer control is unavailable on this platform. The native-computer-control Cargo feature currently supports Windows only; no actions are available here.";
     }
-    "Windows computer control implemented in Rust with real OS mouse and keyboard input. action=observe returns the presented interface, exact active desktop owner, physical client bounds and a short-lived one-shot observation token. A CAD-owned native modal dialog becomes the observed target and includes a real PNG capture, native control geometry and focused editable child. Its client_to_image_offset maps physical client points to the attached window image. A minimized or unpresented main window returns focus_only=true without qualified controls/coordinates. All other actions require that token; focus restores/activates only that window, then observe again before input. move positions only the pointer at a physical client-pixel point, without mouse-button or keyboard input. click/double_click/drag/wheel take physical client-pixel points from capture and optional Ctrl/Shift modifiers. A drag takes one endpoint or a bounded waypoint path with dwell and optional Escape cancellation; all points are qualified before input. key accepts Ctrl/Shift chords and named keys; text types printable BMP Unicode into focused Bevy fields, or printable Unicode including non-BMP into focused native-dialog controls. Unsupported Bevy text is rejected in full before input. Input rejects changed documents, geometry, layouts, replaced processes, held keys, foreign foreground windows and occluded pointer targets. GUI and MCP must run the same clean build and executable path. An input_sent receipt confirms OS insertion only: observe/capture afterward to verify the visible result. No external helper, scripts, arbitrary applications or direct model commands."
+    "Windows computer control implemented in Rust with real OS mouse and keyboard input. action=observe returns the presented interface, exact active desktop owner, physical client bounds, read-only native keyboard focus metadata and a short-lived one-shot observation token. A CAD-owned native modal dialog becomes the observed target and includes a real PNG capture, native control geometry and focused editable child. Its client_to_image_offset maps physical client points to the attached window image. A minimized or unpresented main window returns focus_only=true without qualified controls/coordinates. All other actions require that token; focus restores/activates only that window, then observe again before input. move positions only the pointer at a physical client-pixel point, without mouse-button or keyboard input. click/double_click/drag/wheel take physical client-pixel points from capture and optional Ctrl/Shift modifiers. A drag takes one endpoint or a bounded waypoint path with dwell and optional Escape cancellation; all points are qualified before input. key accepts Ctrl/Shift chords and named keys; text types printable BMP Unicode into focused Bevy fields, or printable Unicode including non-BMP into focused native-dialog controls. key/text also require native keyboard focus; if absent, click the owned CAD target then freshly observe. Unsupported Bevy text is rejected in full before input. Input rejects changed documents, geometry, layouts, replaced processes, held keys, foreign foreground windows and occluded pointer targets. GUI and MCP must run the same clean build and executable path. An input_sent receipt confirms OS insertion only: observe/capture afterward to verify the visible result. No external helper, scripts, arbitrary applications or direct model commands."
 }
 
 pub(super) fn schema() -> Value {
@@ -72,4 +80,21 @@ pub(super) fn schema() -> Value {
         "key":{"type":"string","description":"Enter, Escape, Tab, Backspace, Delete, arrows, Home/End/PageUp/PageDown, F1–F12 or an ASCII letter/digit, optionally prefixed Ctrl+ or Shift+."},
         "text":{"type":"string","maxLength":512,"description":"1-512 printable Unicode characters for the observed focused editable text control. Bevy fields support BMP characters (U+0000-U+FFFF, excluding controls); any non-BMP character rejects the complete request before input. Native dialogs also support non-BMP Unicode."}
     }})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_keyboard_focus;
+
+    #[test]
+    fn absent_keyboard_focus_rejects_typing_but_preserves_pointer_recovery() {
+        for action in ["key", "text"] {
+            let error = require_keyboard_focus(action, 0).unwrap_err();
+            assert!(error.contains("click the owned CAD target and observe again"));
+            assert!(require_keyboard_focus(action, 1).is_ok());
+        }
+        for action in ["focus", "move", "click", "double_click", "drag", "wheel"] {
+            assert!(require_keyboard_focus(action, 0).is_ok());
+        }
+    }
 }
