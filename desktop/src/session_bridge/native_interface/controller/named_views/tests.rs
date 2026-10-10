@@ -261,10 +261,13 @@ fn applied_inbox_named_view_recall_updates_camera_without_moving_source_geometry
         "inbox",
         mutation,
     );
-    assert!(outcome["render_error"].is_null(), "{outcome}");
+    assert!(
+        outcome["render_error"].is_null(),
+        "Native named-view presentation returned an error"
+    );
     assert_eq!(outcome["operation"], "inbox");
-    assert_eq!(
-        outcome["result"], applied,
+    assert!(
+        outcome["result"] == applied,
         "Keep the existing inbox receipt shape"
     );
     let (_, camera, presentation, _) = native_viewport::interface_view_snapshot(app.world());
@@ -281,9 +284,9 @@ fn applied_inbox_named_view_recall_updates_camera_without_moving_source_geometry
         recalled.solution.instance_body_poses
     );
     assert!(presentation.selected_surface_point.is_none());
-    assert_eq!(
-        serde_json::to_value(fixture.engine.viewport_snapshot().2).unwrap(),
-        source
+    assert!(
+        serde_json::to_value(fixture.engine.viewport_snapshot().2).unwrap() == source,
+        "Named-view recall must preserve exact source geometry"
     );
 }
 
