@@ -1,168 +1,133 @@
 # Native transition status
 
 Current checkpoint, **2026-10-10 UTC**: PR124 remains open. Main advanced to
-54dcab7f after PR338 merged; Bevy includes that history through merge 08cdd6b9.
+54dcab7f after PR338 merged; Bevy includes that history through merge `08cdd6b9`.
 Incoming research/license corrections were preserved. No Bevy merge into main
-has occurred. The user approved continued UI-first coverage and repair of all
-posted defects, including newly reported defects; passing CI does not close the
-remaining UI/MCP qualification gates.
+has occurred. The user approved known-defect completion and targeted repaired
+acceptance. **Broad exploratory UI coverage and manual MCP mutation coverage
+remain paused**; preserve earlier passes and do not advance to untouched cases.
 
-Current direction: **new exploratory UI coverage is paused**. Work is limited to
-known-defect implementation and planned targeted acceptance of repaired behavior.
-Preserve earlier passes; do not advance to untouched catalog items or rerun passing
-cases. The user handed over shared runtime ownership on 2026-10-10. One guarded
-Rust GUI operator is saving and closing the open documents before deployment;
-saved/recovery data and the other branch's models remain preserved.
+The user handed over shared runtime ownership on 2026-10-10. Prior documents
+were saved/closed or owners confirmed no unsaved work; the older GUI PID 36700 was
+preserved and closed before deployment. Saved files, recovery/session data and
+the other branch's models remain preserved. Root is the sole guarded Rust GUI
+operator. The ready notice `f7a165a5-2b00-4291-b180-0e9e9813ef99` supersedes the
+previous ownership hold. NATS retained notice reads now succeed again.
 
-The existing automated matrix is green at `f7aacc2c`: native hosts on all three
-platforms, MCP acceptance, package targets and CodeQL passed. Those results
-qualify that source and their stated automated scopes. They do not qualify the
-new repairs below or replace the outstanding human UI receipts. No passing
-suite was rerun locally.
+Clean **f19f6e0d is installed with all 70 payload hashes verified**. A freshly
+launched GUI PID 6940/MCP PID 36540 pair reports `build_pair.status=matched`, unmodified
+source and native computer control enabled. The fresh-launch observation was
+initially in the background; foreground/session ownership must be observed
+again during operation and after Undo/Redo or document replacement. Identity,
+fresh pair and targeted UI receipts are retained outside the repository at
+`D:/limo-cad-maintenance/backlog-autonomous-20261010`. Verified preservation
+copies remain outside the repository. Earlier bounded lossless artifact
+compression preserved hashes and hardlink identity; no document, recovery or
+session data was moved/deleted.
 
-Post-checkpoint CI at `521f9e29` exposed two remaining failures: the native
-handoff panel borrowed an owned formatted caption (`a7ed584e` corrects that
-strict Clippy error), and the native revolved-tube summary returned unknown
-through extent on both Windows and Ubuntu. `7f516a04` moves shell evidence
-ahead of the extent assertion and includes bounded face/ring/seam context.
-The expected proof is unchanged; no unsupported topology is accepted to make
-the test pass. Fresh Ubuntu and Windows core diagnostics at `647772c3` proved
-that all four faces have valid outer-shell evidence, but the lower annular cap
-incorrectly exports a +Y normal. OCCT can represent a plane with an indirect
-coordinate frame: its parametric normal is XDirection cross YDirection, rather
-than its main axis. `b1fa867a` corrects the shared normal transfer and extends
-the existing native revolve fixture with independent cap and mesh-normal checks.
-Validation of the correction is pending. Both core jobs ran all 118 native
-unit tests and their integration binaries successfully after the MCP failure.
+**All 11 applicable hosted workflows are green at f19**: repository/WASM, Linux
+engine, native visual regressions, private transport, version guard, Pages
+knowledge, native interface contracts, native desktop hosts, CodeQL, MCP and
+desktop packages. All six Ubuntu/Windows MCP acceptance shards and both platform
+aggregate artifacts passed; all eight applicable package jobs passed. PR tag
+publication was skipped normally. The ledger records all workflow URLs and
+retained logs. Both core shards passed all 118 native tests and 262 core MCP tests.
+These results qualify f19 and their automated scopes, separately from human UI
+and the still-unstarted manual MCP phase. No passing local suite was rerun for
+this reconciliation. Source `9090057a` awaits its own hosted execution/deployment.
 
-Native geometry CI now retains independent core regressions after an MCP
-assertion failure, provided native lint succeeded and the run was not cancelled.
-MCP failures still fail their job and aggregate gate; workshop/demo publication
-keeps the normal success prerequisite. The two focused workflow contract checks
-passed once locally, including rejection of cancelled/unprepared execution and
-loss of the prerequisite identity. No application build or geometry replay was
-used for that check.
+For #348, native hole candidates retain body/face provenance and ambiguous
+reasons without increasing authored bore counts. Blind/recess depth requires
+analytic ring, wall, shoulder and terminal-cap evidence; linear seams retain
+exact ownership/endpoint checks. Through status requires two oriented annular
+openings on a valid closed outward native outer shell. Legacy, sealed-cavity,
+compound, open-surface and unsupported topology retain unknown status. Optional
+analysis is bounded and excluded from disposable section/export meshes and UI
+frames. Hosted f19 positive/negative regressions pass. The indirect OCCT plane
+normal correction `b1fa867a` uses XDirection cross YDirection and its independent
+cap/mesh-normal regression passes both core shards. Actual imported assembly/
+touching and manufacturing-summary UI acceptance remain pending; deployment is
+not proof of those behaviors.
 
-The automated `native-exact-thread-precision` blocker is superseded by existing
-hosted evidence at `43c20c30c66c3cdadc34256747376222333ca5ba`, run
-[38055144113](https://github.com/limo-cad/Limo-CAD/actions/runs/38055144113).
-The exact `external_threads_reject_wrong_faces_validate_fits_and_edit_original_cylinder_atomically`
-case passed Ubuntu job114221952756 (line2619), Windows job114221952850
-(line1609), and macOS job114221952854 (line1451). Receipt:
-`D:/limo-cad-maintenance/defect-closure-20261010/native-exact-thread-superseding.json`.
-No new tests were run for this reconciliation. This supersedes only that automated
-blocker, not human GUI export, Medix STEP, or later-source qualification. Earlier
-failed receipts remain historical evidence.
+For the concrete exact-plane hatch report on #350, `ecb11b0e` computes each
+solid's strict-interior planar material region, excludes coplanar exterior
+termination patches per solid, unions material and extracts complete oriented
+boundaries shared with drawings. Keep-positive changes only retained 3D material;
+there is no epsilon plane shift. Pure contact/open-surface outlines remain
+visible without becoming hatch area. Focused pocket-endpoint, compound, signed
+normal, cutaway-volume and source-preservation regressions passed hosted CI.
+The later whole-boundary Common comparison-budget failure is repaired by
+`9a936138`: exact contact evaluation is distributed per candidate face under the
+unchanged shared allowance/deadline. Planar/general supports retain exact
+Booleans; only proven nondegenerate curved analytic supports are excluded.
+Both real-vise/drawing shards pass f19 (Ubuntu job 114273045597,
+Windows job 114273045662), clearing the demonstrated efficiency regression. Limits
+remain cooperative, not hard process containment. Actual posted-file/runtime
+section acceptance and the separate wall-thickness feature remain incomplete.
 
-Known #348 source repair `ae63529b` preserves ambiguous cylindrical surfaces with
-reasons and body/face provenance without increasing bore counts. It checks wall
-orientation, requires topology connectivity before merging coaxial candidates,
-and exposes geometry candidates separately when authored holes exist. Simple
-blind depth requires two analytic rings and one disk cap; `8820f4fa` locates that
-candidate at its mouth and points its normal from cap toward mouth. These are
-conservative geometry candidates, not a manufacturing certificate. `57b7cec3`
-requires an oriented, coplanar bottom; `e2397070` derives recess depth from two
-unsplit walls and a proven annular shoulder, plus total blind depth when a terminal
-disk proves it. `b0b01d0f` publishes exact face-owned analytic linear-seam evidence
-from OCCT; `e3a19f89` accepts that evidence with strict ownership and axial endpoint
-checks, retaining unknown depth for unsupported topology. Independent source
-reviews found no remaining blocker in that earlier patch. `3ae8a846` now derives
-through status only from two exact annular openings on a proven native outer
-shell. Validity, closed-shell membership and outward solid orientation are
-required; legacy data, sealed cavities, compounds, open surfaces and unsupported
-opening topology retain unknown status. `83559707` bounds this optional analysis
-to small analytic topology, skips disposable section/export meshes, and keeps it
-out of UI frames and borrowed summary reads. Native positive and negative
-regressions are committed but not run locally. Real imported assembly/touching
-acceptance and new-head hosted validation remain pending. No GUI deployment is
-claimed.
+For #363, `f2f07958` shares junction recovery comparison/storage allowances and
+preserves typed exhaustion through rollback. Its strict standalone helper check
+passed once (`qualification/refinement-budget-helper-20261010.json`); hosted
+native regressions pass f19. Helper/CI evidence does not replace outstanding
+human fixture acceptance. For #360, `c0e1b3b0` request-policy regressions pass:
+invalid additive Through All requests/edits preserve the exact model, finite
+recovery and subsequent ID allocation match an untouched control. These
+planning-stub tests are not native geometry or manual MCP qualification.
+Existing human acceptance remains valid for its recorded scope.
 
-The concrete exact-plane hatch failure posted on #350 is distinct from that
-issue's deferred wall-thickness feature. The section repair constructs each
-solid's planar material region, subtracts coplanar exterior termination patches
-per solid, and unions material before extracting complete oriented boundaries.
-It does not move the section plane or change material based on the retained
-3D side. Pure contact and imported open-surface outlines remain visible drawing
-geometry without becoming hatch area. Shared topology/comparison allowances
-and cooperative OCCT progress checks bound the added work; this is not hard
-process containment. Focused native regressions cover the exact pocket endpoint,
-both cutaway volumes, overlapping compound regions, signed drawing normals,
-contact/open-surface compatibility and source preservation. Those focused native
-regressions passed on Windows and Ubuntu at `647772c3`. The hosted vise exposed
-a separate efficiency regression: querying the whole boundary compound charged
-near-whole-solid pair work twice. The repair distributes exact plane Common
-over each candidate boundary face under the same shared allowance and deadline,
-then collects only contact faces for the existing per-solid subtraction. Planar
-and unknown/general surfaces retain exact evaluation; only proven nondegenerate
-curved analytic supports are excluded. Source review is complete; corrected
-vise execution and actual-file/runtime acceptance remain pending.
+For #316, `a74bc03c`, `5dba77aa` and `2f0c6ae6` preserve bounded read-only native
+process/object/volume provenance and require complete managed scalar readback.
+Unsupported process patterns still prevent managed qualification. Hosted checks
+pass f19; targeted native display acceptance remains pending. Preserve prior
+successful print workflows and historical failed repeat-identity receipts.
 
-For #363, `a48a2f33` strengthens the existing tangent-arch/circular-hole native
-fixture with exact volume and default/fine closed-mesh export checks. The fixture
-exercises circular-boundary comparison; it does not prove inserted-sample or
-exhaustion paths execute. Existing budget-helper evidence covers exhaustion and
-shared allowances. A deeper audit found that junction recovery reset a local
-comparison allowance and swallowed resource exhaustion. `f2f07958` charges
-comparisons and recovery storage to the shared budget and preserves the typed
-exhaustion error through rollback. Its standalone C++ budget-helper check passed
-once with strict warnings; this is not native geometry or GUI acceptance. See
-`qualification/refinement-budget-helper-20261010.json`. New-head hosted native
-acceptance remains pending.
+Targeted human repaired gates now pass on clean matched f19:
 
-For #316, `a74bc03c` permits read-only inspection of native process patterns
-outside the managed writer's typed capability. Raw layer, width, shell and
-support settings retain process/object/volume provenance in the handoff report;
-unsupported patterns still prevent managed qualification. `5dba77aa` bounds the
-report before per-part copies, and `2f0c6ae6` requires complete managed scalar
-readback. Hosted checks and one targeted native display acceptance are pending.
-Prior successful print workflows remain preserved; failed repeat-identity
-receipts are not reclassified as passes.
+- Menu Save As accepts a visibly verified full path containing spaces, saves
+  the 1157-byte archive and renames the selected tab. The initial Ctrl+Shift+S
+  opened no picker and produced sequence0/events[] in eligible file-shortcut
+  diagnostics; its cause remains unresolved. Later native key/text entry and
+  Ctrl+O worked after actual pointer/dialog focus. Unicode remains covered by
+  the earlier preserved receipt; overwrite and fresh-launch shortcut are separate.
+- Pending drawing Title blocks tab switch, owning clean-tab close and File > Exit
+  with apply/reset guidance, preserving the visible draft and exact full model.
+  Reset clears the draft/status and switching succeeds. Metadata Apply/validation,
+  independent camera/selection, accepted adjacent close and complete dirty-document
+  Save All/Exit choices remain incomplete.
+- Historical Common reports all four features OK, preserves bounds [8,3,3]..
+  [12,7,8] with zero scene errors and saves/reopens exactly. Remaining Extrude
+  operation/extent variants remain incomplete; earlier passes are preserved.
+- Disjoint unequal-circle Tangent retains radii 6/4.215921294620028 and external
+  center distance 10.215921294620028 equal to their sum, relation 6 and DOF 7.
+  Exact Undo/Redo and native save/reopen pass. Earlier line-circle success,
+  cancel/history/persistence remain valid; remaining branch variants are unclaimed.
+- Collinear endpoint 5 drag [978,466] to [1040,406] retains line lengths 10 and
+  18.49934973324491, horizontal 1/collinear 2 and DOF 5; all four endpoint Y values
+  move to 14.232124839780894. Exact Undo/Redo and save pass. Newly moved archive
+  reopening and other variants remain unqualified; prior creation/invalid/Cancel/
+  inspector/persistence receipts remain preserved.
+- Retained dimension reclick preserves pending 4. Rejected 19 leaves arcs R3/R2
+  unchanged; Ctrl+A > 4 > Enter without a field click succeeds with R4/R2,
+  closes the editor and clears the error. Exact Undo and save pass. This is the
+  focus/correction repair gate, not complete Fillet command acceptance.
 
-For #360, `c0e1b3b0` adds focused shared-request policy regressions for rejected
-Add/Create Body Through All requests and edits. Exact model/document preservation,
-finite recovery and subsequent ID allocation are compared with an untouched
-control. These planning-stub checks do not claim native geometry or manual MCP
-acceptance. Existing human UI acceptance remains valid for its covered behavior.
+The ledger links the durable `*-f19-*` observations, state receipts, visible
+captures and saved archives for these scopes. Source `9090057a` adds a keyboard-
+only null-focus guard and bounded read-only owned-thread focus telemetry.
+Pointer recovery and existing foreground/ownership guards remain intact; there
+are no activation hacks or typed-text logging. Root and peer source review plus
+scoped formatting passed; hosted execution and deployment are pending. A fresh-
+launch targeted guard/telemetry check is needed. This does not establish the
+cause of the initial shortcut or guarantee later foreground ownership.
 
-Concentric UI coverage is also closed on clean matched `93823f6d`: distinct
-radii preserved, shared center, invalid selection/cancel, retained deletion,
-exact Undo/Redo and complete native persistence. Receipt:
-`qualification/concentric-human-ui-20261010.json`. Current UI totals are47 passed,
-332 not run,29 failed,9 needs_recheck,24 in progress,2 restricted. All256 manual
-MCP cases remain not run. Symmetry is the next untouched catalog item, currently
-paused; only targeted known-repair acceptance remains planned.
-
-Deployment remains pending. Multiple recent Vita GUI windows share the canonical
-runtime; the user's later handover supersedes the earlier ownership hold in NATS
-notice `0e11d4b0-8393-4b7a-8454-d62b57ba2f47`. The current live GUI/MCP pair was
-rediscovered and reports matched clean `93823f6d`; guarded focus succeeded.
-Document saving and window closure are underway before rebuilding the corrected
-source. Verified preservation copies are outside the repository. Bounded lossless compression of inactive
-archived compiler/runtime artifacts restored approximately1.3GiB on C: and3.2GiB
-on D:, with before/after hashes and hardlink identity preserved. No document,
-recovery or session data was moved/deleted; no native application build has started.
-
-Adversarial review follow-up: `3221fd94` also guards ordinary tab/window close
-and Save All/Exit against losing unapplied drawing fields. `51850584` borrows
-retained archive JSON during cold-tab restoration; `2bc49000` releases stale
-assembly snapshots while the browser is hidden. These remain undeployed.
-
-New Tangent UI inspection found a real branch-roundoff defect: disjoint unequal
-circles jump to internal tangency. `d8796bc6` preserves the external branch at
-its solved floating-point boundary; a small exact-source arithmetic probe
-reproduced the old error and passed the correction. A session regression awaits
-CI and targeted live acceptance. Line-circle geometry/history/cancel and full
-native persistence passed; the overall command remains failed until repaired
-acceptance. Receipt: `qualification/tangent-human-ui-20261010.json`.
-
-Additional implementation checkpoint: `26347ace` shares drawing editor snapshots;
-`34ca87bf` protects unapplied drawing drafts across document switches. `720c869c`
-avoids native placement-buffer copies on projection cache hits. `a1a384d4` borrows
-scene/assembly data during motion evaluation instead of cloning whole models;
-`612c6af6` removes unrelated print-document copies during height editing.
-`1b14e643` fixes the fixed-size chunk API lint reported by both hosted MCP jobs.
-Formatting/source review completed; new desktop regressions await hosted CI.
-No repeated local build or passing test sweep was run for this batch.
+Current UI totals: **47 passed, 329 not run, 26 failed, 9 needs_recheck, 30 in
+progress, 2 restricted**. All 256 manual MCP cases remain not run. Equal and
+Concentric passes on 938 remain preserved in their receipts. Symmetry is the next
+untouched catalog item and remains paused. Remaining finite acceptance includes
+actual imported-hole inference, exact-plane sections/drawings, managed print/
+native display and complete Save All/Exit; other unresolved leaves remain visible.
+The complete human bench/vise/turbine walkthrough and UI-then-MCP gates are
+unfinished. Passing CI and these narrow repairs do not imply full qualification.
 
 Equal UI coverage is closed on matched clean `93823f6d`: line lengths, circle
 radii, invalid mixed geometry/cancel, retained deletion, exact Undo/Redo and
