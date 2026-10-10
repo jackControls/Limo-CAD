@@ -382,12 +382,22 @@ impl SketchManager {
         &mut self,
         model_json: String,
     ) -> Result<RecomputePlanDto, SessionError> {
+        self.prepare_load_project_ref(&model_json)
+    }
+
+    /// Prepare from retained archive text without copying it. Decoding owns
+    /// the candidate data; the input is never stored or changed, so a cold
+    /// document can keep its recovery snapshot intact if reconstruction fails.
+    pub fn prepare_load_project_ref(
+        &mut self,
+        model_json: &str,
+    ) -> Result<RecomputePlanDto, SessionError> {
         if self.pending_project.is_some() {
             return Err(SessionError::Solid(
                 "a project open is already pending".to_string(),
             ));
         }
-        let mut model = decode_project(&model_json).map_err(SessionError::Solid)?;
+        let mut model = decode_project(model_json).map_err(SessionError::Solid)?;
         let mut document = Document::new(model.document.name);
         document.restore_history(model.document.settings, model.document.history);
 

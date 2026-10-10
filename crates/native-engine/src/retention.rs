@@ -45,7 +45,7 @@ impl NativeProject {
         let mut next = NativeEngine::new()?;
         let plan = next
             .manager
-            .prepare_load_project(model.clone())
+            .prepare_load_project_ref(model)
             .map_err(|e| e.to_string())?;
         let transaction_id = plan.transaction_id;
         let queries = next.manager.history_support_queries();
