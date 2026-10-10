@@ -7,7 +7,7 @@ use crate::native_viewport::{
     winit_host::NativeHostInput,
 };
 use crate::session_bridge::{
-    apply_or_reject_one_inbox_op_with_editor_guards, control_for_window, now_ms,
+    apply_or_reject_one_inbox_op_with_editor_guards, control_for_window, native_control, now_ms,
 };
 use bevy::{
     ecs::{message::MessageCursor, system::SystemState},
@@ -62,6 +62,11 @@ struct PendingControl {
     owner: DocumentContext,
     presentation_deadline: u64,
     inspect: bool,
+    delivery: Option<native_control::Ticket>,
+    presentation_revision: Option<u64>,
+    /// A failed atomic receipt publication retries transport only on a later
+    /// ordinary frame, never the action, capture, or presentation computation.
+    delivery_only: bool,
 }
 struct PolledControl {
     owner: DocumentContext,
@@ -356,7 +361,12 @@ fn update_inner(
             .as_mut()
             .filter(|pending| pending.response["value"]["mutation_id"].as_u64() == Some(outcome.id))
         {
-            pending.owner = bridge.native_document_context(&state.window_id, engine)?;
+            if let Some((owner, revision)) = outcome.receipt.as_ref() {
+                pending.presentation_revision = Some(*revision);
+                pending.owner = owner.clone();
+            } else {
+                pending.presentation_revision = None;
+            }
             match &outcome.value {
                 Ok(value) => {
                     pending.response["status"] = json!(if value["model_error"].is_string() {
@@ -382,16 +392,35 @@ fn update_inner(
                 Ok(value) => {
                     let request = &value["control_request"];
                     if request.get("id").is_some() {
-                        start_control(world, handle, services, state, &polled.owner, request)?;
+                        if request["id"].as_str() != Some(polled.id.as_str())
+                            || request["session_id"].as_str() != Some(polled.session.as_str())
+                        {
+                            reject_polled_control(
+                                services,
+                                &polled,
+                                "The control worker returned another request identity",
+                            )?;
+                        } else {
+                            let ticket = native_control::ticket_for(
+                                bridge,
+                                &polled.owner,
+                                &polled.session,
+                                &polled.id,
+                            )?;
+                            start_control_with_ticket(
+                                world,
+                                handle,
+                                services,
+                                state,
+                                &polled.owner,
+                                request,
+                                Some(ticket),
+                            )?;
+                        }
                     }
                 }
                 Err(error) => {
-                    crate::session_bridge::reject_native_control(
-                        &polled.session,
-                        &polled.id,
-                        "native_control_failed",
-                        &error,
-                    )?;
+                    reject_polled_control(services, &polled, &error)?;
                     state.status = error;
                 }
             }
@@ -925,6 +954,30 @@ fn control_poll_is_read_only(request: &Value) -> bool {
             })
 }
 
+fn reject_polled_control(
+    services: &NativeServices,
+    polled: &PolledControl,
+    reason: &str,
+) -> Result<(), String> {
+    if !native_control::reject_before_start(
+        &services.bridge,
+        &services.engine,
+        &polled.owner,
+        &polled.session,
+        &polled.id,
+        reason,
+    )? {
+        crate::session_bridge::reject_native_control(
+            &polled.session,
+            &polled.id,
+            "native_control_failed",
+            reason,
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 fn start_control(
     world: &mut World,
     handle: &NativeInterfaceHandle,
@@ -933,6 +986,36 @@ fn start_control(
     owner: &DocumentContext,
     request: &Value,
 ) -> Result<(), String> {
+    start_control_with_ticket(world, handle, services, state, owner, request, None)
+}
+
+fn start_control_with_ticket(
+    world: &mut World,
+    handle: &NativeInterfaceHandle,
+    services: &NativeServices,
+    state: &mut Controller,
+    owner: &DocumentContext,
+    request: &Value,
+    delivery: Option<native_control::Ticket>,
+) -> Result<(), String> {
+    if let Some(ticket) = delivery.as_ref() {
+        if let Err(error) =
+            native_control::validate_start(&services.bridge, &services.engine, ticket)
+        {
+            let mut response = json!({"request_id":request["id"],"session_id":request["session_id"],
+                "status":"failed","mutation_applied":false,"error":error});
+            native_control::complete(
+                &services.bridge,
+                &services.engine,
+                ticket,
+                None,
+                &mut response,
+            )
+            .map_err(|error| error.to_string())?;
+            state.status = error;
+            return Ok(());
+        }
+    }
     let observation = matches!(
         request["ui"]["action"].as_str(),
         Some("inspect" | "capture")
@@ -950,12 +1033,23 @@ fn start_control(
     if retire_picker {
         workbench::cam::geometry_pick::cancel(world, handle);
     }
-    let current = if worker::busy(world) {
-        owner.clone()
+    let (current, presentation_revision) = if worker::busy(world) {
+        (owner.clone(), None)
     } else {
-        services
+        let current = services
             .bridge
-            .native_document_context(&state.window_id, &services.engine)?
+            .native_document_context(&state.window_id, &services.engine);
+        match current {
+            Ok(current) => {
+                let revision = services
+                    .bridge
+                    .native_document_receipt(&services.engine, &current)
+                    .ok()
+                    .map(|receipt| receipt.revision);
+                (current, revision)
+            }
+            Err(_) => (owner.clone(), None),
+        }
     };
     match outcome {
         Ok(value) => {
@@ -964,9 +1058,15 @@ fn start_control(
                 state.status = summary(&value);
             }
             if value["request_exit"] == true {
-                request_close(world, state, &services.bridge, &services.engine)?;
+                if let Err(error) = request_close(world, state, &services.bridge, &services.engine)
+                {
+                    response["error"] = json!(error);
+                    response["status"] = json!("failed");
+                }
             }
-            response["status"] = json!("applied");
+            if response.get("status").is_none() {
+                response["status"] = json!("applied");
+            }
             if let Some(presentation) = value.get("presentation") {
                 response["presentation"] = presentation.clone();
             }
@@ -988,6 +1088,9 @@ fn start_control(
         response,
         owner: current,
         inspect: request["ui"]["action"] == "inspect",
+        delivery,
+        presentation_revision,
+        delivery_only: false,
         presentation_deadline: now
             .saturating_add(2_000)
             .min(
@@ -2809,6 +2912,36 @@ fn command_group(command: &NativeCommand) -> &'static str {
     }
 }
 
+fn deliver_control(services: &NativeServices, state: &mut Controller, mut pending: PendingControl) {
+    if let Some(ticket) = pending.delivery.as_ref() {
+        let presentation = pending
+            .presentation_revision
+            .map(|revision| (&pending.owner, revision));
+        if let Err(error) = native_control::complete(
+            &services.bridge,
+            &services.engine,
+            ticket,
+            presentation,
+            &mut pending.response,
+        ) {
+            state.status = error.to_string();
+            if matches!(error, native_control::CompletionError::Publication(_)) {
+                // Preserve the produced outcome. A later ordinary frame may
+                // retry this atomic write, but must never replay the action.
+                pending.delivery_only = true;
+                state.pending = Some(pending);
+            }
+        }
+    } else if let Err(error) = control_for_window(
+        &services.bridge,
+        &state.window_id,
+        &services.engine,
+        Some(pending.response),
+    ) {
+        state.status = error;
+    }
+}
+
 /// This runs after actual native layout. Merely queuing an action or updating
 /// a component cannot produce a completed inspection receipt.
 fn complete_control(world: &mut World) {
@@ -2818,7 +2951,18 @@ fn complete_control(world: &mut World) {
     let services = world.resource::<NativeServices>().clone();
     let handle = world.resource::<NativeInterfaceHandle>().clone();
     world.resource_scope(|world, mut state: Mut<Controller>| {
+        if state.pending.is_none() {
+            if let Err(error) =
+                native_control::retry_pending(&services.bridge, &services.engine, &state.window_id)
+            {
+                state.status = error;
+            }
+        }
         if let Some(mut pending) = state.pending.take() {
+            if pending.delivery_only {
+                deliver_control(&services, &mut state, pending);
+                return;
+            }
             if let Some(id) = pending.response["value"]["camera_pending"].as_u64() {
                 match view::poll(world, id) {
                     None => {
@@ -2874,6 +3018,9 @@ fn complete_control(world: &mut World) {
                 .bridge
                 .native_document_context(&state.window_id, &services.engine);
             if current.as_ref() != Ok(&pending.owner) {
+                if pending.response.get("operation_status").is_none() {
+                    pending.response["operation_status"] = pending.response["status"].clone();
+                }
                 pending.response["status"] = json!("failed");
                 pending.response["error"] =
                     json!("Document changed before native presentation completed");
@@ -2962,16 +3109,12 @@ fn complete_control(world: &mut World) {
                     .get_resource::<crate::native_viewport::winit_host::NativeRenderAvailability>()
                     .is_some_and(|availability| availability.focused));
             }
-            if let Err(error) = control_for_window(
-                &services.bridge,
-                &state.window_id,
-                &services.engine,
-                Some(pending.response),
-            ) {
-                state.status = error;
-            }
+            deliver_control(&services, &mut state, pending);
         }
-        if state.exit_after_receipt && state.pending.is_none() {
+        if state.exit_after_receipt
+            && state.pending.is_none()
+            && !native_control::has_pending(&services.bridge, &state.window_id).unwrap_or(true)
+        {
             state.stop_watcher.store(true, Ordering::Release);
             services.bridge.drop_window(&state.window_id);
             world.write_message(AppExit::Success);

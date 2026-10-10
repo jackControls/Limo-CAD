@@ -70,6 +70,7 @@ use limo_cad_mcp_mutate::ExecutionKind;
 
 use crate::state::{AppState, BOOTSTRAP_SESSION_ID};
 
+mod native_control;
 mod native_history;
 #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
 pub(crate) mod native_interface;
@@ -143,6 +144,9 @@ struct WindowPublisher {
     /// Delivered control request -> (source MCP session, expiry). A tab may
     /// close before replying; ownership must outlive the resident project.
     pending_controls: HashMap<String, (String, u64)>,
+    /// One native admission outlives its execution deadline and source tab.
+    /// The disk marker is advisory; this private record authorizes delivery.
+    native_control: Option<native_control::Admission>,
 }
 
 impl WindowPublisher {
@@ -151,6 +155,7 @@ impl WindowPublisher {
             active_project_session_id: None,
             by_project: HashMap::new(),
             pending_controls: HashMap::new(),
+            native_control: None,
         }
     }
 
@@ -1765,6 +1770,19 @@ fn control_for_window_owned(
             let _ = fs::remove_file(path);
             continue;
         }
+        let native_ticket = if let Some((owner, _)) = expected {
+            Some(native_control::admit(
+                publisher,
+                engine,
+                &state.process_instance_id,
+                owner,
+                generation,
+                &path,
+                &request,
+            )?)
+        } else {
+            None
+        };
         if let Some(query) = request.get("sketch_query") {
             let method = query.get("method").and_then(Value::as_str).unwrap_or("");
             let payload = query.get("payload").and_then(Value::as_str).unwrap_or("");
@@ -1787,7 +1805,15 @@ fn control_for_window_owned(
             let supported = limo_cad_mcp_mutate::is_live_engine_query(method)
                 || (request.get("owner").is_some()
                     && limo_cad_mcp_mutate::is_routed_engine_query(method));
-            let result = if supported {
+            let start = native_ticket
+                .as_ref()
+                .map(|ticket| {
+                    native_control::validate_start_locked(publisher, engine, ticket, now_ms())
+                })
+                .transpose();
+            let result = if let Err(error) = start {
+                Err(error)
+            } else if supported {
                 if method == "drawing_export" {
                     parse_engine_envelope(engine.drawing_export_observing(payload, &mut completed))
                 } else {
@@ -1796,7 +1822,7 @@ fn control_for_window_owned(
             } else {
                 Err("unsupported live engine query".into())
             };
-            let response = match result {
+            let mut response = match result {
                 Ok(value) => json!({"status":"applied","value":value}),
                 Err(error) => json!({"status":"failed","error":error}),
             };
@@ -1822,6 +1848,28 @@ fn control_for_window_owned(
                 Value::Null
             };
 
+            let id = request["id"].as_str().unwrap();
+            if let Some(ticket) = native_ticket.as_ref() {
+                response["request_id"] = json!(id);
+                response["session_id"] = json!(session_id);
+                let presentation = expected.map(|(owner, _)| (owner, generation));
+                native_control::complete_locked(
+                    publisher,
+                    &state.process_instance_id,
+                    engine,
+                    ticket,
+                    presentation,
+                    &mut response,
+                    now_ms(),
+                )
+                .map_err(|error| error.to_string())?;
+            } else {
+                atomic_write(
+                    &dir.join(format!("{id}.result.json")),
+                    &response.to_string(),
+                )?;
+                let _ = fs::remove_file(path);
+            }
             if supported {
                 let document_id = publisher.active_project_session_id.clone();
                 write_project_heartbeat(
@@ -1833,13 +1881,10 @@ fn control_for_window_owned(
                 )?;
                 state.write_process_instance_file_locked(&publishers, &mut lease_path)?;
             }
-            let id = request["id"].as_str().unwrap();
-            atomic_write(
-                &dir.join(format!("{id}.result.json")),
-                &response.to_string(),
-            )?;
-            let _ = fs::remove_file(path);
             return Ok(handoff);
+        }
+        if native_ticket.is_some() {
+            return Ok(request);
         }
         publisher
             .pending_controls
@@ -1886,7 +1931,9 @@ fn pending_control_requests(dir: &Path) -> Vec<(PathBuf, Value)> {
                 let _ = fs::remove_file(&path);
                 return None;
             }
-            if dir.join(format!("{}.result.json", id.unwrap())).exists() {
+            if dir.join(format!("{}.result.json", id.unwrap())).exists()
+                || dir.join(format!("{}.admitted.json", id.unwrap())).exists()
+            {
                 return None;
             }
             Some((path, request))

@@ -80,6 +80,8 @@ pub(crate) struct Outcome {
     pub id: u64,
     pub operation: String,
     pub value: Result<Value, String>,
+    /// The actual transaction's final owner, never a later active tab lookup.
+    pub receipt: Option<(DocumentContext, u64)>,
 }
 
 pub(crate) fn install(
@@ -457,6 +459,7 @@ pub(crate) fn poll(world: &mut World, services: &NativeServices) -> Option<Outco
             return Some(Outcome {
                 id: pending.id,
                 operation: pending.operation,
+                receipt: None,
                 value: pending
                     .completion
                     .into_inner()
@@ -476,12 +479,18 @@ pub(crate) fn poll(world: &mut World, services: &NativeServices) -> Option<Outco
         return Some(Outcome {
             id: pending.id,
             operation: pending.operation,
+            receipt: None,
             value: Err("Modeling completion does not match its pending transaction".into()),
         });
     }
     if let Some(presentation) = completed.presentation {
         world.insert_resource(presentation);
     }
+    let receipt = completed
+        .result
+        .as_ref()
+        .ok()
+        .map(|result| (result.context.clone(), result.engine_revision));
     let value = pending
         .completion
         .into_inner()
@@ -493,5 +502,6 @@ pub(crate) fn poll(world: &mut World, services: &NativeServices) -> Option<Outco
         id: pending.id,
         operation: pending.operation,
         value,
+        receipt,
     })
 }

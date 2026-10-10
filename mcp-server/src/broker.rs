@@ -48,6 +48,35 @@ struct Ticket {
     operation: Pending,
 }
 
+/// Recover only the complete original route already captured by publication.
+/// This does not resolve a current document, submit work, or extend its deadline.
+pub(super) fn retained_control_ticket(
+    route: &Value,
+    control: &session::ControlTicket,
+) -> Result<Value, String> {
+    let route: Route =
+        serde_json::from_value(route.clone()).map_err(|_| "Invalid captured control route")?;
+    if route.session_id != control.session_id
+        || [
+            &route.window_id,
+            &route.document_id,
+            &route.process_instance_id,
+        ]
+        .iter()
+        .any(|id| id.is_empty() || id.chars().any(char::is_control))
+    {
+        return Err("Invalid captured control route".into());
+    }
+    serde_json::to_value(Ticket {
+        route,
+        operation: Pending::Control {
+            request_id: control.request_id.clone(),
+            expires_ms: control.expires_ms,
+        },
+    })
+    .map_err(|error| error.to_string())
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Pending {
@@ -339,6 +368,10 @@ fn status(ticket: Ticket) -> Result<Value, String> {
                 &format!("controls/{request_id}.result.json"),
             ) {
                 serde_json::from_str(&body).map_err(|error| error.to_string())?
+            } else if let Some(admission) =
+                native_admission_status(&ticket.route, request_id, *expires_ms)?
+            {
+                admission
             } else if session::is_session_closed(session_id) {
                 json!({"status":"closed","applied":false})
             } else if *expires_ms < session::now_ms() {
@@ -354,6 +387,37 @@ fn status(ticket: Ticket) -> Result<Value, String> {
     }
     result["writeback"] = json!(false);
     Ok(result)
+}
+
+fn native_admission_status(route: &Route, id: &str, expiry: u64) -> Result<Option<Value>, String> {
+    let marker = match session::read_control_admission(&route.session_id, id) {
+        Ok(Some(marker)) => marker,
+        Ok(None) => return Ok(None),
+        Err(_) => {
+            return Ok(Some(
+                json!({"status":"completion_unknown","applied":Value::Null,
+            "completion_unknown":true,"reason":"invalid_admission_marker",
+            "hint":"The admission marker cannot establish an outcome. Keep polling the original ticket before retrying."}),
+            ))
+        }
+    };
+    if marker.session_id != route.session_id
+        || marker.window_id != route.window_id
+        || marker.document_id != route.document_id
+        || marker.process_instance_id != route.process_instance_id
+        || marker.request_id != id
+        || marker.expires_ms != expiry
+    {
+        return Err("Native admission marker does not match the original control ticket".into());
+    }
+    let available = session::native_admission_desktop_available(&marker);
+    Ok(Some(
+        json!({"status":if available {"pending"} else {"completion_unknown"},
+        "applied":Value::Null,"completion_unknown":true,"admission_observed":true,
+        "execution_deadline_elapsed":session::now_ms()>expiry,"control_admission":marker,
+        "reason":if available {"awaiting_native_receipt"} else {"owning_desktop_unavailable"},
+        "hint":"The native admission marker is advisory and grants no execution authority. An admitted operation may have changed CAD. Poll the original ticket for its retained receipt before retrying."}),
+    ))
 }
 
 #[cfg(test)]

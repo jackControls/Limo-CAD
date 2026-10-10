@@ -7,6 +7,104 @@ mod playback_priority;
 mod window_close;
 
 #[test]
+fn rejected_native_receipt_retries_on_frame_and_prevents_early_shutdown() {
+    crate::session_bridge::tests::with_isolated_session_test(|| {
+        let fixture = Fixture::new();
+        let (mut app, handle, _) = prepare(&fixture);
+        app.add_message::<AppExit>();
+        let services = app.world().resource::<NativeServices>().clone();
+        let owner = fixture.owner();
+        let session = fixture
+            .bridge
+            .session_id_for_window("main")
+            .unwrap()
+            .unwrap();
+        let controls = crate::session_bridge::session_root()
+            .join(&session)
+            .join("controls");
+        fs::create_dir_all(&controls).unwrap();
+        let id = "700-1";
+        fs::write(
+            controls.join(format!("{id}.request.json")),
+            json!({"id":id,"expires_ms":now_ms()+30_000,"ui":{"action":"inspect"}}).to_string(),
+        )
+        .unwrap();
+        let request = crate::session_bridge::control_for_window_owned(
+            &fixture.bridge,
+            "main",
+            &fixture.engine,
+            None,
+            Some((&owner, id)),
+        )
+        .unwrap();
+        let ticket = native_control::ticket_for(&fixture.bridge, &owner, &session, id).unwrap();
+        // Retiring the original document makes the dispatch guard reject it.
+        fixture
+            .bridge
+            .apply_native_mutation(
+                &fixture.engine,
+                &owner,
+                "cad_new_project",
+                &json!({}),
+                || Ok(()),
+            )
+            .unwrap();
+        let before = serde_json::to_string(&fixture.engine.document_snapshot()).unwrap();
+        let result_path = controls.join(format!("{id}.result.json"));
+        fs::create_dir(&result_path).unwrap();
+        app.world_mut()
+            .resource_scope(|world, mut state: Mut<Controller>| {
+                assert!(start_control_with_ticket(
+                    world,
+                    &handle,
+                    &services,
+                    &mut state,
+                    &owner,
+                    &request,
+                    Some(ticket)
+                )
+                .is_err());
+                assert!(state.pending.is_none());
+                state.exit_after_receipt = true;
+            });
+        complete_control(app.world_mut());
+        assert!(native_control::has_pending(&fixture.bridge, "main").unwrap());
+        assert!(
+            fixture
+                .bridge
+                .session_id_for_window("main")
+                .unwrap()
+                .is_some(),
+            "A pending receipt must retain its window publisher"
+        );
+        assert!(!app
+            .world()
+            .resource::<Controller>()
+            .stop_watcher
+            .load(Ordering::Acquire));
+        fs::remove_dir(&result_path).unwrap();
+        complete_control(app.world_mut());
+        let response: Value =
+            serde_json::from_str(&fs::read_to_string(&result_path).unwrap()).unwrap();
+        assert!(response["status"] == "failed" && response["mutation_applied"] == false);
+        assert!(
+            serde_json::to_string(&fixture.engine.document_snapshot()).unwrap() == before,
+            "Receipt retry must not execute a model action"
+        );
+        assert!(app
+            .world()
+            .resource::<Controller>()
+            .stop_watcher
+            .load(Ordering::Acquire));
+        assert!(fixture
+            .bridge
+            .session_id_for_window("main")
+            .unwrap()
+            .is_none());
+    });
+}
+
+#[test]
 fn mcp_and_keyboard_history_use_the_same_guarded_native_controls() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
@@ -354,6 +452,9 @@ fn pending(fixture: &Fixture, app: &mut App, id: &str) -> std::path::PathBuf {
         owner: fixture.owner(),
         presentation_deadline: now_ms() + 2_000,
         inspect: false,
+        delivery: None,
+        presentation_revision: None,
+        delivery_only: false,
     });
     controls.join(format!("{id}.result.json"))
 }

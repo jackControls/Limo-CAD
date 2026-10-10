@@ -232,6 +232,8 @@ pub(crate) struct ControlTicket {
     pub session_id: String,
     pub request_id: String,
     pub expires_ms: u64,
+    /// Captured at publication, never reconstructed from a later active tab.
+    pub route: Option<Value>,
 }
 
 pub(crate) fn submit_ui(arguments: &Value, owner: &Value) -> Result<ControlTicket, String> {
@@ -298,14 +300,21 @@ fn request_control(
     query: Option<Value>,
 ) -> Result<Value, String> {
     let ticket = publish_control(arguments, attached, ui, query, None)?;
-    let session_id = &ticket.session_id;
-    let request_name = format!("controls/{}.request.json", ticket.request_id);
-    let result_name = format!("controls/{}.result.json", ticket.request_id);
     let remaining = ticket
         .expires_ms
         .saturating_sub(now_ms())
         .saturating_add(1000);
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(remaining);
+    await_control(ticket, deadline)
+}
+
+pub(super) fn await_control(
+    ticket: ControlTicket,
+    deadline: std::time::Instant,
+) -> Result<Value, String> {
+    let session_id = &ticket.session_id;
+    let request_name = format!("controls/{}.request.json", ticket.request_id);
+    let result_name = format!("controls/{}.result.json", ticket.request_id);
     while std::time::Instant::now() < deadline {
         if let Ok(body) = read_session_file(session_id, &result_name) {
             let result: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
@@ -316,10 +325,14 @@ fn request_control(
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     let _ = fs::remove_file(session_path(session_id, &request_name)?);
-    Ok(
-        json!({"status":"timeout","request_id":ticket.request_id,"session_id":session_id,
-        "hint":"No UI completion acknowledgement before timeout. An operation that started may already have changed CAD; inspect the target window and model before retrying."}),
-    )
+    let mut timeout = json!({"status":"timeout","request_id":ticket.request_id,"session_id":session_id,
+        "applied":Value::Null,
+        "hint":"No UI completion acknowledgement before timeout. An operation that started may already have changed CAD; inspect the target window and model before retrying."});
+    if let Some(route) = &ticket.route {
+        timeout["ticket"] = super::broker::retained_control_ticket(route, &ticket)?;
+        timeout["hint"] = json!("No UI completion acknowledgement before timeout. Poll this original cad_route ticket before retrying; an operation which started may already have changed CAD.");
+    }
+    Ok(timeout)
 }
 
 fn publish_control(
@@ -350,7 +363,8 @@ fn publish_control(
     {
         return Err("invalid camera view".into());
     }
-    let heartbeat = heartbeat_meta(session_id);
+    let snapshot = read_heartbeat_snapshot(session_id);
+    let heartbeat = heartbeat_meta_from_snapshot(snapshot.as_ref());
     if heartbeat.get("stale").and_then(Value::as_bool) != Some(false) {
         return Err("desktop heartbeat is stale; refresh cad_list_sessions".into());
     }
@@ -369,6 +383,18 @@ fn publish_control(
             return Err(error);
         }
     }
+    let route = if let Some(owner) = owner {
+        Some(
+            json!({"session_id":session_id,"window_id":owner["window_id"],
+            "document_id":owner["document_id"],"process_instance_id":owner["process_instance_id"]}),
+        )
+    } else {
+        snapshot.as_ref().filter(|snapshot| snapshot["interface_version"] == 1)
+            .and_then(|snapshot| Some(json!({"session_id":session_id,
+                "window_id":optional_id(snapshot,"window_id")?,
+                "document_id":optional_id(snapshot,"document_id").or_else(|| optional_id(snapshot,"project_session_id"))?,
+                "process_instance_id":optional_id(snapshot,"process_instance_id")?})))
+    };
     let id = format!(
         "{:020}-{:010}-{:020}",
         now_ms(),
@@ -428,6 +454,7 @@ fn publish_control(
         session_id: session_id.into(),
         request_id: id,
         expires_ms: request["expires_ms"].as_u64().unwrap(),
+        route,
     })
 }
 
@@ -883,6 +910,38 @@ fn process_registry() -> ProcessRegistry {
         registry.insert(lease);
     }
     registry
+}
+
+/// A control's original document may have intentionally closed or been replaced.
+/// Only the original process/window lease is relevant to advisory in-flight
+/// status. A missing/stale lease means unavailable, not proven process death.
+pub(super) fn native_admission_desktop_available(marker: &super::NativeControlAdmission) -> bool {
+    process_registry()
+        .leases
+        .get(&marker.process_instance_id)
+        .is_some_and(|lease| {
+            lease.accepts_unlisted_windows || lease.windows.contains_key(&marker.window_id)
+        })
+}
+
+pub(super) fn read_control_admission(
+    session_id: &str,
+    request_id: &str,
+) -> Result<Option<super::NativeControlAdmission>, String> {
+    let path = session_path(session_id, &format!("controls/{request_id}.admitted.json"))?;
+    let body = match limo_cad_session_storage::read_to_string_bounded(
+        &path,
+        super::NATIVE_CONTROL_ADMISSION_MAX_BYTES,
+    ) {
+        Ok(body) => body,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => {
+            return Err(
+                "Native admission marker is unavailable or exceeds its private read limit".into(),
+            )
+        }
+    };
+    super::NativeControlAdmission::decode(&body).map(Some)
 }
 
 fn heartbeat_process_instance_id(session_id: &str) -> Option<String> {

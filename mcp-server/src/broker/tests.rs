@@ -69,6 +69,109 @@ impl Drop for Registry {
 }
 
 #[test]
+fn native_control_status_retains_late_receipt_and_original_timeout_ticket() {
+    let _environment = session::env_lock();
+    let registry = Registry::new();
+    let route = registry.first.clone();
+    let expiry = session::now_ms().saturating_sub(1);
+    let marker = NativeControlAdmission {
+        version: 1,
+        session_id: route.session_id.clone(),
+        window_id: route.window_id.clone(),
+        document_id: route.document_id.clone(),
+        process_instance_id: route.process_instance_id.clone(),
+        request_id: "500-1".into(),
+        epoch: 1,
+        revision: 1,
+        expires_ms: expiry,
+        admitted_ms: expiry.saturating_sub(1),
+    };
+    session::write_session(
+        &route.session_id,
+        "controls/500-1.admitted.json",
+        &marker.encode().unwrap(),
+    )
+    .unwrap();
+    session::write_session(&route.session_id, session::CLOSED_TOMBSTONE, "{}").unwrap();
+    let ticket = Ticket {
+        route: route.clone(),
+        operation: Pending::Control {
+            request_id: "500-1".into(),
+            expires_ms: expiry,
+        },
+    };
+    let pending = status(ticket.clone()).unwrap();
+    assert!(pending["status"] == "pending" && pending["applied"].is_null());
+    assert!(pending["execution_deadline_elapsed"] == true);
+    std::fs::remove_file(
+        registry
+            .root
+            .join("_ui/processes")
+            .join(format!("{}.json", route.process_instance_id)),
+    )
+    .unwrap();
+    let unknown = status(ticket.clone()).unwrap();
+    assert!(unknown["status"] == "completion_unknown" && unknown["applied"].is_null());
+    let actual = json!({"status":"applied","request_id":"500-1","session_id":route.session_id,"value":{"completed":true}});
+    session::write_session(
+        &route.session_id,
+        "controls/500-1.result.json",
+        &actual.to_string(),
+    )
+    .unwrap();
+    for _ in 0..2 {
+        let observed = status(ticket.clone()).unwrap();
+        assert!(observed["status"] == "applied" && observed["value"]["completed"] == true);
+    }
+    let control = session::ControlTicket {
+        session_id: route.session_id.clone(),
+        request_id: "500-1".into(),
+        expires_ms: expiry,
+        route: Some(serde_json::to_value(&route).unwrap()),
+    };
+    let retained = retained_control_ticket(control.route.as_ref().unwrap(), &control).unwrap();
+    let parsed: Ticket = serde_json::from_value(retained).unwrap();
+    assert!(
+        parsed.route.session_id == route.session_id
+            && parsed.route.document_id == route.document_id
+    );
+    session::clear_closed_tombstone(&route.session_id).unwrap();
+    limo_cad_session_storage::atomic_write(
+        &registry
+            .root
+            .join("_ui/processes")
+            .join(format!("{}.json", route.process_instance_id)),
+        json!({"process_instance_id":route.process_instance_id,"updated_ms":session::now_ms(),
+            "windows":[{"window_id":route.window_id,"active_document_id":route.document_id,
+                "active_session_id":route.session_id}]})
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap();
+    let owner = json!({"session_id":route.session_id,"window_id":route.window_id,
+        "document_id":route.document_id,"process_instance_id":route.process_instance_id,
+        "base_generation":1});
+    let submitted = session::submit_ui(&json!({"action":"inspect"}), &owner).unwrap();
+    let submitted_id = submitted.request_id.clone();
+    // Expired wait budget is deterministic; this runs no sleep or desktop input.
+    let timeout = session::await_control(submitted, std::time::Instant::now()).unwrap();
+    assert!(timeout["status"] == "timeout" && timeout["applied"].is_null());
+    let original: Ticket = serde_json::from_value(timeout["ticket"].clone()).unwrap();
+    assert!(
+        original.route.session_id == route.session_id
+            && original.route.document_id == route.document_id
+    );
+    assert!(
+        matches!(original.operation, Pending::Control{request_id,..} if request_id == submitted_id)
+    );
+    assert!(!registry
+        .root
+        .join(&route.session_id)
+        .join(format!("controls/{submitted_id}.request.json"))
+        .exists());
+}
+
+#[test]
 fn one_broker_routes_two_documents_without_loading_or_switching_its_model() {
     let _environment = session::env_lock();
     let registry = Registry::new();

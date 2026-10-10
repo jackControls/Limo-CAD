@@ -152,7 +152,124 @@ pub fn read_dir_from(root: &Path, path: &Path) -> io::Result<fs::ReadDir> {
 /// Read a regular, owned payload inside a private registry without following
 /// child/file symlinks or blocking indefinitely while opening a Unix FIFO.
 pub fn read_to_string(path: impl AsRef<Path>) -> io::Result<String> {
-    let path = path.as_ref();
+    read_to_string_with_limit(path.as_ref(), None)
+}
+
+/// The same private-file policy, with a bound enforced during the read even if
+/// another process grows the file after it was opened.
+pub fn read_to_string_bounded(path: impl AsRef<Path>, limit: usize) -> io::Result<String> {
+    read_to_string_with_limit(path.as_ref(), Some(limit))
+}
+
+/// Atomically move a regular session payload within one directory, refusing to
+/// replace any existing destination. There is no unlink/copy fallback: if the
+/// filesystem cannot make this claim, callers must not start the requested work.
+pub fn rename_no_replace(source: &Path, destination: &Path) -> io::Result<()> {
+    let parent = source
+        .parent()
+        .filter(|parent| Some(*parent) == destination.parent())
+        .ok_or_else(|| {
+            io::Error::new(
+                ErrorKind::InvalidInput,
+                "session claim must stay in one directory",
+            )
+        })?;
+    #[cfg(unix)]
+    readable_directory(&root(), parent)?;
+    #[cfg(not(unix))]
+    let _ = parent;
+    if !fs::symlink_metadata(source)?.file_type().is_file() {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "session claim is not a regular file",
+        ));
+    }
+    rename_no_replace_native(source, destination)
+}
+
+#[cfg(all(target_os = "linux", any(target_env = "gnu", target_env = "musl")))]
+fn rename_no_replace_native(source: &Path, destination: &Path) -> io::Result<()> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let source = CString::new(source.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid session claim path"))?;
+    let destination = CString::new(destination.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid session claim path"))?;
+    // Same-directory renameat2 is atomic; NOREPLACE also fences a racing marker.
+    let result = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            source.as_ptr(),
+            libc::AT_FDCWD,
+            destination.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn rename_no_replace_native(source: &Path, destination: &Path) -> io::Result<()> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let source = CString::new(source.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid session claim path"))?;
+    let destination = CString::new(destination.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "invalid session claim path"))?;
+    let result =
+        unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), libc::RENAME_EXCL) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(windows)]
+fn rename_no_replace_native(source: &Path, destination: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn MoveFileExW(source: *const u16, destination: *const u16, flags: u32) -> i32;
+    }
+    let wide = |path: &Path| -> io::Result<Vec<u16>> {
+        let mut value = path.as_os_str().encode_wide().collect::<Vec<_>>();
+        if value.contains(&0) {
+            return Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "invalid session claim path",
+            ));
+        }
+        value.push(0);
+        Ok(value)
+    };
+    let source = wide(source)?;
+    let destination = wide(destination)?;
+    // No REPLACE_EXISTING, COPY_ALLOWED or delayed/reboot flags. The ordinary
+    // Rust rename replaces destinations, so it cannot implement this claim.
+    let result = unsafe { MoveFileExW(source.as_ptr(), destination.as_ptr(), 0) };
+    if result != 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(any(
+    windows,
+    target_os = "macos",
+    all(target_os = "linux", any(target_env = "gnu", target_env = "musl"))
+)))]
+fn rename_no_replace_native(_: &Path, _: &Path) -> io::Result<()> {
+    Err(io::Error::new(
+        ErrorKind::Unsupported,
+        "atomic session claim is unsupported on this platform",
+    ))
+}
+
+fn read_to_string_with_limit(path: &Path, limit: Option<usize>) -> io::Result<String> {
     #[cfg(unix)]
     readable_directory(
         &root(),
@@ -184,7 +301,19 @@ pub fn read_to_string(path: impl AsRef<Path>) -> io::Result<String> {
         }
     }
     let mut content = String::new();
-    file.read_to_string(&mut content)?;
+    if let Some(limit) = limit {
+        (&mut file)
+            .take((limit as u64).saturating_add(1))
+            .read_to_string(&mut content)?;
+        if content.len() > limit {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "session payload exceeds its read limit",
+            ));
+        }
+    } else {
+        file.read_to_string(&mut content)?;
+    }
     Ok(content)
 }
 
@@ -294,6 +423,15 @@ impl Drop for StagedFile {
 /// Publish one complete private payload without truncating another writer's
 /// temporary file. Renaming replaces only the destination directory entry.
 pub fn atomic_write(path: &Path, content: &[u8]) -> io::Result<()> {
+    atomic_write_inner(path, content, false)
+}
+
+/// Publish a new complete private payload, without overwriting a racing receipt.
+pub fn atomic_write_new(path: &Path, content: &[u8]) -> io::Result<()> {
+    atomic_write_inner(path, content, true)
+}
+
+fn atomic_write_inner(path: &Path, content: &[u8], new_only: bool) -> io::Result<()> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let parent = path
         .parent()
@@ -328,7 +466,11 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> io::Result<()> {
         file.write_all(content)?;
         file.sync_all()?;
         drop(staged.file.take());
-        return fs::rename(&staged.path, path);
+        return if new_only {
+            rename_no_replace(&staged.path, path)
+        } else {
+            fs::rename(&staged.path, path)
+        };
     }
     Err(io::Error::new(
         ErrorKind::AlreadyExists,
@@ -379,6 +521,28 @@ mod tests {
             }
             let _ = fs::remove_dir_all(&self.path);
         }
+    }
+
+    #[test]
+    fn atomic_claim_and_new_receipt_refuse_replacement_and_bound_reads() {
+        let _environment = ENVIRONMENT.lock().unwrap();
+        let fixture = TestRoot::new();
+        let source = fixture.path.join("request.json");
+        let claim = fixture.path.join("admitted.json");
+        atomic_write(&source, b"original").unwrap();
+        atomic_write(&claim, b"existing claim").unwrap();
+        assert!(rename_no_replace(&source, &claim).is_err());
+        assert!(fs::read(&source).unwrap() == b"original");
+        assert!(fs::read(&claim).unwrap() == b"existing claim");
+        fs::remove_file(&claim).unwrap();
+        rename_no_replace(&source, &claim).unwrap();
+        assert!(!source.exists() && fs::read(&claim).unwrap() == b"original");
+        assert!(read_to_string_bounded(&claim, 7).is_err());
+        assert!(read_to_string_bounded(&claim, 8).unwrap() == "original");
+        let receipt = fixture.path.join("result.json");
+        atomic_write_new(&receipt, b"first outcome").unwrap();
+        assert!(atomic_write_new(&receipt, b"second outcome").is_err());
+        assert!(fs::read(&receipt).unwrap() == b"first outcome");
     }
 
     #[test]

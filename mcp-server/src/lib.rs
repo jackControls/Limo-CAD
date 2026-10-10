@@ -16,6 +16,7 @@ mod cam_tools;
 #[cfg(test)]
 mod component_edit_tests;
 mod computer_control;
+mod control_admission;
 mod desktop;
 mod disclosure;
 #[cfg(test)]
@@ -37,6 +38,7 @@ mod session;
 mod stdio;
 mod summary;
 
+pub use control_admission::{NativeControlAdmission, NATIVE_CONTROL_ADMISSION_MAX_BYTES};
 pub use session::control_owner_error;
 pub use stdio::{
     desktop_mcp_presence, prepare_desktop_stdio, run_desktop_stdio, run_stdio,
