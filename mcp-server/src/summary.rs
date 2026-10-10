@@ -274,21 +274,22 @@ fn infer_scene(scene: &SolidSceneDto) -> (Vec<Hole>, Vec<Value>) {
             // Only a single cylindrical wall bounded by two exact rings and
             // one planar disk establishes a simple blind depth. Multi-radius,
             // split, through and incomplete topology retain unknown extent.
-            let depth = (face_ids.len() == 1 && radii.len() == 1)
+            let extent = (face_ids.len() == 1 && radii.len() == 1)
                 .then(|| {
                     let body = scene.bodies.iter().find(|body| body.id.0 == body_id)?;
                     let face = body.faces.iter().find(|face| face.id.0 == face_ids[0])?;
                     blind_depth(body, face, origin, axis, radii[0])
                 })
                 .flatten();
+            let depth = extent.as_ref().map(|extent| extent.depth);
             Hole {
                 feature_id: None,
                 name: "cylinder".into(),
                 body_id,
                 face_id: face_ids.first().copied(),
                 face_ids,
-                position: origin,
-                normal: axis,
+                position: extent.as_ref().map_or(origin, |extent| extent.mouth),
+                normal: extent.as_ref().map_or(axis, |extent| extent.outward),
                 flip: false,
                 diameter: 2.0 * radii[0],
                 through: depth.map(|_| false),
@@ -391,13 +392,19 @@ fn connected_walls(body: &BodyDto, face: &FaceDto, other_id: u64) -> bool {
         })
 }
 
+struct BlindExtent {
+    depth: f64,
+    mouth: [f64; 3],
+    outward: [f64; 3],
+}
+
 fn blind_depth(
     body: &BodyDto,
     face: &FaceDto,
     origin: [f64; 3],
     axis: [f64; 3],
     radius: f64,
-) -> Option<f64> {
+) -> Option<BlindExtent> {
     let rings: Vec<_> = body
         .edges
         .iter()
@@ -411,27 +418,36 @@ fn blind_depth(
                 && (circle.radius - radius).abs() <= 1e-6
                 && dot(normal, axis).abs() > 0.999999
                 && norm(sub(delta, scale(axis, dot(delta, axis)))) <= 1e-6)
-                .then_some((edge, dot(delta, axis)))
+                .then_some((edge, center))
         })
         .collect();
     if rings.len() != 2 {
         return None;
     }
-    let caps = rings
-        .iter()
-        .filter(|(edge, _)| {
-            body.faces.iter().any(|cap| {
-                cap.id != face.id
-                    && cap.edge_keys.len() == 1
-                    && cap.edge_keys[0] == edge.key
-                    && cap
-                        .plane
-                        .is_some_and(|plane| dot(plane.normal, axis).abs() > 0.999999)
-            })
+    let is_cap = |index: usize| {
+        let (edge, _) = rings[index];
+        body.faces.iter().any(|cap| {
+            cap.id != face.id
+                && cap.edge_keys.len() == 1
+                && cap.edge_keys[0] == edge.key
+                && cap
+                    .plane
+                    .is_some_and(|plane| dot(plane.normal, axis).abs() > 0.999999)
         })
-        .count();
-    let depth = (rings[1].1 - rings[0].1).abs();
-    (caps == 1 && depth.is_finite() && depth > 1e-6).then_some(depth)
+    };
+    let cap = match (is_cap(0), is_cap(1)) {
+        (true, false) => 0,
+        (false, true) => 1,
+        _ => return None,
+    };
+    let mouth = rings[1 - cap].1;
+    let delta = sub(mouth, rings[cap].1);
+    let depth = dot(delta, axis).abs();
+    (depth.is_finite() && depth > 1e-6).then(|| BlindExtent {
+        depth,
+        mouth,
+        outward: scale(axis, if dot(delta, axis) < 0. { -1. } else { 1. }),
+    })
 }
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
@@ -899,6 +915,16 @@ mod tests {
         let hole = &holes_from_scene(&scene)[0];
         assert_eq!(hole.depth, Some(8.));
         assert_eq!(hole.through, Some(false));
+        assert_eq!(hole.position, [0., 0., 0.]);
+        assert_eq!(hole.normal, [0., 0., -1.]);
+        // Cylinder origin and axis sign are parameterization, not the mouth.
+        let cylinder = scene.bodies[0].faces[0].cylinder.as_mut().unwrap();
+        cylinder.origin.z = 100.;
+        cylinder.axis.z = -1.;
+        let hole = &holes_from_scene(&scene)[0];
+        assert_eq!(hole.depth, Some(8.));
+        assert_eq!(hole.position, [0., 0., 0.]);
+        assert_eq!(hole.normal, [0., 0., -1.]);
         // An annular shoulder is not a blind bottom.
         scene.bodies[0].faces[1].edge_keys.push("inner_ring".into());
         assert!(holes_from_scene(&scene)[0].depth.is_none());
