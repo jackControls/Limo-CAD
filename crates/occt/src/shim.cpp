@@ -9562,6 +9562,10 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
       const int index = edge_map.FindIndex(boundary.FindKey(i));
       if (index <= 0) throw std::runtime_error("face boundary edge is absent from body topology");
       output.face_edge_indices.push_back(static_cast<std::uint32_t>(index - 1));
+      const TopoDS_Edge edge = TopoDS::Edge(boundary.FindKey(i));
+      const bool linear_seam = !BRep_Tool::Degenerated(edge) &&
+          BRep_Tool::IsClosed(edge, face) && BRepAdaptor_Curve(edge).GetType() == GeomAbs_Line;
+      output.face_edge_linear_seams.push_back(linear_seam ? 1 : 0);
     }
     output.face_edge_offsets.push_back(static_cast<std::uint32_t>(output.face_edge_indices.size()));
     TopLoc_Location location;

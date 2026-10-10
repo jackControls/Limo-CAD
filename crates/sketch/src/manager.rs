@@ -6975,6 +6975,7 @@ mod project_tests {
             normals: vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
             indices: vec![0, 1, 2],
             faces: vec![KernelFaceDto {
+                linear_seam_edge_keys: Vec::new(),
                 key: "face:0".to_string(),
                 first_index: 0,
                 index_count: 3,

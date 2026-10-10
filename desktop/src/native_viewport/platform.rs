@@ -6660,6 +6660,7 @@ mod tests {
                 edge_count: 4,
             };
         let face = |id: u64, normal: [f64; 3], centroid: [f64; 3], edges: &[&str]| FaceDto {
+            linear_seam_edge_keys: Vec::new(),
             id: limo_cad_core::FaceId(id),
             key: format!("face:{id}"),
             first_index: 0,
@@ -7395,6 +7396,7 @@ mod tests {
                 indices: vec![0, 1, 2, 2, 1, 3],
             },
             faces: vec![limo_cad_solid::FaceDto {
+                linear_seam_edge_keys: Vec::new(),
                 id: limo_cad_core::FaceId(70),
                 key: "cylindrical-wall".to_string(),
                 edge_keys: vec![],

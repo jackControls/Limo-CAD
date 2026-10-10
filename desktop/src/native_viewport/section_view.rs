@@ -91,6 +91,7 @@ mod tests {
             normals: vec![0., 0., 1., 0., 0., 1., 0., 0., 1.],
             indices: vec![0, 1, 2],
             faces: vec![limo_cad_solid::KernelFaceDto {
+                linear_seam_edge_keys: Vec::new(),
                 key: "cap".into(),
                 first_index: 0,
                 index_count: 3,

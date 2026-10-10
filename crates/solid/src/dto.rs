@@ -1497,6 +1497,10 @@ pub struct KernelFaceDto {
     /// Actual B-rep boundary membership (all wires), not triangle adjacency.
     #[serde(default)]
     pub edge_keys: Vec<String>,
+    /// Exact face-scoped B-rep seams whose 3D curve is an analytic line.
+    /// Empty for legacy/unsupported producers; never infer this from samples.
+    #[serde(default)]
+    pub linear_seam_edge_keys: Vec<String>,
     #[serde(default)]
     pub cone: Option<ConicalSurfaceDto>,
 }
@@ -1603,6 +1607,10 @@ pub struct FaceDto {
     pub cylinder: Option<CylindricalSurfaceDto>,
     #[serde(default)]
     pub edge_keys: Vec<String>,
+    /// Exact face-scoped B-rep seams whose 3D curve is an analytic line.
+    /// Empty for legacy/unsupported producers; never infer this from samples.
+    #[serde(default)]
+    pub linear_seam_edge_keys: Vec<String>,
     #[serde(default)]
     pub cone: Option<ConicalSurfaceDto>,
 }

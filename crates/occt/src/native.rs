@@ -138,6 +138,8 @@ mod ffi {
         face_cone_data: Vec<f64>,
         face_edge_offsets: Vec<u32>,
         face_edge_indices: Vec<u32>,
+        /// One flag per face-edge incidence: exact closed-on-face analytic line.
+        face_edge_linear_seams: Vec<u8>,
         /// Prefix offsets into `edge_points`, measured in 3D points.
         edge_point_offsets: Vec<u32>,
         /// Flat xyz edge polyline coordinates.
@@ -1538,6 +1540,8 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
         || raw.face_signature_data.len() != raw.face_first_indices.len() * 8
         || raw.face_cylinder_data.len() != raw.face_first_indices.len() * 11
         || raw.face_cone_data.len() != raw.face_first_indices.len() * 5
+        || raw.face_edge_linear_seams.len() != raw.face_edge_indices.len()
+        || raw.face_edge_linear_seams.iter().any(|flag| *flag > 1)
         || raw.face_edge_offsets.len() != raw.face_first_indices.len() + 1
         || raw.face_edge_offsets.first() != Some(&0)
         || raw.face_edge_offsets.windows(2).any(|w| w[0] > w[1])
@@ -1575,6 +1579,11 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
                 normal: point(10),
             });
             KernelFaceDto {
+                linear_seam_edge_keys: (raw.face_edge_offsets[index] as usize
+                    ..raw.face_edge_offsets[index + 1] as usize)
+                    .filter(|slot| raw.face_edge_linear_seams[*slot] == 1)
+                    .map(|slot| format!("edge:{}", raw.face_edge_indices[slot]))
+                    .collect(),
                 key: format!("face:{index}"),
                 first_index: *first_index,
                 index_count: *index_count,
@@ -3337,11 +3346,36 @@ mod tests {
             .unwrap();
 
         assert!(scene.errors.is_empty(), "{:?}", scene.errors);
-        let cylinder = scene.bodies[0]
+        let wall = scene.bodies[0]
             .faces
             .iter()
-            .find_map(|face| face.cylinder.as_ref())
+            .find(|face| face.cylinder.is_some())
             .expect("the through-hole wall must retain its exact OCCT cylinder");
+        let cylinder = wall.cylinder.as_ref().unwrap();
+        assert_eq!(
+            wall.linear_seam_edge_keys.len(),
+            1,
+            "full cylindrical wall has one exact linear seam"
+        );
+        let seam = &wall.linear_seam_edge_keys[0];
+        assert!(wall.edge_keys.contains(seam));
+        let seam_edge = scene.bodies[0]
+            .edges
+            .iter()
+            .find(|edge| &edge.key == seam)
+            .unwrap();
+        assert!(
+            seam_edge.circle.is_none(),
+            "circular rims are not linear seams"
+        );
+        assert!(
+            scene.bodies[0]
+                .faces
+                .iter()
+                .filter(|face| face.plane.is_some())
+                .all(|face| face.linear_seam_edge_keys.is_empty()),
+            "ordinary planar boundary lines are not seams"
+        );
         assert!((cylinder.radius - 2.0).abs() < 1e-8);
         assert!((cylinder.axis.x.abs() + cylinder.axis.y.abs()) < 1e-8);
         assert!((cylinder.axis.z.abs() - 1.0).abs() < 1e-8);
