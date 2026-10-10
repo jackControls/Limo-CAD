@@ -1111,6 +1111,54 @@ fn circle_tangent_converges_without_inflating_unconstrained_radii() {
 }
 
 #[test]
+fn off_axis_unequal_circles_keep_external_tangency_after_projection_and_history() {
+    let mut s = session();
+    let support = s.add_line(v(-26., 12.), v(-2., 12.), true).unwrap();
+    s.add_constraint(Constraint::Horizontal {
+        entity: support.entity_id,
+    })
+    .unwrap();
+    let first = s
+        .add_circle(CircleMode::CenterDiameter, v(-10., 6.), v(-4., 6.))
+        .unwrap()
+        .entities[0];
+    s.add_constraint(Constraint::Tangent {
+        a: support.entity_id,
+        b: first,
+    })
+    .unwrap();
+    let center = v(15.809719827477455, -10.961402263097117);
+    let second = s
+        .add_circle(
+            CircleMode::CenterDiameter,
+            center,
+            center + v(4.215921294620028, 0.),
+        )
+        .unwrap()
+        .entities[0];
+    let before = s.dto();
+    let (first_center, first_radius) = circle(&before, first);
+    let (_, second_radius) = circle(&before, second);
+    s.add_constraint(Constraint::Tangent {
+        a: first,
+        b: second,
+    })
+    .unwrap();
+    let applied = s.dto();
+    let (a, ra) = circle(&applied, first);
+    let (b, rb) = circle(&applied, second);
+    assert!(close(a, first_center));
+    assert!((ra - first_radius).abs() < 1e-9 && (rb - second_radius).abs() < 1e-9);
+    assert!(
+        (a.distance(b) - ra - rb).abs() < 1e-9,
+        "disjoint circles must retain the external branch: {a:?}, {b:?}, {ra}, {rb}"
+    );
+    assert!(b.distance(center) < first_center.distance(center) - (ra - rb).abs());
+    assert_eq!(s.undo().unwrap().sketch.entities, before.entities);
+    assert_eq!(s.redo().unwrap().sketch.entities, applied.entities);
+}
+
+#[test]
 fn fix_pins_geometry_and_blocks_conflicting_moves() {
     let mut s = session();
     let l = s.add_line(v(0.0, 0.0), v(50.0, 0.0), true).unwrap();

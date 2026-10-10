@@ -36,6 +36,22 @@ const DEGENERATE_LINE_EPS: f64 = 1e-4;
 
 const CONSUMED_CARRIER_EPS: f64 = 1e-3;
 
+/// Preserve the external branch at its solved boundary. Reconstructing an
+/// off-axis center at r1+r2 can round a few ULPs inside that distance; treating
+/// that as containment switches a correctly seeded external tangent to the
+/// internal equation on the next solve/analysis pass.
+pub(crate) fn circle_tangent_is_external(
+    distance: f64,
+    first_radius: f64,
+    second_radius: f64,
+) -> bool {
+    let sum = first_radius + second_radius;
+    // Relative roundoff only: an absolute solver tolerance would swallow the
+    // distinction between internal/external tangency for very small circles.
+    let roundoff = 8.0 * f64::EPSILON * sum.abs();
+    distance >= sum - roundoff
+}
+
 /// Outcome of one solve/analysis pass.
 #[derive(Debug, Clone)]
 pub struct Analysis {
@@ -1140,7 +1156,11 @@ fn build_equations(
                         ) {
                             let d = sketch_point(sketch, map, c1)
                                 .distance(sketch_point(sketch, map, c2));
-                            let sign = if d >= current_r(sketch, a) + current_r(sketch, b) {
+                            let sign = if circle_tangent_is_external(
+                                d,
+                                current_r(sketch, a),
+                                current_r(sketch, b),
+                            ) {
                                 1.0
                             } else {
                                 -1.0

@@ -4552,7 +4552,11 @@ impl SketchSession {
                         } else {
                             radial * (1.0 / distance)
                         };
-                        let target = if distance >= first_radius + second_radius {
+                        let target = if solver::circle_tangent_is_external(
+                            distance,
+                            first_radius,
+                            second_radius,
+                        ) {
                             first_radius + second_radius
                         } else {
                             (first_radius - second_radius).abs()
