@@ -70,9 +70,10 @@ pub(crate) fn guard_ribbon_edit(world: &World, operation: &str) -> Result<(), St
     }
     Ok(())
 }
-/// Tab/file transitions must not discard an unapplied sheet/view draft.
+/// Tab/file transitions must not discard unapplied drawing or annotation fields.
 /// Keep this owner-scoped so an unrelated window cannot block the transition.
 pub(crate) fn guard_document_switch(world: &World, owner: &DocumentContext) -> Result<(), String> {
+    drawing_authoring::guard_document_switch(world, owner)?;
     if world.get_resource::<Editor>().is_some_and(|editor| {
         super::same_document(editor.owner.as_ref(), owner)
             && editor.draft.as_ref().is_some_and(Draft::dirty)

@@ -22,8 +22,8 @@ mod technical;
 mod technical_runtime;
 pub(super) use input::process;
 pub(super) use runtime::{
-    cancel_input, guard, native, owns_panel, pointer_active, preview, reduce, repair_view,
-    synchronize,
+    cancel_input, guard, guard_document_switch, native, owns_panel, pointer_active, preview,
+    reduce, repair_view, synchronize,
 };
 pub(crate) use runtime::{Command, Tool};
 pub(crate) use technical::Tool as TechnicalTool;
@@ -108,6 +108,9 @@ mod integration_tests;
 mod mcp_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod transition_tests;
 
 #[cfg(test)]
 #[path = "drawing_authoring/basis_tests.rs"]

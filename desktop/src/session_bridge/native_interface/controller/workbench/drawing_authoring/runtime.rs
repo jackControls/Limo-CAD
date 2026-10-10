@@ -127,7 +127,9 @@ impl Editor {
         self.stamp = None;
     }
     pub fn dirty(&self) -> bool {
-        self.repair.pending.is_some() || (self.draft.is_some() && fields::dirty(&self.fields))
+        self.repair.pending.is_some()
+            || ((self.draft.is_some() || self.tool == Some(Tool::Note))
+                && fields::dirty(&self.fields))
     }
     pub fn select(&mut self, id: u64) -> Result<(), String> {
         let sheet_id = self.stamp.as_ref().ok_or("Create a sheet first")?.sheet_id;
@@ -253,6 +255,23 @@ pub(in super::super) fn guard(world: &World) -> Result<(), String> {
     } else {
         Ok(())
     }
+}
+/// Annotation fields and repair choices are transient until Apply. They are
+/// not represented by the engine's saved/dirty document state.
+pub(in super::super) fn guard_document_switch(
+    world: &World,
+    owner: &DocumentContext,
+) -> Result<(), String> {
+    if world.get_resource::<Editor>().is_some_and(|editor| {
+        editor
+            .stamp
+            .as_ref()
+            .is_some_and(|stamp| &stamp.owner == owner)
+            && editor.dirty()
+    }) {
+        return Err("Apply or reset the annotation edit before switching documents".into());
+    }
+    Ok(())
 }
 pub(in super::super) fn cancel_input(world: &mut World) {
     let changed = if let Some(mut e) = world.get_resource_mut::<Editor>() {

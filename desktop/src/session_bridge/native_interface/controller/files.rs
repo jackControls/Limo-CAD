@@ -938,6 +938,9 @@ fn perform_intent(
     intent: Intent,
     discard: bool,
 ) -> Result<Value, String> {
+    // Discarding committed model changes does not discard unapplied editors.
+    // Recheck continuations and explicit Open/discard requests before enqueue.
+    workbench::drawing_editor::guard_document_switch(world, &receipt.owner)?;
     match intent {
         Intent::Exit => {
             let services = world.resource::<NativeServices>().clone();
