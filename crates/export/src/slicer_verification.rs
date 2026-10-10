@@ -749,10 +749,13 @@ fn native_setting_readback(
                 let (native_values, native_sources) = crate::bambu_project::native_effective_settings(
                     &summary.native_process_settings, &object.settings, &part.settings,
                 ).map_err(|error| error.to_string())?;
-                let mut values = summary.native_process_settings.iter()
-                    .filter(|(key,_)| ["wall_loops","sparse_infill_density","sparse_infill_pattern","top_shell_layers","bottom_shell_layers"].contains(&key.as_str()))
-                    .filter_map(|(key,value)| value.as_str().map(|value| (key.clone(),value.to_owned())))
-                    .collect::<BTreeMap<_,_>>();
+                let mut values = BTreeMap::new();
+                for key in crate::bambu_project::SETTING_KEYS {
+                    let value = summary.native_process_settings.get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .ok_or_else(|| format!("Native process readback requires scalar '{key}'; this handoff is unqualified"))?;
+                    values.insert(key.to_owned(), value.to_owned());
+                }
                 for scoped in [&object.settings, &part.settings] {
                     for key in ["wall_loops","sparse_infill_density","sparse_infill_pattern","top_shell_layers","bottom_shell_layers"] {
                         if let Some(value) = scoped.get(key) { values.insert(key.to_owned(), value.clone()); }

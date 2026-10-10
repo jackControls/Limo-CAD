@@ -1556,7 +1556,7 @@ fn resolve_bindings(
     Ok(request.bindings.clone())
 }
 
-const SETTING_KEYS: [&str; 5] = [
+pub(crate) const SETTING_KEYS: [&str; 5] = [
     "wall_loops",
     "sparse_infill_density",
     "sparse_infill_pattern",
