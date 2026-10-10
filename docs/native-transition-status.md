@@ -101,9 +101,10 @@ Targeted human repaired gates now pass on clean matched f19:
   center distance 10.215921294620028 equal to their sum, relation 6 and DOF 7.
   Exact Undo/Redo and native save/reopen pass. Earlier line-circle success,
   cancel/history/persistence remain valid; remaining branch variants are unclaimed.
-- Collinear endpoint 5 drag [978,466] to [1040,406] retains line lengths 10 and
-  18.49934973324491, horizontal 1/collinear 2 and DOF 5; all four endpoint Y values
-  move to 14.232124839780894. Exact Undo/Redo and save pass. Newly moved archive
+- Collinear endpoint 5 drag [978,466] to [1040,406] retains line3 length10;
+  dragged line6 intentionally changes14.142135623730951 to18.49934973324491 and
+  remains noncollapsed. Horizontal1/collinear2 and DOF5 remain; all four endpoint
+  Y values move to14.232124839780894. Exact Undo/Redo and save pass. Newly moved archive
   reopening and other variants remain unqualified; prior creation/invalid/Cancel/
   inspector/persistence receipts remain preserved.
 - Retained dimension reclick preserves pending 4. Rejected 19 leaves arcs R3/R2
