@@ -151,7 +151,11 @@ fn native_control_status_retains_late_receipt_and_original_timeout_ticket() {
     let owner = json!({"session_id":route.session_id,"window_id":route.window_id,
         "document_id":route.document_id,"process_instance_id":route.process_instance_id,
         "base_generation":1});
-    let submitted = session::submit_ui(&json!({"action":"inspect"}), &owner).unwrap();
+    let submitted = session::submit_ui(
+        &json!({"session_id":route.session_id,"action":"inspect"}),
+        &owner,
+    )
+    .unwrap();
     let submitted_id = submitted.request_id.clone();
     // Expired wait budget is deterministic; this runs no sleep or desktop input.
     let timeout = session::await_control(submitted, std::time::Instant::now()).unwrap();
