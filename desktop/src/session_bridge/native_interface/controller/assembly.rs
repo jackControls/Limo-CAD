@@ -759,6 +759,12 @@ pub(crate) fn synchronize(
     let result = (|| {
         state.widgets.begin();
         if !state.enabled {
+            // Hidden browsers still observe document replacement/closure. Keep
+            // editable fields until the normal owner refresh, but do not pin
+            // the previous document's immutable assembly snapshot indefinitely.
+            if state.owner.as_ref() != Some(owner) {
+                state.assembly = None;
+            }
             state.widgets.finish(world);
             return Ok(());
         }
@@ -825,6 +831,33 @@ pub(crate) fn synchronize(
 mod tests {
     use super::*;
     use crate::session_bridge::native_interface::tests::Fixture;
+    #[test]
+    fn hidden_browser_releases_foreign_snapshot_but_preserves_same_owner() {
+        let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+        let fixture = Fixture::new();
+        let owner = fixture.owner();
+        let services = NativeServices {
+            engine: fixture.engine.clone(),
+            bridge: fixture.bridge.clone(),
+        };
+        let snapshot = Arc::new(document(&fixture.engine).unwrap());
+        let retained = Arc::downgrade(&snapshot);
+        let mut world = World::new();
+        world.insert_resource(Browser {
+            owner: Some(owner.clone()),
+            assembly: Some(snapshot),
+            ..default()
+        });
+        synchronize(&mut world, &services, &owner, 0, default()).unwrap();
+        assert!(retained.upgrade().is_some());
+        let mut replacement = owner.clone();
+        replacement.epoch += 1;
+        synchronize(&mut world, &services, &replacement, 0, default()).unwrap();
+        assert!(retained.upgrade().is_none());
+        // The ordinary enabled refresh still owns draft/selection retirement.
+        assert_eq!(world.resource::<Browser>().owner.as_ref(), Some(&owner));
+    }
+
     #[test]
     fn placement_edits_preserve_exact_rotations_accept_units_and_reject_invalid_values() {
         let q = DQuat::from_euler(EulerRot::ZYX, 1.234, 0.17, -0.3).to_array();
