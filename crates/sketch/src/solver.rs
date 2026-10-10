@@ -2059,6 +2059,134 @@ pub fn solve(sketch: &mut Sketch, pins: &[(EntityId, Vec2)]) -> Analysis {
     solve_with_stays(sketch, pins, &SolveStays::default())
 }
 
+/// Seed a point drag on an isolated, already-collinear line group by moving
+/// its support perpendicular to itself. Along-support freedom belongs only to
+/// the dragged endpoint. This avoids asking LM to discover a common support
+/// translation through the singular aligned start, without adding constraints.
+fn seed_free_collinear_drag(
+    sketch: &Sketch,
+    map: &VarMap,
+    pins: &[(EntityId, Vec2)],
+    x: &mut [f64],
+) {
+    let [(point, target)] = pins else { return };
+    let Some(origin) = sketch.point_position(*point) else {
+        return;
+    };
+    if !target.x.is_finite() || !target.y.is_finite() {
+        return;
+    }
+    let Some(first) = sketch
+        .entities()
+        .filter_map(|(id, entity)| match entity {
+            Entity::Line { start, end } if start == point || end == point => Some(id),
+            _ => None,
+        })
+        .find(|id| {
+            sketch.constraints().any(|(_, constraint)| {
+            matches!(constraint, Constraint::Collinear { a, b } if a == id || b == id)
+        })
+        })
+    else {
+        return;
+    };
+    let mut lines = BTreeSet::from([first]);
+    loop {
+        let before = lines.len();
+        for (_, constraint) in sketch.constraints() {
+            if let Constraint::Collinear { a, b } = constraint {
+                if lines.contains(a) || lines.contains(b) {
+                    lines.extend([*a, *b]);
+                }
+            }
+        }
+        if lines.len() == before {
+            break;
+        }
+    }
+    if lines.len() < 2 {
+        return;
+    }
+    let mut points = BTreeSet::new();
+    for line in &lines {
+        let Some((start, end)) = sketch.line_endpoint_ids(*line) else {
+            return;
+        };
+        points.extend([start, end]);
+    }
+    // Shared points or any other relation make this a wider constrained graph;
+    // retain its general solve rather than inventing a rigid translation.
+    if sketch.entities().any(|(id, entity)| matches!(entity,
+        Entity::Line { start, end } if !lines.contains(&id) && (points.contains(start) || points.contains(end)))) {
+        return;
+    }
+    for (_, constraint) in sketch.constraints() {
+        if !constraint
+            .referenced_entities()
+            .iter()
+            .any(|id| lines.contains(id) || points.contains(id))
+        {
+            continue;
+        }
+        match constraint {
+            Constraint::Horizontal { entity } | Constraint::Vertical { entity }
+                if lines.contains(entity) => {}
+            Constraint::Collinear { a, b } if lines.contains(a) && lines.contains(b) => {}
+            _ => return,
+        }
+    }
+    let Some((a, b)) = sketch.resolved_line(*lines.first().unwrap()) else {
+        return;
+    };
+    let direction = b - a;
+    let length = direction.length();
+    if !length.is_finite() || length < DEGENERATE_LINE_EPS {
+        return;
+    }
+    let direction = direction * (1.0 / length);
+    // Only an already-satisfied common support qualifies for this exact seed.
+    if points.iter().any(|id| {
+        sketch.point_position(*id).is_none_or(|p| {
+            let offset = p - a;
+            !p.x.is_finite()
+                || !p.y.is_finite()
+                || (direction.x * offset.y - direction.y * offset.x).abs() > TOL
+        })
+    }) {
+        return;
+    }
+    let delta = *target - origin;
+    let translation = delta - direction * delta.dot(direction);
+    let mut candidate = x.to_vec();
+    for id in points {
+        let Some(position) = sketch.point_position(id) else {
+            return;
+        };
+        let Some(vars) = map.points.get(&id) else {
+            return;
+        };
+        let position = if id == *point {
+            *target
+        } else {
+            position + translation
+        };
+        candidate[vars.0] = position.x;
+        candidate[vars.1] = position.y;
+    }
+    // A collapsed seed must not preempt the general solver's ability to move
+    // the other endpoint. Retain the original guess in that boundary case.
+    for line in lines {
+        let (start, end) = sketch.line_endpoint_ids(line).unwrap();
+        let (a, b) = (map.points[&start], map.points[&end]);
+        let pre = a2dist(x, a, b);
+        let post = a2dist(&candidate, a, b);
+        if !post.is_finite() || post < (pre * 0.01).min(0.1) || post < 1e-9 {
+            return;
+        }
+    }
+    x.copy_from_slice(&candidate);
+}
+
 /// Solve while retaining selected authored properties.
 ///
 /// These stays are operation-local stabilization equations, not persistent
@@ -2283,10 +2411,6 @@ pub(crate) fn solve_with_stays(
 
     let mut x = read_values(sketch, &map);
     seed_consumed_radius_edit(sketch, &map, &mut x);
-    let (mut f, mut jac) = eval_all(&eqs, &x, n);
-    let mut residual = max_abs(&f);
-    let (active_rows, active_variables) = active_solve_component(&f, &jac, n);
-    let mut cost = selected_squared_norm(&f, &active_rows);
 
     let pre_line_len: Vec<(usize, usize, usize, usize, f64, bool)> = sketch
         .entities()
@@ -2320,6 +2444,16 @@ pub(crate) fn solve_with_stays(
             _ => None,
         })
         .collect();
+
+    // Capture collapse guards before the drag seed, so a pin cannot make a
+    // collapsed original carrier become its own accepted baseline.
+    if eqs.len() == hard_equation_count {
+        seed_free_collinear_drag(sketch, &map, pins, &mut x);
+    }
+    let (mut f, mut jac) = eval_all(&eqs, &x, n);
+    let mut residual = max_abs(&f);
+    let (active_rows, active_variables) = active_solve_component(&f, &jac, n);
+    let mut cost = selected_squared_norm(&f, &active_rows);
 
     let mut movement_weight = vec![1.0; n];
     let prefers_preserved_radius = |entity: EntityId| {
@@ -2762,6 +2896,70 @@ mod tests {
     use super::*;
     use crate::constraint::Constraint;
     use crate::geometry::Vec2;
+
+    #[test]
+    fn free_collinear_horizontal_endpoints_follow_pins_without_null_direction_drift() {
+        // Retained UI fixture: two separated lines, one Horizontal and one
+        // Collinear relation. All x derivatives vanish at its aligned start.
+        for dragged in 0..4 {
+            for delta in [
+                Vec2::new(0.0, 5.0),
+                Vec2::new(5.0, 5.0),
+                Vec2::new(5.0, 0.0),
+            ] {
+                let mut sketch = Sketch::new();
+                let positions = [
+                    Vec2::new(-20.0, 10.0),
+                    Vec2::new(-10.0, 10.0),
+                    Vec2::new(7.9289321881345245, 10.0),
+                    Vec2::new(22.071067811865476, 10.0),
+                ];
+                let points = positions.map(|p| sketch.add_entity(Entity::point(p.x, p.y)));
+                let a = sketch.add_entity(Entity::line(points[0], points[1]));
+                let b = sketch.add_entity(Entity::line(points[2], points[3]));
+                sketch.add_constraint(Constraint::Horizontal { entity: a });
+                sketch.add_constraint(Constraint::Collinear { a, b });
+                let target = positions[dragged] + delta;
+                let result = solve(&mut sketch, &[(points[dragged], target)]);
+                assert!(
+                    result.converged,
+                    "endpoint {dragged}, delta {delta:?}: {result:?}"
+                );
+                assert!(
+                    sketch
+                        .point_position(points[dragged])
+                        .unwrap()
+                        .distance(target)
+                        < TOL
+                );
+                for (index, point) in points.iter().enumerate() {
+                    let position = sketch.point_position(*point).unwrap();
+                    assert!((position.y - target.y).abs() < 1e-7);
+                    // Free length coordinates must not fly away merely because
+                    // their first-order gradient was zero at the initial state.
+                    assert!((position.x - positions[index].x).abs() <= delta.x.abs() + 0.1);
+                }
+                assert_eq!(analyze(&sketch).dof, 5);
+                assert!(analyze(&sketch).converged);
+
+                let before = serde_json::to_value(sketch.snapshot()).unwrap();
+                let incompatible = (dragged + 1) % points.len();
+                let result = solve(
+                    &mut sketch,
+                    &[
+                        (points[dragged], target),
+                        (points[incompatible], target + Vec2::new(0.0, 5.0)),
+                    ],
+                );
+                assert!(!result.converged, "conflicting pins must still reject");
+                assert_eq!(
+                    serde_json::to_value(sketch.snapshot()).unwrap(),
+                    before,
+                    "rejection must be atomic"
+                );
+            }
+        }
+    }
 
     #[test]
     fn defined_variables_distinguish_fixed_parameters_from_dependent_pivots() {
