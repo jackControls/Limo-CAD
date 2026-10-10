@@ -59,6 +59,7 @@
 #include <GeomAbs_Shape.hxx>
 #include <GeomAbs_SurfaceType.hxx>
 #include <Geom2d_Line.hxx>
+#include <Geom2dAdaptor_Curve.hxx>
 #include <Geom2d_BSplineCurve.hxx>
 #include <Geom2dAPI_InterCurveCurve.hxx>
 #include <Geom2d_TrimmedCurve.hxx>
@@ -9296,11 +9297,61 @@ class NativeExportIndex {
 // faces also occur inside sealed chambers, so their normals cannot establish
 // exterior passage without the enclosing solid's exact shell membership.
 static std::vector<std::uint8_t> face_outer_shell_flags(
-    const TopoDS_Shape& shape, const TopTools_IndexedMapOfShape& faces) {
+    const TopoDS_Shape& shape, const TopTools_IndexedMapOfShape& faces,
+    const TopTools_IndexedMapOfShape& edges) {
   std::vector<std::uint8_t> flags(static_cast<std::size_t>(faces.Extent()), 0);
   try {
     if (shape.IsNull() || shape.ShapeType() != TopAbs_SOLID ||
         shape.Orientation() != TopAbs_FORWARD) return flags;
+    // Reporting is optional and the recognizer handles only simple analytic
+    // walls. Do not run full-solid validation on an arbitrary large/curved
+    // imported model merely to replace a correctly unknown hole extent.
+    if (faces.Extent() > 128 || edges.Extent() > 256) return flags;
+    const auto finite_point = [](const gp_Pnt& p) {
+      return std::isfinite(p.X()) && std::isfinite(p.Y()) && std::isfinite(p.Z());
+    };
+    for (int i = 1; i <= edges.Extent(); ++i) {
+      BRepAdaptor_Curve edge(TopoDS::Edge(edges.FindKey(i)));
+      if (!std::isfinite(edge.FirstParameter()) || !std::isfinite(edge.LastParameter()))
+        return flags;
+      if (!finite_point(edge.Value(edge.FirstParameter())) ||
+          !finite_point(edge.Value(edge.LastParameter()))) return flags;
+      if (edge.GetType() == GeomAbs_Line) {
+        if (!finite_point(edge.Line().Location())) return flags;
+      } else if (edge.GetType() == GeomAbs_Circle) {
+        const gp_Circ circle = edge.Circle();
+        if (!finite_point(circle.Location()) || !std::isfinite(circle.Radius()) ||
+            circle.Radius() <= 0.0) return flags;
+      } else return flags;
+    }
+    int boundary_uses = 0;
+    for (int i = 1; i <= faces.Extent(); ++i) {
+      const TopoDS_Face face = TopoDS::Face(faces.FindKey(i));
+      BRepAdaptor_Surface surface(face, true);
+      if (!std::isfinite(surface.FirstUParameter()) || !std::isfinite(surface.LastUParameter()) ||
+          !std::isfinite(surface.FirstVParameter()) || !std::isfinite(surface.LastVParameter()))
+        return flags;
+      if (surface.GetType() == GeomAbs_Plane) {
+        if (!finite_point(surface.Plane().Location())) return flags;
+      } else if (surface.GetType() == GeomAbs_Cylinder) {
+        const gp_Cylinder cylinder = surface.Cylinder();
+        if (!finite_point(cylinder.Location()) || !std::isfinite(cylinder.Radius()) ||
+            cylinder.Radius() <= 0.0) return flags;
+      } else return flags;
+      for (TopExp_Explorer use(face, TopAbs_EDGE); use.More(); use.Next()) {
+        if (++boundary_uses > 1024) return flags;
+        double first, last;
+        const auto curve = BRep_Tool::CurveOnSurface(TopoDS::Edge(use.Current()), face, first, last);
+        if (curve.IsNull() || !std::isfinite(first) || !std::isfinite(last)) return flags;
+        const Geom2dAdaptor_Curve boundary(curve, first, last);
+        if (boundary.GetType() != GeomAbs_Line && boundary.GetType() != GeomAbs_Circle)
+          return flags;
+        for (const double parameter : {first, first * 0.5 + last * 0.5, last}) {
+          const gp_Pnt2d point = boundary.Value(parameter);
+          if (!std::isfinite(point.X()) || !std::isfinite(point.Y())) return flags;
+        }
+      }
+    }
     const TopoDS_Solid solid = TopoDS::Solid(shape);
     if (!BRepCheck_Analyzer(solid, true, false).IsValid()) return flags;
     TopTools_IndexedMapOfShape shells;
@@ -9536,7 +9587,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
   // evidence. Keep full-solid analysis out of their bounded recovery paths.
   const auto outer_shell_flags = (budget || native_export_precision)
       ? std::vector<std::uint8_t>(static_cast<std::size_t>(face_map.Extent()), 0)
-      : face_outer_shell_flags(shape, face_map);
+      : face_outer_shell_flags(shape, face_map, edge_map);
   for (int face_index = 1; face_index <= face_map.Extent(); ++face_index) {
     if (budget) budget->progress->check("mesh validation");
     const TopoDS_Face face = TopoDS::Face(face_map.FindKey(face_index));
