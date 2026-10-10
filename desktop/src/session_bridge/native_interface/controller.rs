@@ -765,7 +765,8 @@ fn update_inner(
                     )
                 };
                 let presentation_editor_active = named_views::presentation_locked(world);
-                let replacement_reject_reason = print_intent::ensure_clean(world).err();
+                let model_mutation_reject_reason =
+                    inbox_model_mutation_reject_reason(world, &owner);
                 worker::enqueue_inbox(
                     world,
                     move |services, guard| {
@@ -777,7 +778,7 @@ fn update_inner(
                             reject,
                             Some((&owner.document_id, &session)),
                             presentation_editor_active,
-                            replacement_reject_reason.as_deref(),
+                            model_mutation_reject_reason.as_deref(),
                         )?;
                         if applied.is_null() {
                             return Err("The queued operation's document was replaced".into());
@@ -1607,6 +1608,16 @@ fn apply_host_result(state: &mut Controller, value: &Value) {
         }
         _ => {}
     }
+}
+
+/// Snapshot unapplied editors on the UI thread without submitting their fields.
+/// The inbox worker keeps its existing captured document/session fence and uses
+/// this reason before model-changing requests. Read-only calls remain available.
+fn inbox_model_mutation_reject_reason(world: &World, owner: &DocumentContext) -> Option<String> {
+    print_intent::ensure_clean(world)
+        .and_then(|()| interface_shell::fields::guard_document_close(world, owner))
+        .and_then(|()| workbench::drawing_editor::guard_document_switch(world, owner))
+        .err()
 }
 
 fn request_close(

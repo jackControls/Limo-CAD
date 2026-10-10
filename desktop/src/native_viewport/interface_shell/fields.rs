@@ -278,8 +278,8 @@ pub(crate) fn has_uncommitted_edit(world: &World, entity: Entity) -> bool {
     })
 }
 
-/// OS close events can arrive before a field's blur/Enter commit. Inspect only
-/// the exact captured editor owner and binding; closing never submits its text.
+/// Close or external edits can arrive before a field's blur/Enter commit. Inspect
+/// only the exact captured editor owner and binding; the guard never submits text.
 pub(crate) fn guard_document_close(world: &World, owner: &DocumentContext) -> Result<(), String> {
     let Some(action) = world
         .get_resource::<EditorSession>()
@@ -304,7 +304,7 @@ pub(crate) fn guard_document_close(world: &World, owner: &DocumentContext) -> Re
             .is_some_and(|editor| editor.pending_paste.is_some())
     {
         return Err(
-            "Finish the active text edit or use Undo, Reset or Cancel before closing the window"
+            "Finish the active text edit or use Undo, Reset or Cancel before closing or changing the document"
                 .into(),
         );
     }

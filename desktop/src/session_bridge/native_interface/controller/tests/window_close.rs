@@ -124,6 +124,7 @@ fn native_close_before_text_blur_preserves_the_pending_value_and_allows_undo_rec
     let mut controller = Controller::new("main".into(), None, Arc::new(AtomicBool::new(false)));
     controller.workspace = workspace;
     assert!(fields::guard_document_close(app.world(), &owner).is_ok());
+    assert!(inbox_model_mutation_reject_reason(app.world(), &owner).is_none());
 
     dispatch(
         &mut app,
@@ -141,6 +142,9 @@ fn native_close_before_text_blur_preserves_the_pending_value_and_allows_undo_rec
         app.world().get::<EditableText>(entity).unwrap().value(),
         "3"
     );
+    assert!(inbox_model_mutation_reject_reason(app.world(), &owner)
+        .unwrap()
+        .contains("Finish the active text edit"));
     let close = NativeHostInput {
         ui_scale: 1.,
         context: Some(owner.clone()),
@@ -185,6 +189,7 @@ fn native_close_before_text_blur_preserves_the_pending_value_and_allows_undo_rec
             _ => foreign.epoch += 1,
         }
         assert!(fields::guard_document_close(app.world(), &foreign).is_ok());
+        assert!(inbox_model_mutation_reject_reason(app.world(), &foreign).is_none());
     }
 
     // Native local Undo is an explicit way to cancel this text change. It
@@ -200,6 +205,7 @@ fn native_close_before_text_blur_preserves_the_pending_value_and_allows_undo_rec
         "12"
     );
     assert!(fields::guard_document_close(app.world(), &owner).is_ok());
+    assert!(inbox_model_mutation_reject_reason(app.world(), &owner).is_none());
     close_from_window_event(
         app.world_mut(),
         &mut controller,

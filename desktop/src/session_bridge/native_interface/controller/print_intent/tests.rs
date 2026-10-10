@@ -255,7 +255,7 @@ fn metadata_history_reowns_only_clean_editor_for_the_same_document() {
 }
 
 #[test]
-fn inbox_replacement_preserves_dirty_print_draft_and_normal_writes_keep_snapshot_guard() {
+fn inbox_model_mutations_preserve_print_drafts_and_keep_snapshot_guards_after_cancel() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = Fixture::new();
     let owner = fixture.owner();
@@ -319,19 +319,8 @@ fn inbox_replacement_preserves_dirty_print_draft_and_normal_writes_keep_snapshot
         )
         .unwrap();
         assert_eq!(result["dead_lettered"], true, "{result}");
-        if seq < 3 {
-            assert_eq!(result["reason"], "document_editor_draft");
-            assert_eq!(result["error"], reason);
-        } else {
-            assert_ne!(result["reason"], "document_editor_draft");
-            assert!(
-                result["error"]
-                    .as_str()
-                    .unwrap()
-                    .contains("document changed"),
-                "{result}"
-            );
-        }
+        assert_eq!(result["reason"], "document_editor_draft");
+        assert_eq!(result["error"], reason);
         assert_eq!(fixture.owner(), owner);
         assert_eq!(
             fixture.bridge.engine_revision_for_window("main").unwrap(),
@@ -344,4 +333,44 @@ fn inbox_replacement_preserves_dirty_print_draft_and_normal_writes_keep_snapshot
         assert!(world.resource::<State>().visible);
         assert_eq!(world.resource::<State>().draft.wall_count, Some(6));
     }
+    // Cancelling the local draft permits dispatch, but it must not bypass the
+    // engine's independent optimistic model precondition.
+    cancel(&mut world, &fixture.engine, &fixture.bridge, &owner).unwrap();
+    assert!(ensure_clean(&world).is_ok());
+    std::fs::write(
+        root.join("4.json"),
+        json!({"name":"print_intent_set_document","base_generation":revision,
+            "arguments":{"document":PrintIntentDocumentDto::default(),"expected_model_json":"{}"},
+            "session_id":session,"window_id":"main","document_id":owner.document_id})
+        .to_string(),
+    )
+    .unwrap();
+    let result = crate::session_bridge::apply_or_reject_one_inbox_op_with_editor_guards(
+        &fixture.bridge,
+        "main",
+        &fixture.engine,
+        None,
+        Some((&owner.document_id, &session)),
+        false,
+        None,
+    )
+    .unwrap();
+    assert_eq!(result["dead_lettered"], true, "{result}");
+    assert_ne!(result["reason"], "document_editor_draft", "{result}");
+    assert!(
+        result["error"]
+            .as_str()
+            .unwrap()
+            .contains("document changed"),
+        "{result}"
+    );
+    assert_eq!(fixture.owner(), owner);
+    assert_eq!(
+        fixture.bridge.engine_revision_for_window("main").unwrap(),
+        Some(revision)
+    );
+    assert_eq!(
+        parse_engine_envelope(fixture.engine.engine_call("project_export_model", "")).unwrap(),
+        model
+    );
 }

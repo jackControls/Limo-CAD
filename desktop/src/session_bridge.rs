@@ -1287,7 +1287,7 @@ fn apply_or_reject_one_inbox_op_with_editor_guards(
     reject_reason: Option<&str>,
     expected_owner: Option<(&str, &str)>,
     presentation_editor_active: bool,
-    replacement_reject_reason: Option<&str>,
+    model_mutation_reject_reason: Option<&str>,
 ) -> Result<Value, String> {
     let process_instance_id = state.process_instance_id.clone();
     let _ = state.write_process_instance_file();
@@ -1537,8 +1537,8 @@ fn apply_or_reject_one_inbox_op_with_editor_guards(
             "pending":pending_inbox_seqs(&session_id).len(),"engine_revision":project.engine_revision}),
         );
     }
-    if is_project_replacement(&name) {
-        if let Some(error) = replacement_reject_reason {
+    if model_changed {
+        if let Some(error) = model_mutation_reject_reason {
             dead_letter_inbox_op(&session_id, seq, error)?;
             return Ok(json!({
                 "applied":false,"dead_lettered":true,"seq":seq,"name":name,
@@ -1547,6 +1547,8 @@ fn apply_or_reject_one_inbox_op_with_editor_guards(
                 "pending":pending_inbox_seqs(&session_id).len(),"engine_revision":project.engine_revision
             }));
         }
+    }
+    if is_project_replacement(&name) {
         let result = apply_project_replacement_inbox(
             publisher,
             window_label,
