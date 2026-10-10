@@ -159,7 +159,10 @@ fn solid_and_view(fixture: &Fixture) -> NamedViewConfigurationDto {
 
 #[test]
 fn applied_inbox_named_view_recall_updates_camera_without_moving_source_geometry() {
-    let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+    crate::session_bridge::tests::with_isolated_session_test(applied_inbox_named_view_recall_case);
+}
+
+fn applied_inbox_named_view_recall_case() {
     let fixture = Fixture::new();
     let saved = solid_and_view(&fixture);
     let source = serde_json::to_value(fixture.engine.viewport_snapshot().2).unwrap();

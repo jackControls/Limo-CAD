@@ -2050,10 +2050,12 @@ mod tests {
 
     #[test]
     fn control_completion_errors_distinguish_expiry_missing_request_and_foreign_session() {
-        let _test = TEST_LOCK.lock().unwrap();
+        with_isolated_session_test(control_completion_errors_case);
+    }
+
+    fn control_completion_errors_case() {
         let dir =
             std::env::temp_dir().join(format!("limo-cad-control-delivery-{}", Uuid::new_v4()));
-        let previous = std::env::var_os("LIMO_CAD_SESSION_DIR");
         std::env::set_var("LIMO_CAD_SESSION_DIR", &dir);
         {
             let state = SessionBridgeState::default();
@@ -2132,11 +2134,6 @@ mod tests {
             assert!(untracked_error.contains("No pending control request matches"));
             assert!(!untracked_error.contains("another window"));
             assert!(!controls.join("123-1.result.json").exists());
-        }
-        if let Some(previous) = previous {
-            std::env::set_var("LIMO_CAD_SESSION_DIR", previous);
-        } else {
-            std::env::remove_var("LIMO_CAD_SESSION_DIR");
         }
         let _ = fs::remove_dir_all(dir);
     }
