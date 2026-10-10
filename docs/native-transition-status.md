@@ -7,6 +7,66 @@ has occurred. The user approved known-defect completion and targeted repaired
 acceptance. **Broad exploratory UI coverage and manual MCP mutation coverage
 remain paused**; preserve earlier passes and do not advance to untouched cases.
 
+The later **clean `5d46045c` deployment succeeded**: all 70 installed payload
+hashes matched; executable SHA256 is
+`81850af71d991f492db4bdafc6a9ed49314c430527f3e9ba70f45a50ad26a8f7`.
+Fresh GUI PID 37300, MCP PID 11552 and process
+`c2d4bf20-8c3b-4efd-970e-a2195b8d1366` reported a matched clean pair with native
+computer control enabled. Normal guarded foreground activation succeeded and
+a fresh observation confirmed foreground ownership. **That live pair has since
+ended unexpectedly**: GUI and root operator/MCP disappeared. The lifecycle cause
+remains unattributed; no fresh CAD-specific WER/dump establishes it. Installed
+payload remains 5d. These are historical receipts, not reusable live IDs.
+
+Three finite repaired-defect checks supplied new human UI evidence on that pair:
+
+- Focused Drawing Title **first-click Apply passed**: visible `First Apply 5d`
+  enabled Apply without an intentional blur; one guarded click published the
+  exact Title and advanced owner generation 1 to 2 once. The draft became clean
+  and Apply disabled. The complete published models differ only in Title.
+  This qualifies the focused defect, not full Sheet metadata or Drawing coverage.
+- Saved-Untitled Unicode Open and tab identity **passed**: `Café façade — résumé`
+  appeared in the tab and active Browser while raw model name remained
+  `Untitled`. Switching to the Drawing copy retained explicit
+  `Surface UI – café block`, and switching back restored filename identity.
+  Opening/switching did not rename or mutate the model. Earlier SaveAs passes
+  remain retained; legitimate dirty confirmation caption branches remain pending.
+- New Split boundary rejection, corrected creation and **Undo passed** on the
+  healthy 20×10×8 stock. X20 rejected with form retained and exact unchanged
+  model/scene; Plane1 at X10 created two healthy 10×10×8 halves. Undo restored
+  every baseline model field except the documented occurrence allocator high-water
+  mark 11→12. The complete expected model with explicit floor 12 matched exactly.
+  Native history preserves that maximum at `history.rs:61`; its existing tests
+  and ADR document monotonic allocation. **Redo remains pending** after the
+  unexpected lifecycle loss, even though fresh Undo inspection showed it available.
+
+Receipts are `drawing-title-before-model-5d46045c.json`,
+`drawing-title-after-model-5d46045c.json`, the first-Apply input/observe/capture,
+`unicode-title-model-5d46045c.json`, both `title-tab-switch-*-5d46045c.json`, and
+the Split baseline/rejected/corrected/Undo model, scene and observation files
+in `D:/limo-cad-maintenance/backlog-autonomous-20261010`. Original failed and
+recovery receipts remain preserved. Catalog status/counts and UI/MCP phase gates
+are unchanged; these scoped passes do not qualify the entire surface.
+
+At **23:37:31 UTC**, exact source 5d and PR merge
+`b4d3bcace3fbf940ec3bb27db96a6ee32dace97d` had **12/12 workflows green**:
+35 successful checks, eight optional skips, zero failed/pending. The
+[CodeQL aggregate](https://github.com/limo-cad/Limo-CAD/runs/114330887827)
+reported no new alerts. `ci-5d46045-terminal-evidence.json` preserves this terminal
+result, with no reruns or dispatches. Later source through `3f46af62` includes
+reviewed camera/completion error isolation, guarded caption focus fallback and
+raw shortcut ingress diagnostics; it is not locally compiled/tested or installed
+at this checkpoint. Green 5d CI does not qualify those later changes.
+
+The inactive generated debug cache was relocated reversibly, retaining a
+compatibility junction and verifying **all 11,420 SHA256 hashes**. At 23:35:45 UTC
+the receipt recorded C free 3,821,944,832 bytes and D free 7,216,480,256 bytes.
+`D:/limo-cad-maintenance/cache-preservation-20261010-C-debug/move-verification.json`
+and its `source-sha256.json` preserve the evidence. Source, documents, recovery,
+sessions and installed runtime were untouched. C exhaustion explains blocked
+harness thread-store writes; it does **not** establish the cause of the GUI exit.
+These are post-move free bytes, not subsequent compression totals.
+
 The user handed over shared runtime ownership on 2026-10-10. Prior documents
 were saved/closed or owners confirmed no unsaved work; the older GUI PID 36700 was
 preserved and closed before deployment. Saved files, recovery/session data and
@@ -34,10 +94,10 @@ canonical DLL. Source and installed SHA256 both were
 Retained notice `6b5760ba-9360-4996-b589-2f7f7da36c59` records the confirmed
 foreign SDK lock. PID 6148 is absent from the later inventory: this is historical
 attribution, not a current process/lock claim. Foreign Vita copies were left
-untouched. **The interrupted installed payload is unqualified**; no fresh matched
+untouched. **The historical interrupted 563 payload was unqualified**; no fresh matched
 clean 563/0db pair or complete installed-hash verification is claimed here. The
 exact-hash skip preserves unchanged ordinary payloads; changed locked payloads
-still reject. Final promotion and complete hash verification remain required.
+still reject. Later clean 5d promotion and all 70 hashes passed as recorded above.
 
 Monolithic xtask binary-test compiles at `96b642b9` and `cd35dcc3` both failed with
 rustc-LLVM out of memory/allocation failure, exit 101, **before any tests executed**.
@@ -95,7 +155,7 @@ results qualify the 563 hosted scopes only. They do not qualify the later 0db
 wrapper repair source, physical input, or the interrupted installation.
 Historical f19/9cfa results below remain preserved.
 
-The last fully hash-verified live qualification was **clean 9cfa76a7 with all 70
+The earlier fully hash-verified live qualification was **clean 9cfa76a7 with all 70
 payload hashes verified**; its historical executable
 SHA256 is `cc2127e2867841bed41bb28e58580bd329e9abb17150e30c1bc95e991df83ca8`.
 Fresh GUI PID 41172, process `fe9b3bd4-f0b1-47b6-ac16-3135f7358417`, and its
