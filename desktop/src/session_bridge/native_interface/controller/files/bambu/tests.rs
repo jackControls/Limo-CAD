@@ -345,3 +345,146 @@ fn actual_template_z_issues_require_deliberate_confirmation_and_invalidate_with_
         "Export still requires a fresh complete preview"
     );
 }
+
+#[test]
+fn multipart_preflight_sources_remain_visible_and_distinct_across_repaint() {
+    use super::super::super::chrome::Widgets;
+    use limo_cad_interface::Field as ControlField;
+
+    let mut world = World::new();
+    world.init_resource::<ViewportUiAssets>();
+    world.init_resource::<Files>();
+    let camera = world.spawn_empty().id();
+    let engine = AppState::new();
+    let mut widgets = Widgets::default();
+    let mut intent = intent();
+    let template = &mut intent.bambu.template.as_mut().unwrap().summary;
+    let mut second_volume = template.objects[0].parts[0].clone();
+    second_volume.part_id = 2;
+    template.objects[0].parts.push(second_volume);
+    let mut report: BambuProjectReport = serde_json::from_value(json!({
+        "template": template,
+        "source_document_id": intent.bambu.document.as_ref().unwrap().source_document_id,
+        "output_sha256": "e".repeat(64), "placement": "template", "parts": [], "modifiers": [],
+        "invalidated_entries": [], "warnings": [], "metadata_readback_verified": true,
+        "installed_slicer_imported": false, "toolpaths_generated": false,
+        "refresh_reference": {
+            "version": 1, "source_document_id": intent.bambu.document.as_ref().unwrap().source_document_id,
+            "original_template_sha256": "a".repeat(64), "profile_sha256": "b".repeat(64),
+            "profile_identity_sha256": "c".repeat(64), "baseline_project_settings": {},
+            "written_project_settings": {}, "parts": [], "modifiers": [], "height_objects": []
+        }
+    })).unwrap();
+    for instance_id in [0, 1] {
+        report.z_preflight.push(BambuGroupZPreflight {
+            object_id: 2,
+            instance_id,
+            plate_index: 1,
+            source_bindings: [1, 2]
+                .into_iter()
+                .map(|part_id| BambuPartBinding {
+                    body_id: limo_cad_core::BodyId(part_id as u64),
+                    occurrence_id: ((instance_id + 1) * 10 + part_id) as u64,
+                    object_id: 2,
+                    instance_id,
+                    part_id,
+                })
+                .collect(),
+            world_bounds: limo_cad_core::PrintModifierBoundsDto {
+                min_mm: [20., 20., 0.],
+                max_mm: [30., 30., 10.],
+            },
+            issues: vec![],
+            proposed_translation_mm: None,
+            correction_target: BambuZCorrectionTarget::SavedTemplate,
+        });
+    }
+    intent.bambu.placement = BambuPlacementMode::Template;
+    intent.bambu.reviewed = Some((json!({}), report));
+    // Ten visible tail rows include both multipart groups and the output controls.
+    intent.bambu.scroll = usize::MAX;
+    let expected = [
+        (
+            "Plate 1 object 2 instance 0 volume 1 source",
+            "body 1 occurrence 11 volume 1",
+        ),
+        (
+            "Plate 1 object 2 instance 0 volume 2 source",
+            "body 2 occurrence 12 volume 2",
+        ),
+        (
+            "Plate 1 object 2 instance 1 volume 1 source",
+            "body 1 occurrence 21 volume 1",
+        ),
+        (
+            "Plate 1 object 2 instance 1 volume 2 source",
+            "body 2 occurrence 22 volume 2",
+        ),
+    ];
+    let mut retained = None;
+    for y in [0., 10.] {
+        widgets.begin();
+        panel::paint(
+            (&mut world, camera, &mut widgets),
+            &engine,
+            &intent,
+            17,
+            (0., y, 760., 700.),
+            None,
+        )
+        .unwrap();
+        widgets.finish(&mut world);
+        let visible_sources = world
+            .query::<&InterfaceControl>()
+            .iter(&world)
+            .filter(|control| {
+                control.label.starts_with("Plate ") && control.label.ends_with(" source")
+            })
+            .count();
+        assert_eq!(
+            visible_sources,
+            expected.len(),
+            "No supported source binding may be overwritten"
+        );
+        let mut entities = Vec::new();
+        let mut positions = Vec::new();
+        for (label, value) in expected {
+            let entity = widgets.entity(&format!("bambu-row-{label}")).unwrap();
+            let control = world.get::<InterfaceControl>(entity).unwrap();
+            assert_eq!(control.label, label);
+            assert!(control.visible && !control.disabled);
+            assert_eq!(control.modal_scope.as_deref(), Some("file-dialog"));
+            assert_eq!(
+                control.field,
+                ControlField::Text {
+                    value: value.into(),
+                    read_only: true,
+                    selection: None,
+                }
+            );
+            assert_eq!(
+                world
+                    .get::<bevy::text::EditableText>(entity)
+                    .unwrap()
+                    .value(),
+                value
+            );
+            let label_entity = widgets.entity(&format!("bambu-label-{label}")).unwrap();
+            assert_eq!(world.get::<Text>(label_entity).unwrap().0, label);
+            let top = world.get::<Node>(entity).unwrap().top;
+            assert!(
+                !positions.contains(&top),
+                "Every source needs its own visible row"
+            );
+            positions.push(top);
+            entities.push((entity, label_entity));
+        }
+        if let Some(previous) = &retained {
+            assert_eq!(
+                previous, &entities,
+                "Repaint must retain all source controls"
+            );
+        }
+        retained = Some(entities);
+    }
+}

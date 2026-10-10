@@ -464,7 +464,7 @@ pub(in super::super) fn paint(
             for binding in &group.source_bindings {
                 information(
                     &mut rows,
-                    format!("{label} source"),
+                    format!("{label} volume {} source", binding.part_id),
                     format!(
                         "body {} occurrence {} volume {}",
                         binding.body_id.0, binding.occurrence_id, binding.part_id

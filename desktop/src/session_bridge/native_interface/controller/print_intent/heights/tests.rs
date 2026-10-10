@@ -123,6 +123,166 @@ fn reviewed_changes_are_bound_to_exact_source_record_model_and_target_layout() {
 }
 
 #[test]
+fn height_review_keeps_repeated_members_and_all_binding_diagnostics_visible() {
+    let mut previous = bound(7);
+    previous.groups[0].root_occurrence_id = 5;
+    previous.occurrences[0].root_occurrence_id = 5;
+    let mut repeated = previous.occurrences[0].clone();
+    repeated.occurrence_id = 4;
+    repeated.pose.translation_mm[0] = 10.;
+    previous.occurrences.push(repeated);
+    previous.groups[0]
+        .members
+        .push(limo_cad_core::PrintSourceOccurrenceDto {
+            body_id: limo_cad_core::BodyId(7),
+            occurrence_id: 4,
+        });
+    previous.validate(limo_cad_core::BodyId(7)).unwrap();
+    let mut proposed = previous.clone();
+    for occurrence in &mut proposed.occurrences {
+        occurrence.pose.translation_mm[2] = 1.;
+        occurrence.min_z_mm += 1.;
+        occurrence.max_z_mm += 1.;
+    }
+    proposed.groups[0].min_z_mm += 1.;
+    proposed.groups[0].max_z_mm += 1.;
+    proposed.validate(limo_cad_core::BodyId(7)).unwrap();
+
+    let mut state = state(true);
+    let mut profile: PrintLayerHeightProfileDto =
+        serde_json::from_value(record(&state, false).unwrap()).unwrap();
+    profile.binding = previous.clone();
+    profile.enabled = false;
+    profile.validate().unwrap();
+    state.height_editor.context = json!({
+        "binding": proposed, "body_names": {"7": "Repeat stock"}, "views": {"views": []}
+    });
+    state.document.as_mut().unwrap().layer_height_profiles = vec![profile.clone()];
+    let saved = json!(profile);
+    accept(&mut state, Some(saved.clone()));
+    state.height_editor.review = Some(Review {
+        kind: Command::ReviewRebind,
+        model: state.expected_model.clone(),
+        record: saved,
+        layout: PrintHeightLayoutDto::Assembly,
+        value: json!({"previous_binding": previous, "binding": proposed}),
+    });
+    let issues = [
+        "Resolved print orientation, placement, visibility, group membership or bounds changed; explicitly review and rebind height intent",
+        "Variable layer profile is disabled and omitted from export",
+    ];
+    state.effective = json!({"layer_height_profiles": [limo_cad_core::PrintLayerHeightProfileEffectiveDto {
+        profile, binding: limo_cad_core::PrintPartBindingDto::Live, binding_current: false,
+        issues: issues.iter().map(|issue| (*issue).into()).collect(), target_supported: true,
+    }]});
+    let cases = [
+        (
+            "Previous group 5 body 7",
+            [
+                (
+                    "Previous group 5 body 7 occurrence 3",
+                    "Repeat stock; body 7; occurrence 3",
+                ),
+                (
+                    "Previous group 5 body 7 occurrence 4",
+                    "Repeat stock; body 7; occurrence 4",
+                ),
+            ],
+        ),
+        (
+            "Proposed group 5 body 7",
+            [
+                (
+                    "Proposed group 5 body 7 occurrence 3",
+                    "Repeat stock; body 7; occurrence 3",
+                ),
+                (
+                    "Proposed group 5 body 7 occurrence 4",
+                    "Repeat stock; body 7; occurrence 4",
+                ),
+            ],
+        ),
+        (
+            "Height binding issue",
+            [
+                ("Height binding issue 1", issues[0]),
+                ("Height binding issue 2", issues[1]),
+            ],
+        ),
+    ];
+    let mut world = World::new();
+    world.init_resource::<ViewportUiAssets>();
+    let camera = world.spawn_empty().id();
+    for (prefix, expected) in cases {
+        // Height rows follow the two scope/body controls in the production panel.
+        let start = rows(&state)
+            .iter()
+            .position(|row| row.0.starts_with(prefix))
+            .unwrap()
+            + 2;
+        let mut retained = None;
+        for width in [1100., 1110.] {
+            state.scroll = start;
+            state.widgets.begin();
+            super::super::panel::paint(&mut world, camera, &mut state, width, 800.).unwrap();
+            state.widgets.finish(&mut world);
+            let visible = world
+                .query::<&InterfaceControl>()
+                .iter(&world)
+                .filter(|control| control.label.starts_with(prefix))
+                .count();
+            assert_eq!(
+                visible,
+                expected.len(),
+                "No repeated member or diagnostic may be overwritten"
+            );
+            let mut entities = Vec::new();
+            let mut positions = Vec::new();
+            for (label, value) in expected {
+                let entity = state
+                    .widgets
+                    .entity(&format!("print-intent-row-{label}"))
+                    .unwrap();
+                let control = world.get::<InterfaceControl>(entity).unwrap();
+                assert_eq!(control.label, label);
+                assert!(control.visible && !control.disabled);
+                assert_eq!(
+                    control.field,
+                    ControlField::Text {
+                        value: value.into(),
+                        read_only: true,
+                        selection: None,
+                    }
+                );
+                assert_eq!(
+                    world
+                        .get::<bevy::text::EditableText>(entity)
+                        .unwrap()
+                        .value(),
+                    value
+                );
+                let label_entity = state
+                    .widgets
+                    .entity(&format!("print-intent-label-{label}"))
+                    .unwrap();
+                assert_eq!(world.get::<Text>(label_entity).unwrap().0, label);
+                let top = world.get::<Node>(entity).unwrap().top;
+                assert!(
+                    !positions.contains(&top),
+                    "Both rows must have separate visible positions"
+                );
+                positions.push(top);
+                entities.push((entity, label_entity));
+            }
+            if let Some(previous) = &retained {
+                assert_eq!(previous, &entities, "Repaint must retain both controls");
+            }
+            retained = Some(entities);
+        }
+    }
+}
+
+#[test]
 fn reviewed_group_copy_expands_intentional_shared_definitions_atomically_and_undo_keeps_geometry() {
     let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
     let fixture = crate::session_bridge::native_interface::tests::Fixture::new();

@@ -1049,8 +1049,11 @@ pub(super) fn rows(state: &State) -> Vec<Row> {
             "Height binding status",
             format!("{} - current {}", v["binding"], v["binding_current"]),
         ));
-        for issue in v["issues"].as_array().into_iter().flatten() {
-            rows.push(info("Height binding issue", issue.as_str().unwrap_or("")));
+        for (index, issue) in v["issues"].as_array().into_iter().flatten().enumerate() {
+            rows.push(info(
+                format!("Height binding issue {}", index + 1),
+                issue.as_str().unwrap_or(""),
+            ));
         }
         rows.push(info(
             "Height target support",
@@ -1145,7 +1148,10 @@ fn binding_rows(rows: &mut Vec<Row>, prefix: &str, binding: &Value, state: &Stat
                 .as_str()
                 .unwrap_or("Source body");
             rows.push(info(
-                format!("{prefix} group {} body {body}", group["root_occurrence_id"]),
+                format!(
+                    "{prefix} group {} body {body} occurrence {}",
+                    group["root_occurrence_id"], member["occurrence_id"]
+                ),
                 format!(
                     "{name}; body {body}; occurrence {}",
                     member["occurrence_id"]
