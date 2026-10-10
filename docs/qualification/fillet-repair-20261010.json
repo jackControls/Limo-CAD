@@ -16,13 +16,22 @@
     "Rendered R7 arc visibly enlarged; read-only sketch inspection verified the exact R7 and R3 centers and cutbacks.",
     "One Undo restored exact R7 entities and constraints; one Redo restored exact R3 entities and constraints.",
     "Finished sketch and used native Save As with a new filename, preserving the original fixture.",
-    "Saved archive model.json exactly matched the live read-only model; document tab displayed the saved filename."
+    "Saved archive model.json exactly matched the live read-only model; document tab displayed the saved filename.",
+    "Reopened the saved file through the native dialog. The complete reopened model exactly matched the saved model; followed the replacement session before inspection.",
+    "R3 to R20 consumed the finite vertical carrier without moving the original outer endpoints or corner. R21 was rejected with identical entities and constraints to R20.",
+    "Shrinking the consumed R20 case back to R3 restored the original entities and constraints exactly, including six degrees of freedom.",
+    "Drew a 10 mm upper horizontal line through the UI and created an R2 upper fillet. Read-only inspection verifies the shared vertical edge from [10,13] to [10,28], lower R3 and upper R2, and preserved original corners."
   ],
   "remaining": [
-    "Reopen the saved file through the UI.",
-    "Check overshoot rejection, consumed-carrier and two-fillet boundary cases required by the retained repair queue."
+    "Check the two-fillet shared-carrier limit. The R19 request was blocked before text insertion by the rendered-state guard; the field still contained 3.",
+    "Save the two-fillet fixture after completing the boundary check; it currently remains in the open sketch.",
+    "Repair and recheck dimension field focus after a rejected Enter. The field stayed visible but editable_focus was false; clicking it restored editing."
   ],
-  "blocker": "CAD lost foreground ownership after saving. A guarded focus request reported success in its bounded sample, but fresh observation found foreground false. No further input was sent.",
+  "blocker": "After the second fillet was created, CAD repeatedly lost foreground ownership. A read-only Windows query identified Bambu Studio as the foreground process. Stopped input and did not change or restart either CAD runtime.",
+  "observations": [
+    "Consumed R20 reports 14 degrees of freedom; shrinking restores six. No general constant-DOF claim is made for the singular consumed case.",
+    "Overshoot rejection displays generic solver conflict guidance, preserves geometry, and loses dimension text focus. Functional rejection passes; focus polish remains unresolved."
+  ],
   "evidence_root": "D:/limo-cad-maintenance",
   "evidence": [
     "resume-fillet-open-name.png",
@@ -34,7 +43,19 @@
     "resume-fillet-undo-r7.json",
     "resume-fillet-redo-r3.json",
     "resume-fillet-save-name.png",
-    "resume-fillet-saved-model.json"
+    "resume-fillet-saved-model.json",
+    "resume-fillet-reopen-name.png",
+    "resume-fillet-reopened-model.json",
+    "resume-fillet-reopened.png",
+    "resume-fillet-r20.json",
+    "resume-fillet-r20.png",
+    "resume-fillet-overshoot.json",
+    "resume-fillet-overshoot.png",
+    "resume-fillet-consumed-shrink-r3.json",
+    "resume-fillet-two-form.png",
+    "resume-fillet-two-created.json"
   ],
-  "limits": "Partial repair receipt only. No full fillet, saved-title, text-input, UI-surface or MCP qualification is claimed."
+  "limits": "Partial repair receipt only. No full fillet, saved-title, text-input, UI-surface or MCP qualification is claimed.",
+  "focus_fix_commit": "e5afb473",
+  "focus_fix_validation": "Source repair only; hosted desktop checks and targeted UI recheck pending. No deployment or runtime restart."
 }

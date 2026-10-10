@@ -16,10 +16,25 @@ and a default-release publication guard. Both focused Rust Windows package tests
 and adversarial Python identity checks pass. Hosted checks and actual release
 publication remain separate gates; neither change is deployed to the GUI yet.
 
+Follow-up source repairs: 75883438 rejects the silently ignored `named_view`
+argument on `cad_interface action=view` and points callers to `recall_named_view`
+(#347). f11a0785 adds body/face provenance and candidate confidence to inferred
+holes, and makes projected-axis overlap warnings explicitly unconfirmed (#348).
+All three focused MCP regressions pass, including real OCCT revolved cavities,
+fillets/chamfers/holes, and named-camera argument rejection. These are source
+regressions, not Phase 2 manual MCP qualification or closure of every issue
+acceptance criterion. Local desktop test compilation exhausted host memory;
+the new desktop regression awaits hosted CI rather than another local rebuild.
+
 The installed GUI/MCP remains clean 93823f6d. A fresh matched pair qualified
-retained fillet R5 to R7 to R3 edits, exact Undo/Redo and native Save As model
-persistence; see `docs/qualification/fillet-repair-20261010.json`. Foreground
-ownership was subsequently lost, so UI reopen and boundary cases remain pending.
+retained fillet R5 to R7 to R3 edits, exact Undo/Redo and native save/reopen model
+persistence. R20 consumed the carrier, R21 rejected without geometry changes,
+and shrinking to R3 restored the exact baseline. A second upper R2 fillet was
+created correctly. See `docs/qualification/fillet-repair-20261010.json`.
+The two-fillet shared-carrier boundary remains pending after Bambu Studio took
+foreground ownership. Rejected dimension Enter also loses text-field focus;
+that separate polish defect has source repair e5afb473, pending hosted checks
+and one targeted UI recheck on a clean deployment.
 No background pointer input or replacement of the separate Roller window was
 attempted. The earlier checkpoints below are retained historical evidence.
 
