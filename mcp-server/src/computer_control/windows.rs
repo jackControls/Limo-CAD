@@ -24,6 +24,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::*;
 use super::capture;
 use crate::{build_pair, session};
 
+mod caption_focus;
+
 const OBSERVATION_MS: u64 = 60_000;
 // Conservative queue pacing/stability sampling, not text-consumption proof
 // or a guarantee that another application cannot subsequently take focus.
@@ -68,6 +70,7 @@ struct Observation {
     bounds: Option<[i32; 4]>,
     layout: Option<Value>,
     editable_focus: bool,
+    caption: Option<caption_focus::Proof>,
     process: DesktopProcess,
 }
 
@@ -220,6 +223,32 @@ impl ComputerControl {
             let native_keyboard_focus = native_input_focus(hwnd, pid)
                 .map(|focus| focus.snapshot())
                 .unwrap_or_else(|error| json!({"available":false,"error":error}));
+            let caption = if presented
+                && !target.native_dialog
+                && unsafe { GetForegroundWindow() } != hwnd
+            {
+                caption_focus::observe(hwnd, pid).and_then(|proof| {
+                    let fresh = inspect_desktop(session_id, true)?;
+                    if layout(&fresh) != layout(&inspect)
+                        || main_from_inspection(&owner, &fresh)? != main
+                        || target_window(&owner, main)? != target
+                        || Some(client_bounds(hwnd)?) != bounds
+                        || session::computer_control_owner(session_id)? != owner
+                    {
+                        return Err(
+                            "CAD changed during native caption qualification; observe again".into(),
+                        );
+                    }
+                    process.verify()?;
+                    Ok(proof)
+                })
+            } else {
+                Err("Native caption recovery requires an observed background, presented, nonminimized Bevy main window".into())
+            };
+            let native_caption_focus = match &caption {
+                Ok(proof) => proof.snapshot(),
+                Err(error) => json!({"available":false,"reason":error,"scope":"focus_only"}),
+            };
             self.observation = Some(Observation {
                 token: token.clone(),
                 expires_ms,
@@ -230,6 +259,7 @@ impl ComputerControl {
                 bounds,
                 layout: presented.then(|| native.clone().unwrap_or_else(|| layout(&inspect))),
                 editable_focus,
+                caption: caption.ok(),
                 process,
             });
             let screen_bounds = bounds.map(
@@ -274,6 +304,7 @@ impl ComputerControl {
                 "main_window_handle":target.main as usize,"target_kind":if target.native_dialog {"native_dialog"} else {"bevy_window"},
                 "native_window_diagnostics":window_diagnostics(pid),
                 "native_keyboard_focus":native_keyboard_focus,
+                "native_caption_focus":native_caption_focus,
                 "presented":presented,"focus_only":!presented,"minimized":unsafe { IsIconic(hwnd) } != 0,
                 "client_screen_bounds":screen_bounds,
                 "coordinate_space":"physical_client_pixels","dpi":unsafe { GetDpiForWindow(hwnd) },
@@ -383,6 +414,9 @@ impl ComputerControl {
                 );
             }
             if unsafe { GetForegroundWindow() } != hwnd || unsafe { IsIconic(hwnd) } != 0 {
+                if !accepted && unsafe { IsIconic(hwnd) } == 0 {
+                    return caption_focus::recover(&observed, target, accepted, acknowledged);
+                }
                 return Err(json!({"code":"computer_control_foreground_denied",
                     "message":"Windows did not activate the owned CAD window; no input was sent",
                     "activation_accepted":accepted,"activation_acknowledged":acknowledged,
