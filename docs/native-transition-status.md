@@ -7,12 +7,42 @@ has occurred. The user approved continued UI-first coverage and repair of all
 posted defects, including newly reported defects; passing CI does not close the
 remaining UI/MCP qualification gates.
 
+Current direction: **new exploratory UI coverage is paused**. Work is limited to
+known-defect implementation and planned targeted acceptance of repaired behavior.
+Preserve earlier passes; do not advance to untouched catalog items or rerun passing
+cases. Shared runtime ownership remains withheld: no deployment, restart or live
+acceptance proceeds until ownership and saved-work readiness are established.
+
+The automated `native-exact-thread-precision` blocker is superseded by existing
+hosted evidence at `43c20c30c66c3cdadc34256747376222333ca5ba`, run
+[38055144113](https://github.com/limo-cad/Limo-CAD/actions/runs/38055144113).
+The exact `external_threads_reject_wrong_faces_validate_fits_and_edit_original_cylinder_atomically`
+case passed Ubuntu job114221952756 (line2619), Windows job114221952850
+(line1609), and macOS job114221952854 (line1451). Receipt:
+`D:/limo-cad-maintenance/defect-closure-20261010/native-exact-thread-superseding.json`.
+No new tests were run for this reconciliation. This supersedes only that automated
+blocker, not human GUI export, Medix STEP, or later-source qualification. Earlier
+failed receipts remain historical evidence.
+
+Known #348 source repair `ae63529b` preserves ambiguous cylindrical surfaces with
+reasons and body/face provenance without increasing bore counts. It checks wall
+orientation, requires topology connectivity before merging coaxial candidates,
+and exposes geometry candidates separately when authored holes exist. Simple
+blind depth requires two analytic rings and one disk cap; `8820f4fa` locates that
+candidate at its mouth and points its normal from cap toward mouth. These are
+conservative geometry candidates, not a manufacturing certificate. Through depth,
+complex imported/counterbore depth, and real assembly/touching-topology acceptance
+remain unqualified. Added focused regressions have not been run locally; source
+review follow-ups and hosted validation remain pending. No GUI deployment is
+claimed.
+
 Concentric UI coverage is also closed on clean matched `93823f6d`: distinct
 radii preserved, shared center, invalid selection/cancel, retained deletion,
 exact Undo/Redo and complete native persistence. Receipt:
 `qualification/concentric-human-ui-20261010.json`. Current UI totals are47 passed,
 332 not run,29 failed,9 needs_recheck,24 in progress,2 restricted. All256 manual
-MCP cases remain not run. Next untouched catalog item is Symmetry.
+MCP cases remain not run. Symmetry is the next untouched catalog item, currently
+paused; only targeted known-repair acceptance remains planned.
 
 Deployment remains pending. Multiple recent Vita GUI windows share the canonical
 runtime; only surface-qualification PID21480 is owned here. NATS notice
