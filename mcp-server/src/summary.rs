@@ -459,30 +459,33 @@ fn blind_depth(
     if rings.len() != 2 {
         return None;
     }
-    let is_cap = |index: usize| {
+    // Count structural disk caps before checking orientation: a closed cavity
+    // with a reversed cap must not masquerade as a one-ended blind bore.
+    let disk_cap = |index: usize| {
         let (edge, _) = rings[index];
-        body.faces.iter().any(|cap| {
-            cap.id != face.id
-                && cap.edge_keys.len() == 1
-                && cap.edge_keys[0] == edge.key
-                && cap
-                    .plane
-                    .is_some_and(|plane| dot(plane.normal, axis).abs() > 0.999999)
+        body.faces.iter().find_map(|cap| {
+            (cap.id != face.id && cap.edge_keys.len() == 1 && cap.edge_keys[0] == edge.key)
+                .then_some(cap.plane)
+                .flatten()
         })
     };
-    let cap = match (is_cap(0), is_cap(1)) {
-        (true, false) => 0,
-        (false, true) => 1,
+    let (cap, plane) = match (disk_cap(0), disk_cap(1)) {
+        (Some(plane), None) => (0, plane),
+        (None, Some(plane)) => (1, plane),
         _ => return None,
     };
     let mouth = rings[1 - cap].1;
     let delta = sub(mouth, rings[cap].1);
     let depth = dot(delta, axis).abs();
-    (depth.is_finite() && depth > 1e-6).then(|| BlindExtent {
-        depth,
-        mouth,
-        outward: scale(axis, if dot(delta, axis) < 0. { -1. } else { 1. }),
-    })
+    let outward = scale(axis, if dot(delta, axis) < 0. { -1. } else { 1. });
+    let normal = normalize(plane.normal);
+    let on_plane = dot(sub(rings[cap].1, plane.origin), normal).abs();
+    (depth.is_finite() && depth > 1e-6 && dot(normal, outward) > 0.999999 && on_plane <= 1e-6)
+        .then_some(BlindExtent {
+            depth,
+            mouth,
+            outward,
+        })
 }
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
@@ -952,6 +955,30 @@ mod tests {
         assert_eq!(hole.through, Some(false));
         assert_eq!(hole.position, [0., 0., 0.]);
         assert_eq!(hole.normal, [0., 0., -1.]);
+        let plane = scene.bodies[0].faces[1].plane.unwrap();
+        scene.bodies[0].faces[1].plane.as_mut().unwrap().normal = [0., 0., 1.];
+        assert!(
+            holes_from_scene(&scene)[0].depth.is_none(),
+            "bottom must face the cavity mouth"
+        );
+        scene.bodies[0].faces[1].plane = Some(plane);
+        scene.bodies[0].faces[1].plane.as_mut().unwrap().origin[2] += 1.;
+        assert!(
+            holes_from_scene(&scene)[0].depth.is_none(),
+            "cap must contain its analytic ring"
+        );
+        scene.bodies[0].faces[1].plane = Some(plane);
+        let mut second_cap = scene.bodies[0].faces[1].clone();
+        second_cap.id = limo_cad_core::FaceId(3);
+        second_cap.edge_keys = vec!["ring0".into()];
+        // Deliberately reversed orientation does not remove the second cap.
+        second_cap.plane.as_mut().unwrap().origin[2] = 0.;
+        scene.bodies[0].faces.push(second_cap);
+        assert!(
+            holes_from_scene(&scene)[0].depth.is_none(),
+            "two caps describe a closed cavity"
+        );
+        scene.bodies[0].faces.pop();
         // Cylinder origin and axis sign are parameterization, not the mouth.
         let cylinder = scene.bodies[0].faces[0].cylinder.as_mut().unwrap();
         cylinder.origin.z = 100.;
