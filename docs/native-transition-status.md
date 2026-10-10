@@ -30,11 +30,21 @@ orientation, requires topology connectivity before merging coaxial candidates,
 and exposes geometry candidates separately when authored holes exist. Simple
 blind depth requires two analytic rings and one disk cap; `8820f4fa` locates that
 candidate at its mouth and points its normal from cap toward mouth. These are
-conservative geometry candidates, not a manufacturing certificate. Through depth,
-complex imported/counterbore depth, and real assembly/touching-topology acceptance
-remain unqualified. Added focused regressions have not been run locally; source
-review follow-ups and hosted validation remain pending. No GUI deployment is
-claimed.
+conservative geometry candidates, not a manufacturing certificate. `57b7cec3`
+requires an oriented, coplanar bottom; `e2397070` derives recess depth from two
+unsplit walls and a proven annular shoulder, plus total blind depth when a terminal
+disk proves it. `b0b01d0f` publishes exact face-owned analytic linear-seam evidence
+from OCCT; `e3a19f89` accepts that evidence with strict ownership and axial endpoint
+checks, retaining unknown depth for unsupported topology. Independent source
+reviews found no remaining blocker. Imported through classification and real
+assembly/touching-topology acceptance remain unqualified; local assertions have
+not been run and hosted validation remains pending. No GUI deployment is claimed.
+
+For #363, `a48a2f33` strengthens the existing tangent-arch/circular-hole native
+fixture with exact volume and default/fine closed-mesh export checks. The fixture
+exercises circular-boundary comparison; it does not prove inserted-sample or
+exhaustion paths execute. Existing budget-helper evidence covers exhaustion and
+shared allowances. Post-fix hosted native acceptance remains pending.
 
 Concentric UI coverage is also closed on clean matched `93823f6d`: distinct
 radii preserved, shared center, invalid selection/cancel, retained deletion,
