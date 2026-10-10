@@ -102,6 +102,9 @@ pub(in super::super) fn request(
     revision: u64,
     request: &Value,
 ) -> Result<Value, String> {
+    if request.get("named_view").is_some() {
+        return Err("action view does not accept named_view; use recall_named_view with name to recall a saved camera, visibility and display offsets".into());
+    }
     let view = request["view"].as_str().unwrap_or("current");
     let direction = if view == "current" {
         None
@@ -315,6 +318,37 @@ pub(in super::super) fn poll(world: &mut World, id: u64) -> Option<Result<Value,
 mod tests {
     use super::*;
     use crate::session_bridge::native_interface::tests::Fixture;
+
+    #[test]
+    fn unsupported_named_camera_does_not_change_view_or_start_motion() {
+        let _lock = crate::session_bridge::tests::TEST_LOCK.lock().unwrap();
+        let fixture = Fixture::new();
+        let owner = fixture.owner();
+        let receipt = fixture
+            .bridge
+            .native_document_receipt(&fixture.engine, &owner)
+            .unwrap();
+        let mut app = native_viewport::interface_scene_fixture();
+        native_viewport::apply_interface_model(app.world_mut(), model_snapshot(&fixture.engine))
+            .unwrap();
+        let before = native_viewport::interface_camera_snapshot(app.world()).1;
+        for duration in [0, 300] {
+            let error = request(
+                app.world_mut(),
+                &owner,
+                receipt.revision,
+                &json!({"view":"current", "named_view":"Review", "duration_ms":duration,
+                    "expires_ms":crate::session_bridge::now_ms()+5000}),
+            )
+            .unwrap_err();
+            assert!(error.contains("recall_named_view"));
+            assert_eq!(
+                native_viewport::interface_camera_snapshot(app.world()).1,
+                before
+            );
+            assert!(app.world().get_resource::<Motions>().is_none());
+        }
+    }
 
     #[test]
     fn motion_receipts_wait_for_completion_and_reject_interruption_without_overwriting_the_camera()

@@ -94,6 +94,9 @@ fn validate_presentation(arguments: &Value) -> Result<(), String> {
 }
 
 fn validate_view(arguments: &Value) -> Result<(), String> {
+    if arguments.get("named_view").is_some() {
+        return Err("action view does not accept named_view; use recall_named_view with name to recall a saved camera, visibility and display offsets".into());
+    }
     if let Some(angle) = arguments.get("orbit_degrees") {
         if !angle
             .as_f64()
@@ -2396,6 +2399,18 @@ mod tests {
             json!({"view":"isometric","orbit_degrees":120}),
         ] {
             assert!(validate_view(&arguments).is_err(), "{arguments}");
+        }
+    }
+
+    #[test]
+    fn view_rejects_named_camera_instead_of_silently_dropping_it() {
+        for duration in [0, 300] {
+            let error = validate_view(
+                &json!({"view":"current", "named_view":"Review", "duration_ms":duration}),
+            )
+            .unwrap_err();
+            assert!(error.contains("recall_named_view"));
+            assert!(error.contains("does not accept named_view"));
         }
     }
 

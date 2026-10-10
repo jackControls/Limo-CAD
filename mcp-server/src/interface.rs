@@ -26,7 +26,7 @@ pub fn with_file_options(mut schema: Value) -> Value {
         );
     schema["properties"]["selected_only"] = serde_json::json!({"type":"boolean","description":"For file exports, export only selected bodies or occurrences."});
     schema["properties"]["scope"] = serde_json::json!({"type":"string","enum":["assembly","definition"],"description":"Required for 3MF/STL file export: placed assembly occurrences or one mesh per selected definition."});
-    schema["properties"]["named_view"] = serde_json::json!({"type":"string","description":"For assembly exports: a saved presentation or print view. Empty selects assembled placement; omitted uses the current recalled view."});
+    schema["properties"]["named_view"] = serde_json::json!({"type":"string","description":"For assembly exports only: a saved presentation or print view. Empty selects assembled placement; omitted uses the current recalled view. Not accepted by action view; use recall_named_view with name to recall a saved camera, visibility and display offsets."});
     schema["properties"]["print_bed"] = crate::print_bed_schema();
     schema["properties"]["allow_layout_issues"] = serde_json::json!({"type":"boolean","default":false,"description":"Deliberately proceed after reviewing print-layout diagnostics. Timeline, ownership and unsaved-layout guards still apply."});
     schema["properties"]["feature_id"] = serde_json::json!({"type":"integer","minimum":0,"description":"For export_profile_dxf: sketch feature ID from sketch_profiles."});
