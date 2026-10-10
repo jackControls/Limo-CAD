@@ -83,6 +83,12 @@ pub struct BambuTemplateSummary {
     pub printer_variant: String,
     pub process_settings_id: String,
     pub process_defaults: PrintSettingsDto,
+    /// Read-only native process values. Missing fields remain absent, including values
+    /// outside the typed CAD editing capability; presence does not prove native import.
+    #[serde(default)]
+    pub native_process_settings: BTreeMap<String, Value>,
+    #[serde(default)]
+    pub process_capability_warnings: Vec<String>,
     pub nozzle_diameter_mm: Vec<f64>,
     pub filament_settings_ids: Vec<String>,
     pub filament_types: Vec<String>,
@@ -149,6 +155,14 @@ pub struct BambuPartReport {
     pub inherited_settings: BTreeMap<String, String>,
     pub written_overrides: BTreeMap<String, String>,
     pub effective_settings: BTreeMap<String, String>,
+    /// Native metadata intent, including read-only layer, width, shell and support
+    /// fields. These are not measured extrusion widths, support usage or toolpaths.
+    #[serde(default)]
+    pub native_inherited_settings: BTreeMap<String, Value>,
+    #[serde(default)]
+    pub native_effective_settings: BTreeMap<String, Value>,
+    #[serde(default)]
+    pub native_effective_sources: BTreeMap<String, BambuSettingOrigin>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BambuProjectReport {
@@ -383,6 +397,9 @@ pub fn write_bambu_project(
         }
     }
     let mut template = parse_template(template_bytes)?;
+    // Inspection retains native options that CAD cannot author. Managed export
+    // remains explicit about that boundary rather than silently inventing defaults.
+    typed_profile_defaults(&template.profile)?;
     let reference = load_reference(&template, request)?;
     heights::strip_managed(&mut template, reference.as_ref())?;
     modifiers::strip_managed(&mut template, reference.as_ref())?;
@@ -1222,6 +1239,7 @@ fn parse_template(bytes: &[u8]) -> Result<Template, ExportError> {
     if plate_ids != (1..=plates.len()).collect() {
         return fail("Saved Bambu plate IDs must be contiguous starting at one");
     }
+    let (process_defaults, process_capability_warnings) = inspect_profile_defaults(&profile)?;
     let summary = BambuTemplateSummary {
         template_sha256: hash(bytes),
         version,
@@ -1229,7 +1247,9 @@ fn parse_template(bytes: &[u8]) -> Result<Template, ExportError> {
         printer_model: profile_string(&profile, "printer_model")?,
         printer_variant: profile_string(&profile, "printer_variant")?,
         process_settings_id: profile_string(&profile, "print_settings_id")?,
-        process_defaults: typed_profile_defaults(&profile)?,
+        process_defaults,
+        native_process_settings: native_process_settings(&profile),
+        process_capability_warnings,
         nozzle_diameter_mm,
         filament_settings_ids,
         filament_types,
@@ -1543,6 +1563,72 @@ const SETTING_KEYS: [&str; 5] = [
     "top_shell_layers",
     "bottom_shell_layers",
 ];
+/// A bounded read-only handoff view, not an extensible CAD mutation registry.
+/// Native scalar/vector spelling is retained so extruder variants and percent
+/// widths are not collapsed into guessed physical values.
+pub(crate) const NATIVE_PROCESS_KEYS: [&str; 23] = [
+    "wall_loops",
+    "sparse_infill_density",
+    "sparse_infill_pattern",
+    "top_shell_layers",
+    "bottom_shell_layers",
+    "layer_height",
+    "initial_layer_print_height",
+    "line_width",
+    "initial_layer_line_width",
+    "outer_wall_line_width",
+    "inner_wall_line_width",
+    "top_surface_line_width",
+    "sparse_infill_line_width",
+    "internal_solid_infill_line_width",
+    "support_line_width",
+    "top_shell_thickness",
+    "bottom_shell_thickness",
+    "enable_support",
+    "support_type",
+    "support_style",
+    "support_threshold_angle",
+    "support_on_build_plate_only",
+    "enable_prime_tower",
+];
+
+fn native_process_settings(profile: &Value) -> BTreeMap<String, Value> {
+    NATIVE_PROCESS_KEYS
+        .iter()
+        .filter_map(|key| {
+            profile
+                .get(*key)
+                .map(|value| ((*key).into(), value.clone()))
+        })
+        .collect()
+}
+
+pub(crate) fn native_effective_settings(
+    process: &BTreeMap<String, Value>,
+    object: &BTreeMap<String, String>,
+    volume: &BTreeMap<String, String>,
+) -> (
+    BTreeMap<String, Value>,
+    BTreeMap<String, BambuSettingOrigin>,
+) {
+    let mut values = process.clone();
+    let mut sources = values
+        .keys()
+        .map(|key| (key.clone(), BambuSettingOrigin::TemplateProcess))
+        .collect::<BTreeMap<_, _>>();
+    for (scope, origin) in [
+        (object, BambuSettingOrigin::TemplateObject),
+        (volume, BambuSettingOrigin::TemplateVolume),
+    ] {
+        for key in NATIVE_PROCESS_KEYS {
+            if let Some(value) = scope.get(key) {
+                values.insert(key.into(), Value::String(value.clone()));
+                sources.insert(key.into(), origin);
+            }
+        }
+    }
+    (values, sources)
+}
 pub(crate) fn settings_map(settings: &PrintSettingsDto) -> BTreeMap<String, String> {
     let mut values = BTreeMap::new();
     if let Some(v) = settings.wall_count {
@@ -1592,17 +1678,54 @@ fn profile_settings(profile: &Value) -> BTreeMap<String, String> {
         })
         .collect()
 }
-fn typed_profile_defaults(profile: &Value) -> Result<PrintSettingsDto, ExportError> {
+fn inspect_profile_defaults(
+    profile: &Value,
+) -> Result<(PrintSettingsDto, Vec<String>), ExportError> {
     let density = profile_string(profile, "sparse_infill_density")?;
     let pattern = profile_string(profile, "sparse_infill_pattern")?;
-    let defaults=PrintSettingsDto {
-        wall_count:Some(profile_u32(profile,"wall_loops")?),
-        infill_density_percent:Some(density.strip_suffix('%').ok_or_else(||err("Template infill density needs a percentage"))?.parse().map_err(err)?),
-        infill_pattern:Some(match pattern.as_str() {"grid"=>InfillPatternDto::Grid,"gyroid"=>InfillPatternDto::Gyroid,"zig-zag"=>InfillPatternDto::Rectilinear,"concentric"=>InfillPatternDto::Concentric,"cubic"=>InfillPatternDto::Cubic,"honeycomb"=>InfillPatternDto::Honeycomb,"lightning"=>InfillPatternDto::Lightning,_=>return fail("Selected template process pattern is outside the initial typed print-intent capability; choose a supported process template")}),
-        top_shell_layers:Some(profile_u32(profile,"top_shell_layers")?),
-        bottom_shell_layers:Some(profile_u32(profile,"bottom_shell_layers")?),
+    if pattern.is_empty() || pattern.len() > 64 || pattern.chars().any(char::is_control) {
+        return fail("Native infill pattern must be a nonempty bounded option name");
+    }
+    let infill_pattern = match pattern.as_str() {
+        "grid" => Some(InfillPatternDto::Grid),
+        "gyroid" => Some(InfillPatternDto::Gyroid),
+        "zig-zag" => Some(InfillPatternDto::Rectilinear),
+        "concentric" => Some(InfillPatternDto::Concentric),
+        "cubic" => Some(InfillPatternDto::Cubic),
+        "honeycomb" => Some(InfillPatternDto::Honeycomb),
+        "lightning" => Some(InfillPatternDto::Lightning),
+        _ => None,
+    };
+    let defaults = PrintSettingsDto {
+        wall_count: Some(profile_u32(profile, "wall_loops")?),
+        infill_density_percent: Some(
+            density
+                .strip_suffix('%')
+                .ok_or_else(|| err("Template infill density needs a percentage"))?
+                .parse()
+                .map_err(err)?,
+        ),
+        infill_pattern,
+        top_shell_layers: Some(profile_u32(profile, "top_shell_layers")?),
+        bottom_shell_layers: Some(profile_u32(profile, "bottom_shell_layers")?),
     };
     defaults.validate().map_err(ExportError)?;
+    let warnings = if infill_pattern.is_none() {
+        vec![format!(
+            "Native sparse_infill_pattern {pattern:?} is retained for read-only inspection; typed CAD process editing and managed export do not support this value. Native project import and toolpaths are not verified by inspection."
+        )]
+    } else {
+        Vec::new()
+    };
+    Ok((defaults, warnings))
+}
+fn typed_profile_defaults(profile: &Value) -> Result<PrintSettingsDto, ExportError> {
+    let (defaults, warnings) = inspect_profile_defaults(profile)?;
+    if let Some(warning) = warnings.first() {
+        return Err(err(format!(
+            "Managed Bambu export cannot represent this process: {warning}"
+        )));
+    }
     Ok(defaults)
 }
 fn profile_hash(profile: &Value) -> String {
@@ -1852,6 +1975,21 @@ fn update_config(
             }
             validate_effective(&effective)?;
             let old = metadata(part)?;
+            let (mut native_inherited, mut native_sources) = native_effective_settings(
+                &native_process_settings(&template.profile),
+                &object_settings,
+                &old,
+            );
+            // A refresh restores reviewed managed baselines before applying CAD
+            // overrides. Native read-only fields retain their untouched scopes.
+            for (key, value) in &inherited {
+                native_inherited.insert(key.clone(), Value::String(value.clone()));
+            }
+            let mut native_effective = native_inherited.clone();
+            for (key, value) in &effective {
+                native_effective.insert(key.clone(), Value::String(value.clone()));
+            }
+            native_sources.extend(effective_sources.clone());
             let filament = old
                 .get("extruder")
                 .or_else(|| object_settings.get("extruder"))
@@ -1903,6 +2041,9 @@ fn update_config(
                     inherited_settings: inherited.clone(),
                     written_overrides: overrides.clone(),
                     effective_settings: effective.clone(),
+                    native_inherited_settings: native_inherited.clone(),
+                    native_effective_settings: native_effective.clone(),
+                    native_effective_sources: native_sources.clone(),
                 });
             }
         }
@@ -3279,6 +3420,148 @@ pub(crate) mod tests {
         entries.insert("3D/_rels/3dmodel.model.rels".into(), graph);
         entries.insert("../escape".into(), vec![]);
         assert!(inspect_bambu_template(&write_archive(&entries).unwrap()).is_err());
+    }
+    #[test]
+    fn native_patterns_outside_typed_capability_are_inspected_without_becoming_editable() {
+        let (template, meshes, appearances, instances, structure, intent, request) = fixture();
+        let mut entries = archive(&template).unwrap();
+        for pattern in ["rectilinear", "adaptivecubic", "future_native_pattern"] {
+            let mut settings = profile();
+            settings["sparse_infill_pattern"] = json!(pattern);
+            settings["layer_height"] = json!("0.28");
+            settings["line_width"] = json!(["0.50", "0.45"]);
+            settings["top_shell_thickness"] = json!("1.2");
+            settings["enable_support"] = json!("0");
+            settings["enable_prime_tower"] = json!("0");
+            entries.insert(PROFILE.into(), serde_json::to_vec(&settings).unwrap());
+            let bytes = write_archive(&entries).unwrap();
+            let summary = inspect_bambu_template(&bytes).unwrap();
+            assert_eq!(summary.process_defaults.infill_pattern, None);
+            assert_eq!(summary.process_defaults.wall_count, Some(2));
+            assert_eq!(
+                summary.native_process_settings["sparse_infill_pattern"],
+                pattern
+            );
+            assert_eq!(
+                summary.native_process_settings["line_width"],
+                json!(["0.50", "0.45"])
+            );
+            assert_eq!(summary.native_process_settings["layer_height"], "0.28");
+            assert_eq!(
+                summary.native_process_settings["top_shell_thickness"],
+                "1.2"
+            );
+            assert_eq!(summary.native_process_settings["enable_support"], "0");
+            assert_eq!(summary.native_process_settings["enable_prime_tower"], "0");
+            assert!(!summary
+                .native_process_settings
+                .contains_key("machine_start_gcode"));
+            assert_eq!(summary.process_capability_warnings.len(), 1);
+            let error = write_bambu_project(
+                &bytes,
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &intent,
+                &request,
+            )
+            .err()
+            .unwrap();
+            assert!(error
+                .0
+                .contains("Managed Bambu export cannot represent this process"));
+            assert!(error.0.contains("read-only inspection"));
+        }
+        let mut settings = profile();
+        settings["sparse_infill_pattern"] = json!("rectilinear");
+        settings["sparse_infill_density"] = json!("NaN%");
+        entries.insert(PROFILE.into(), serde_json::to_vec(&settings).unwrap());
+        assert!(inspect_bambu_template(&write_archive(&entries).unwrap()).is_err());
+    }
+    #[test]
+    fn native_read_only_fields_keep_effective_scope_and_survive_mesh_refresh() {
+        let (template, meshes, appearances, instances, structure, intent, request) = fixture();
+        let mut entries = archive(&template).unwrap();
+        let mut settings = profile();
+        settings["sparse_infill_pattern"] = json!("zig-zag");
+        settings["layer_height"] = json!("0.28");
+        settings["line_width"] = json!(["0.50", "0.45"]);
+        settings["top_shell_thickness"] = json!("1.2");
+        settings["enable_support"] = json!("0");
+        settings["enable_prime_tower"] = json!("0");
+        entries.insert(PROFILE.into(), serde_json::to_vec(&settings).unwrap());
+        let config = text(&entries, CONFIG).unwrap().replace(
+            "<object id=\"20\">",
+            "<object id=\"20\"><metadata key=\"outer_wall_line_width\" value=\"0.48\"/>",
+        ).replace(
+            "<metadata key=\"name\" value=\"First\"/>",
+            "<metadata key=\"name\" value=\"First\"/><metadata key=\"top_shell_thickness\" value=\"1.6\"/>",
+        );
+        entries.insert(CONFIG.into(), config.into_bytes());
+        let bytes = write_archive(&entries).unwrap();
+        let summary = inspect_bambu_template(&bytes).unwrap();
+        assert_eq!(
+            summary.process_defaults.infill_pattern,
+            Some(InfillPatternDto::Rectilinear)
+        );
+        assert!(summary.process_capability_warnings.is_empty());
+        let result = write_bambu_project(
+            &bytes,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let first = result
+            .report
+            .parts
+            .iter()
+            .find(|part| part.binding.body_id == BodyId(1))
+            .unwrap();
+        assert_eq!(
+            first.native_effective_settings["line_width"],
+            json!(["0.50", "0.45"])
+        );
+        assert_eq!(first.native_effective_settings["layer_height"], "0.28");
+        assert_eq!(
+            first.native_effective_settings["outer_wall_line_width"],
+            "0.48"
+        );
+        assert_eq!(
+            first.native_effective_settings["top_shell_thickness"],
+            "1.6"
+        );
+        assert_eq!(first.native_effective_settings["wall_loops"], "6");
+        assert_eq!(first.native_inherited_settings["wall_loops"], "2");
+        assert_eq!(
+            first.native_effective_sources["line_width"],
+            BambuSettingOrigin::TemplateProcess
+        );
+        assert_eq!(
+            first.native_effective_sources["outer_wall_line_width"],
+            BambuSettingOrigin::TemplateObject
+        );
+        assert_eq!(
+            first.native_effective_sources["top_shell_thickness"],
+            BambuSettingOrigin::TemplateVolume
+        );
+        assert_eq!(
+            first.native_effective_sources["wall_loops"],
+            BambuSettingOrigin::CadPart
+        );
+        assert!(!result.report.installed_slicer_imported && !result.report.toolpaths_generated);
+        let refreshed = inspect_bambu_template(&result.bytes).unwrap();
+        assert_eq!(
+            refreshed.native_process_settings,
+            summary.native_process_settings
+        );
+        assert!(!refreshed
+            .native_process_settings
+            .contains_key("support_style"));
     }
     #[test]
     fn native_resave_renumbering_and_instance_reordering_use_uuid_and_identify_id() {

@@ -203,6 +203,15 @@ pub(in super::super) fn paint(
             ),
         );
         info("Template source hash", t.template_sha256.clone());
+        for (key, value) in &t.native_process_settings {
+            info(
+                &format!("Template native {key}"),
+                format!("{value} · read-only process metadata"),
+            );
+        }
+        for warning in &t.process_capability_warnings {
+            info("Template process capability", warning.clone());
+        }
     }
     info(
         "CAD manufacturing identity",
@@ -411,6 +420,19 @@ pub(in super::super) fn paint(
                             .unwrap_or("unavailable")
                     )),
                 ));
+            }
+            for (key, value) in &part.native_effective_settings {
+                if part.effective_settings.contains_key(key) {
+                    continue;
+                }
+                information(
+                    &mut rows,
+                    &format!("{label} native {key}"),
+                    format!(
+                        "{value} · {:?}; read-only metadata, toolpath realization unverified",
+                        part.native_effective_sources.get(key)
+                    ),
+                );
             }
             for (axis, values) in ["X basis", "Y basis", "Z basis", "translation mm"]
                 .into_iter()

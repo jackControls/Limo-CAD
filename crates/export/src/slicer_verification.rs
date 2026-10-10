@@ -736,6 +736,8 @@ fn native_setting_readback(
     let collect = |summary: &crate::bambu_project::BambuTemplateSummary| -> Result<BTreeMap<String,serde_json::Value>,String> {
         let defaults = serde_json::to_value(&summary.process_defaults).map_err(|e| e.to_string())?;
         let mut settings = BTreeMap::from([("process_defaults".into(), defaults),
+            ("native_process_settings".into(),serde_json::json!(summary.native_process_settings)),
+            ("process_capability_warnings".into(),serde_json::json!(summary.process_capability_warnings)),
             ("profile_mappings".into(),serde_json::json!({"printer_settings_id":summary.printer_settings_id,
             "printer_model":summary.printer_model,"printer_variant":summary.printer_variant,"process_settings_id":summary.process_settings_id,"nozzle_diameter_mm":summary.nozzle_diameter_mm,
             "filament_settings_ids":summary.filament_settings_ids,"filament_types":summary.filament_types,"filament_colors":summary.filament_colors,
@@ -744,14 +746,20 @@ fn native_setting_readback(
         for object in &summary.objects {
             for part in &object.parts {
                 let uuid = part.uuid.as_ref().ok_or("Native volume lacks a stable UUID")?;
-                let mut values = crate::bambu_project::settings_map(&summary.process_defaults);
+                let (native_values, native_sources) = crate::bambu_project::native_effective_settings(
+                    &summary.native_process_settings, &object.settings, &part.settings,
+                );
+                let mut values = summary.native_process_settings.iter()
+                    .filter(|(key,_)| ["wall_loops","sparse_infill_density","sparse_infill_pattern","top_shell_layers","bottom_shell_layers"].contains(&key.as_str()))
+                    .filter_map(|(key,value)| value.as_str().map(|value| (key.clone(),value.to_owned())))
+                    .collect::<BTreeMap<_,_>>();
                 for scoped in [&object.settings, &part.settings] {
                     for key in ["wall_loops","sparse_infill_density","sparse_infill_pattern","top_shell_layers","bottom_shell_layers"] {
                         if let Some(value) = scoped.get(key) { values.insert(key.to_owned(), value.clone()); }
                     }
                 }
                 let key = format!("volume:{uuid}");
-                if settings.insert(key,serde_json::json!({"settings":values,"instance_count":object.instance_count,"subtype":part.subtype})).is_some() {
+                if settings.insert(key,serde_json::json!({"settings":values,"native_settings":native_values,"native_sources":native_sources,"instance_count":object.instance_count,"subtype":part.subtype})).is_some() {
                     return Err("Native volume identity is ambiguous; effective readback requires review".into());
                 }
             }
@@ -1044,6 +1052,13 @@ fn mapping_compatibility_issues(
     if expected.get("profile_mappings") != actual.get("profile_mappings") {
         issues.push("Native printer, nozzle, process, filament or support mapping differs from the reviewed project".into());
     }
+    if actual
+        .get("process_capability_warnings")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|warnings| !warnings.is_empty())
+    {
+        issues.push("Native process contains values outside typed CAD capability; read-only inspection is available but this managed handoff is not qualified".into());
+    }
     for key in expected
         .keys()
         .chain(actual.keys())
@@ -1086,10 +1101,58 @@ fn mapping_compatibility_issues(
                         issues.push(format!("Native effective setting changed: {key} {field}: writer {left} -> native {right}; review/reslice before qualifying the requested project"));
                     }
                 }
+                for field in crate::bambu_project::NATIVE_PROCESS_KEYS {
+                    if [
+                        "wall_loops",
+                        "sparse_infill_density",
+                        "sparse_infill_pattern",
+                        "top_shell_layers",
+                        "bottom_shell_layers",
+                    ]
+                    .contains(&field)
+                    {
+                        continue;
+                    }
+                    let left = &before["native_settings"][field];
+                    let right = &after["native_settings"][field];
+                    if !native_metadata_values_equal(left, right) {
+                        issues.push(format!("Native read-only process setting changed: {key} {field}: writer {left} -> native {right}; review/reslice before qualifying this handoff"));
+                    }
+                }
             }
         }
     }
     issues
+}
+
+fn native_metadata_values_equal(left: &serde_json::Value, right: &serde_json::Value) -> bool {
+    match (left, right) {
+        (serde_json::Value::Array(left), serde_json::Value::Array(right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|(left, right)| native_metadata_values_equal(left, right))
+        }
+        (serde_json::Value::String(left), serde_json::Value::String(right)) => {
+            let number = |value: &str| {
+                value
+                    .trim_end_matches('%')
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|value| value.is_finite())
+            };
+            match (number(left), number(right)) {
+                (Some(left_number), Some(right_number))
+                    if left.ends_with('%') == right.ends_with('%') =>
+                {
+                    (left_number - right_number).abs() <= 1e-6
+                }
+                _ => left == right,
+            }
+        }
+        _ => left == right,
+    }
 }
 
 struct CapturedPipe {
@@ -1618,6 +1681,50 @@ mod tests {
             serde_json::json!({"printer_model":"unreviewed"}),
         );
         assert_eq!(mapping_compatibility_issues(&before, &after).len(), 3);
+    }
+
+    #[test]
+    fn native_layer_width_and_support_changes_cannot_hide_behind_unchanged_typed_settings() {
+        let before = BTreeMap::from([(
+            "volume:stable".into(),
+            serde_json::json!({
+                "settings":{"wall_loops":"2","sparse_infill_density":"5%"},
+                "native_settings":{"layer_height":"0.28","line_width":["0.50","0.45"],
+                    "top_shell_thickness":"1.2","enable_support":"0","enable_prime_tower":"0"},
+                "instance_count":2,"subtype":"normal_part"
+            }),
+        )]);
+        let mut after = before.clone();
+        after.get_mut("volume:stable").unwrap()["native_settings"]["line_width"] =
+            serde_json::json!(["0.5", "0.450"]);
+        assert!(mapping_compatibility_issues(&before, &after).is_empty());
+        for (field, changed) in [
+            ("layer_height", serde_json::json!("0.2")),
+            ("line_width", serde_json::json!(["0.5", "0.40"])),
+            ("top_shell_thickness", serde_json::json!("1.6")),
+            ("enable_support", serde_json::json!("1")),
+            ("enable_prime_tower", serde_json::json!("1")),
+        ] {
+            let mut after = before.clone();
+            after.get_mut("volume:stable").unwrap()["native_settings"][field] = changed;
+            let issues = mapping_compatibility_issues(&before, &after);
+            assert_eq!(issues.len(), 1, "{field}: {issues:?}");
+            assert!(issues[0].contains(field));
+        }
+        assert!(!native_metadata_values_equal(
+            &serde_json::json!("50%"),
+            &serde_json::json!("50")
+        ));
+        assert!(!native_metadata_values_equal(
+            &serde_json::json!(["0.50"]),
+            &serde_json::json!("0.50")
+        ));
+        let mut after = before.clone();
+        after.insert(
+            "process_capability_warnings".into(),
+            serde_json::json!(["Unsupported native pattern retained for inspection"]),
+        );
+        assert_eq!(mapping_compatibility_issues(&before, &after).len(), 1);
     }
 
     #[test]

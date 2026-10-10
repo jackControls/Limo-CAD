@@ -1,12 +1,12 @@
 //! Owned saved-project handoff over the shared print-intent and Bambu adapters.
 use super::*;
 use crate::session_bridge::parse_engine_envelope;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use limo_cad_core::{
     BambuPartBinding, BambuRefreshReference, PrintIntentDocumentDto, PrintTargetHandoffDto,
     ProcessProfileSnapshotDto, ProcessProfileSourceDto, ProcessProfileStatusDto,
 };
-use limo_cad_export::{bambu_project::*, BambuExportRequest, MeshExportRequest};
+use limo_cad_export::{BambuExportRequest, MeshExportRequest, bambu_project::*};
 
 mod panel;
 pub(super) mod verification;
@@ -962,6 +962,11 @@ fn metadata(
     let template = s.template()?;
     let (operation, mut arguments) = match command {
         Command::ApplyProfile => {
+            if let Some(warning) = template.summary.process_capability_warnings.first() {
+                return Err(format!(
+                    "Template inspection is read-only for this process: {warning}"
+                ));
+            }
             let mut document = s.document.clone().ok_or("Inspect the template first")?;
             document.selected_process = Some(ProcessProfileSnapshotDto {
                 profile_id: template.summary.process_settings_id.clone(),
