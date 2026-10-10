@@ -875,6 +875,10 @@ mod tests {
             name: "document/section".into(),
             text: None,
         });
+        frame.surfaces.push(limo_cad_interface::Surface {
+            name: "section-review".into(),
+            text: None,
+        });
         let mut state = State {
             owner: Some(frame.context.clone()),
             revision: 8,
