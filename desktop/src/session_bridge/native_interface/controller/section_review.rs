@@ -33,7 +33,10 @@ pub(crate) enum Command {
 struct State {
     owner: Option<DocumentContext>,
     revision: u64,
+    // Draft edits invalidate analysis without replacing a retained editor's
+    // semantic binding while a blur commit is being reduced.
     generation: u64,
+    controls_generation: u64,
     visible: bool,
     bodies: Vec<(u64, String)>,
     body: String,
@@ -56,11 +59,38 @@ impl State {
         self.cutaway = None;
         self.message = message.into();
     }
+    fn reset_controls(&mut self, message: &str) {
+        self.controls_generation = self.controls_generation.saturating_add(1);
+        self.invalidate(message);
+    }
+    fn controls_current(&self, owner: &DocumentContext, revision: u64, generation: u64) -> bool {
+        self.visible
+            && self.owner.as_ref() == Some(owner)
+            && self.revision == revision
+            && self.controls_generation == generation
+    }
     fn current(&self, owner: &DocumentContext, revision: u64, generation: u64) -> bool {
         self.visible
             && self.owner.as_ref() == Some(owner)
             && self.revision == revision
             && self.generation == generation
+    }
+    fn set_value(&mut self, field: Field, value: String) {
+        match field {
+            Field::Body => self.body = value,
+            Field::Plane => self.plane = value,
+            Field::Offset => self.offset = value,
+            Field::Probe => self.probe = value,
+            Field::Side => self.side = value,
+        }
+        self.invalidate("Section inputs changed. Inspect to refresh.");
+    }
+    fn toggle_view(&mut self) {
+        self.in_3d = !self.in_3d;
+        self.controls_generation = self.controls_generation.saturating_add(1);
+        // Existing geometry is still useful in the other view, but an older
+        // query must not complete into the replacement presentation scope.
+        self.generation = self.generation.saturating_add(1);
     }
     fn value(&self, field: Field) -> &str {
         match field {
@@ -166,7 +196,7 @@ pub(crate) fn reduce(
         .map(|center| f64::from(center[0]))
         .unwrap_or(0.);
         let mut state = world.remove_resource::<State>().unwrap_or_default();
-        state.invalidate("Choose the plane and coordinate, then Inspect. Probe is optional.");
+        state.reset_controls("Choose the plane and coordinate, then Inspect. Probe is optional.");
         state.owner = Some(receipt.owner);
         state.revision = receipt.revision;
         state.visible = true;
@@ -194,7 +224,7 @@ pub(crate) fn reduce(
     let state = world
         .get_resource::<State>()
         .ok_or("Open Section Analysis")?;
-    if !state.current(&action.context, receipt.revision, generation) {
+    if !state.controls_current(&action.context, receipt.revision, generation) {
         return Err("The section controls or source model changed; inspect again".into());
     }
     if let Command::Field(field) = command {
@@ -213,15 +243,7 @@ pub(crate) fn reduce(
                 return Err("Choose a current section option".into());
             }
         }
-        let mut state = world.resource_mut::<State>();
-        match field {
-            Field::Body => state.body = value,
-            Field::Plane => state.plane = value,
-            Field::Offset => state.offset = value,
-            Field::Probe => state.probe = value,
-            Field::Side => state.side = value,
-        }
-        state.invalidate("Section inputs changed. Inspect to refresh.");
+        world.resource_mut::<State>().set_value(*field, value);
         return Ok(json!({"handled":true}));
     }
     if !super::super::is_activation(&action.control.input) {
@@ -230,13 +252,13 @@ pub(crate) fn reduce(
     if *command == Command::Close {
         let mut state = world.resource_mut::<State>();
         state.visible = false;
-        state.invalidate("");
+        state.reset_controls("");
         native_viewport::section_view::clear(world);
         return Ok(json!({"closed":true}));
     }
     if *command == Command::ToggleView {
         let mut state = world.resource_mut::<State>();
-        state.in_3d = !state.in_3d;
+        state.toggle_view();
         if !state.in_3d
             || state.cutaway.is_some()
             || state
@@ -274,6 +296,7 @@ pub(crate) fn reduce(
     };
     let owner = receipt.owner.clone();
     let revision = receipt.revision;
+    let report_generation = world.resource::<State>().generation;
     worker::enqueue_prepared_query(
         world,
         receipt.owner,
@@ -298,7 +321,7 @@ pub(crate) fn reduce(
             services.bridge.with_native_document_receipt(
                 &services.engine, &owner, |current| {
                     if current != revision || !world.get_resource::<State>()
-                        .is_some_and(|s| s.current(&owner, current, generation)) {
+                        .is_some_and(|s| s.current(&owner, current, report_generation)) {
                         return Err("The section review changed before the result arrived".into());
                     }
                     let (report,image,cutaway)=match result {
@@ -404,12 +427,12 @@ pub(crate) fn synchronize(
     let result = (|| {
         if state.owner.as_ref() != Some(owner) {
             state.visible = false;
-            state.invalidate("");
+            state.reset_controls("");
             state.owner = Some(owner.clone());
         }
         if state.in_3d && workbench::workspace(world) == workbench::Workspace::Drawing {
             state.visible = false;
-            state.invalidate("");
+            state.reset_controls("");
         }
         if !state.visible {
             native_viewport::section_view::clear(world);
@@ -421,7 +444,7 @@ pub(crate) fn synchronize(
             .revision;
         if state.revision != revision {
             state.revision = revision;
-            state.invalidate("Source model changed. Inspect to refresh.");
+            state.reset_controls("Source model changed. Inspect to refresh.");
             state.bodies = services
                 .engine
                 .solid_scene_snapshot()
@@ -465,7 +488,7 @@ pub(crate) fn synchronize(
 pub(crate) fn escape(world: &mut World) -> bool {
     if let Some(mut state) = world.get_resource_mut::<State>().filter(|s| s.visible) {
         state.visible = false;
-        state.invalidate("");
+        state.reset_controls("");
         native_viewport::section_view::clear(world);
         true
     } else {
@@ -531,7 +554,7 @@ fn paint(
         "section-close",
         close,
         Some("Close"),
-        NativeCommand::SectionReview(state.generation, Command::Close),
+        NativeCommand::SectionReview(state.controls_generation, Command::Close),
         chrome::rect(x + w - 72., y + 6., 60., 24.),
         None,
         72,
@@ -544,7 +567,7 @@ fn paint(
         "section-copy",
         copy,
         Some("Copy SVG"),
-        NativeCommand::SectionReview(state.generation, Command::CopySvg),
+        NativeCommand::SectionReview(state.controls_generation, Command::CopySvg),
         chrome::rect(x + w - 174., y + 6., 94., 24.),
         None,
         72,
@@ -618,7 +641,7 @@ fn paint(
             &format!("section-field-{index}"),
             control,
             caption.as_deref(),
-            NativeCommand::SectionReview(state.generation, Command::Field(field)),
+            NativeCommand::SectionReview(state.controls_generation, Command::Field(field)),
             chrome::rect(fx, fy + 17., col, 28.),
             None,
             72,
@@ -630,7 +653,7 @@ fn paint(
         "section-mode",
         control("Switch section view", state.in_3d),
         Some(if state.in_3d { "Diagram" } else { "3D cutaway" }),
-        NativeCommand::SectionReview(state.generation, Command::ToggleView),
+        NativeCommand::SectionReview(state.controls_generation, Command::ToggleView),
         chrome::rect(x + col + 24., y + 157., col, 28.),
         None,
         72,
@@ -643,7 +666,7 @@ fn paint(
         "section-inspect",
         inspect,
         Some("Inspect"),
-        NativeCommand::SectionReview(state.generation, Command::Inspect),
+        NativeCommand::SectionReview(state.controls_generation, Command::Inspect),
         chrome::rect(x + 12., y + 195., 92., 28.),
         None,
         72,
@@ -792,18 +815,189 @@ mod tests {
             owner: Some(owner.clone()),
             revision: 8,
             generation: 3,
+            controls_generation: 9,
             visible: true,
             ..Default::default()
         };
         assert!(state.current(&owner, 8, 3));
+        assert!(state.controls_current(&owner, 8, 9));
         assert!(!state.current(&owner, 9, 3));
+        assert!(!state.controls_current(&owner, 9, 9));
         let mut other = owner.clone();
         other.epoch = 2;
         assert!(!state.current(&other, 8, 3));
-        state.invalidate("changed");
+        assert!(!state.controls_current(&other, 8, 9));
+        state.set_value(Field::Offset, "10".into());
         assert!(!state.current(&owner, 8, 3));
-        state.visible = false;
+        assert!(state.current(&owner, 8, 4));
+        assert!(state.controls_current(&owner, 8, 9));
+        state.toggle_view();
         assert!(!state.current(&owner, 8, 4));
+        assert!(!state.controls_current(&owner, 8, 9));
+        assert!(state.current(&owner, 8, 5));
+        assert!(state.controls_current(&owner, 8, 10));
+        state.reset_controls("replacement");
+        assert!(!state.current(&owner, 8, 5));
+        assert!(!state.controls_current(&owner, 8, 10));
+        state.visible = false;
+        assert!(!state.current(&owner, 8, 6));
+        assert!(!state.controls_current(&owner, 8, 11));
+    }
+    #[test]
+    fn offset_blur_commit_preserves_the_probe_editor_and_first_signed_character() {
+        use crate::native_viewport::interface_shell::{fields, tests::fixture};
+        use bevy::{
+            input::{
+                keyboard::{Key, KeyCode, KeyboardInput, NativeKeyCode},
+                ButtonState,
+            },
+            text::EditableText,
+            ui::{ComputedStackIndex, ComputedUiRenderTargetInfo, UiGlobalTransform, UiScale},
+            window::WindowEvent,
+        };
+        use limo_cad_interface::ControlKey;
+
+        let (mut app, handle, _, _) = fixture();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            bevy::text::TextPlugin,
+        ))
+        .init_resource::<bevy::input_focus::InputFocus>()
+        .init_resource::<UiScale>()
+        .init_resource::<ViewportUiAssets>()
+        .init_resource::<Assets<Image>>();
+        fields::install(&mut app);
+        let camera = app.world_mut().spawn_empty().id();
+        let mut frame = handle.frame().unwrap();
+        frame.modal_stack = vec!["section-review".into()];
+        frame.surfaces.push(limo_cad_interface::Surface {
+            name: "document/section".into(),
+            text: None,
+        });
+        let mut state = State {
+            owner: Some(frame.context.clone()),
+            revision: 8,
+            generation: 3,
+            controls_generation: 1,
+            visible: true,
+            body: "1".into(),
+            bodies: vec![(1, "QA body".into())],
+            plane: "xz".into(),
+            side: "negative".into(),
+            ..Default::default()
+        };
+        state.widgets.begin();
+        paint(app.world_mut(), camera, &mut state, 1000., 800.).unwrap();
+        state.widgets.finish(app.world_mut());
+        let offset = state.widgets.entity("section-field-2").unwrap();
+        let probe = state.widgets.entity("section-field-3").unwrap();
+        for (entity, x) in [(offset, 100.), (probe, 350.)] {
+            app.world_mut().entity_mut(entity).insert((
+                ComputedNode {
+                    size: Vec2::new(160., 28.),
+                    inverse_scale_factor: 1.,
+                    ..default()
+                },
+                UiGlobalTransform::from_translation(Vec2::new(x, 100.)),
+                ComputedStackIndex(3),
+                InheritedVisibility::VISIBLE,
+                ComputedUiRenderTargetInfo::default(),
+            ));
+        }
+        handle.present(frame).unwrap();
+        app.update();
+        app.world_mut()
+            .run_system_cached(bevy::ui::widget::update_editable_text_styles)
+            .unwrap();
+        app.world_mut()
+            .run_system_cached(bevy::ui::widget::update_editable_text_layout)
+            .unwrap();
+        let packet = |value: &str| {
+            WindowEvent::KeyboardInput(KeyboardInput {
+                key_code: KeyCode::Unidentified(NativeKeyCode::Unidentified),
+                logical_key: Key::Character(value.into()),
+                text: Some(value.into()),
+                state: ButtonState::Pressed,
+                repeat: false,
+                window: Entity::PLACEHOLDER,
+            })
+        };
+        let focus = handle
+            .resolve_retained(ControlKey(offset.to_bits()))
+            .unwrap();
+        handle.prepare_activation(&focus).unwrap();
+        fields::after_window_input(app.world_mut(), &handle).unwrap();
+        for value in ["1", "8", "0"] {
+            assert!(fields::before_window_input(
+                app.world_mut(),
+                &handle,
+                &packet(value),
+                None,
+                default()
+            )
+            .unwrap());
+        }
+
+        // The human focus transition precedes reduction of the old field's
+        // queued blur value. The new editor must survive that later repaint.
+        let focus = handle
+            .resolve_retained(ControlKey(probe.to_bits()))
+            .unwrap();
+        let commits = fields::prepare_control_input(app.world_mut(), &handle, &focus).unwrap();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(
+            commits[0].control.input,
+            ControlInput::SetValue("180".into())
+        );
+        handle.prepare_activation(&focus).unwrap();
+        fields::after_window_input(app.world_mut(), &handle).unwrap();
+        state.set_value(Field::Offset, "180".into());
+        fields::acknowledge_control_input(app.world_mut(), &commits[0], true);
+        state.widgets.begin();
+        paint(app.world_mut(), camera, &mut state, 1000., 800.).unwrap();
+        state.widgets.finish(app.world_mut());
+        app.update();
+        assert_eq!(handle.focused_key(), Some(ControlKey(probe.to_bits())));
+        for (value, expected) in [("-", "-"), ("1", "-1"), ("0", "-10")] {
+            assert!(
+                fields::before_window_input(
+                    app.world_mut(),
+                    &handle,
+                    &packet(value),
+                    None,
+                    default()
+                )
+                .unwrap(),
+                "The first character must reach the already focused probe editor"
+            );
+            fields::after_window_input(app.world_mut(), &handle).unwrap();
+            assert_eq!(
+                app.world().get::<EditableText>(probe).unwrap().value(),
+                expected
+            );
+        }
+        assert!(
+            !state.current(&focus.context, 8, 3),
+            "The old report remains stale even though the editor binding stayed current"
+        );
+        let enter = WindowEvent::KeyboardInput(KeyboardInput {
+            key_code: KeyCode::Enter,
+            logical_key: Key::Enter,
+            text: None,
+            state: ButtonState::Pressed,
+            repeat: false,
+            window: Entity::PLACEHOLDER,
+        });
+        fields::before_window_input(app.world_mut(), &handle, &enter, None, default()).unwrap();
+        let commits = handle.take_actions().unwrap();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(
+            commits[0].control.input,
+            ControlInput::SetValue("-10".into())
+        );
+        state.set_value(Field::Probe, "-10".into());
+        assert_eq!(state.request(UnitSystem::Mm).unwrap().probe_mm, Some(-10.));
     }
     #[test]
     fn diagram_rasterizes_with_text_and_units() {
@@ -852,6 +1046,9 @@ mod tests {
         paint(&mut world, camera, &mut state, 1200., 900.).unwrap();
         state.widgets.finish(&mut world);
         let field = state.widgets.entity("section-field-2").unwrap();
+        let probe = state.widgets.entity("section-field-3").unwrap();
+        let field_binding = world.get::<InterfaceControl>(field).unwrap().binding;
+        let probe_binding = world.get::<InterfaceControl>(probe).unwrap().binding;
         let preview = state.widgets.entity("section-preview").unwrap();
         assert!(world.get::<ImageNode>(preview).is_some());
         state.offset = "4 mm".into();
@@ -860,6 +1057,14 @@ mod tests {
         paint(&mut world, camera, &mut state, 1200., 900.).unwrap();
         state.widgets.finish(&mut world);
         assert_eq!(state.widgets.entity("section-field-2"), Some(field));
+        assert_eq!(
+            world.get::<InterfaceControl>(field).unwrap().binding,
+            field_binding
+        );
+        assert_eq!(
+            world.get::<InterfaceControl>(probe).unwrap().binding,
+            probe_binding
+        );
         assert!(world.get_entity(preview).is_err());
         assert!(
             matches!(&world.get::<InterfaceControl>(field).unwrap().field,ControlField::Text{value,..} if value=="4 mm")
