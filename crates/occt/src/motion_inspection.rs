@@ -17,7 +17,7 @@ pub fn exact_swept_collision_check(
     if !request.clearance_threshold_mm.is_finite() || request.clearance_threshold_mm < 0. {
         return Err("swept collision clearance must be finite and non-negative".into());
     }
-    let document = manager.assembly_document();
+    let document = manager.assembly_document_ref();
     let study = document
         .motion_studies
         .iter()
@@ -28,7 +28,9 @@ pub fn exact_swept_collision_check(
         return Err("swept collision study exceeds 100,001 samples".into());
     }
     let count = steps as u32 + 1;
-    let scene = manager.solid_scene();
+    // The manager is immutably borrowed throughout inspection; retaining an
+    // owned scene here would duplicate all mesh buffers without isolation gain.
+    let scene = manager.solid_scene_ref();
     let mut events = BTreeMap::<(u64, u64, u64, u64), SweptCollisionEventDto>::new();
     let mut sample_count = 0;
     for index in 0..count {
@@ -44,7 +46,7 @@ pub fn exact_swept_collision_check(
         }
         let report = exact_interference_report(
             kernel,
-            &scene,
+            scene,
             &sample.solution.instance_body_poses,
             &InterferenceCheckRequestDto {
                 occurrence_ids: vec![],

@@ -12,8 +12,10 @@ pub fn evaluate_motion_study(
     kernel: &OcctKernel,
     request: &EvaluateMotionStudyRequestDto,
 ) -> Result<MotionStudyEvaluationDto, String> {
-    let document = manager.assembly_document();
-    let scene = manager.solid_scene();
+    // Sampling is read-only for this call's entire lifetime. In particular,
+    // playback must not duplicate every mesh buffer at each sampled frame.
+    let document = manager.assembly_document_ref();
+    let scene = manager.solid_scene_ref();
     let sample = |time_seconds| {
         manager
             .sample_motion_study(SampleMotionStudyRequestDto {
@@ -39,9 +41,9 @@ pub fn evaluate_motion_study(
     if request.enforce_contacts && contacts.iter().any(|c| c.stop_motion) {
         let start = sample(request.previous_time_seconds.unwrap_or(0.))?;
         for contact in contacts.iter().copied().filter(|c| c.stop_motion) {
-            let start_violation = gated_exact_contact_violation(kernel, &scene, &start, contact)?;
+            let start_violation = gated_exact_contact_violation(kernel, scene, &start, contact)?;
             let end_violation =
-                gated_exact_contact_violation(kernel, &scene, &final_sample, contact)?;
+                gated_exact_contact_violation(kernel, scene, &final_sample, contact)?;
             if start_violation > 1e-7 && end_violation >= start_violation {
                 final_sample = start.clone();
                 stopped_by_contact = Some(contact.id);
@@ -51,7 +53,7 @@ pub fn evaluate_motion_study(
                 if let Some(crossing) = first_exact_contact_crossing(
                     manager,
                     kernel,
-                    &scene,
+                    scene,
                     request.study_id,
                     (&start, &final_sample),
                     contact,
@@ -66,7 +68,7 @@ pub fn evaluate_motion_study(
     let mut pairs = Vec::with_capacity(contacts.len());
     let mut exact = true;
     for contact in contacts {
-        let (pair, is_exact) = gated_contact_result(kernel, &scene, &final_sample, contact)?;
+        let (pair, is_exact) = gated_contact_result(kernel, scene, &final_sample, contact)?;
         pairs.push(pair);
         exact &= is_exact;
     }
