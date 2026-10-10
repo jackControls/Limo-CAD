@@ -549,6 +549,18 @@ impl OcctKernel {
                 "Assembly drawing requires nonempty host-resolved occurrences".into(),
             ));
         }
+        if let Some((_, projection)) = self
+            .projection_cache
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(key, _)| key == request)
+        {
+            return Ok(projection.clone());
+        }
+        // These buffers belong to the native HLR call, not cache lookup.
+        // A retained projection must not copy every occurrence pose and body
+        // ID merely to discard those buffers on the read-only hit path.
         let occurrences = request
             .resolved_occurrences
             .iter()
@@ -560,15 +572,6 @@ impl OcctKernel {
             })
             .collect::<Vec<_>>();
         let body_ids = request.body_ids.iter().map(|id| id.0).collect::<Vec<_>>();
-        if let Some((_, projection)) = self
-            .projection_cache
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|(key, _)| key == request)
-        {
-            return Ok(projection.clone());
-        }
         #[cfg(test)]
         self.projection_calculations
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
