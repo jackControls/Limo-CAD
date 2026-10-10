@@ -5415,6 +5415,7 @@ mod tests {
                     },
                     faces: vec![FaceDto {
                         linear_seam_edge_keys: Vec::new(),
+                        outer_shell: None,
                         id: FaceId(id * 10),
                         key: format!("face-{id}"),
                         first_index: 0,
@@ -5651,6 +5652,7 @@ mod tests {
                     },
                     faces: vec![FaceDto {
                         linear_seam_edge_keys: Vec::new(),
+                        outer_shell: None,
                         id: FaceId(id * 10),
                         key: format!("face-{id}"),
                         first_index: 0,

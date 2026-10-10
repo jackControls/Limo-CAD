@@ -25,8 +25,9 @@ pub struct Hole {
     pub normal: [f64; 3],
     pub flip: bool,
     pub diameter: f64,
-    /// Geometry-only inference does not establish whether a cavity breaks through.
+    /// Unknown unless authored extent or bounded native cavity topology proves it.
     pub through: Option<bool>,
+    pub through_evidence: Option<&'static str>,
     pub depth: Option<f64>,
     pub depth_evidence: Option<&'static str>,
     pub style: String,
@@ -54,6 +55,7 @@ impl Hole {
             "flip": self.flip,
             "diameter": round3(self.diameter),
             "through": self.through,
+            "through_evidence": self.through_evidence,
             "depth": self.depth.map(round3),
             "depth_evidence": self.depth_evidence,
             "style": self.style,
@@ -176,6 +178,7 @@ pub fn holes_from_definitions(
                 flip: definition.flip,
                 diameter: definition.diameter,
                 through: Some(through),
+                through_evidence: Some("authored_feature_extent"),
                 depth,
                 depth_evidence: depth.map(|_| "authored_feature_extent"),
                 style: style.to_string(),
@@ -277,7 +280,8 @@ fn infer_scene(scene: &SolidSceneDto) -> (Vec<Hole>, Vec<Value>) {
             face_ids.dedup();
             // Exact rings and an oriented shoulder establish a narrow recess
             // span; a terminal disk additionally establishes blind depth.
-            // Split, through and incomplete topology retain unknown extent.
+            // Split and incomplete topology retain unknown extent. Exterior
+            // passage additionally requires native outer-shell provenance.
             let recess = (face_ids.len() == 2 && radii.len() == 2)
                 .then(|| {
                     let body = scene.bodies.iter().find(|body| body.id.0 == body_id)?;
@@ -292,29 +296,48 @@ fn infer_scene(scene: &SolidSceneDto) -> (Vec<Hole>, Vec<Value>) {
                 })
                 .flatten()
                 .or_else(|| recess.as_ref().and_then(|recess| recess.blind.clone()));
-            let depth = extent.as_ref().map(|extent| extent.depth);
+            let through_extent = (face_ids.len() == 1 && radii.len() == 1)
+                .then(|| {
+                    let body = scene.bodies.iter().find(|body| body.id.0 == body_id)?;
+                    let face = body.faces.iter().find(|face| face.id.0 == face_ids[0])?;
+                    through_depth(body, face, origin, axis, radii[0])
+                })
+                .flatten()
+                .or_else(|| recess.as_ref().and_then(|recess| recess.through.clone()));
+            let known_extent = extent.as_ref().or(through_extent.as_ref());
+            let depth = known_extent.map(|extent| extent.depth);
             Hole {
                 feature_id: None,
                 name: "cylinder".into(),
                 body_id,
                 face_id: face_ids.first().copied(),
                 face_ids,
-                position: extent
-                    .as_ref()
+                position: known_extent
                     .map(|extent| extent.mouth)
                     .or_else(|| recess.as_ref().map(|recess| recess.mouth))
                     .unwrap_or(origin),
-                normal: extent
-                    .as_ref()
+                normal: known_extent
                     .map(|extent| extent.outward)
                     .or_else(|| recess.as_ref().map(|recess| recess.outward))
                     .unwrap_or(axis),
                 flip: false,
                 diameter: 2.0 * radii[0],
-                through: depth.map(|_| false),
+                through: extent
+                    .as_ref()
+                    .map(|_| false)
+                    .or_else(|| through_extent.as_ref().map(|_| true)),
+                through_evidence: if through_extent.is_some() {
+                    Some("native_outer_shell_and_two_analytic_annular_openings")
+                } else {
+                    depth.map(|_| "analytic_terminal_disk")
+                },
                 depth,
                 depth_evidence: depth.map(|_| {
-                    if recess.is_some() {
+                    if through_extent.is_some() && recess.is_some() {
+                        "analytic_counterbore_rings_shoulder_and_outer_shell_openings"
+                    } else if through_extent.is_some() {
+                        "two_analytic_rings_and_outer_shell_annular_openings"
+                    } else if recess.is_some() {
                         "analytic_counterbore_rings_shoulder_and_terminal_disk"
                     } else {
                         "two_analytic_rings_and_one_planar_disk"
@@ -456,7 +479,7 @@ fn connected_walls(body: &BodyDto, face: &FaceDto, other_id: u64) -> bool {
 }
 
 #[derive(Clone)]
-struct BlindExtent {
+struct CavityExtent {
     depth: f64,
     mouth: [f64; 3],
     outward: [f64; 3],
@@ -466,7 +489,8 @@ struct CounterboreExtent {
     depth: f64,
     mouth: [f64; 3],
     outward: [f64; 3],
-    blind: Option<BlindExtent>,
+    blind: Option<CavityExtent>,
+    through: Option<CavityExtent>,
 }
 
 fn counterbore_extent(body: &BodyDto, ids: &[u64]) -> Option<CounterboreExtent> {
@@ -504,58 +528,25 @@ fn counterbore_extent(body: &BodyDto, ids: &[u64]) -> Option<CounterboreExtent> 
     }
     let plane = shoulder.plane?;
     let outward = normalize(plane.normal);
-    let ends = |wall: &FaceDto| -> Option<([f64; 3], [f64; 3])> {
-        let mut joint = None;
-        let mut outer = None;
-        let mut seam = None;
+    let ends = |wall: &FaceDto| {
         let cylinder = wall.cylinder.as_ref()?;
         let axis = normalize([cylinder.axis.x, cylinder.axis.y, cylinder.axis.z]);
         let origin = [cylinder.origin.x, cylinder.origin.y, cylinder.origin.z];
-        for key in &wall.edge_keys {
-            let edge = body.edges.iter().find(|edge| &edge.key == key)?;
-            let Some(circle) = edge.circle.as_ref() else {
-                if seam.replace(edge).is_some() {
-                    return None;
-                }
-                continue;
-            };
-            let center = [circle.center.x, circle.center.y, circle.center.z];
-            let delta = sub(center, origin);
-            if !(circle.closed
-                && (circle.radius - cylinder.radius).abs() <= 1e-6
-                && dot(
-                    normalize([circle.normal.x, circle.normal.y, circle.normal.z]),
-                    axis,
-                )
-                .abs()
-                    > 0.999999
-                && dot(outward, axis).abs() > 0.999999
-                && norm(sub(delta, scale(axis, dot(delta, axis)))) <= 1e-6)
-            {
-                return None;
-            }
-            if shoulder.edge_keys.contains(key) {
-                if joint.is_some() {
-                    return None;
-                }
-                joint = Some(center);
-            } else {
-                if outer.is_some() {
-                    return None;
-                }
-                outer = Some(center);
-            }
+        if dot(outward, axis).abs() <= 0.999999 {
+            return None;
         }
-        let (joint, outer) = (joint?, outer?);
-        if let Some(edge) = seam {
-            if !valid_axial_seam(body, wall, edge, joint, outer, axis, cylinder.radius) {
-                return None;
-            }
+        let [first, second] = cylinder_rings(body, wall, origin, axis, cylinder.radius)?;
+        match (
+            shoulder.edge_keys.contains(&first.0.key),
+            shoulder.edge_keys.contains(&second.0.key),
+        ) {
+            (true, false) => Some((first, second)),
+            (false, true) => Some((second, first)),
+            _ => None,
         }
-        Some((joint, outer))
     };
-    let (small_joint, bottom) = ends(small)?;
-    let (large_joint, mouth) = ends(large)?;
+    let ((_, small_joint), (bottom_edge, bottom)) = ends(small)?;
+    let ((_, large_joint), (mouth_edge, mouth)) = ends(large)?;
     if !(norm(sub(small_joint, large_joint)) <= 1e-6
         && dot(sub(small_joint, plane.origin), outward).abs() <= 1e-6)
     {
@@ -588,7 +579,31 @@ fn counterbore_extent(body: &BodyDto, ids: &[u64]) -> Option<CounterboreExtent> 
             && dot(extent.outward, outward) > 0.999999
             && (depth + stem).is_finite()
     })
-    .map(|_| BlindExtent {
+    .map(|_| CavityExtent {
+        depth: depth + stem,
+        mouth,
+        outward,
+    });
+    let through = (small.outer_shell == Some(true)
+        && large.outer_shell == Some(true)
+        && annular_outer_opening(
+            body,
+            small,
+            bottom_edge,
+            bottom,
+            scale(outward, -1.),
+            small.cylinder.as_ref()?.radius,
+        )
+        && annular_outer_opening(
+            body,
+            large,
+            mouth_edge,
+            mouth,
+            outward,
+            large.cylinder.as_ref()?.radius,
+        )
+        && (depth + stem).is_finite())
+    .then_some(CavityExtent {
         depth: depth + stem,
         mouth,
         outward,
@@ -598,6 +613,133 @@ fn counterbore_extent(body: &BodyDto, ids: &[u64]) -> Option<CounterboreExtent> 
         mouth,
         outward,
         blind,
+        through,
+    })
+}
+
+type AnalyticRing<'a> = (&'a limo_cad_solid::EdgeDto, [f64; 3]);
+
+/// Complete unsplit cylindrical wall: two exact rings and at most one
+/// kernel-proven seam. Arbitrary additional boundaries cannot prove extent.
+fn cylinder_rings<'a>(
+    body: &'a BodyDto,
+    face: &FaceDto,
+    origin: [f64; 3],
+    axis: [f64; 3],
+    radius: f64,
+) -> Option<[AnalyticRing<'a>; 2]> {
+    if !(2..=3).contains(&face.edge_keys.len()) {
+        return None;
+    }
+    let mut rings = Vec::with_capacity(2);
+    let mut seam = None;
+    for key in &face.edge_keys {
+        let edge = body.edges.iter().find(|edge| &edge.key == key)?;
+        let Some(circle) = edge.circle.as_ref() else {
+            if seam.replace(edge).is_some() {
+                return None;
+            }
+            continue;
+        };
+        let center = [circle.center.x, circle.center.y, circle.center.z];
+        let delta = sub(center, origin);
+        if !(circle.closed
+            && (circle.radius - radius).abs() <= 1e-6
+            && dot(
+                normalize([circle.normal.x, circle.normal.y, circle.normal.z]),
+                axis,
+            )
+            .abs()
+                > 0.999999
+            && norm(sub(delta, scale(axis, dot(delta, axis)))) <= 1e-6)
+        {
+            return None;
+        }
+        rings.push((edge, center));
+    }
+    let rings: [AnalyticRing<'_>; 2] = rings.try_into().ok()?;
+    if rings[0].0.key == rings[1].0.key
+        || dot(sub(rings[1].1, rings[0].1), axis).abs() <= 1e-6
+        || seam.is_some_and(|edge| {
+            !valid_axial_seam(body, face, edge, rings[0].1, rings[1].1, axis, radius)
+        })
+    {
+        return None;
+    }
+    Some(rings)
+}
+
+fn annular_outer_opening(
+    body: &BodyDto,
+    wall: &FaceDto,
+    ring: &limo_cad_solid::EdgeDto,
+    center: [f64; 3],
+    outward: [f64; 3],
+    radius: f64,
+) -> bool {
+    let mut adjacent = body
+        .faces
+        .iter()
+        .filter(|face| face.id != wall.id && face.edge_keys.contains(&ring.key));
+    let Some(face) = adjacent.next() else {
+        return false;
+    };
+    let Some(plane) = face.plane else {
+        return false;
+    };
+    if adjacent.next().is_some()
+        || face.outer_shell != Some(true)
+        || face.edge_keys.len() != 2
+        || !(dot(normalize(plane.normal), outward) > 0.999999
+            && dot(sub(center, plane.origin), outward).abs() <= 1e-6)
+    {
+        return false;
+    }
+    let Some(outer) = face
+        .edge_keys
+        .iter()
+        .find(|key| *key != &ring.key)
+        .and_then(|key| body.edges.iter().find(|edge| &edge.key == key))
+        .and_then(|edge| edge.circle.as_ref())
+    else {
+        return false;
+    };
+    outer.closed
+        && outer.radius.is_finite()
+        && outer.radius > radius + 1e-6
+        && norm(sub(
+            [outer.center.x, outer.center.y, outer.center.z],
+            center,
+        )) <= 1e-6
+        && dot(
+            normalize([outer.normal.x, outer.normal.y, outer.normal.z]),
+            outward,
+        )
+        .abs()
+            > 0.999999
+}
+
+fn through_depth(
+    body: &BodyDto,
+    face: &FaceDto,
+    origin: [f64; 3],
+    axis: [f64; 3],
+    radius: f64,
+) -> Option<CavityExtent> {
+    if face.outer_shell != Some(true) {
+        return None;
+    }
+    let [first, second] = cylinder_rings(body, face, origin, axis, radius)?;
+    let direction = normalize(sub(second.1, first.1));
+    if !annular_outer_opening(body, face, first.0, first.1, scale(direction, -1.), radius)
+        || !annular_outer_opening(body, face, second.0, second.1, direction, radius)
+    {
+        return None;
+    }
+    Some(CavityExtent {
+        depth: norm(sub(second.1, first.1)),
+        mouth: first.1,
+        outward: scale(direction, -1.),
     })
 }
 
@@ -657,26 +799,8 @@ fn blind_depth(
     origin: [f64; 3],
     axis: [f64; 3],
     radius: f64,
-) -> Option<BlindExtent> {
-    let rings: Vec<_> = body
-        .edges
-        .iter()
-        .filter_map(|edge| {
-            let circle = edge.circle.as_ref()?;
-            let center = [circle.center.x, circle.center.y, circle.center.z];
-            let delta = sub(center, origin);
-            let normal = normalize([circle.normal.x, circle.normal.y, circle.normal.z]);
-            (face.edge_keys.contains(&edge.key)
-                && circle.closed
-                && (circle.radius - radius).abs() <= 1e-6
-                && dot(normal, axis).abs() > 0.999999
-                && norm(sub(delta, scale(axis, dot(delta, axis)))) <= 1e-6)
-                .then_some((edge, center))
-        })
-        .collect();
-    if rings.len() != 2 {
-        return None;
-    }
+) -> Option<CavityExtent> {
+    let rings = cylinder_rings(body, face, origin, axis, radius)?;
     // Count structural disk caps before checking orientation: a closed cavity
     // with a reversed cap must not masquerade as a one-ended blind bore.
     let disk_cap = |index: usize| {
@@ -699,7 +823,7 @@ fn blind_depth(
     let normal = normalize(plane.normal);
     let on_plane = dot(sub(rings[cap].1, plane.origin), normal).abs();
     (depth.is_finite() && depth > 1e-6 && dot(normal, outward) > 0.999999 && on_plane <= 1e-6)
-        .then_some(BlindExtent {
+        .then_some(CavityExtent {
             depth,
             mouth,
             outward,
@@ -916,7 +1040,7 @@ pub fn warnings(
                 ),
             }));
         }
-        if let Some(depth) = hole.depth {
+        if let Some(depth) = hole.depth.filter(|_| hole.through == Some(false)) {
             let extent = (0..3)
                 .map(|i| (body.max[i] - body.min[i]) * hole.normal[i].abs())
                 .sum::<f64>();
@@ -1210,6 +1334,128 @@ mod tests {
         assert!(holes_from_scene(&scene)[0].depth.is_none());
     }
 
+    fn annular_through_scene() -> SolidSceneDto {
+        let mut scene = cylinder_scene();
+        let body = &mut scene.bodies[0];
+        body.faces[0].outer_shell = Some(true);
+        for (index, z, normal) in [(0, 0., -1.), (1, 8., 1.)] {
+            let mut outer = body.edges[index].clone();
+            outer.id = limo_cad_core::EdgeId(index as u64 + 3);
+            outer.key = format!("outer{index}");
+            outer.circle.as_mut().unwrap().radius = 10.;
+            let mut face = body.faces[0].clone();
+            face.id = limo_cad_core::FaceId(index as u64 + 2);
+            face.key = format!("annulus{index}");
+            face.cylinder = None;
+            face.edge_keys = vec![body.edges[index].key.clone(), outer.key.clone()];
+            face.plane = Some(PlaneBasis {
+                origin: [0., 0., z],
+                u: [1., 0., 0.],
+                v: [0., normal, 0.],
+                normal: [0., 0., normal],
+            });
+            body.edges.push(outer);
+            body.faces.push(face);
+        }
+        scene
+    }
+
+    #[test]
+    fn through_extent_requires_both_analytic_mouths_on_the_proven_outer_shell() {
+        let scene = annular_through_scene();
+        let summary = summarize(&scene, &[]).json(true);
+        assert_eq!(summary["hole_count"], 1);
+        assert_eq!(summary["hole_candidate_count"], 1);
+        assert_eq!(summary["holes"][0]["confidence"], "candidate");
+        let hole = &holes_from_scene(&scene)[0];
+        assert_eq!(hole.through, Some(true));
+        assert_eq!(hole.depth, Some(8.));
+        assert_eq!(hole.position, [0., 0., 0.]);
+        assert_eq!(hole.normal, [0., 0., -1.]);
+        assert_eq!(
+            hole.through_evidence,
+            Some("native_outer_shell_and_two_analytic_annular_openings")
+        );
+
+        // Identical local ring/annulus topology can connect sealed internal
+        // chambers. Inner-shell evidence must never establish exterior passage.
+        let mut sealed = scene.clone();
+        for face in &mut sealed.bodies[0].faces {
+            face.outer_shell = Some(false);
+        }
+        assert_eq!(holes_from_scene(&sealed)[0].through, None);
+        assert_eq!(holes_from_scene(&sealed)[0].depth, None);
+        for index in 0..3 {
+            let mut unknown = scene.clone();
+            unknown.bodies[0].faces[index].outer_shell = None;
+            assert_eq!(holes_from_scene(&unknown)[0].through, None);
+        }
+        let mut reversed = scene.clone();
+        reversed.bodies[0].faces[1].plane.as_mut().unwrap().normal[2] = 1.;
+        assert_eq!(holes_from_scene(&reversed)[0].through, None);
+        let mut shifted = scene.clone();
+        shifted.bodies[0].faces[2].plane.as_mut().unwrap().origin[2] += 1.;
+        assert_eq!(holes_from_scene(&shifted)[0].through, None);
+        shifted.bodies[0].faces[2].plane.as_mut().unwrap().origin[2] = f64::NAN;
+        assert_eq!(holes_from_scene(&shifted)[0].through, None);
+        let mut extra_boundary = scene.clone();
+        extra_boundary.bodies[0].faces[1]
+            .edge_keys
+            .push("another_opening".into());
+        assert_eq!(holes_from_scene(&extra_boundary)[0].through, None);
+        let mut non_annulus = scene.clone();
+        non_annulus.bodies[0].edges[2]
+            .circle
+            .as_mut()
+            .unwrap()
+            .radius = 1.;
+        assert_eq!(holes_from_scene(&non_annulus)[0].through, None);
+        non_annulus.bodies[0].edges[2]
+            .circle
+            .as_mut()
+            .unwrap()
+            .radius = f64::INFINITY;
+        assert_eq!(holes_from_scene(&non_annulus)[0].through, None);
+        let mut off_axis = scene.clone();
+        off_axis.bodies[0].edges[2]
+            .circle
+            .as_mut()
+            .unwrap()
+            .center
+            .x = 1.;
+        assert_eq!(holes_from_scene(&off_axis)[0].through, None);
+        let mut open_arc = scene.clone();
+        open_arc.bodies[0].edges[2].circle.as_mut().unwrap().closed = false;
+        assert_eq!(holes_from_scene(&open_arc)[0].through, None);
+    }
+
+    #[test]
+    fn inferred_extent_accepts_proven_seams_and_rejects_unexplained_wall_boundaries() {
+        let mut scene = annular_through_scene();
+        let edge = serde_json::from_value(json!({"id":9,"key":"seam",
+            "refinable":false,"points":[{"x":2.,"y":0.,"z":0.},
+                {"x":2.,"y":0.,"z":8.}]}))
+        .unwrap();
+        scene.bodies[0].edges.push(edge);
+        scene.bodies[0].faces[0].edge_keys.push("seam".into());
+        assert_eq!(holes_from_scene(&scene)[0].through, None);
+        scene.bodies[0].faces[0]
+            .linear_seam_edge_keys
+            .push("seam".into());
+        assert_eq!(holes_from_scene(&scene)[0].through, Some(true));
+        scene.bodies[0].edges[4].points.reverse();
+        assert_eq!(holes_from_scene(&scene)[0].depth, Some(8.));
+
+        // A terminal disk still establishes blind depth, but it cannot excuse
+        // an arbitrary third wall edge or an unproven sampled line.
+        scene.bodies[0].faces[2].edge_keys = vec!["ring1".into()];
+        scene.bodies[0].faces[2].plane.as_mut().unwrap().normal = [0., 0., -1.];
+        assert_eq!(holes_from_scene(&scene)[0].through, Some(false));
+        scene.bodies[0].faces[0].linear_seam_edge_keys.clear();
+        assert_eq!(holes_from_scene(&scene)[0].through, None);
+        assert_eq!(holes_from_scene(&scene)[0].depth, None);
+    }
+
     #[test]
     fn counterbore_extent_uses_oriented_shoulder_and_distinct_wall_geometry() {
         let point = |x, y, z| json!({"x":x,"y":y,"z":z});
@@ -1319,6 +1565,39 @@ mod tests {
             },
         );
         assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
+        scene = native_seams.clone();
+        for face in &mut scene.bodies[0].faces {
+            face.outer_shell = Some(true);
+        }
+        for (index, ring_index, z, normal) in [(0, 0, 0., -1.), (1, 3, 12., 1.)] {
+            let mut outer = scene.bodies[0].edges[ring_index].clone();
+            outer.id = limo_cad_core::EdgeId(20 + index);
+            outer.key = format!("outer{index}");
+            outer.circle.as_mut().unwrap().radius = 10.;
+            let mut face = scene.bodies[0].faces[2].clone();
+            face.id = limo_cad_core::FaceId(4 + index);
+            face.key = format!("mouth{index}");
+            face.edge_keys = vec![
+                scene.bodies[0].edges[ring_index].key.clone(),
+                outer.key.clone(),
+            ];
+            face.plane.as_mut().unwrap().origin = [0., 0., z];
+            face.plane.as_mut().unwrap().normal = [0., 0., normal];
+            scene.bodies[0].edges.push(outer);
+            scene.bodies[0].faces.push(face);
+        }
+        let hole = &holes_from_scene(&scene)[0];
+        assert_eq!(hole.through, Some(true));
+        assert_eq!(hole.depth, Some(12.));
+        assert_eq!(hole.counterbore_depth, Some(7.));
+        assert_eq!(hole.position, [0., 0., 12.]);
+        for face in &mut scene.bodies[0].faces {
+            face.outer_shell = Some(false);
+        }
+        assert_eq!(holes_from_scene(&scene)[0].through, None);
+        assert_eq!(holes_from_scene(&scene)[0].depth, None);
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, Some(7.));
+
         scene = native_seams;
         scene.bodies[0].faces[0]
             .edge_keys

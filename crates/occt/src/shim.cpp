@@ -10,6 +10,7 @@
 #include <BRepAlgoAPI_Section.hxx>
 #include <BRepAlgoAPI_Splitter.hxx>
 #include <BRepBndLib.hxx>
+#include <BRepClass3d.hxx>
 #include <BRepClass3d_SolidClassifier.hxx>
 #include <BRepBuilderAPI_Copy.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
@@ -9291,6 +9292,42 @@ class NativeExportIndex {
   std::size_t node_work_=0,parameter_work_=0;
 };
 
+// Optional reporting provenance is computed once per body. Local annular
+// faces also occur inside sealed chambers, so their normals cannot establish
+// exterior passage without the enclosing solid's exact shell membership.
+static std::vector<std::uint8_t> face_outer_shell_flags(
+    const TopoDS_Shape& shape, const TopTools_IndexedMapOfShape& faces) {
+  std::vector<std::uint8_t> flags(static_cast<std::size_t>(faces.Extent()), 0);
+  try {
+    if (shape.IsNull() || shape.ShapeType() != TopAbs_SOLID ||
+        shape.Orientation() != TopAbs_FORWARD) return flags;
+    const TopoDS_Solid solid = TopoDS::Solid(shape);
+    if (!BRepCheck_Analyzer(solid, true, false).IsValid()) return flags;
+    TopTools_IndexedMapOfShape shells;
+    TopExp::MapShapes(solid, TopAbs_SHELL, shells);
+    if (shells.Extent() == 0) return flags;
+    for (int i = 1; i <= shells.Extent(); ++i)
+      if (!BRep_Tool::IsClosed(shells.FindKey(i))) return flags;
+    BRepClass3d_SolidClassifier orientation(solid);
+    orientation.PerformInfinitePoint(Precision::Confusion());
+    if (orientation.State() != TopAbs_OUT) return flags;
+    // OuterShell returns a lone shell without checking its orientation;
+    // validity, closure and the infinite-point check above are all required.
+    const TopoDS_Shell outer = BRepClass3d::OuterShell(solid);
+    if (outer.IsNull()) return flags;
+    TopTools_IndexedMapOfShape exterior_faces;
+    TopExp::MapShapes(outer, TopAbs_FACE, exterior_faces);
+    for (int i = 1; i <= faces.Extent(); ++i)
+      flags[static_cast<std::size_t>(i - 1)] = exterior_faces.Contains(faces.FindKey(i)) ? 1 : 2;
+  } catch (const Standard_Failure&) {
+    std::fill(flags.begin(), flags.end(), 0);
+  } catch (const std::exception&) {
+    std::fill(flags.begin(), flags.end(), 0);
+  }
+  // Unsupported/invalid geometry keeps its original scene and unknown evidence.
+  return flags;
+}
+
 static FfiMesh mesh_shape(std::uint64_t body_id,
                           const TopoDS_Shape& shape,
                           double linear_deflection,
@@ -9495,6 +9532,11 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
                  static_cast<std::size_t>(edge_map.Extent()) > budget->edge_points)) {
     throw std::runtime_error("Section topology exceeds the native geometry budget");
   }
+  // Disposable section/export meshes do not need this optional scene-summary
+  // evidence. Keep full-solid analysis out of their bounded recovery paths.
+  const auto outer_shell_flags = (budget || native_export_precision)
+      ? std::vector<std::uint8_t>(static_cast<std::size_t>(face_map.Extent()), 0)
+      : face_outer_shell_flags(shape, face_map);
   for (int face_index = 1; face_index <= face_map.Extent(); ++face_index) {
     if (budget) budget->progress->check("mesh validation");
     const TopoDS_Face face = TopoDS::Face(face_map.FindKey(face_index));
@@ -9577,6 +9619,7 @@ static FfiMesh mesh_shape(std::uint64_t body_id,
     append_plane(output.face_plane_data, face);
     append_face_signature(output.face_signature_data, face);
     append_cylinder(output.face_cylinder_data, face);
+    output.face_outer_shell.push_back(outer_shell_flags[static_cast<std::size_t>(face_index - 1)]);
     BRepAdaptor_Surface surface(face, true);
     if (surface.GetType() == GeomAbs_Cone) {
       const gp_Cone cone = surface.Cone();

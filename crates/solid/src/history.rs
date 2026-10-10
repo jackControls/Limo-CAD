@@ -2016,6 +2016,7 @@ impl SolidDocument {
                 .faces
                 .into_iter()
                 .map(|face| FaceDto {
+                    outer_shell: face.outer_shell,
                     linear_seam_edge_keys: face.linear_seam_edge_keys,
                     id: stable::face_id(raw.body_id, &face.key),
                     key: face.key,
@@ -2024,7 +2025,7 @@ impl SolidDocument {
                     plane: face.plane,
                     signature: face.signature,
                     cylinder: face.cylinder,
-                    edge_keys: face.edge_keys.clone(),
+                    edge_keys: face.edge_keys,
                     cone: face.cone,
                 })
                 .collect();
@@ -5507,6 +5508,7 @@ mod tests {
             indices: vec![0, 1, 2],
             faces: vec![KernelFaceDto {
                 linear_seam_edge_keys: Vec::new(),
+                outer_shell: None,
                 key: "face:0".to_string(),
                 first_index: 0,
                 index_count: 3,

@@ -6661,6 +6661,7 @@ mod tests {
             };
         let face = |id: u64, normal: [f64; 3], centroid: [f64; 3], edges: &[&str]| FaceDto {
             linear_seam_edge_keys: Vec::new(),
+            outer_shell: None,
             id: limo_cad_core::FaceId(id),
             key: format!("face:{id}"),
             first_index: 0,
@@ -7397,6 +7398,7 @@ mod tests {
             },
             faces: vec![limo_cad_solid::FaceDto {
                 linear_seam_edge_keys: Vec::new(),
+                outer_shell: None,
                 id: limo_cad_core::FaceId(70),
                 key: "cylindrical-wall".to_string(),
                 edge_keys: vec![],

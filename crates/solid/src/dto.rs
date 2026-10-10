@@ -1501,6 +1501,11 @@ pub struct KernelFaceDto {
     /// Empty for legacy/unsupported producers; never infer this from samples.
     #[serde(default)]
     pub linear_seam_edge_keys: Vec<String>,
+    /// Exact membership in the outer shell of one valid, closed, outward
+    /// oriented native solid. None for legacy or unsupported producers.
+    /// An inner cavity's faces carry Some(false), never exterior evidence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer_shell: Option<bool>,
     #[serde(default)]
     pub cone: Option<ConicalSurfaceDto>,
 }
@@ -1611,6 +1616,10 @@ pub struct FaceDto {
     /// Empty for legacy/unsupported producers; never infer this from samples.
     #[serde(default)]
     pub linear_seam_edge_keys: Vec<String>,
+    /// Exact membership in the outer shell of one valid, closed, outward
+    /// oriented native solid. None does not establish exterior passage.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer_shell: Option<bool>,
     #[serde(default)]
     pub cone: Option<ConicalSurfaceDto>,
 }

@@ -140,6 +140,8 @@ mod ffi {
         face_edge_indices: Vec<u32>,
         /// One flag per face-edge incidence: exact closed-on-face analytic line.
         face_edge_linear_seams: Vec<u8>,
+        /// Per face: 0 unknown, 1 proven outer shell, 2 proven inner shell.
+        face_outer_shell: Vec<u8>,
         /// Prefix offsets into `edge_points`, measured in 3D points.
         edge_point_offsets: Vec<u32>,
         /// Flat xyz edge polyline coordinates.
@@ -1542,6 +1544,8 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
         || raw.face_cone_data.len() != raw.face_first_indices.len() * 5
         || raw.face_edge_linear_seams.len() != raw.face_edge_indices.len()
         || raw.face_edge_linear_seams.iter().any(|flag| *flag > 1)
+        || raw.face_outer_shell.len() != raw.face_first_indices.len()
+        || raw.face_outer_shell.iter().any(|flag| *flag > 2)
         || raw.face_edge_offsets.len() != raw.face_first_indices.len() + 1
         || raw.face_edge_offsets.first() != Some(&0)
         || raw.face_edge_offsets.windows(2).any(|w| w[0] > w[1])
@@ -1579,6 +1583,11 @@ fn from_ffi_mesh(raw: ffi::FfiMesh) -> Result<KernelBodyDto, OcctError> {
                 normal: point(10),
             });
             KernelFaceDto {
+                outer_shell: match raw.face_outer_shell[index] {
+                    1 => Some(true),
+                    2 => Some(false),
+                    _ => None,
+                },
                 linear_seam_edge_keys: (raw.face_edge_offsets[index] as usize
                     ..raw.face_edge_offsets[index + 1] as usize)
                     .filter(|slot| raw.face_edge_linear_seams[*slot] == 1)
@@ -2149,6 +2158,10 @@ mod tests {
             .faces
             .iter()
             .all(|face| face.plane.is_some()));
+        assert!(scene.bodies[0]
+            .faces
+            .iter()
+            .all(|face| face.outer_shell == Some(true)));
 
         let step = kernel.export_step(&StepExportRequest::default()).unwrap();
         let text = String::from_utf8(step).unwrap();
@@ -2248,6 +2261,191 @@ mod tests {
             .unwrap();
         assert!(roundtrip.errors.is_empty());
         assert_eq!(roundtrip.bodies.len(), 1);
+    }
+
+    #[test]
+    fn native_shell_membership_distinguishes_sealed_cavities_compounds_and_open_surfaces() {
+        let point = |x, y| Point3Dto { x, y, z: 0. };
+        let mut cutter = box_job(2, 2);
+        if let KernelJobDto::Extrude(job) = &mut cutter {
+            job.start_offset = 2.;
+            job.end_offset = 8.;
+            job.profiles = vec![KernelProfileDto {
+                profile_index: 0,
+                points: (0..32)
+                    .map(|i| {
+                        let angle = std::f64::consts::TAU * i as f64 / 32.;
+                        point(2. * angle.cos(), 2. * angle.sin())
+                    })
+                    .collect(),
+                curves: vec![KernelCurveDto::Circle {
+                    entity_id: 1,
+                    center: point(0., 0.),
+                    axis_point: point(2., 0.),
+                    normal: Point3Dto {
+                        x: 0.,
+                        y: 0.,
+                        z: 1.,
+                    },
+                }],
+                holes: vec![],
+            }];
+        }
+        let mut kernel = OcctKernel::new().unwrap();
+        let scene = kernel
+            .recompute(&RecomputePlanDto {
+                transaction_id: 1,
+                errors: vec![],
+                jobs: vec![
+                    box_job(1, 1),
+                    cutter,
+                    KernelJobDto::Combine(KernelCombineJobDto {
+                        feature_id: FeatureId(3),
+                        target_body_id: BodyId(1),
+                        tool_body_ids: vec![BodyId(2)],
+                        operation: CombineOperation::Cut,
+                        keep_tools: false,
+                    }),
+                ],
+            })
+            .unwrap();
+        assert!(scene.errors.is_empty(), "{:?}", scene.errors);
+        let step = kernel.export_step(&StepExportRequest::default()).unwrap();
+        let mut imported = OcctKernel::new().unwrap();
+        let scene = imported
+            .recompute(&RecomputePlanDto {
+                transaction_id: 2,
+                errors: vec![],
+                jobs: vec![KernelJobDto::ImportStep(KernelImportStepJobDto {
+                    feature_id: FeatureId(4),
+                    result_body_id: BodyId(1),
+                    data_base64: encode_base64(&step),
+                })],
+            })
+            .unwrap();
+        assert!(scene.errors.is_empty(), "{:?}", scene.errors);
+        let body = &scene.bodies[0];
+        assert_eq!(
+            body.faces
+                .iter()
+                .filter(|face| face.outer_shell == Some(true))
+                .count(),
+            6,
+            "only the six outer box faces border the exterior shell"
+        );
+        assert_eq!(
+            body.faces
+                .iter()
+                .filter(|face| face.outer_shell == Some(false))
+                .count(),
+            3,
+            "the sealed cylinder and both disks belong to an inner shell"
+        );
+        assert_eq!(
+            body.faces
+                .iter()
+                .find(|face| face.cylinder.is_some())
+                .unwrap()
+                .outer_shell,
+            Some(false)
+        );
+
+        // Two solids in one imported assembly cannot share one body-level
+        // exterior classification, even when both are individually closed.
+        let compound = kernel
+            .export_step(&StepExportRequest {
+                occurrences: [0., 40.]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, x)| StepOccurrencePlacementDto {
+                        occurrence_id: index as u64 + 1,
+                        component_id: 1,
+                        body_id: BodyId(1),
+                        name: format!("Cavity {index}"),
+                        translation: [x, 0., 0.],
+                        rotation: [0., 0., 0., 1.],
+                    })
+                    .collect(),
+                ..StepExportRequest::default()
+            })
+            .unwrap();
+        let scene = imported
+            .recompute(&RecomputePlanDto {
+                transaction_id: 3,
+                errors: vec![],
+                jobs: vec![KernelJobDto::ImportStep(KernelImportStepJobDto {
+                    feature_id: FeatureId(5),
+                    result_body_id: BodyId(1),
+                    data_base64: encode_base64(&compound),
+                })],
+            })
+            .unwrap();
+        assert!(scene.errors.is_empty(), "{:?}", scene.errors);
+        assert!(scene.bodies[0]
+            .faces
+            .iter()
+            .all(|face| face.outer_shell.is_none()));
+
+        // Use the production STEP writer's exact box faces to form a valid
+        // five-face surface shell, rather than an invalid unclosed solid.
+        let mut box_kernel = OcctKernel::new().unwrap();
+        let boxed = box_kernel
+            .recompute(&RecomputePlanDto {
+                transaction_id: 4,
+                errors: vec![],
+                jobs: vec![box_job(1, 1)],
+            })
+            .unwrap();
+        assert!(boxed.errors.is_empty());
+        let box_step = String::from_utf8(
+            box_kernel
+                .export_step(&StepExportRequest::default())
+                .unwrap(),
+        )
+        .unwrap();
+        let compact: String = box_step.chars().filter(|c| !c.is_whitespace()).collect();
+        let statements: Vec<String> = compact
+            .split(';')
+            .map(|statement| {
+                if let Some((label, entity)) = statement.split_once('=') {
+                    if let Some(args) = entity.strip_prefix("MANIFOLD_SOLID_BREP('',") {
+                        let shell = args.strip_suffix(')').unwrap();
+                        return format!("{label}=SHELL_BASED_SURFACE_MODEL('',({shell}))");
+                    }
+                    if let Some(args) = entity.strip_prefix("CLOSED_SHELL('',(") {
+                        let face_refs = args.strip_suffix("))").unwrap();
+                        let faces: Vec<_> = face_refs.split(',').collect();
+                        assert_eq!(faces.len(), 6);
+                        return format!("{label}=OPEN_SHELL('',({}))", faces[1..].join(","));
+                    }
+                }
+                statement.replace(
+                    "ADVANCED_BREP_SHAPE_REPRESENTATION",
+                    "MANIFOLD_SURFACE_SHAPE_REPRESENTATION",
+                )
+            })
+            .collect();
+        let open_step = statements.join(";");
+        assert!(open_step.contains("OPEN_SHELL('',("));
+        assert!(open_step.contains("SHELL_BASED_SURFACE_MODEL('',("));
+        let scene = imported
+            .recompute(&RecomputePlanDto {
+                transaction_id: 5,
+                errors: vec![],
+                jobs: vec![KernelJobDto::ImportStep(KernelImportStepJobDto {
+                    feature_id: FeatureId(6),
+                    result_body_id: BodyId(1),
+                    data_base64: encode_base64(open_step.as_bytes()),
+                })],
+            })
+            .unwrap();
+        assert!(scene.errors.is_empty(), "{:?}", scene.errors);
+        assert_eq!(scene.bodies[0].faces.len(), 5);
+        assert!(!scene.bodies[0].indices.is_empty());
+        assert!(scene.bodies[0]
+            .faces
+            .iter()
+            .all(|face| face.outer_shell.is_none()));
     }
 
     #[test]

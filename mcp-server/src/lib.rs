@@ -9782,7 +9782,12 @@ mod tests {
         );
         assert_eq!(summary["holes"][0]["diameter"], 20.0);
         assert_eq!(summary["holes"][0]["style"], "simple");
-        assert!(summary["holes"][0]["through"].is_null());
+        assert_eq!(summary["holes"][0]["through"], true);
+        assert_eq!(summary["holes"][0]["depth"], 15.0);
+        assert!(server.manager.solid_scene_ref().bodies[0]
+            .faces
+            .iter()
+            .all(|face| face.outer_shell == Some(true)));
         assert_eq!(
             summary["hole_detection_scope"],
             "closed_cylindrical_cavities"
@@ -9793,6 +9798,10 @@ mod tests {
         assert_eq!(evidence["authored_hole_count"], 0);
         assert_eq!(evidence["holes"][0]["confidence"], "candidate");
         assert_eq!(evidence["holes"][0]["source"], "geometry");
+        assert_eq!(
+            evidence["holes"][0]["through_evidence"],
+            "native_outer_shell_and_two_analytic_annular_openings"
+        );
         assert!(evidence["holes"][0]["face_ids"]
             .as_array()
             .is_some_and(|ids| !ids.is_empty()));
@@ -9805,6 +9814,24 @@ mod tests {
             let checked = summary::check(
                 &inferred,
                 &json!({"holes": [{"x": hole.position[0], "y": hole.position[1], "through": through}]}),
+                0.1,
+            )
+            .unwrap();
+            assert_eq!(checked["ok"], through, "{checked}");
+        }
+        // The same local geometry from a legacy producer is not exterior
+        // passage evidence. Both expectations must reject unknown topology.
+        let mut legacy = server.manager.solid_scene_ref().clone();
+        for face in &mut legacy.bodies[0].faces {
+            face.outer_shell = None;
+        }
+        let unknown = summary::summarize(&legacy, &[]);
+        assert_eq!(unknown.holes[0].through, None);
+        let unknown_hole = &unknown.holes[0];
+        for through in [false, true] {
+            let checked = summary::check(
+                &unknown,
+                &json!({"holes": [{"x": unknown_hole.position[0], "y": unknown_hole.position[1], "through": through}]}),
                 0.1,
             )
             .unwrap();

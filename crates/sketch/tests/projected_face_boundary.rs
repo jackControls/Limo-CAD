@@ -70,6 +70,7 @@ fn face_body(body_id: BodyId) -> KernelBodyDto {
         indices: vec![0, 1, 2],
         faces: vec![KernelFaceDto {
             linear_seam_edge_keys: Vec::new(),
+            outer_shell: None,
             key: "support".to_string(),
             first_index: 0,
             index_count: 3,
