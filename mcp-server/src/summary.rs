@@ -9,7 +9,7 @@ use limo_cad_solid::{BodyDto, FaceDto, HoleDefinitionDto, HoleExtent, HoleStyle,
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
-type CoaxialCylinderGroup = (u64, [f64; 3], [f64; 3], Vec<f64>);
+type CoaxialCylinderGroup = (u64, [f64; 3], [f64; 3], Vec<f64>, Vec<u64>);
 
 /// One drilled position, in world coordinates.
 #[derive(Clone, Debug)]
@@ -18,6 +18,7 @@ pub struct Hole {
     pub name: String,
     pub body_id: u64,
     pub face_id: Option<u64>,
+    pub face_ids: Vec<u64>,
     pub position: [f64; 3],
     /// Outward normal of the face the hole starts from (drilling goes the
     /// other way unless `flip`).
@@ -40,6 +41,10 @@ impl Hole {
             "name": self.name,
             "body_id": self.body_id,
             "face_id": self.face_id,
+            "face_ids": self.face_ids,
+            "source": if self.feature_id.is_some() { "feature_definition" } else { "geometry" },
+            "confidence": if self.feature_id.is_some() { "authored" } else { "candidate" },
+            "inference_method": self.feature_id.is_none().then_some("closed_analytic_circle_and_inward_display_normals"),
             "x": round3(self.position[0]),
             "y": round3(self.position[1]),
             "z": round3(self.position[2]),
@@ -161,6 +166,7 @@ pub fn holes_from_definitions(
                 name: definition.name.clone(),
                 body_id: definition.body_id.0,
                 face_id: Some(definition.face_id.0),
+                face_ids: vec![definition.face_id.0],
                 position: basis.to_3d(uv),
                 normal: basis.normal,
                 flip: definition.flip,
@@ -214,25 +220,35 @@ pub fn holes_from_scene(scene: &SolidSceneDto) -> Vec<Hole> {
                 let off = sub(delta, scale(group.2, along));
                 if norm(off) < 0.05 {
                     group.3.push(cylinder.radius);
+                    group.4.push(face.id.0);
                     placed = true;
                     break;
                 }
             }
             if !placed {
-                groups.push((body.id.0, origin, axis, vec![cylinder.radius]));
+                groups.push((
+                    body.id.0,
+                    origin,
+                    axis,
+                    vec![cylinder.radius],
+                    vec![face.id.0],
+                ));
             }
         }
     }
     groups
         .into_iter()
-        .map(|(body_id, origin, axis, mut radii)| {
+        .map(|(body_id, origin, axis, mut radii, mut face_ids)| {
             radii.sort_by(f64::total_cmp);
             radii.dedup_by(|a, b| (*a - *b).abs() <= 1e-6);
+            face_ids.sort_unstable();
+            face_ids.dedup();
             Hole {
                 feature_id: None,
                 name: "cylinder".into(),
                 body_id,
-                face_id: None,
+                face_id: face_ids.first().copied(),
+                face_ids,
                 position: origin,
                 normal: axis,
                 flip: false,
@@ -399,6 +415,8 @@ impl Summary {
                 "closed_cylindrical_cavities"
             },
             "hole_count": self.holes.len(),
+            "authored_hole_count": self.holes.iter().filter(|hole| hole.feature_id.is_some()).count(),
+            "hole_candidate_count": self.holes.iter().filter(|hole| hole.feature_id.is_none()).count(),
             "holes_by_class": classes.values().map(|(class, count)| {
                 let mut class = class.clone();
                 class["count"] = json!(count);
@@ -454,8 +472,12 @@ pub fn warnings(
                 warnings.push(json!({
                     "code": "holes_overlap",
                     "feature_id": a.feature_id,
+                    "confirmed": false,
+                    "evidence": "projected_axis_distance",
+                    "body_id": a.body_id,
+                    "face_ids": [&a.face_ids, &b.face_ids],
                     "message": format!(
-                        "Holes at ({}, {}, {}) Ø{} and ({}, {}, {}) Ø{} are {} mm apart and overlap; the kernel merges them into one opening",
+                        "Hole overlap candidate: axes at ({}, {}, {}) Ø{} and ({}, {}, {}) Ø{} are {} mm apart in projection; verify axial extents and exact geometry before concluding the openings merge",
                         round3(a.position[0]), round3(a.position[1]), round3(a.position[2]), round3(a.diameter),
                         round3(b.position[0]), round3(b.position[1]), round3(b.position[2]), round3(b.diameter),
                         round3(distance)

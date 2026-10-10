@@ -9786,6 +9786,18 @@ mod tests {
             "closed_cylindrical_cavities"
         );
         let inferred = summary::summarize(server.manager.solid_scene_ref(), &[]);
+        let evidence = inferred.json(true);
+        assert_eq!(evidence["hole_candidate_count"], 1);
+        assert_eq!(evidence["authored_hole_count"], 0);
+        assert_eq!(evidence["holes"][0]["confidence"], "candidate");
+        assert_eq!(evidence["holes"][0]["source"], "geometry");
+        assert!(evidence["holes"][0]["face_ids"]
+            .as_array()
+            .is_some_and(|ids| !ids.is_empty()));
+        assert_eq!(
+            evidence["holes"][0]["inference_method"],
+            "closed_analytic_circle_and_inward_display_normals"
+        );
         let hole = &inferred.holes[0];
         for through in [false, true] {
             let checked = summary::check(
@@ -9826,6 +9838,22 @@ mod tests {
             }
         }
         assert!(summary::holes_from_scene(&partial).is_empty());
+
+        let mut overlapping = summary::summarize(server.manager.solid_scene_ref(), &[]);
+        let mut candidate = overlapping.holes[0].clone();
+        candidate.position[0] += 1.0;
+        overlapping.holes.push(candidate);
+        let warnings = summary::warnings(&overlapping, &[], &[]);
+        let overlap = warnings
+            .iter()
+            .find(|warning| warning["code"] == "holes_overlap")
+            .unwrap();
+        assert_eq!(overlap["confirmed"], false);
+        assert_eq!(overlap["evidence"], "projected_axis_distance");
+        assert!(overlap["message"]
+            .as_str()
+            .unwrap()
+            .contains("verify axial extents"));
 
         let mut restored = CadServer::new().unwrap();
         let restored_update = restored
