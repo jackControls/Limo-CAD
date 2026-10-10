@@ -584,6 +584,21 @@ struct Editor {
     widgets: Widgets,
     message: String,
 }
+/// Inactive workspaces do not refresh the CAM editor. Release its retained
+/// scene explicitly when its document closes or clean geometry is evicted.
+/// Unapplied drafts remain an intentional ownership boundary under pressure.
+pub(super) fn retire_document(world: &mut World, owner: &DocumentContext, closed: bool) {
+    let retire = world.get_resource::<Editor>().is_some_and(|editor| {
+        super::same_document(editor.owner.as_ref(), owner)
+            && (closed || !editor.draft.as_ref().is_some_and(Draft::dirty))
+    });
+    if retire {
+        let mut editor = world.remove_resource::<Editor>().unwrap();
+        editor.widgets.begin();
+        editor.widgets.finish(world);
+    }
+}
+
 pub(super) fn selected(world: &World) -> Option<Selection> {
     world
         .get_resource::<Editor>()?

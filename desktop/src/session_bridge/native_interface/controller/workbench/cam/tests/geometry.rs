@@ -345,3 +345,43 @@ fn cam_forms_share_viewport_geometry_and_release_their_retained_scene() {
     drop(creating);
     assert!(retired.upgrade().is_none());
 }
+
+#[test]
+fn inactive_cam_geometry_retires_only_its_owner_and_preserves_dirty_drafts() {
+    for dirty in [false, true] {
+        let cam = cam("contour2d");
+        let scene = std::sync::Arc::new(scene());
+        let retired = std::sync::Arc::downgrade(&scene);
+        let mut draft = Draft::new(&cam, Selection::Operation(7)).unwrap();
+        operation_editor::extend_shared(&mut draft, &cam, &scene, &[]).unwrap();
+        if dirty {
+            set(&mut draft, "/name", "Unapplied name");
+        }
+        assert_eq!(draft.dirty(), dirty);
+        let owner = DocumentContext {
+            window_id: "main".into(),
+            document_id: "cam-document".into(),
+            epoch: 3,
+        };
+        let mut world = World::new();
+        world.insert_resource(Editor {
+            owner: Some(owner.clone()),
+            cam,
+            draft: Some(draft),
+            ..Default::default()
+        });
+        drop(scene);
+        let mut foreign = owner.clone();
+        foreign.window_id = "another-window".into();
+        super::super::super::retire_document(&mut world, &foreign);
+        assert!(retired.upgrade().is_some());
+        super::super::super::evict_document_geometry(&mut world, &owner);
+        assert_eq!(retired.upgrade().is_some(), dirty);
+        if dirty {
+            assert!(world.resource::<Editor>().draft.as_ref().unwrap().dirty());
+            super::super::super::retire_document(&mut world, &owner);
+            assert!(retired.upgrade().is_none());
+        }
+        assert!(!world.contains_resource::<Editor>());
+    }
+}
