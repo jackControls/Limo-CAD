@@ -4982,6 +4982,40 @@ mod tests {
             .faces
             .iter()
             .any(|face| face.plane.is_none()));
+        let body = &scene.bodies[0];
+        let caps = body
+            .faces
+            .iter()
+            .filter_map(|face| face.plane.map(|plane| (face, plane)))
+            .collect::<Vec<_>>();
+        assert_eq!(caps.len(), 2);
+        for (face, plane) in caps {
+            let expected_y = if plane.origin[1].abs() < 1e-7 {
+                -1.
+            } else {
+                assert!((plane.origin[1] - 15.).abs() < 1e-7);
+                1.
+            };
+            assert!(
+                plane.normal[0].abs() < 1e-7
+                    && (plane.normal[1] - expected_y).abs() < 1e-7
+                    && plane.normal[2].abs() < 1e-7,
+                "Revolved cap must face outward: {plane:?}"
+            );
+            assert_eq!(face.outer_shell, Some(true));
+            assert!(face.index_count > 0);
+            // Display normals come independently from the surface derivatives;
+            // reported planar frames must agree with them on either cap.
+            let first = face.first_index as usize;
+            let last = first + face.index_count as usize;
+            for vertex in &body.indices[first..last] {
+                let offset = *vertex as usize * 3;
+                let dot = (0..3)
+                    .map(|axis| f64::from(body.normals[offset + axis]) * plane.normal[axis])
+                    .sum::<f64>();
+                assert!(dot > 1. - 1e-6, "Plane/display normal mismatch: {plane:?}");
+            }
+        }
     }
 
     #[test]

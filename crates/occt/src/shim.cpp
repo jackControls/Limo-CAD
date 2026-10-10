@@ -1691,6 +1691,13 @@ void append_vec(rust::Vec<float>& output, const gp_Vec& value) {
   output.push_back(static_cast<float>(value.Z()));
 }
 
+static gp_Dir parametric_plane_normal(const gp_Pln& plane) {
+  const gp_Ax3 axes = plane.Position();
+  // Revolved planes may use an indirect Ax3. Its main Direction then opposes
+  // the surface's U/V cross product, which defines the actual surface normal.
+  return gp_Dir(gp_Vec(axes.XDirection()).Crossed(gp_Vec(axes.YDirection())));
+}
+
 void append_plane(rust::Vec<double>& output, const TopoDS_Face& face) {
   BRepAdaptor_Surface surface(face, true);
   if (surface.GetType() != GeomAbs_Plane) {
@@ -1701,7 +1708,7 @@ void append_plane(rust::Vec<double>& output, const TopoDS_Face& face) {
   }
   const gp_Pln plane = surface.Plane();
   const gp_Ax3 axes = plane.Position();
-  gp_Dir normal = axes.Direction();
+  gp_Dir normal = parametric_plane_normal(plane);
   gp_Dir u = axes.XDirection();
   if (face.Orientation() == TopAbs_REVERSED) {
     normal.Reverse();
@@ -1793,7 +1800,7 @@ PlanarFaceSignature planar_face_signature(const TopoDS_Face& face) {
   TopExp::MapShapes(face, TopAbs_WIRE, wires);
   TopExp::MapShapes(face, TopAbs_EDGE, edges);
 
-  gp_Dir normal = surface.Plane().Position().Direction();
+  gp_Dir normal = parametric_plane_normal(surface.Plane());
   if (face.Orientation() == TopAbs_REVERSED) {
     normal.Reverse();
   }
@@ -1951,7 +1958,7 @@ std::optional<PrismaticCorner> prismatic_corner(
     if (surface.GetType() != GeomAbs_Plane) {
       return std::nullopt;
     }
-    gp_Dir normal = surface.Plane().Axis().Direction();
+    gp_Dir normal = parametric_plane_normal(surface.Plane());
     if (faces[count].Orientation() == TopAbs_REVERSED) {
       normal.Reverse();
     }
@@ -9678,7 +9685,7 @@ static TopoDS_Shape material_section_boundary(const TopoDS_Shape& source,
       throw std::runtime_error("OCCT section material region is not planar");
     }
     const auto surface_plane = surface.Plane();
-    const double normal_dot = gp_Vec(surface_plane.Axis().Direction()).Dot(
+    const double normal_dot = gp_Vec(parametric_plane_normal(surface_plane)).Dot(
         gp_Vec(plane.Axis().Direction()));
     const double distance = plane.Distance(surface_plane.Location());
     const double tolerance = BRep_Tool::Tolerance(face);
