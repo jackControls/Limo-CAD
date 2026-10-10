@@ -27,7 +27,9 @@ The two focused history-support regressions pass, including native prefix cache
 invalidation and failed replay. The isolated five-DOF collinear drag regression
 reproduces nonconvergence. A proposed damping-floor change did not fix it and was
 reverted. `0de075d6` instead seeds an isolated free collinear group geometrically;
-its final focused regression and live recheck remain pending. Ctrl+Shift+S also
+its new regression passes all twelve endpoint movements and conflicting-pin
+atomic rejection. Independent source review found no blocking issue; live
+recheck remains pending. Ctrl+Shift+S also
 reproduced its no-dialog failure on a fresh foreground empty document. Its cause
 remains unattributed; `16f487c0` adds an opt-in bounded file-shortcut decision trace
 for the next deployment (`LIMO_CAD_FILE_SHORTCUT_DIAGNOSTICS=1`). No raw typed text
