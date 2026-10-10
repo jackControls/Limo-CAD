@@ -23,12 +23,24 @@ recheck remain pending. The Save As dialog was cancelled without saving, with
 closure confirmed by a fresh Bevy-window observation. An earlier Escape only
 dismissed transient dialog state and did not close it.
 
-The isolated five-DOF collinear drag regression reproduces nonconvergence.
-A proposed damping-floor change did not fix it and was reverted; that defect
-remains open. Ctrl+Shift+S also reproduced its no-dialog failure on a fresh
-foreground empty document; source routing investigation continues. Neither
-failure reopens the passing Parallel or fillet geometry cases. Broad tests and
-manual replay of passing cases were not run for this implementation batch.
+The two focused history-support regressions pass, including native prefix cache
+invalidation and failed replay. The isolated five-DOF collinear drag regression
+reproduces nonconvergence. A proposed damping-floor change did not fix it and was
+reverted. `0de075d6` instead seeds an isolated free collinear group geometrically;
+its final focused regression and live recheck remain pending. Ctrl+Shift+S also
+reproduced its no-dialog failure on a fresh foreground empty document. Its cause
+remains unattributed; `16f487c0` adds an opt-in bounded file-shortcut decision trace
+for the next deployment (`LIMO_CAD_FILE_SHORTCUT_DIAGNOSTICS=1`). No raw typed text
+or filenames are recorded. Neither failure reopens passing Parallel or fillet
+geometry cases. Broad tests and manual replay of passing cases were not run.
+
+Perpendicular now passes its first representative UI acceptance: two free sloped
+lines, invalid point selection/cancel, retained deletion, exact Undo/Redo and
+native save/reopen with whole-model equality. The checkpoint and
+`docs/qualification/perpendicular-human-ui-20261010.json` retain the evidence.
+UI coverage is now 45 passed, 336 not run, 28 failed, nine needing recheck,
+23 in progress and two restricted. All 256 manual MCP cases remain not run.
+Equal is next; these results do not qualify the newly committed source fixes.
 
 Posted-defect repairs: 18a863f6 addresses #363 with a shared circular-refinement
 comparison/sample/insertion budget across both healing stages. The standalone
