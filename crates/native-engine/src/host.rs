@@ -1338,19 +1338,21 @@ impl NativeEngineHost {
             Err(error) => return reject_prepare(error.to_string()),
         };
         let transaction_id = plan.transaction_id;
-        let kernel_scene = match inner.kernel.recompute(&plan) {
+        let queries = inner.manager.history_support_queries();
+        let (kernel_scene, verified) = match inner.kernel.recompute_with_supports(&plan, &queries) {
             Ok(scene) => scene,
             Err(error) => {
                 inner.manager.cancel_solid_recompute(transaction_id);
                 return err_json(error.to_string());
             }
         };
-        match inner
-            .manager
-            .commit_solid(limo_cad_solid::CommitKernelRequest {
+        match inner.manager.commit_solid_with_verified_supports(
+            limo_cad_solid::CommitKernelRequest {
                 transaction_id,
                 scene: kernel_scene,
-            }) {
+            },
+            &verified,
+        ) {
             Ok(update) => {
                 inner.geometry_revision = inner.geometry_revision.wrapping_add(1);
                 ok_json(update)

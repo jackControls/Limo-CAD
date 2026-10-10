@@ -48,12 +48,19 @@ impl NativeProject {
             .prepare_load_project(model.clone())
             .map_err(|e| e.to_string())?;
         let transaction_id = plan.transaction_id;
-        let scene = next.kernel.recompute(&plan).map_err(|e| e.to_string())?;
+        let queries = next.manager.history_support_queries();
+        let (scene, verified) = next
+            .kernel
+            .recompute_with_supports(&plan, &queries)
+            .map_err(|e| e.to_string())?;
         next.manager
-            .commit_solid(limo_cad_solid::CommitKernelRequest {
-                transaction_id,
-                scene,
-            })
+            .commit_solid_with_verified_supports(
+                limo_cad_solid::CommitKernelRequest {
+                    transaction_id,
+                    scene,
+                },
+                &verified,
+            )
             .map_err(|e| e.to_string())?;
         let rebuilt = next.manager.solid_scene_ref();
         let mut rebuilt_ids: Vec<_> = rebuilt.bodies.iter().map(|body| body.id).collect();

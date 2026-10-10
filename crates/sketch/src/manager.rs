@@ -4170,13 +4170,61 @@ impl SketchManager {
         &mut self,
         request: CommitKernelRequest,
     ) -> Result<SolidUpdateDto, SessionError> {
-        self.commit_solid_inner(request, false)
+        self.commit_solid_inner(request, false, None)
+    }
+
+    /// Query the support at the sketch's own active history prefix. A pending
+    /// project owns its own history; never borrow the previous document's IDs.
+    pub fn history_support_queries(&self) -> Vec<limo_cad_solid::HistorySupportQuery> {
+        if let Some(pending) = &self.pending_project {
+            return pending.manager.history_support_queries();
+        }
+        let tree = self.document.features();
+        let mut previous = None;
+        let mut queries = Vec::new();
+        for feature in tree
+            .features
+            .iter()
+            .take(tree.rollback_index)
+            .filter(|f| !f.suppressed)
+        {
+            if let Some(finished) = self.finished.iter().find(|f| f.feature_id == feature.id) {
+                if let (Some(after_feature), PlaneRef::PlanarFace { face_id }) =
+                    (previous, finished.session.plane())
+                {
+                    queries.push(limo_cad_solid::HistorySupportQuery {
+                        sketch_id: feature.id,
+                        after_feature,
+                        face_id,
+                    });
+                }
+            }
+            if feature_changes_solid_topology(feature.kind) {
+                previous = Some(feature.id);
+            }
+        }
+        queries
+    }
+
+    /// Internal native-host commit: the set must come from the same kernel
+    /// recompute as `request.scene`. It is not accepted from serialized clients.
+    pub fn commit_solid_with_verified_supports(
+        &mut self,
+        request: CommitKernelRequest,
+        verified: &BTreeSet<FeatureId>,
+    ) -> Result<SolidUpdateDto, SessionError> {
+        // A partial/failed replay supplies no historical proof. Preserve the
+        // ordinary strict scene check instead of marking every face-hosted
+        // sketch broken merely because an unrelated later job failed.
+        let verified = request.scene.errors.is_empty().then_some(verified);
+        self.commit_solid_inner(request, false, verified)
     }
 
     fn commit_solid_inner(
         &mut self,
         request: CommitKernelRequest,
         restoring_project: bool,
+        verified_supports: Option<&BTreeSet<FeatureId>>,
     ) -> Result<SolidUpdateDto, SessionError> {
         if let Some(mut pending) = self.pending_project.take() {
             if pending.transaction_id != request.transaction_id {
@@ -4185,7 +4233,9 @@ impl SketchManager {
                     "stale project recompute result".to_string(),
                 ));
             }
-            let update = pending.manager.commit_solid_inner(request, true)?;
+            let update = pending
+                .manager
+                .commit_solid_inner(request, true, verified_supports)?;
             *self = *pending.manager;
             return Ok(update);
         }
@@ -4292,7 +4342,11 @@ impl SketchManager {
             .iter()
             .filter_map(|finished| match finished.session.plane() {
                 PlaneRef::PlanarFace { face_id }
-                    if active.contains(&finished.feature_id) && !self.solids.has_face(face_id) =>
+                    if active.contains(&finished.feature_id)
+                        && verified_supports.map_or_else(
+                            || !self.solids.has_face(face_id),
+                            |verified| !verified.contains(&finished.feature_id),
+                        ) =>
                 {
                     Some((
                         finished.feature_id,

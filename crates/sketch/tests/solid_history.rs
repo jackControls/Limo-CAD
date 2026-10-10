@@ -155,6 +155,54 @@ fn rectangular_extrude_face_sketch_and_broken_reference_recompute_are_integrated
         })
         .unwrap();
 
+    let queries = manager.history_support_queries();
+    assert_eq!(queries.len(), 1);
+    assert_eq!(queries[0].after_feature, first_plan.jobs[0].feature_id());
+    assert_eq!(queries[0].face_id, support_face);
+    // A consuming downstream feature legitimately removes the old support.
+    let consumed_plan = manager.prepare_recompute().unwrap();
+    let consumed = manager
+        .commit_solid_with_verified_supports(
+            CommitKernelRequest {
+                transaction_id: consumed_plan.transaction_id,
+                scene: KernelSceneDto {
+                    bodies: vec![planar_body(second_body, "top", 20.0)],
+                    errors: Vec::new(),
+                },
+            },
+            &std::collections::BTreeSet::from([queries[0].sketch_id]),
+        )
+        .unwrap();
+    assert!(consumed
+        .document
+        .features
+        .iter()
+        .all(|f| f.status == FeatureStatus::Ok));
+    // Conversely, final-scene existence cannot substitute for missing prefix
+    // evidence. A later feature could introduce the same topology key.
+    let missing_plan = manager.prepare_recompute().unwrap();
+    let missing = manager
+        .commit_solid_with_verified_supports(
+            CommitKernelRequest {
+                transaction_id: missing_plan.transaction_id,
+                scene: KernelSceneDto {
+                    bodies: vec![
+                        planar_body(first_body, "support", 10.0),
+                        planar_body(second_body, "top", 20.0),
+                    ],
+                    errors: Vec::new(),
+                },
+            },
+            &std::collections::BTreeSet::new(),
+        )
+        .unwrap();
+    assert!(missing
+        .document
+        .features
+        .iter()
+        .filter(|f| matches!(f.name.as_str(), "Sketch2" | "Extrude2"))
+        .all(|f| matches!(f.status, FeatureStatus::Error { .. })));
+
     let broken_plan = manager.prepare_recompute().unwrap();
     let broken = manager
         .commit_solid(CommitKernelRequest {

@@ -679,7 +679,8 @@ impl CadServer {
                 .map_err(|error| format!("engine returned an invalid recompute plan: {error}"))?;
             let transaction_id = plan.transaction_id;
             self.pending_recompute_transaction = Some(transaction_id);
-            let scene = match self.kernel.recompute(&plan) {
+            let queries = self.manager.history_support_queries();
+            let (scene, verified) = match self.kernel.recompute_with_supports(&plan, &queries) {
                 Ok(scene) => scene,
                 Err(error) => {
                     self.manager.cancel_solid_recompute(transaction_id);
@@ -691,12 +692,12 @@ impl CadServer {
                 transaction_id,
                 scene,
             };
-            let committed = parse_engine_envelope(host::handle(
-                &mut self.manager,
-                "solid_commit",
-                &serde_json::to_string(&commit)
-                    .map_err(|error| format!("could not encode kernel result: {error}"))?,
-            ))?;
+            let committed = serde_json::to_value(
+                self.manager
+                    .commit_solid_with_verified_supports(commit, &verified)
+                    .map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
             self.pending_recompute_transaction = None;
             committed
         };
@@ -1722,7 +1723,8 @@ impl CadServer {
         let plan: RecomputePlanDto = serde_json::from_value(plan_value)
             .map_err(|error| format!("invalid model.json / recompute plan: {error}"))?;
         let transaction_id = plan.transaction_id;
-        let scene = match self.kernel.recompute(&plan) {
+        let queries = self.manager.history_support_queries();
+        let (scene, verified) = match self.kernel.recompute_with_supports(&plan, &queries) {
             Ok(scene) => scene,
             Err(error) => {
                 self.manager.cancel_solid_recompute(transaction_id);
@@ -1731,15 +1733,15 @@ impl CadServer {
                 ));
             }
         };
-        let _ = parse_engine_envelope(host::handle(
-            &mut self.manager,
-            "solid_commit",
-            &serde_json::to_string(&CommitKernelRequest {
-                transaction_id,
-                scene,
-            })
-            .map_err(|e| e.to_string())?,
-        ))?;
+        self.manager
+            .commit_solid_with_verified_supports(
+                CommitKernelRequest {
+                    transaction_id,
+                    scene,
+                },
+                &verified,
+            )
+            .map_err(|e| e.to_string())?;
 
         self.seed_script_baseline_from_model(&model_json);
         self.loaded_snapshot_json = Some(model_json);

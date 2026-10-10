@@ -3021,6 +3021,21 @@ rust::Vec<std::uint64_t> Kernel::body_ids() const {
   return result;
 }
 
+rust::Vec<std::uint64_t> Kernel::planar_face_keys() const {
+  rust::Vec<std::uint64_t> result;
+  for (const auto& entry : impl_->bodies) {
+    TopTools_IndexedMapOfShape faces;
+    TopExp::MapShapes(entry.second, TopAbs_FACE, faces);
+    for (int index = 1; index <= faces.Extent(); ++index) {
+      if (BRepAdaptor_Surface(TopoDS::Face(faces(index)), true).GetType() == GeomAbs_Plane) {
+        result.push_back(entry.first);
+        result.push_back(static_cast<std::uint64_t>(index - 1));
+      }
+    }
+  }
+  return result;
+}
+
 
 
 

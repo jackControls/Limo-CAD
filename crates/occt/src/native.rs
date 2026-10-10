@@ -10,7 +10,7 @@ use limo_cad_solid::{
     KernelJobDto, KernelProfileDto, KernelSceneDto, KernelTransformDto, LoftContinuity, Point3Dto,
     RecomputePlanDto, StepExportRequest, SweepOrientation, SweepTransition, ThreadFit,
 };
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::Write as _;
 use std::sync::Mutex;
 
@@ -196,6 +196,7 @@ mod ffi {
         fn reset(self: Pin<&mut Kernel>);
         fn apply_job(self: Pin<&mut Kernel>, job: &FfiJob) -> Result<()>;
         fn body_ids(self: &Kernel) -> Vec<u64>;
+        fn planar_face_keys(self: &Kernel) -> Result<Vec<u64>>;
         fn mesh(self: &Kernel, body_id: u64) -> Result<FfiMesh>;
         fn section_geometry(
             self: &Kernel,
@@ -235,6 +236,7 @@ pub struct OcctKernel {
     /// Only a fully successful replay may seed the next append. The jobs
     /// include all resolved geometry inputs, not just feature IDs/revisions.
     successful_jobs: Option<Vec<KernelJobDto>>,
+    support_cache: BTreeMap<(usize, limo_cad_core::FaceId), bool>,
     /// Exact projection is independent of paper styling and export format.
     /// Full requests include authoritative occurrence poses and section intent.
     projection_cache: Mutex<VecDeque<(DrawingProjectionRequest, DrawingProjectionDto)>>,
@@ -297,6 +299,7 @@ impl OcctKernel {
         Ok(Self {
             inner,
             successful_jobs: None,
+            support_cache: BTreeMap::new(),
             projection_cache: Mutex::new(VecDeque::new()),
             #[cfg(test)]
             last_applied_jobs: 0,
@@ -306,24 +309,57 @@ impl OcctKernel {
     }
 
     pub fn recompute(&mut self, plan: &RecomputePlanDto) -> Result<KernelSceneDto, OcctError> {
+        self.recompute_with_supports(plan, &[])
+            .map(|(scene, _)| scene)
+    }
+
+    /// Proofs belong only to this returned scene/transaction. Failed replay
+    /// produces none; cached answers survive only an identical job prefix.
+    pub fn recompute_with_supports(
+        &mut self,
+        plan: &RecomputePlanDto,
+        queries: &[limo_cad_solid::HistorySupportQuery],
+    ) -> Result<(KernelSceneDto, BTreeSet<limo_cad_core::FeatureId>), OcctError> {
+        let queries = queries
+            .iter()
+            .filter_map(|query| {
+                plan.jobs
+                    .iter()
+                    .rposition(|job| job.feature_id() == query.after_feature)
+                    .map(|index| (index, *query))
+            })
+            .collect::<Vec<_>>();
         let previous = self.successful_jobs.take();
         if !plan.errors.is_empty() || previous.as_ref() != Some(&plan.jobs) {
             self.projection_cache.get_mut().unwrap().clear();
         }
-        let reused = previous
+        let mut reused = previous
             .as_ref()
             .filter(|jobs| plan.errors.is_empty() && plan.jobs.starts_with(jobs))
             .map_or(0, Vec::len);
+        if queries.iter().any(|(index, query)| {
+            *index < reused && !self.support_cache.contains_key(&(*index, query.face_id))
+        }) {
+            reused = 0;
+        }
+        // Cache only the current document's requests, not every face ever
+        // selected while editing an otherwise unchanged job prefix.
+        self.support_cache.retain(|key, _| {
+            queries
+                .iter()
+                .any(|(index, query)| *key == (*index, query.face_id))
+        });
         let mut pinned = self.inner.pin_mut();
         if reused == 0 {
             pinned.as_mut().reset();
+            self.support_cache.clear();
         }
         #[cfg(test)]
         {
             self.last_applied_jobs = 0;
         }
         let mut errors = plan.errors.clone();
-        for job in &plan.jobs[reused..] {
+        for (index, job) in plan.jobs.iter().enumerate().skip(reused) {
             let ffi_job = match to_ffi_job(job) {
                 Ok(job) => job,
                 Err(error) => {
@@ -345,6 +381,25 @@ impl OcctKernel {
                 });
                 break;
             }
+            if queries.iter().any(|(at, _)| *at == index) {
+                let keys = pinned
+                    .as_ref()
+                    .planar_face_keys()
+                    .map_err(|error| OcctError(error.to_string()))?;
+                let faces = keys
+                    .chunks_exact(2)
+                    .map(|key| {
+                        limo_cad_solid::stable_face_id(
+                            limo_cad_core::BodyId(key[0]),
+                            &format!("face:{}", key[1]),
+                        )
+                    })
+                    .collect::<BTreeSet<_>>();
+                for (_, query) in queries.iter().filter(|(at, _)| *at == index) {
+                    self.support_cache
+                        .insert((index, query.face_id), faces.contains(&query.face_id));
+                }
+            }
         }
 
         let body_ids = self
@@ -362,10 +417,18 @@ impl OcctKernel {
                 .map_err(|error| OcctError(error.to_string()))?;
             bodies.push(from_ffi_mesh(raw)?);
         }
+        let mut verified = BTreeSet::new();
         if errors.is_empty() {
             self.successful_jobs = Some(plan.jobs.clone());
+            for (index, query) in queries {
+                if self.support_cache.get(&(index, query.face_id)) == Some(&true) {
+                    verified.insert(query.sketch_id);
+                }
+            }
+        } else {
+            self.support_cache.clear();
         }
-        Ok(KernelSceneDto { bodies, errors })
+        Ok((KernelSceneDto { bodies, errors }, verified))
     }
 
     /// Serialize selected (or all) live B-reps as an AP242 STEP exchange
@@ -2275,6 +2338,78 @@ mod tests {
             OcctKernel::new().unwrap().recompute(&plan).unwrap()
         );
         assert_eq!(kernel.last_applied_jobs, 1);
+    }
+
+    #[test]
+    fn support_proofs_use_exact_prefix_and_invalidate_on_edit_or_failure() {
+        use limo_cad_solid::{stable_face_id, HistorySupportQuery, KernelCombineJobDto};
+        let mut kernel = OcctKernel::new().unwrap();
+        let mut plan = RecomputePlanDto {
+            transaction_id: 1,
+            jobs: vec![
+                box_job(1, 1),
+                box_job(2, 2),
+                KernelJobDto::Combine(KernelCombineJobDto {
+                    feature_id: FeatureId(3),
+                    target_body_id: BodyId(1),
+                    tool_body_ids: vec![BodyId(2)],
+                    operation: CombineOperation::Intersect,
+                    keep_tools: false,
+                }),
+            ],
+            errors: vec![],
+        };
+        let query = HistorySupportQuery {
+            sketch_id: FeatureId(99),
+            after_feature: FeatureId(2),
+            face_id: stable_face_id(BodyId(2), "face:0"),
+        };
+        // A previously unqueried prefix must be inspected, not inferred from
+        // the current final scene or a remembered sketch basis.
+        kernel.recompute(&plan).unwrap();
+        let (scene, proofs) = kernel.recompute_with_supports(&plan, &[query]).unwrap();
+        assert!(scene.errors.is_empty());
+        assert!(scene.bodies.iter().all(|body| body.body_id != BodyId(2)));
+        assert_eq!(proofs, BTreeSet::from([query.sketch_id]));
+        assert_eq!(kernel.last_applied_jobs, 3);
+        assert_eq!(
+            kernel.recompute_with_supports(&plan, &[query]).unwrap().1,
+            proofs
+        );
+        assert_eq!(kernel.last_applied_jobs, 0);
+
+        // Even when the queried prefix succeeds, a failed transaction cannot
+        // lend its proofs to a later commit or cached append.
+        let good = plan.clone();
+        plan.jobs.push(KernelJobDto::Combine(KernelCombineJobDto {
+            feature_id: FeatureId(4),
+            target_body_id: BodyId(1),
+            tool_body_ids: vec![BodyId(999)],
+            operation: CombineOperation::Join,
+            keep_tools: false,
+        }));
+        let (failed, proofs) = kernel.recompute_with_supports(&plan, &[query]).unwrap();
+        assert!(!failed.errors.is_empty());
+        assert!(proofs.is_empty());
+        assert!(kernel.support_cache.is_empty());
+        plan = good;
+        assert_eq!(
+            kernel.recompute_with_supports(&plan, &[query]).unwrap().1,
+            BTreeSet::from([query.sketch_id])
+        );
+        assert_eq!(kernel.last_applied_jobs, 3);
+
+        plan.jobs[1] = box_job(2, 7);
+        if let KernelJobDto::Combine(job) = &mut plan.jobs[2] {
+            job.tool_body_ids = vec![BodyId(7)];
+        }
+        let (edited, proofs) = kernel.recompute_with_supports(&plan, &[query]).unwrap();
+        assert!(edited.errors.is_empty());
+        assert!(
+            proofs.is_empty(),
+            "an edited prefix must not reuse its former support"
+        );
+        assert_eq!(kernel.last_applied_jobs, 3);
     }
 
     #[test]

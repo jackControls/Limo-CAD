@@ -496,6 +496,21 @@ impl OcctKernel {
         ))
     }
 
+    pub fn recompute_with_supports(
+        &mut self,
+        plan: &RecomputePlanDto,
+        _queries: &[limo_cad_solid::HistorySupportQuery],
+    ) -> Result<
+        (
+            KernelSceneDto,
+            std::collections::BTreeSet<limo_cad_core::FeatureId>,
+        ),
+        OcctError,
+    > {
+        self.recompute(plan)
+            .map(|scene| (scene, Default::default()))
+    }
+
     pub fn drawing_projection(
         &self,
         _request: &DrawingProjectionRequest,

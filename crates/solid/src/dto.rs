@@ -1574,6 +1574,15 @@ pub struct CommitKernelRequest {
     pub scene: KernelSceneDto,
 }
 
+/// Internal support query evaluated against an exact recompute prefix, never
+/// against the final (possibly consuming) feature's topology.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HistorySupportQuery {
+    pub sketch_id: FeatureId,
+    pub after_feature: FeatureId,
+    pub face_id: FaceId,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MeshDto {
     pub positions: Vec<f32>,

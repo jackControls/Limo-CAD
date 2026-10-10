@@ -42,6 +42,7 @@ class Kernel {
   void reset();
   void apply_job(const FfiJob& job);
   rust::Vec<std::uint64_t> body_ids() const;
+  rust::Vec<std::uint64_t> planar_face_keys() const;
   FfiMesh mesh(std::uint64_t body_id) const;
   FfiSectionGeometry section_geometry(std::uint64_t body_id,
                                      const FfiSectionOptions& options) const;
