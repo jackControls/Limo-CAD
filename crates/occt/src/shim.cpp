@@ -3370,7 +3370,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
         budget.context = std::string(healed ? "after" : "before") +
             " standard healing, junction repair, face " + std::to_string(face_index);
         for (int wi = 0; wi < face->WiresNb(); ++wi) {
-          budget.compare();
+          budget.compare(1);
           const auto& wire = face->GetWire(wi);
           if ((wire->GetStatusMask() & unrelated_errors) != 0 ||
               (wire->IsSet(IMeshData_Failure) && !wire->IsSet(IMeshData_SelfIntersectingWire)))
@@ -3390,7 +3390,7 @@ class TangentBoundaryMeshContext : public BRepMesh_Context {
             budget.context = std::string(healed ? "after" : "before") +
                 " standard healing, junction repair, face " + std::to_string(face_index) +
                 ", wire " + std::to_string(wi) + ", edge " + std::to_string(ei);
-            budget.compare();
+            budget.compare(1);
             const int ni = (ei + 1) % wire->EdgesNb();
             auto a = wire->GetEdge(ei), b = wire->GetEdge(ni);
             if (a == b || !crossings->Contains(a) || !crossings->Contains(b) ||

@@ -89,7 +89,7 @@ fn fixture() -> (SketchManager, [u64; 2]) {
 
 #[test]
 fn additive_through_all_add_rejects_atomically_and_finite_recovery_keeps_ids() {
-    for operation in [ExtrudeOperation::NewBody, ExtrudeOperation::Add] {
+    for operation in [ExtrudeOperation::NewBody, ExtrudeOperation::Join] {
         let (mut manager, lines) = fixture();
         let (mut control, control_lines) = fixture();
         let before_model = manager.export_project_model().unwrap();
@@ -137,7 +137,7 @@ fn additive_through_all_add_rejects_atomically_and_finite_recovery_keeps_ids() {
 
 #[test]
 fn additive_through_all_edit_rejects_without_allocating_more_body_ids() {
-    for operation in [ExtrudeOperation::NewBody, ExtrudeOperation::Add] {
+    for operation in [ExtrudeOperation::NewBody, ExtrudeOperation::Join] {
         let (mut manager, lines) = fixture();
         let (mut control, control_lines) = fixture();
         for (target, source_lines) in [(&mut manager, lines), (&mut control, control_lines)] {
@@ -195,7 +195,7 @@ fn additive_through_all_edit_rejects_without_allocating_more_body_ids() {
 
 #[test]
 fn subtract_and_common_through_all_remain_supported_shared_requests() {
-    for operation in [ExtrudeOperation::Subtract, ExtrudeOperation::Common] {
+    for operation in [ExtrudeOperation::Cut, ExtrudeOperation::Intersect] {
         let (mut manager, lines) = fixture();
         let plan = manager
             .prepare_rib(request(&lines[..1], operation, Some(RibExtent::ThroughAll)))
