@@ -1899,6 +1899,10 @@ impl SketchManager {
         self.cam.clone()
     }
 
+    pub fn cam_document_ref(&self) -> &CamDocumentDto {
+        &self.cam
+    }
+
     pub fn set_cam_document(
         &mut self,
         mut cam: CamDocumentDto,

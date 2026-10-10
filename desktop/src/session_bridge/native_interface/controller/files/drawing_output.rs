@@ -2,7 +2,6 @@
 use super::*;
 use crate::session_bridge::parse_engine_envelope;
 use limo_cad_occt::drawing_export::{DrawingExportFormat, DrawingExportRequest};
-use limo_cad_sketch::DrawingDocumentDto;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Format {
@@ -49,19 +48,17 @@ pub(super) fn capture(
         .bridge
         .with_native_document_receipt(&services.engine, &receipt.owner, |revision| {
             check_revision(receipt, revision)?;
-            let drawing: DrawingDocumentDto = serde_json::from_value(parse_engine_envelope(
-                services.engine.engine_call("drawing_document", ""),
-            )?)
-            .map_err(|error| error.to_string())?;
-            let sheet = drawing
-                .sheets
-                .iter()
-                .find(|sheet| Some(sheet.id) == drawing.active_sheet_id)
-                .ok_or("Select a drawing sheet to export")?;
-            Ok(ExportIntent {
-                format,
-                sheet_id: sheet.id,
-                sheet_name: sheet.name.clone(),
+            services.engine.with_drawing(|drawing| {
+                let sheet = drawing
+                    .sheets
+                    .iter()
+                    .find(|sheet| Some(sheet.id) == drawing.active_sheet_id)
+                    .ok_or("Select a drawing sheet to export")?;
+                Ok(ExportIntent {
+                    format,
+                    sheet_id: sheet.id,
+                    sheet_name: sheet.name.clone(),
+                })
             })
         })
 }

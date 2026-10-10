@@ -354,6 +354,13 @@ impl NativeEngineHost {
             .cam_document()
     }
 
+    /// Inspect CAM intent without copying unrelated setups or operations.
+    /// The callback runs under the engine guard and must not reenter this host.
+    pub fn with_cam<R>(&self, inspect: impl FnOnce(&CamDocumentDto) -> R) -> R {
+        let workspace = self.inner.lock().expect("engine lock poisoned");
+        inspect(workspace.active().manager.cam_document_ref())
+    }
+
     pub fn geometry_revision(&self) -> u64 {
         self.inner
             .lock()

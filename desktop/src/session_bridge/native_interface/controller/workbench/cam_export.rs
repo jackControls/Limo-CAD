@@ -294,21 +294,19 @@ pub(crate) fn reduce(
         if files::modal(world).is_some() || history::modal(world).is_some() {
             return Err("Finish the current dialog first".into());
         }
-        let document = bridge.with_native_document_receipt(engine, &receipt.owner, |revision| {
+        let selected = cam::selected(world);
+        let kind = if *command == Command::OpenEvents {
+            Kind::Events
+        } else {
+            Kind::Nc
+        };
+        let draft = bridge.with_native_document_receipt(engine, &receipt.owner, |revision| {
             current(&receipt, revision)?;
-            Ok(engine.cam_document_snapshot())
+            engine.with_cam(|document| {
+                let id = setup_id(document, selected).ok_or("Choose a CAM setup")?;
+                Draft::new(receipt.clone(), document, id, kind)
+            })
         })?;
-        let id = setup_id(&document, cam::selected(world)).ok_or("Choose a CAM setup")?;
-        let draft = Draft::new(
-            receipt,
-            &document,
-            id,
-            if *command == Command::OpenEvents {
-                Kind::Events
-            } else {
-                Kind::Nc
-            },
-        )?;
         world.init_resource::<State>();
         let mut state = world.resource_mut::<State>();
         state.serial = state.serial.wrapping_add(1);
