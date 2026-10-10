@@ -1054,11 +1054,7 @@ fn guard_action(
     guard_foreground(hwnd, owns_capture, observed.native_dialog)
 }
 
-struct NativeEditText {
-    text: Vec<u16>,
-    start: usize,
-    end: usize,
-}
+use super::native_text::{NativeEditText, SettledEdit};
 
 struct NativeTextVerification {
     prefix: Vec<u16>,
@@ -1069,7 +1065,7 @@ struct NativeTextVerification {
 impl NativeTextVerification {
     fn new(observed: &Observation, hwnd: HWND) -> Result<Self, String> {
         let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
-        let edit = read_guarded_native_edit(observed, hwnd, deadline)?;
+        let (edit, _) = read_guarded_native_edit(observed, hwnd, deadline)?;
         if String::from_utf16(&edit.text[..edit.start]).is_err()
             || String::from_utf16(&edit.text[edit.end..]).is_err()
         {
@@ -1174,7 +1170,8 @@ fn read_guarded_native_edit(
     observed: &Observation,
     hwnd: HWND,
     deadline: std::time::Instant,
-) -> Result<NativeEditText, String> {
+) -> Result<(NativeEditText, bool), String> {
+    let mut retried_unstable = false;
     loop {
         guard_action(observed, hwnd, false, false)?;
         guard_native_text_focus(observed, hwnd)?;
@@ -1182,9 +1179,10 @@ fn read_guarded_native_edit(
         guard_action(observed, hwnd, false, false)?;
         guard_native_text_focus(observed, hwnd)?;
         match readback {
-            Ok(edit) => return Ok(edit),
+            Ok(edit) => return Ok((edit, retried_unstable)),
             Err(NativeEditReadError::Unavailable(error)) => return Err(error),
             Err(NativeEditReadError::Unstable(error)) => {
+                retried_unstable = true;
                 if std::time::Instant::now() >= deadline {
                     return Err(error);
                 }
@@ -1201,33 +1199,22 @@ fn verify_native_text(
     expected: &NativeTextVerification,
     final_read: bool,
 ) -> Result<(), String> {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
-    let exact: Vec<u16> = expected
-        .prefix
-        .iter()
-        .chain(&expected.suffix)
-        .copied()
-        .collect();
+    let started = std::time::Instant::now();
+    let deadline = started + std::time::Duration::from_millis(750);
+    let mut settled = SettledEdit::default();
     loop {
-        let current = read_guarded_native_edit(observed, hwnd, deadline)?;
-        let caret = expected.prefix.len();
-        let exact_text = current.text == exact && current.start == caret && current.end == caret;
-        // File dialogs may append a selected autocomplete suffix. Prove the
-        // typed prefix and selection before allowing the next human scalar
-        // to replace it. Final success still requires the exact whole text.
-        let selected_completion = !final_read
-            && expected.suffix.is_empty()
-            && current.text.starts_with(&expected.prefix)
-            && current.start == caret
-            && current.end == current.text.len()
-            && current.end > caret;
-        if exact_text || selected_completion {
+        let (current, retried_unstable) = read_guarded_native_edit(observed, hwnd, deadline)?;
+        if retried_unstable {
+            settled.reset();
+        }
+        let acceptable = current.matches(&expected.prefix, &expected.suffix, final_read);
+        if settled.observe(started.elapsed(), &current, acceptable) {
             return Ok(());
         }
         if std::time::Instant::now() >= deadline {
             return Err(format!(
-                "Native edit text/selection did not match the requested replacement (expected UTF-16 length {}, actual {}, selection {}..{}); no further input was sent",
-                exact.len(), current.text.len(), current.start, current.end
+                "Native edit text/selection did not settle at the requested replacement (expected UTF-16 length {}, actual {}, selection {}..{}); no further input was sent",
+                expected.prefix.len() + expected.suffix.len(), current.text.len(), current.start, current.end
             ));
         }
         std::thread::sleep(std::time::Duration::from_millis(NATIVE_TEXT_INTERVAL_MS));

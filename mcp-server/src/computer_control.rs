@@ -1,6 +1,9 @@
 //! Computer input is a separate OS surface, never an engine or script operation.
 use serde_json::{json, Value};
 
+#[cfg(any(test, all(windows, feature = "native-computer-control")))]
+mod native_text;
+
 #[cfg(all(windows, feature = "native-computer-control"))]
 mod capture;
 #[cfg(all(windows, feature = "native-computer-control"))]
