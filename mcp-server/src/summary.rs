@@ -388,7 +388,42 @@ fn connected_walls(body: &BodyDto, face: &FaceDto, other_id: u64) -> bool {
     let shares = |a: &FaceDto, b: &FaceDto| a.edge_keys.iter().any(|key| b.edge_keys.contains(key));
     shares(face, other)
         || body.faces.iter().any(|shoulder| {
-            shoulder.plane.is_some() && shares(face, shoulder) && shares(other, shoulder)
+            let Some(plane) = shoulder.plane else {
+                return false;
+            };
+            if shoulder.edge_keys.len() != 2 || shoulder.edge_keys[0] == shoulder.edge_keys[1] {
+                return false;
+            }
+            let normal = normalize(plane.normal);
+            let matches_wall = |key: &String, wall: &FaceDto| {
+                let Some(cylinder) = wall.cylinder.as_ref() else {
+                    return false;
+                };
+                let Some(circle) = body
+                    .edges
+                    .iter()
+                    .find(|edge| &edge.key == key)
+                    .and_then(|edge| edge.circle.as_ref())
+                else {
+                    return false;
+                };
+                let axis = normalize([cylinder.axis.x, cylinder.axis.y, cylinder.axis.z]);
+                let center = [circle.center.x, circle.center.y, circle.center.z];
+                let origin = [cylinder.origin.x, cylinder.origin.y, cylinder.origin.z];
+                let delta = sub(center, origin);
+                let ring_normal = normalize([circle.normal.x, circle.normal.y, circle.normal.z]);
+                wall.edge_keys.contains(key)
+                    && circle.closed
+                    && (circle.radius - cylinder.radius).abs() <= 1e-6
+                    && dot(normal, axis).abs() > 0.999999
+                    && dot(ring_normal, axis).abs() > 0.999999
+                    && dot(sub(center, plane.origin), normal).abs() <= 1e-6
+                    && norm(sub(delta, scale(axis, dot(delta, axis)))) <= 1e-6
+            };
+            (matches_wall(&shoulder.edge_keys[0], face)
+                && matches_wall(&shoulder.edge_keys[1], other))
+                || (matches_wall(&shoulder.edge_keys[1], face)
+                    && matches_wall(&shoulder.edge_keys[0], other))
         })
 }
 
@@ -928,6 +963,47 @@ mod tests {
         // An annular shoulder is not a blind bottom.
         scene.bodies[0].faces[1].edge_keys.push("inner_ring".into());
         assert!(holes_from_scene(&scene)[0].depth.is_none());
+    }
+
+    #[test]
+    fn counterbore_shoulder_requires_two_matching_coplanar_rings() {
+        let mut scene = cylinder_scene();
+        let body = &mut scene.bodies[0];
+        let mut second = body.faces[0].clone();
+        second.id = limo_cad_core::FaceId(2);
+        second.edge_keys = vec!["outer_ring".into()];
+        second.cylinder.as_mut().unwrap().radius = 4.;
+        let mut outer = body.edges[1].clone();
+        outer.id = limo_cad_core::EdgeId(3);
+        outer.key = "outer_ring".into();
+        outer.circle.as_mut().unwrap().radius = 4.;
+        body.edges.push(outer);
+        let mut shoulder = body.faces[0].clone();
+        shoulder.id = limo_cad_core::FaceId(3);
+        shoulder.cylinder = None;
+        shoulder.edge_keys = vec!["ring1".into(), "outer_ring".into()];
+        shoulder.plane = Some(PlaneBasis {
+            origin: [0., 0., 8.],
+            u: [1., 0., 0.],
+            v: [0., 1., 0.],
+            normal: [0., 0., -2.],
+        });
+        body.faces.extend([second, shoulder]);
+        assert!(connected_walls(body, &body.faces[0], 2));
+        body.faces[2].edge_keys.push("unrelated_boundary".into());
+        assert!(!connected_walls(body, &body.faces[0], 2));
+        body.faces[2].edge_keys.pop();
+        body.faces[2].plane.as_mut().unwrap().normal = [1., 0., 0.];
+        assert!(!connected_walls(body, &body.faces[0], 2));
+        body.faces[2].plane.as_mut().unwrap().normal = [0., 0., 1.];
+        body.edges[2].circle.as_mut().unwrap().closed = false;
+        assert!(!connected_walls(body, &body.faces[0], 2));
+        body.edges[2].circle.as_mut().unwrap().closed = true;
+        body.edges[2].circle.as_mut().unwrap().radius = 3.;
+        assert!(!connected_walls(body, &body.faces[0], 2));
+        body.edges[2].circle.as_mut().unwrap().radius = 4.;
+        body.edges[2].circle.as_mut().unwrap().center.z = 9.;
+        assert!(!connected_walls(body, &body.faces[0], 2));
     }
 
     #[test]
