@@ -899,6 +899,13 @@ jobs:
           done < <(find dist -type f -name '*.sha256' ! -path '*diagnostics*' | sort)
           test "$checked" -eq 5
 
+      - name: Reject control-enabled or mismatched Windows release packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t packages < <(find dist -type f -name '*.zip' ! -path '*diagnostics*' | sort)
+          python3 scripts/ci/verify-default-windows-package.py --version "$(cat VERSION)" --revision "$GITHUB_SHA" "${packages[@]}"
+
       - name: Publish packages, checksums and notes
         shell: bash
         env:

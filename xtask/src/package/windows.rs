@@ -67,7 +67,7 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         crate::occt_storage::verify_header(&layout.include)?;
         println!("Cross-built packages require checked-runtime qualification on the target before publication.");
     }
-    let bin = runtime_bin(&sdk)?;
+    runtime_bin(&sdk)?;
     common::run(&mut build_command(package, options, &target, &sdk, &source))?;
     ensure!(
         provenance::read(&package.root)? == source,
@@ -79,9 +79,9 @@ pub(super) fn build(package: &Package, options: &Options) -> Result<()> {
         &target,
         &release.join("limo-cad.exe"),
         &sdk,
-        &bin,
         &release.join("bundle/portable"),
         &source,
+        options.computer_control,
     )
 }
 
@@ -122,16 +122,48 @@ fn stage(
     target: &Target,
     executable: &Path,
     sdk: &Path,
-    bin: &Path,
     output: &Path,
     source: &provenance::Source,
+    computer_control: bool,
 ) -> Result<()> {
     ensure!(executable.is_file(), "Cargo did not produce limo-cad.exe");
-    let name = format!("Limo-CAD-{}-windows-{}", package.version, target.arch);
+    let name = format!(
+        "Limo-CAD-{}-windows-{}{}",
+        package.version,
+        target.arch,
+        if computer_control {
+            "-computer-control"
+        } else {
+            ""
+        }
+    );
     let directory = common::fresh_child(output, &name)?;
-    let count = stage_runtime(&package.root, executable, sdk, bin, &directory)?;
+    let count = stage_runtime(
+        &package.root,
+        executable,
+        sdk,
+        &runtime_bin(sdk)?,
+        &directory,
+    )?;
     let commit = source.stamp();
-    fs::write(directory.join("README.txt"), format!("Limo CAD {} - Windows {} portable build\n\nRun Limo-CAD.exe directly; no installation is required.\n\nLocal stdio MCP is always available. A normal launch opens the CAD window.\nUse args [\"--headless\"] for an agent worker without an extra window.\nKeep the DLLs beside the executable; no separate server or OCCT SDK is required.\n\nSystem requirements:\n- Windows 10 version 1803 or newer, or Windows 11\n- Microsoft Visual C++ v14 {} Redistributable\n  https://aka.ms/vc14/vc_redist.{}.exe\n- A graphics adapter and driver accepted by wgpu's DX12 or Vulkan backend\n\nThe Visual C++ runtime is intentionally not bundled. Install the centrally\nserviced Microsoft Redistributable for security and servicing updates.\n\nSource: https://github.com/limo-cad/Limo-CAD\nSource commit: {commit}\n", package.version, target.arch, target.arch, target.arch))?;
+    let capability = if computer_control {
+        "Guarded native mouse/keyboard computer control is ENABLED in this opt-in build."
+    } else {
+        "Native mouse/keyboard computer control is not included in this default build."
+    };
+    fs::write(
+        directory.join("package-manifest.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "schema_version": 1,
+            "version": package.version,
+            "target": target.triple,
+            "source_revision": source.revision,
+            "source_modified": source.modified,
+            "native_computer_control": computer_control,
+            "executable_sha256": common::sha256(&directory.join("Limo-CAD.exe"))?,
+        }))?,
+    )?;
+    fs::write(directory.join("README.txt"), format!("Limo CAD {} - Windows {} portable build\n\nRun Limo-CAD.exe directly; no installation is required.\n\nLocal stdio MCP is always available. A normal launch opens the CAD window.\n{capability}\nUse args [\"--headless\"] for an agent worker without an extra window.\nKeep the DLLs beside the executable; no separate server or OCCT SDK is required.\n\nSystem requirements:\n- Windows 10 version 1803 or newer, or Windows 11\n- Microsoft Visual C++ v14 {} Redistributable\n  https://aka.ms/vc14/vc_redist.{}.exe\n- A graphics adapter and driver accepted by wgpu's DX12 or Vulkan backend\n\nThe Visual C++ runtime is intentionally not bundled. Install the centrally\nserviced Microsoft Redistributable for security and servicing updates.\n\nSource: https://github.com/limo-cad/Limo-CAD\nSource commit: {commit}\n", package.version, target.arch, target.arch, target.arch))?;
     let zip = output.join(format!("{name}.zip"));
     common::zip_directory(&directory, &zip)?;
     common::checksum(&zip)?;
@@ -227,7 +259,7 @@ mod tests {
             modified: false,
         };
         for arch in ["x86_64", "aarch64"] {
-            let target = target(arch, None).unwrap();
+            let target = super::target(arch, None).unwrap();
             for computer_control in [false, true] {
                 let options = Options {
                     computer_control,
@@ -276,9 +308,9 @@ mod tests {
             revision: "123456789abcdef0123456789abcdef0123456789a".into(),
             modified: true,
         };
-        assert!(stage(&package, &target, &exe, &sdk, &bin, &output, &source).is_err());
+        assert!(stage(&package, &target, &exe, &sdk, &output, &source, false).is_err());
         fs::write(bin.join("TKHLR.dll"), "DLL").unwrap();
-        stage(&package, &target, &exe, &sdk, &bin, &output, &source).unwrap();
+        stage(&package, &target, &exe, &sdk, &output, &source, false).unwrap();
         let readme =
             fs::read_to_string(output.join("Limo-CAD-0.3.0-rc.1-windows-x64/README.txt")).unwrap();
         assert!(readme.contains(&format!("Source commit: {}\n", source.stamp())));
@@ -293,5 +325,37 @@ mod tests {
         assert!(archive
             .by_name("Limo-CAD-0.3.0-rc.1-windows-x64/TKHLR.dll")
             .is_ok());
+        drop(archive);
+        for arch in ["x86_64", "aarch64"] {
+            let target = super::target(arch, None).unwrap();
+            for control in [false, true] {
+                stage(&package, &target, &exe, &sdk, &output, &source, control).unwrap();
+                let name = format!(
+                    "Limo-CAD-0.3.0-rc.1-windows-{}{}",
+                    target.arch,
+                    if control { "-computer-control" } else { "" }
+                );
+                let mut zip = zip::ZipArchive::new(
+                    fs::File::open(output.join(format!("{name}.zip"))).unwrap(),
+                )
+                .unwrap();
+                let manifest: serde_json::Value = serde_json::from_reader(
+                    zip.by_name(&format!("{name}/package-manifest.json"))
+                        .unwrap(),
+                )
+                .unwrap();
+                assert_eq!(manifest["native_computer_control"], control);
+                assert_eq!(manifest["target"], target.triple);
+                assert_eq!(manifest["source_revision"], source.revision);
+                assert_eq!(manifest["source_modified"], source.modified);
+                assert_eq!(manifest["executable_sha256"], common::sha256(&exe).unwrap());
+                let text = fs::read_to_string(output.join(&name).join("README.txt")).unwrap();
+                assert!(text.contains(if control {
+                    "ENABLED in this opt-in build"
+                } else {
+                    "not included in this default build"
+                }));
+            }
+        }
     }
 }
