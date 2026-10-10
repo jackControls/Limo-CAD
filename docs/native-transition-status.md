@@ -1,14 +1,27 @@
 # Native transition status
 
-Current checkpoint, **2026-10-09 UTC**: PR124 remains open. Jack's PR359
-merged into the Bevy branch as bd69f00d after independent correctness,
-security and root source review, with follow-up issues #361, #362 and #363.
-The reviewers used scoped agent fallbacks; specialized review services were
-unavailable. PR338 is isolated against main without application runtime changes;
-its simulation sources match Jack's approved version and all 14 evidence hashes
-pass. The isolated research harness and both required checks passed; a renewed
-GitHub review remains required before its merge.
-Main remains e0760efb, already included in Bevy; no main bypass occurred.
+Current checkpoint, **2026-10-10 UTC**: PR124 remains open. Main advanced to
+54dcab7f after PR338 merged; Bevy includes that history through merge 08cdd6b9.
+Incoming research/license corrections were preserved. No Bevy merge into main
+has occurred. The user approved continued UI-first coverage and repair of all
+posted defects, including newly reported defects; passing CI does not close the
+remaining UI/MCP qualification gates.
+
+Posted-defect repairs: 18a863f6 addresses #363 with a shared circular-refinement
+comparison/sample/insertion budget across both healing stages. The standalone
+C++ exhaustion/overflow checks and freshly compiled native rounded-thread mating
+and analytic circular-hole regressions pass. Commit 8e951700 addresses #362:
+distinct control-enabled Windows package names, capability/provenance manifests,
+and a default-release publication guard. Both focused Rust Windows package tests
+and adversarial Python identity checks pass. Hosted checks and actual release
+publication remain separate gates; neither change is deployed to the GUI yet.
+
+The installed GUI/MCP remains clean 93823f6d. A fresh matched pair qualified
+retained fillet R5 to R7 to R3 edits, exact Undo/Redo and native Save As model
+persistence; see `docs/qualification/fillet-repair-20261010.json`. Foreground
+ownership was subsequently lost, so UI reopen and boundary cases remain pending.
+No background pointer input or replacement of the separate Roller window was
+attempted. The earlier checkpoints below are retained historical evidence.
 
 The resumed d5af845b native build compiled and linked successfully in 9m16s.
 Promotion correctly stopped because canonical MCP workers remained running.

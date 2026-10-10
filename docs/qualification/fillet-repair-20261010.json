@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-10",
+  "case": "ui/sketch/fillet",
+  "repair": "sketch-fillet-finite-retained-radius",
+  "fix_commit": "aa7d0000",
+  "runtime_revision": "93823f6d609799932209bcbeae3938d6fb2e0ce6",
+  "runtime_modified": false,
+  "build_pair": "matched",
+  "operator": "guarded Rust cad_computer_control, individual interactive requests",
+  "source_fixture": "D:/limo-cad-maintenance/ui-models/Surface UI - sketch fillet human UI.limo",
+  "saved_fixture": "D:/limo-cad-maintenance/ui-models/Surface UI - fillet repair verified.limo",
+  "status": "needs_recheck",
+  "passed": [
+    "Opened the original fixture through the native file dialog, with the complete filename visibly verified.",
+    "Retained dimension R5 to R7 and then R3 solved with unchanged carrier endpoints and original corner, unchanged constraint IDs and six degrees of freedom.",
+    "Rendered R7 arc visibly enlarged; read-only sketch inspection verified the exact R7 and R3 centers and cutbacks.",
+    "One Undo restored exact R7 entities and constraints; one Redo restored exact R3 entities and constraints.",
+    "Finished sketch and used native Save As with a new filename, preserving the original fixture.",
+    "Saved archive model.json exactly matched the live read-only model; document tab displayed the saved filename."
+  ],
+  "remaining": [
+    "Reopen the saved file through the UI.",
+    "Check overshoot rejection, consumed-carrier and two-fillet boundary cases required by the retained repair queue."
+  ],
+  "blocker": "CAD lost foreground ownership after saving. A guarded focus request reported success in its bounded sample, but fresh observation found foreground false. No further input was sent.",
+  "evidence_root": "D:/limo-cad-maintenance",
+  "evidence": [
+    "resume-fillet-open-name.png",
+    "resume-fillet-before.png",
+    "resume-fillet-baseline.json",
+    "resume-fillet-r7.json",
+    "resume-fillet-r7.png",
+    "resume-fillet-r3.json",
+    "resume-fillet-undo-r7.json",
+    "resume-fillet-redo-r3.json",
+    "resume-fillet-save-name.png",
+    "resume-fillet-saved-model.json"
+  ],
+  "limits": "Partial repair receipt only. No full fillet, saved-title, text-input, UI-surface or MCP qualification is claimed."
+}
