@@ -2579,6 +2579,34 @@ mod tests {
             })
             .unwrap();
         assert!(scene.errors.is_empty(), "{:?}", scene.errors);
+        // The Boolean cut retains OCCT's single-solid compound wrapper. It
+        // must still distinguish an exterior shell from a sealed inner cavity.
+        let native = &scene.bodies[0];
+        assert_eq!(
+            native
+                .faces
+                .iter()
+                .filter(|face| face.outer_shell == Some(true))
+                .count(),
+            6
+        );
+        assert_eq!(
+            native
+                .faces
+                .iter()
+                .filter(|face| face.outer_shell == Some(false))
+                .count(),
+            3
+        );
+        assert_eq!(
+            native
+                .faces
+                .iter()
+                .find(|face| face.cylinder.is_some())
+                .unwrap()
+                .outer_shell,
+            Some(false)
+        );
         let step = kernel.export_step(&StepExportRequest::default()).unwrap();
         let mut imported = OcctKernel::new().unwrap();
         let scene = imported
@@ -2650,6 +2678,16 @@ mod tests {
             })
             .unwrap();
         assert!(scene.errors.is_empty(), "{:?}", scene.errors);
+        assert_eq!(scene.bodies.len(), 1);
+        assert_eq!(
+            scene.bodies[0]
+                .faces
+                .iter()
+                .filter(|face| face.cylinder.is_some())
+                .count(),
+            2,
+            "the two native solids must both be present in the unsupported compound"
+        );
         assert!(scene.bodies[0]
             .faces
             .iter()
@@ -2740,6 +2778,53 @@ mod tests {
             !section.visible.is_empty(),
             "Keep open-surface section outlines visible"
         );
+
+        // Export two real native shapes: a closed cavity solid and the open
+        // five-face shell above. A mixed container cannot inherit the solid's
+        // evidence merely because it has only one SOLID descendant.
+        let mut mixed = OcctKernel::new().unwrap();
+        let members = mixed
+            .recompute(&RecomputePlanDto {
+                transaction_id: 6,
+                errors: vec![],
+                jobs: vec![
+                    KernelJobDto::ImportStep(KernelImportStepJobDto {
+                        feature_id: FeatureId(7),
+                        result_body_id: BodyId(1),
+                        data_base64: encode_base64(&step),
+                    }),
+                    KernelJobDto::ImportStep(KernelImportStepJobDto {
+                        feature_id: FeatureId(8),
+                        result_body_id: BodyId(2),
+                        data_base64: encode_base64(open_step.as_bytes()),
+                    }),
+                ],
+            })
+            .unwrap();
+        assert!(members.errors.is_empty(), "{:?}", members.errors);
+        assert_eq!(members.bodies.len(), 2);
+        let mixed_step = mixed.export_step(&StepExportRequest::default()).unwrap();
+        let scene = imported
+            .recompute(&RecomputePlanDto {
+                transaction_id: 7,
+                errors: vec![],
+                jobs: vec![KernelJobDto::ImportStep(KernelImportStepJobDto {
+                    feature_id: FeatureId(9),
+                    result_body_id: BodyId(1),
+                    data_base64: encode_base64(&mixed_step),
+                })],
+            })
+            .unwrap();
+        assert!(scene.errors.is_empty(), "{:?}", scene.errors);
+        assert_eq!(scene.bodies.len(), 1);
+        assert_eq!(scene.bodies[0].faces.len(), 14);
+        assert!(scene.bodies[0]
+            .faces
+            .iter()
+            .any(|face| face.cylinder.is_some()));
+        assert!(scene.bodies[0].faces.iter().all(|face| {
+            face.outer_shell.is_none() && face.planar_inner_ring_edge_keys.is_empty()
+        }));
     }
 
     #[test]

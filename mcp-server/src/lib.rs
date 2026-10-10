@@ -10059,8 +10059,10 @@ mod tests {
             .unwrap();
         assert_native_extent(&donor);
 
-        // One exported solid becomes one native result; unsupported compound
-        // wrappers stay unknown and are not normalized by this reporting fix.
+        // Native Boolean extrusion may retain a single-solid compound wrapper.
+        // It receives evidence only for one direct, forward solid with exactly
+        // the body's oriented face/edge identities; geometry is not normalized.
+        // Multi-solid, mixed, nested and reversed wrappers remain unsupported.
         let exported = donor.call_tool("solid_export_step", json!({})).unwrap();
         let mut imported = CadServer::new().unwrap();
         imported

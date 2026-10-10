@@ -107,6 +107,7 @@
 #include <TopExp_Explorer.hxx>
 #include <TopLoc_Location.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
+#include <TopoDS_Iterator.hxx>
 #include <TopTools_IndexedDataMapOfShapeListOfShape.hxx>
 #include <TopTools_ListIteratorOfListOfShape.hxx>
 #include <TopTools_ListOfShape.hxx>
@@ -9315,12 +9316,26 @@ static std::vector<std::uint8_t> face_outer_shell_flags(
     const TopTools_IndexedMapOfShape& edges) {
   std::vector<std::uint8_t> flags(static_cast<std::size_t>(faces.Extent()), 0);
   try {
-    if (shape.IsNull() || shape.ShapeType() != TopAbs_SOLID ||
-        shape.Orientation() != TopAbs_FORWARD) return flags;
+    if (shape.IsNull() || shape.Orientation() != TopAbs_FORWARD) return flags;
     // Reporting is optional and the recognizer handles only simple analytic
     // walls. Do not run full-solid validation on an arbitrary large/curved
     // imported model merely to replace a correctly unknown hole extent.
     if (faces.Extent() > 128 || edges.Extent() > 256) return flags;
+    TopoDS_Shape material = shape;
+    if (shape.ShapeType() == TopAbs_COMPOUND) {
+      // OCCT Boolean operations wrap even a lone solid in a compound. Only
+      // that exact, unambiguous direct child can supply reporting provenance;
+      // do not flatten nested, mixed, multi-solid or reversed containers.
+      TopoDS_Iterator child(shape);
+      if (!child.More()) return flags;
+      material = child.Value();
+      child.Next();
+      if (child.More() || material.IsNull() ||
+          material.ShapeType() != TopAbs_SOLID ||
+          material.Orientation() != TopAbs_FORWARD) return flags;
+    }
+    if (material.ShapeType() != TopAbs_SOLID) return flags;
+    const TopoDS_Solid solid = TopoDS::Solid(material);
     const auto finite_point = [](const gp_Pnt& p) {
       return std::isfinite(p.X()) && std::isfinite(p.Y()) && std::isfinite(p.Z());
     };
@@ -9336,6 +9351,25 @@ static std::vector<std::uint8_t> face_outer_shell_flags(
         for (TopExp_Explorer vertex(use.Current(), TopAbs_VERTEX); vertex.More(); vertex.Next())
           if (++vertex_uses > 2048) return flags;
       }
+    }
+    if (shape.ShapeType() == TopAbs_COMPOUND) {
+      // Compare the complete identities only after the shared topology-use
+      // preflight. IsEqual also preserves accumulated location/orientation.
+      TopTools_IndexedMapOfShape material_faces, material_edges;
+      TopExp::MapShapes(material, TopAbs_FACE, material_faces);
+      TopExp::MapShapes(material, TopAbs_EDGE, material_edges);
+      const auto same_body_shapes = [](const TopTools_IndexedMapOfShape& body,
+                                       const TopTools_IndexedMapOfShape& member) {
+        if (body.Extent() != member.Extent()) return false;
+        for (int i = 1; i <= body.Extent(); ++i) {
+          const TopoDS_Shape& body_shape = body.FindKey(i);
+          const int index = member.FindIndex(body_shape);
+          if (index == 0 || !body_shape.IsEqual(member.FindKey(index))) return false;
+        }
+        return true;
+      };
+      if (!same_body_shapes(faces, material_faces) ||
+          !same_body_shapes(edges, material_edges)) return flags;
     }
     for (int i = 1; i <= edges.Extent(); ++i) {
       BRepAdaptor_Curve edge(TopoDS::Edge(edges.FindKey(i)));
@@ -9377,7 +9411,6 @@ static std::vector<std::uint8_t> face_outer_shell_flags(
         }
       }
     }
-    const TopoDS_Solid solid = TopoDS::Solid(shape);
     if (!BRepCheck_Analyzer(solid, true, false).IsValid()) return flags;
     TopTools_IndexedMapOfShape shells;
     TopExp::MapShapes(solid, TopAbs_SHELL, shells);
