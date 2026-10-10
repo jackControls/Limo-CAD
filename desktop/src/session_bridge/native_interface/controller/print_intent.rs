@@ -81,19 +81,19 @@ impl State {
     }
     fn current(&self, document: &PrintIntentDocumentDto) -> PrintSettingsDto {
         if self.height_scope {
-            let values = serde_json::to_value(document).unwrap_or_default();
-            let collection = if self.height_editor.profile {
-                "layer_height_profiles"
+            if self.height_editor.profile {
+                // Layer-height profiles contain samples, not settings.
+                PrintSettingsDto::default()
             } else {
-                "height_ranges"
-            };
-            heights::settings(
-                values[collection]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .find(|v| heights::selected(self, v)),
-            )
+                document
+                    .height_ranges
+                    .iter()
+                    .find(|record| {
+                        record.id == self.height_editor.selection && record.body_id.0 == self.body
+                    })
+                    .map(|record| record.settings.clone())
+                    .unwrap_or_default()
+            }
         } else if self.modifier_scope {
             document
                 .modifiers
@@ -167,11 +167,12 @@ pub(crate) fn cancel(
         return Err("The print settings belong to a different document".into());
     }
     state.draft = state.original.clone();
-    if let Some(document) = state.document.clone() {
+    if let Some(document) = state.document.take() {
         let canonical = modifiers::canonical(&mut state, &document);
         modifiers::accept(&mut state, canonical);
         let canonical = heights::canonical(&mut state, &document);
         heights::accept(&mut state, canonical);
+        state.document = Some(document);
     }
     state.errors.clear();
     state.error = None;
@@ -544,11 +545,12 @@ pub(crate) fn reduce(
         Command::Discard => {
             state.draft = state.current(state.document.as_ref().ok_or("Wait for print settings")?);
             state.original = state.draft.clone();
-            let document = state.document.clone().unwrap();
+            let document = state.document.take().unwrap();
             let canonical = modifiers::canonical(&mut state, &document);
             modifiers::accept(&mut state, canonical);
             let canonical = heights::canonical(&mut state, &document);
             heights::accept(&mut state, canonical);
+            state.document = Some(document);
             state.errors.clear();
             state.error = None;
             state.loaded_revision = None;

@@ -64,11 +64,21 @@ fn collection(profile: bool) -> &'static str {
     }
 }
 fn records(document: &PrintIntentDocumentDto, profile: bool) -> Vec<Value> {
-    let value = serde_json::to_value(document).unwrap_or_default();
-    value[collection(profile)]
-        .as_array()
-        .cloned()
-        .unwrap_or_default()
+    // Only these records are editable here. Do not serialize unrelated part
+    // settings/modifiers or duplicate their potentially large placement data.
+    if profile {
+        document
+            .layer_height_profiles
+            .iter()
+            .map(|record| serde_json::to_value(record).unwrap_or_default())
+            .collect()
+    } else {
+        document
+            .height_ranges
+            .iter()
+            .map(|record| serde_json::to_value(record).unwrap_or_default())
+            .collect()
+    }
 }
 pub(super) fn reset(state: &mut State) {
     let profile = state.height_editor.profile;

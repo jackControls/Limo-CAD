@@ -345,3 +345,31 @@ fn automatic_saved_selection_refreshes_capture_before_creating_another_request()
         id
     );
 }
+
+#[test]
+fn current_height_settings_borrow_the_selected_body_and_keep_profile_inheritance() {
+    let mut own: PrintHeightRangeDto =
+        serde_json::from_value(record(&state(false), false).unwrap()).unwrap();
+    own.settings.wall_count = Some(0);
+    let mut foreign = own.clone();
+    foreign.body_id = limo_cad_core::BodyId(8);
+    foreign.settings.wall_count = Some(7);
+    let mut profile: PrintLayerHeightProfileDto =
+        serde_json::from_value(record(&state(true), false).unwrap()).unwrap();
+    profile.id = own.id.clone();
+    let document = PrintIntentDocumentDto {
+        height_ranges: vec![foreign, own.clone()],
+        layer_height_profiles: vec![profile],
+        ..default()
+    };
+    let mut selected = state(false);
+    selected.height_editor.selection = own.id;
+    assert_eq!(selected.current(&document).wall_count, Some(0));
+    selected.body = 9;
+    assert_eq!(selected.current(&document), PrintSettingsDto::default());
+    selected.body = 7;
+    selected.height_editor.profile = true;
+    assert_eq!(selected.current(&document), PrintSettingsDto::default());
+    assert_eq!(records(&document, true).len(), 1);
+    assert_eq!(records(&document, false).len(), 2);
+}
