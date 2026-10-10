@@ -32,6 +32,7 @@ pub struct Hole {
     pub style: String,
     pub counterbore_diameter: Option<f64>,
     pub counterbore_depth: Option<f64>,
+    pub counterbore_depth_evidence: Option<&'static str>,
     pub thread: Option<String>,
 }
 
@@ -58,6 +59,7 @@ impl Hole {
             "style": self.style,
             "counterbore_diameter": self.counterbore_diameter.map(round3),
             "counterbore_depth": self.counterbore_depth.map(round3),
+            "counterbore_depth_evidence": self.counterbore_depth_evidence,
             "thread": self.thread,
         })
     }
@@ -181,6 +183,8 @@ pub fn holes_from_definitions(
                     .then_some(definition.counterbore_diameter),
                 counterbore_depth: (definition.style == HoleStyle::Counterbore)
                     .then_some(definition.counterbore_depth),
+                counterbore_depth_evidence: (definition.style == HoleStyle::Counterbore)
+                    .then_some("authored_feature_extent"),
                 thread: definition.thread.as_ref().map(|t| t.designation.clone()),
             });
         }
@@ -271,16 +275,23 @@ fn infer_scene(scene: &SolidSceneDto) -> (Vec<Hole>, Vec<Value>) {
             radii.dedup_by(|a, b| (*a - *b).abs() <= 1e-6);
             face_ids.sort_unstable();
             face_ids.dedup();
-            // Only a single cylindrical wall bounded by two exact rings and
-            // one planar disk establishes a simple blind depth. Multi-radius,
-            // split, through and incomplete topology retain unknown extent.
+            // Exact rings and an oriented shoulder establish a narrow recess
+            // span; a terminal disk additionally establishes blind depth.
+            // Split, through and incomplete topology retain unknown extent.
+            let recess = (face_ids.len() == 2 && radii.len() == 2)
+                .then(|| {
+                    let body = scene.bodies.iter().find(|body| body.id.0 == body_id)?;
+                    counterbore_extent(body, &face_ids)
+                })
+                .flatten();
             let extent = (face_ids.len() == 1 && radii.len() == 1)
                 .then(|| {
                     let body = scene.bodies.iter().find(|body| body.id.0 == body_id)?;
                     let face = body.faces.iter().find(|face| face.id.0 == face_ids[0])?;
                     blind_depth(body, face, origin, axis, radii[0])
                 })
-                .flatten();
+                .flatten()
+                .or_else(|| recess.as_ref().and_then(|recess| recess.blind.clone()));
             let depth = extent.as_ref().map(|extent| extent.depth);
             Hole {
                 feature_id: None,
@@ -288,13 +299,27 @@ fn infer_scene(scene: &SolidSceneDto) -> (Vec<Hole>, Vec<Value>) {
                 body_id,
                 face_id: face_ids.first().copied(),
                 face_ids,
-                position: extent.as_ref().map_or(origin, |extent| extent.mouth),
-                normal: extent.as_ref().map_or(axis, |extent| extent.outward),
+                position: extent
+                    .as_ref()
+                    .map(|extent| extent.mouth)
+                    .or_else(|| recess.as_ref().map(|recess| recess.mouth))
+                    .unwrap_or(origin),
+                normal: extent
+                    .as_ref()
+                    .map(|extent| extent.outward)
+                    .or_else(|| recess.as_ref().map(|recess| recess.outward))
+                    .unwrap_or(axis),
                 flip: false,
                 diameter: 2.0 * radii[0],
                 through: depth.map(|_| false),
                 depth,
-                depth_evidence: depth.map(|_| "two_analytic_rings_and_one_planar_disk"),
+                depth_evidence: depth.map(|_| {
+                    if recess.is_some() {
+                        "analytic_counterbore_rings_shoulder_and_terminal_disk"
+                    } else {
+                        "two_analytic_rings_and_one_planar_disk"
+                    }
+                }),
                 style: if radii.len() > 1 {
                     "counterbore"
                 } else {
@@ -302,7 +327,10 @@ fn infer_scene(scene: &SolidSceneDto) -> (Vec<Hole>, Vec<Value>) {
                 }
                 .into(),
                 counterbore_diameter: (radii.len() > 1).then(|| 2.0 * radii[radii.len() - 1]),
-                counterbore_depth: None,
+                counterbore_depth: recess.as_ref().map(|recess| recess.depth),
+                counterbore_depth_evidence: recess
+                    .as_ref()
+                    .map(|_| "analytic_recess_rings_and_oriented_annular_shoulder"),
                 thread: None,
             }
         })
@@ -427,10 +455,132 @@ fn connected_walls(body: &BodyDto, face: &FaceDto, other_id: u64) -> bool {
         })
 }
 
+#[derive(Clone)]
 struct BlindExtent {
     depth: f64,
     mouth: [f64; 3],
     outward: [f64; 3],
+}
+
+struct CounterboreExtent {
+    depth: f64,
+    mouth: [f64; 3],
+    outward: [f64; 3],
+    blind: Option<BlindExtent>,
+}
+
+fn counterbore_extent(body: &BodyDto, ids: &[u64]) -> Option<CounterboreExtent> {
+    let mut walls: Vec<_> = ids
+        .iter()
+        .map(|id| body.faces.iter().find(|f| f.id.0 == *id))
+        .collect::<Option<_>>()?;
+    if walls.len() != 2 {
+        return None;
+    }
+    if walls.iter().any(|wall| wall.cylinder.is_none()) {
+        return None;
+    }
+    walls.sort_by(|a, b| {
+        a.cylinder
+            .as_ref()
+            .unwrap()
+            .radius
+            .total_cmp(&b.cylinder.as_ref().unwrap().radius)
+    });
+    let [small, large] = [walls[0], walls[1]];
+    // Restrict extent inference to unsplit, two-ring walls. Trimmed walls and
+    // additional boundary topology remain recognized with unknown dimensions.
+    if small.edge_keys.len() != 2 || large.edge_keys.len() != 2 {
+        return None;
+    }
+    let shoulder = body.faces.iter().find(|f| {
+        f.plane.is_some()
+            && f.edge_keys.len() == 2
+            && f.edge_keys.iter().any(|key| small.edge_keys.contains(key))
+            && f.edge_keys.iter().any(|key| large.edge_keys.contains(key))
+    })?;
+    if !connected_walls(body, small, large.id.0) {
+        return None;
+    }
+    let plane = shoulder.plane?;
+    let outward = normalize(plane.normal);
+    let ends = |wall: &FaceDto| -> Option<([f64; 3], [f64; 3])> {
+        let mut joint = None;
+        let mut outer = None;
+        let cylinder = wall.cylinder.as_ref()?;
+        let axis = normalize([cylinder.axis.x, cylinder.axis.y, cylinder.axis.z]);
+        let origin = [cylinder.origin.x, cylinder.origin.y, cylinder.origin.z];
+        for key in &wall.edge_keys {
+            let edge = body.edges.iter().find(|edge| &edge.key == key)?;
+            let circle = edge.circle.as_ref()?;
+            let center = [circle.center.x, circle.center.y, circle.center.z];
+            let delta = sub(center, origin);
+            if !(circle.closed
+                && (circle.radius - cylinder.radius).abs() <= 1e-6
+                && dot(
+                    normalize([circle.normal.x, circle.normal.y, circle.normal.z]),
+                    axis,
+                )
+                .abs()
+                    > 0.999999
+                && dot(outward, axis).abs() > 0.999999
+                && norm(sub(delta, scale(axis, dot(delta, axis)))) <= 1e-6)
+            {
+                return None;
+            }
+            if shoulder.edge_keys.contains(key) {
+                joint = Some(center);
+            } else {
+                outer = Some(center);
+            }
+        }
+        Some((joint?, outer?))
+    };
+    let (small_joint, bottom) = ends(small)?;
+    let (large_joint, mouth) = ends(large)?;
+    if !(norm(sub(small_joint, large_joint)) <= 1e-6
+        && dot(sub(small_joint, plane.origin), outward).abs() <= 1e-6)
+    {
+        return None;
+    }
+    let depth = dot(sub(mouth, large_joint), outward);
+    let stem = dot(sub(small_joint, bottom), outward);
+    if !depth.is_finite() || !stem.is_finite() || depth <= 1e-6 || stem <= 1e-6 {
+        return None;
+    }
+    // A disk at the recess's outer ring describes an enclosed cavity, not a mouth.
+    if body.faces.iter().any(|f| {
+        f.plane.is_some()
+            && f.edge_keys.len() == 1
+            && large.edge_keys.contains(&f.edge_keys[0])
+            && !shoulder.edge_keys.contains(&f.edge_keys[0])
+    }) {
+        return None;
+    }
+    let cylinder = small.cylinder.as_ref()?;
+    let blind = blind_depth(
+        body,
+        small,
+        [cylinder.origin.x, cylinder.origin.y, cylinder.origin.z],
+        normalize([cylinder.axis.x, cylinder.axis.y, cylinder.axis.z]),
+        cylinder.radius,
+    )
+    .filter(|extent| {
+        norm(sub(extent.mouth, small_joint)) <= 1e-6
+            && dot(extent.outward, outward) > 0.999999
+            && (depth + stem).is_finite()
+    })
+    .map(|_| BlindExtent {
+        depth: depth + stem,
+        mouth,
+        outward,
+    });
+    Some(CounterboreExtent {
+        depth,
+        mouth,
+        outward,
+        blind,
+    })
 }
 
 fn blind_depth(
@@ -990,6 +1140,69 @@ mod tests {
         // An annular shoulder is not a blind bottom.
         scene.bodies[0].faces[1].edge_keys.push("inner_ring".into());
         assert!(holes_from_scene(&scene)[0].depth.is_none());
+    }
+
+    #[test]
+    fn counterbore_extent_uses_oriented_shoulder_and_distinct_wall_geometry() {
+        let point = |x, y, z| json!({"x":x,"y":y,"z":z});
+        let edges: Vec<_> = [(2., 0.), (2., 5.), (4., 5.), (4., 12.)]
+            .into_iter()
+            .enumerate()
+            .map(|(i, (radius, z))| {
+                json!({"id":i+1,"key":format!("r{i}"),"points":[],
+                "circle":{"center":point(0.,0.,z),"normal":point(0.,0.,1.),
+                    "reference":point(1.,0.,0.),"radius":radius,"closed":true}})
+            })
+            .collect();
+        let wall = |id, first, radius, keys: [&str; 2]| {
+            json!({"id":id,"key":format!("w{id}"),
+            "first_index":first,"index_count":3,"plane":null,"edge_keys":keys,
+            "cylinder":{"origin":point(0.,0.,0.),"axis":point(0.,0.,1.),
+                "reference":point(1.,0.,0.),"radius":radius}})
+        };
+        let mut scene: SolidSceneDto = serde_json::from_value(json!({"bodies":[{
+            "id":1,"name":"counterbore","feature_id":1,"edges":edges,
+            "faces":[wall(1,0,2.,["r0","r1"]),wall(2,3,4.,["r2","r3"])],
+            "mesh":{"positions":[2.,0.,0.,2.,0.,5.,0.,2.,5.,4.,0.,5.,4.,0.,12.,0.,4.,12.],
+                "normals":[-1.,0.,0.,-1.,0.,0.,0.,-1.,0.,-1.,0.,0.,-1.,0.,0.,0.,-1.,0.],
+                "indices":[0,1,2,3,4,5]}}],"errors":[]}))
+        .unwrap();
+        let mut shoulder = scene.bodies[0].faces[0].clone();
+        shoulder.id = limo_cad_core::FaceId(3);
+        shoulder.cylinder = None;
+        shoulder.edge_keys = vec!["r1".into(), "r2".into()];
+        shoulder.plane = Some(PlaneBasis {
+            origin: [0., 0., 5.],
+            u: [1., 0., 0.],
+            v: [0., 1., 0.],
+            normal: [0., 0., 2.],
+        });
+        scene.bodies[0].faces.push(shoulder.clone());
+        let holes = holes_from_scene(&scene);
+        assert_eq!(holes.len(), 1);
+        assert_eq!(holes[0].counterbore_depth, Some(7.));
+        assert_eq!(holes[0].position, [0., 0., 12.]);
+        assert_eq!(holes[0].normal, [0., 0., 1.]);
+        assert_eq!(holes[0].through, None);
+        assert_eq!(holes[0].depth, None);
+        assert!(holes[0].counterbore_depth_evidence.is_some());
+        let mut cap = shoulder;
+        cap.id = limo_cad_core::FaceId(4);
+        cap.edge_keys = vec!["r0".into()];
+        cap.plane.as_mut().unwrap().origin = [0., 0., 0.];
+        scene.bodies[0].faces.push(cap);
+        assert_eq!(holes_from_scene(&scene)[0].depth, Some(12.));
+        assert_eq!(holes_from_scene(&scene)[0].through, Some(false));
+        scene.bodies[0].faces[3].plane.as_mut().unwrap().normal = [0., 0., -1.];
+        assert_eq!(holes_from_scene(&scene)[0].depth, None);
+        scene.bodies[0].faces[3].edge_keys = vec!["r3".into()];
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
+        scene.bodies[0].faces.pop();
+        scene.bodies[0].faces[2].plane.as_mut().unwrap().normal = [0., 0., -1.];
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
+        scene.bodies[0].faces[2].plane.as_mut().unwrap().normal = [0., 0., 1.];
+        scene.bodies[0].edges[3].circle.as_mut().unwrap().center.z = 4.;
+        assert_eq!(holes_from_scene(&scene)[0].counterbore_depth, None);
     }
 
     #[test]
