@@ -3,7 +3,7 @@ type: Concept
 title: Fillet vs chamfer
 description: When to use fillets versus chamfers for stress, lead-in, printability, and machining — not decoration.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: dfm, modeling, edges
 keywords: fillet, chamfer, break edge, lead-in, stress concentration, corner radius, when to use, edge blend
 related_recipes: fillet-basics, mounting-plate, angle-bracket
@@ -17,7 +17,7 @@ sharp edges. Pick from **function and process**, not from habit.
 
 **Attribution:** process habits aligned with Guns / NWTC LibreTexts DFM
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)) and DOE Module 3D
-checklists (public domain). Confirm with your shop or print profile.
+checklists (mixed rights; link-only). Confirm with your shop or print profile.
 
 ## Prefer a fillet when
 

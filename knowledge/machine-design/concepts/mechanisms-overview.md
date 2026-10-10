@@ -3,7 +3,7 @@ type: Concept
 title: Mechanisms overview (CAD-time)
 description: CAD-time mechanisms hub — name motion class, pick element family, lock envelopes/centers/DOFs, navigate child Concepts, VERIFY with coupons or purchased hardware (no tooth/cam/belt charts).
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: mechanisms, machine-elements, joints, assembly
 keywords: mechanism, motion class, element family, rotary to rotary, rotary to linear, intermittent, path generation, soft sync, linkage, gear, cam, belt, pulley, chain, sprocket, Geneva, indexer, mobility, DOF, center distance, envelope, CAD owns, catalog owns, navigate mechanisms, purchased profile, AGMA, tooth chart, cam chart, datasheet VERIFY
 related_recipes: vertical-axis-turbine, d-screw-vise, d-screw-vise-fit, revolved-spacer, turbine-fit-coupons
@@ -28,7 +28,7 @@ lives on the linked Concepts.
 [2.72 Elements of Mechanical Design](https://ocw.mit.edu/courses/2-72-elements-of-mechanical-design-spring-2009/)
 (`mit-272`, [CC BY-NC-SA](https://creativecommons.org/licenses/by-nc-sa/4.0/) —
 **link-out only**, not a chapter mirror); DFM checklist flavor from DOE Module 3D
-(public domain — buy before invent when wear/timing matter).
+(mixed rights; link-only — buy before invent when wear/timing matter).
 
 ## Vocabulary (roles for discovery)
 

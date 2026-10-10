@@ -3,7 +3,7 @@ type: Concept
 title: Requirements → embodiment → BOM (CAD-time)
 description: CAD-time hygiene — name requirements, pick embodiment, make-vs-buy, BOM roles matching the CAD tree, and VERIFY before freezing mates (no ERP lecture).
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: design-hygiene, bom, requirements, embodiment, hardware, dfm, workflow
 keywords: requirements, embodiment, BOM, purchased part, printed part, make vs buy, COTS, SKU, BOM role, phantom, reference designator, fastener kit, indentured BOM, VERIFY table, freeze geometry, standardize parts, buy before invent
 related_recipes: mounting-plate, turbine-fit-coupons, d-screw-vise-fit, vertical-axis-turbine
@@ -17,7 +17,7 @@ Before mating geometry freezes, name **what must be true**, how the CAD
 machined in-house**. Help stays CAD-time roles — not a Stage-Gate or ERP
 lecture.
 
-**Attribution:** DFM / DFA habits from DOE Module 3D (public domain —
+**Attribution:** DFM / DFA habits from DOE Module 3D (mixed rights; link-only —
 `doe-3d`: standardize parts, prefer fewer unique fasteners, design for
 assembly access) and NWTC / PALNI DFM–DFA distill (`nwtc-guns-dfm`,
 `palni-dfma`: buy before invent, merge only when motion/material/service

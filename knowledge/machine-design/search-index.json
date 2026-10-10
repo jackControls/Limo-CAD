@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "count": 47,
+  "count": 48,
   "entries": [
     {
       "id": "machine-design.concepts.alignment-nubs-pins",
@@ -448,7 +448,12 @@
         "living hinge",
         "flexure",
         "barb",
-        "seat"
+        "seat",
+        "detent",
+        "preload",
+        "S curve",
+        "relaxation",
+        "tolerance window"
       ],
       "related_recipes": [
         "turbine-fit-coupons",
@@ -457,7 +462,9 @@
       "sources": [
         "nwtc-guns-dfm",
         "doe-3d",
-        "palni-dfma"
+        "palni-dfma",
+        "session-simulation",
+        "snap-fit-mechanics"
       ],
       "snippet": "Cantilever / latch / living-hinge roles for FDM — name the class, beam thickness vs seat depth, and print orientation before inventing sizing numbers. Numeric clearance alone is not enough: a clip can pass a gap check a…"
     },
@@ -522,7 +529,8 @@
       ],
       "sources": [
         "nwtc-guns-dfm",
-        "doe-3d"
+        "doe-3d",
+        "session-simulation"
       ],
       "snippet": "For fused deposition (FDM/FFF) and similar layer processes, wall thickness and print orientation decide whether a feature survives the printer — not only whether the solid is manifold. Attribution: process habits adapte…"
     },
@@ -1317,7 +1325,9 @@
         "kittycad-materials",
         "doe-3d",
         "nwtc-guns-dfm",
-        "materials-project"
+        "materials-project",
+        "bambu-petg-basic",
+        "session-simulation"
       ],
       "snippet": "CAD-time E / Sy / Sut / hardness / CTE / anisotropy vocabulary — roles only, not certified allowables. Do not invent Sy/Sut/E charts or scrape MatWeb / MakeItFrom into Help — selection/allowables tables stay planned. Pr…"
     },
@@ -1656,6 +1666,43 @@
         "doe-3d"
       ],
       "snippet": "Rotating machinery almost always needs a named shaft envelope, a torque path (key, spline, press, set screw), and axial retention (shoulder, collar, retaining ring). CAD models the geometry; catalogs and coupons decide …"
+    },
+    {
+      "id": "machine-design.concepts.simulation-verification",
+      "path": "knowledge/machine-design/concepts/simulation-verification.md",
+      "title": "Structural simulation evidence and verification",
+      "description": "Separate CAD contact geometry, solver agreement, mesh convergence and physical qualification; preserve reproducible evidence before trusting a result.",
+      "status": "draft",
+      "topics": [
+        "simulation",
+        "structural-analysis",
+        "validation",
+        "materials"
+      ],
+      "keywords": [
+        "FEM",
+        "FEA",
+        "Fenris",
+        "Rapier",
+        "Tet4",
+        "Hex27",
+        "mesh convergence",
+        "solver agreement",
+        "stationarity",
+        "contact",
+        "preload",
+        "equilibrium",
+        "reactions",
+        "strain energy"
+      ],
+      "related_recipes": [],
+      "sources": [
+        "session-simulation",
+        "fenris",
+        "rapier",
+        "occt-docs"
+      ],
+      "snippet": "Solver agreement, mesh convergence and physical validation are different checks. A completed run or attractive deformation image establishes none of them by itself. These are lessons from the project's reproducible Rust…"
     },
     {
       "id": "machine-design.concepts.springs-couplings",

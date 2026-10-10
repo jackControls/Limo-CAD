@@ -3,7 +3,7 @@ type: Concept
 title: FDM load path vs layer orientation / infill roles
 description: CAD-time load direction vs layer planes; shells carry structure; infill is not a datasheet; coupons for critical loads — no invented % strength tables.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: dfam, am, fdm, print, orientation
 keywords: FDM load path, layer orientation, anisotropy, shells vs infill, perimeters strength, bed face tension, infill not structural datasheet
 related_recipes: turbine-fit-coupons
@@ -18,7 +18,7 @@ strength across layers. At CAD time, treat **primary load direction** and
 
 **Attribution:** process habits from Guns / NWTC LibreTexts DFM
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)) and DOE Module 3D
-(public domain). **No invented percent-of-solid strength tables** for shells or
+(mixed rights; link-only). **No invented percent-of-solid strength tables** for shells or
 infill — vendor/process notes are starting guidance; lock critical loads on
 coupons.
 

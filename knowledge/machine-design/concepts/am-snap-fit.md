@@ -3,11 +3,11 @@ type: Concept
 title: AM snap-fits and living hinges
 description: Cantilever clips, latches, and living hinges for FDM — role-based thickness, seat depth, and print orientation before commit.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-07
 topics: dfam, am, snap-fit, fdm, joints
-keywords: snap fit, cantilever, latch, living hinge, flexure, barb, seat
+keywords: snap fit, cantilever, latch, living hinge, flexure, barb, seat, detent, preload, S curve, relaxation, tolerance window
 related_recipes: turbine-fit-coupons, fillet-basics
-sources: nwtc-guns-dfm, doe-3d, palni-dfma
+sources: nwtc-guns-dfm, doe-3d, palni-dfma, session-simulation, snap-fit-mechanics
 ---
 
 # AM snap-fits and living hinges
@@ -20,7 +20,7 @@ cannot flex. Heuristics only — confirm with material, nozzle, and a **coupon**
 
 **Attribution:** DFAM habits adapted from Guns / NWTC LibreTexts DFM
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)), DOE Module 3D
-checklists (US government / public domain), and PALNI DFMA principles
+checklists (mixed rights; link-only), and PALNI DFMA principles
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)). Prefer link-out
 over pasting closed vendor design tables.
 
@@ -88,10 +88,52 @@ a coupon. Related drafts/ribs for stiff lands:
 
 ## Print orientation for flexures
 
-State orientation intent for the flexure: layer planes vs bend axis. Prefer
-bending **across** layers only with explicit risk acceptance. Layer lines that
-run parallel to the bend often fail early. See also
+Identify the tensile side of the flexure and its stress direction relative to
+layer planes and extrusion paths. Prefer keeping principal tension in the
+layer plane when geometry allows; tension normal to that plane can separate
+layer bonds. A bend direction alone does not identify those stresses. Verify
+the actual orientation and paths with a flex coupon. See also
 [AM thin walls and orientation](am-thin-walls.md).
+
+## Detent flex direction, installed preload and lead-in
+
+Name the contacting housing edge and its normal, the insertion path and the
+intended flex direction. A nub touching a broad surface does not necessarily
+bend the intended tongue. Inspect sections and installed/approach poses;
+[CAD overlap](../../concepts/assembly-interference.md) alone cannot determine
+elastic preload force.
+
+Distinguish wall width from thickness **along the bending direction**. For a
+slender rectangular free cantilever, stiffness scales as `E b t^3 / L^3`, with
+`t` across bending. A closed frame or a doubly supported span needs its actual
+support model; that scaling is a screening relation, not a sizing formula for
+every clip.
+
+For a simple scalar seat-travel screen, let `g_nom` be nominal positive elastic
+travel at the installed seat, `T` the worst-case magnitude of installed travel
+error, `S >= 0` the maximum equivalent loss from permanent set, and `g_allow`
+the allowable installed travel for the assumed support/material model. Positive
+installed travel without exceeding that allowance requires `g_nom - T - S > 0` and
+`g_nom + T <= g_allow`. A feasible nominal interval therefore requires
+`g_allow > 2 T + S`. Pure stress relaxation can reduce force even at fixed
+travel and needs a separate material/time check. Positive travel alone does not
+establish minimum holding force. Check peak travel/strain throughout insertion
+and removal separately; neither the installed preload nor the nub height
+defines that path maximum. These are project-derived geometric screening
+inequalities, not measured holding-force or service-life limits.
+
+A longer lead-in/lead-out reduces slope when the bump height and normalized
+curve shape are held fixed. In a frictionless, constant-stiffness linear-spring
+screen, `U = k delta(s)^2 / 2` and the signed
+quasistatic force along insertion is `dU/ds = k delta delta'`. Symmetry alone
+does not guarantee easy insertion and strong retention. Contact sequence,
+housing capture geometry and friction matter. Yoshida and Wada's
+[Mechanics of a snap-fit](https://arxiv.org/abs/2003.13566v2) provides a useful
+geometry/friction/elasticity reference for a thin shell and cylinder; it does
+not validate this application's printed clip geometries.
+
+For solver and physical evidence, see
+[structural simulation verification](simulation-verification.md).
 
 ## Validate before commit
 

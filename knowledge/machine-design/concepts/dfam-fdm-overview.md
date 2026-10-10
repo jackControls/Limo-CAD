@@ -3,7 +3,7 @@ type: Concept
 title: DFAM for FDM — design-for-additive overview
 description: Golden-path hub for FDM/FFF design-for-additive manufacturing; process commit through coupons, with links to seeded AM Concepts.
 status: draft
-updated: 2026-09-20
+updated: 2026-10-06
 topics: dfam, am, fdm, dfm, print
 keywords: DFAM, FDM, FFF, additive manufacturing, design for additive, print orientation, support strategy, FDM design
 related_recipes: turbine-fit-coupons, d-screw-vise-fit, fillet-basics, mounting-plate
@@ -24,7 +24,7 @@ coupons for your nozzle, material, and profile.
 **Attribution:** process habits adapted from Bryan Guns, NWTC LibreTexts
 *[Design for Various Manufacturing Methods](https://eng.libretexts.org/Courses/Northeast_Wisconsin_Technical_College/Design_for_Various_Manufacturing_Methods)*
 ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)); and DOE Module 3D
-DFM/DFA (public domain). Rewritten for Limo CAD help — not a chapter mirror.
+DFM/DFA (mixed rights; link-only). Rewritten for Limo CAD help — not a chapter mirror.
 
 ## Golden path (CAD-time)
 
@@ -83,6 +83,6 @@ Parent DFM: [DFM overview](dfm-overview.md). Additive fixturing patterns:
 - Vendor design notes (e.g. Prusa Knowledge Base — link via
   [SOURCES](../SOURCES.md) `prusa-kb`) — material/profile specific; not a
   universal millimeter chart.
-- DOE Module 3D PDF (public domain) — high-level DFM/DFA checklists.
+- DOE Module 3D PDF (mixed rights; link-only) — high-level DFM/DFA checklists.
 
 Related: [SOURCES](../SOURCES.md), [taxonomy](../taxonomy.md).

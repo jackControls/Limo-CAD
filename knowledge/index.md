@@ -41,6 +41,7 @@ Ids are path-derived (`knowledge/` stripped, `/` → `.`). Use these with
 | Review shot pack | `concepts.validate-before-show` | Validate before show |
 | Mesh / wall probe audit | `concepts.adversarial-mesh-audit` | Adversarial mesh audit |
 | Assembly overlap @ pose | `concepts.assembly-interference` | Assembly interference check |
+| FEM evidence / mesh convergence / solver agreement | `machine-design.concepts.simulation-verification` | Structural simulation evidence and verification |
 | Export / print / 3MF vs STL | `concepts.export-print` | Export and print |
 | Design VERSION / JSONC scripts | `concepts.design-version-scripts` | Design VERSION and JSONC script naming |
 | Geometry naming (bodies / faces / scripts / STEP) | `concepts.geometry-naming` | Geometry naming — bodies, features, faces, scripts, STEP |
