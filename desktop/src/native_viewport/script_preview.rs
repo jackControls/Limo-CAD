@@ -653,6 +653,10 @@ impl PreviewRenderer {
 }
 
 #[cfg(test)]
+#[path = "script_preview/boundary_evidence.rs"]
+mod boundary_evidence;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1407,6 +1411,50 @@ mod tests {
         (size.width, size.height, data)
     }
 
+    fn edge_pixels(
+        document: &PreviewDocument,
+        request: &RenderRequest,
+        points: &[Vec3],
+    ) -> Vec<[f32; 2]> {
+        let camera = document.camera(request);
+        let view = camera_transform(camera).to_matrix().inverse();
+        let projection = bevy::math::proj::perspective_infinite_reverse(
+            camera.vertical_fov_degrees.to_radians(),
+            request.width as f32 / request.height as f32,
+            0.1,
+        );
+        points
+            .iter()
+            .map(|point| {
+                let clip = projection * view * point.extend(1.);
+                assert!(clip.w > 0., "Known visible edge is behind the camera");
+                let ndc = clip.truncate() / clip.w;
+                [
+                    (ndc.x + 1.) * 0.5 * request.width as f32,
+                    (1. - ndc.y) * 0.5 * request.height as f32,
+                ]
+            })
+            .collect()
+    }
+
+    fn require_visible_edge(
+        document: &PreviewDocument,
+        request: &RenderRequest,
+        with: &[u8],
+        without: &[u8],
+        points: &[Vec3],
+        label: &str,
+    ) {
+        let (width, height, with) = decode_rgba(with);
+        let (other_width, other_height, without) = decode_rgba(without);
+        assert_eq!((width, height), (request.width, request.height));
+        assert_eq!((width, height), (other_width, other_height));
+        let probes = edge_pixels(document, request, points);
+        let evidence = boundary_evidence::visible_stroke(width, height, &with, &without, &probes)
+            .unwrap_or_else(|error| panic!("{label}: {error}"));
+        eprintln!("{label}: {evidence:?}");
+    }
+
     /// Real production GPU path for grid stability: zoom out two decades in
     /// 6 % steps over an empty sheet and follow the brightness of two fixed
     /// world lines. Every line's colour must move smoothly as the drawn
@@ -1733,6 +1781,22 @@ mod tests {
                 .projected_edges
                 .iter()
                 .any(|edge| edge.circle.is_some() && edge.points.len() > 3));
+            // The independently known OCCT stock boundary, not the projected
+            // DTO's own points: a wrong complementary arc must not qualify itself.
+            let arc_probes = (1..=16)
+                .map(|i| {
+                    let angle = 1.5 * std::f32::consts::PI * i as f32 / 17.;
+                    Vec3::new(
+                        25. * angle.cos(),
+                        25. * angle.sin(),
+                        if bottom {
+                            -FINISHED_SKETCH_OFFSET
+                        } else {
+                            0.15 + FINISHED_SKETCH_OFFSET
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
             let mut document = PreviewDocument::new(vec![Frame {
                 caption: "Thin partial circular plate".into(),
                 scene: scene.clone(),
@@ -1785,18 +1849,50 @@ mod tests {
                             Instant::now() + Duration::from_secs(60),
                         )
                         .unwrap();
-                    assert!(
-                        png.len() > 5_000,
-                        "a scene must be rendered, not an empty target"
-                    );
                     let name = format!(
                         "boundary-{}-{}-{label}.png",
                         if bottom { "bottom" } else { "top" },
                         if light { "light" } else { "dark" }
                     );
                     if let Some(path) = &output {
-                        std::fs::write(std::path::Path::new(path).join(name), png).unwrap();
+                        std::fs::write(std::path::Path::new(path).join(&name), &png).unwrap();
                     }
+                    renderer
+                        .app
+                        .world_mut()
+                        .resource_mut::<PresentationResource>()
+                        .0
+                        .hide_projected_geometry = true;
+                    let without_projected = renderer
+                        .render(
+                            &document,
+                            &request,
+                            &cancelled,
+                            Instant::now() + Duration::from_secs(60),
+                        )
+                        .unwrap();
+                    renderer
+                        .app
+                        .world_mut()
+                        .resource_mut::<PresentationResource>()
+                        .0
+                        .hide_projected_geometry = false;
+                    if let Some(path) = &output {
+                        std::fs::write(
+                            std::path::Path::new(path)
+                                .join(name.replace(".png", "-without-projected.png")),
+                            &without_projected,
+                        )
+                        .unwrap();
+                    }
+                    require_visible_edge(
+                        &document,
+                        &request,
+                        &png,
+                        &without_projected,
+                        &arc_probes,
+                        &name,
+                    );
                 }
             }
             manager.end_sketch().unwrap();
@@ -1807,6 +1903,10 @@ mod tests {
             .resource_mut::<PresentationResource>() = PresentationResource::default();
         let mut without_hidden_edges = scene.clone();
         without_hidden_edges.bodies[1].edges.clear();
+        let mut without_any_edges = scene.clone();
+        for body in &mut without_any_edges.bodies {
+            body.edges.clear();
+        }
         let mut document = PreviewDocument::new(vec![
             Frame {
                 caption: "Hidden edges present".into(),
@@ -1815,6 +1915,10 @@ mod tests {
             Frame {
                 caption: "Hidden edges removed".into(),
                 scene: without_hidden_edges,
+            },
+            Frame {
+                caption: "All edges removed (negative control)".into(),
+                scene: without_any_edges,
             },
         ])
         .unwrap();
@@ -1858,6 +1962,36 @@ mod tests {
             assert!(
                 with_edges == without_edges,
                 "hidden body edges leaked through the 0.15 mm plate at zoom {zoom}"
+            );
+            request.frame_index = 2;
+            let no_edges = renderer
+                .render(
+                    &document,
+                    &request,
+                    &cancelled,
+                    Instant::now() + Duration::from_secs(60),
+                )
+                .unwrap();
+            if let Some(path) = &output {
+                std::fs::write(
+                    std::path::Path::new(path).join(format!("occlusion-{zoom}-no-edges.png")),
+                    &no_edges,
+                )
+                .unwrap();
+            }
+            let visible_diagonal = (1..=12)
+                .map(|i| {
+                    let t = i as f32 / 13.;
+                    Vec3::new(25. * t, -25. + 25. * t, 0.15)
+                })
+                .collect::<Vec<_>>();
+            require_visible_edge(
+                &document,
+                &request,
+                &with_edges,
+                &no_edges,
+                &visible_diagonal,
+                &format!("visible body edge at zoom {zoom}"),
             );
         }
     }

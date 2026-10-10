@@ -1,6 +1,22 @@
 name: Native sketch visual regressions
 
 on:
+  pull_request:
+    paths:
+      - 'desktop/src/native_viewport/**'
+      - 'desktop/Cargo.toml'
+      - 'desktop/Cargo.lock'
+      - 'crates/core/**'
+      - 'crates/solid/**'
+      - 'crates/sketch/**'
+      - 'crates/occt/**'
+      - 'crates/native-engine/**'
+      - 'xtask/src/repository_ci.rs'
+      - '.github/workflows/native-visual.yml'
+      - '.github/actions/setup-rust/**'
+      - '.github/actions/setup-unix-occt/**'
+      - 'rust-toolchain.toml'
+      - '.cargo/**'
   workflow_dispatch:
 
 permissions:
@@ -8,10 +24,13 @@ permissions:
 
 concurrency:
   group: native-visual-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   native-platform-input:
+    # A manual full qualification retains all real OS-input families. Renderer
+    # PR changes run the GPU matrix without rebuilding those unrelated fixtures.
+    if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/native-host-tests.yml
     with:
       desktop-input: true
@@ -38,5 +57,5 @@ jobs:
         with:
           name: native-sketch-visuals
           path: docs/qa/native-boundary/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14

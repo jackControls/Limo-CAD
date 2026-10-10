@@ -934,7 +934,7 @@ fn security_and_heavy_ci_keep_coverage_without_duplicate_or_stale_pr_work() {
 }
 
 #[test]
-fn opt_in_native_font_and_visual_commands_require_nonempty_compiled_inventory() {
+fn native_font_and_visual_commands_require_nonempty_compiled_inventory() {
     let native = workflow(".github/workflows/native-host-tests.yml");
     for id in [
         "native-host-tests",
@@ -954,13 +954,72 @@ fn opt_in_native_font_and_visual_commands_require_nonempty_compiled_inventory() 
             .contains("inputs.desktop-input"));
     }
     let visual = workflow(".github/workflows/native-visual.yml");
+    check_visual_acceptance(&visual).unwrap();
+    for field in ["if", "continue-on-error"] {
+        let mut bypass = visual.clone();
+        bypass["jobs"]["native-visual"][field] = Value::Bool(field == "continue-on-error");
+        assert!(check_visual_acceptance(&bypass).is_err());
+    }
+    let mut missing_renderer = visual.clone();
+    missing_renderer["on"]["pull_request"]["paths"] = Value::Sequence(vec![]);
+    assert!(check_visual_acceptance(&missing_renderer).is_err());
+    let mut missing_evidence = visual.clone();
+    let steps = missing_evidence["jobs"]["native-visual"]["steps"]
+        .as_sequence_mut()
+        .unwrap();
+    let upload = steps
+        .iter_mut()
+        .find(|step| step["name"].as_str() == Some("Retain native visual evidence"))
+        .unwrap();
+    upload["with"]["if-no-files-found"] = Value::String("warn".into());
+    assert!(check_visual_acceptance(&missing_evidence).is_err());
+}
+
+fn check_visual_acceptance(visual: &Value) -> Result<()> {
+    let job = &visual["jobs"]["native-visual"];
+    ensure!(
+        job["if"].is_null() && job["continue-on-error"].is_null(),
+        "GPU acceptance must execute and propagate failures on relevant PRs"
+    );
     let (_, check) = named_step(
-        &visual["jobs"]["native-visual"],
+        job,
         "Verify projected boundaries and thin-wall occlusion on the GPU",
-    )
-    .unwrap();
-    requires_command(check, "cargo xtask ci native-ignored-test sketch-visual").unwrap();
-    let events = visual["on"].as_mapping().unwrap();
-    assert_eq!(events.len(), 1);
-    assert!(events.contains_key(Value::String("workflow_dispatch".into())));
+    )?;
+    requires_command(check, "cargo xtask ci native-ignored-test sketch-visual")?;
+    let (_, evidence) = named_step(job, "Retain native visual evidence")?;
+    ensure!(
+        evidence["with"]["if-no-files-found"].as_str() == Some("error"),
+        "A successful GPU matrix must retain its captures"
+    );
+    ensure!(
+        check["if"].is_null(),
+        "GPU matrix must not be disabled by a step condition"
+    );
+    let events = visual["on"].as_mapping().context("visual triggers")?;
+    ensure!(
+        events.contains_key(Value::String("workflow_dispatch".into())),
+        "retain manual visual qualification"
+    );
+    let paths = visual["on"]["pull_request"]["paths"]
+        .as_sequence()
+        .context("renderer PR paths")?;
+    for path in [
+        "desktop/src/native_viewport/**",
+        "crates/occt/**",
+        "crates/sketch/**",
+        "xtask/src/repository_ci.rs",
+        ".github/workflows/native-visual.yml",
+    ] {
+        ensure!(
+            paths.contains(&Value::String(path.into())),
+            "missing affected GPU input {path}"
+        );
+    }
+    ensure!(
+        visual["jobs"]["native-platform-input"]["if"].as_str()
+            == Some("github.event_name == 'workflow_dispatch'"),
+        "retain full OS qualification on manual runs without duplicating unrelated PR fixtures"
+    );
+    check_superseded_pr_policy(visual)?;
+    Ok(())
 }
