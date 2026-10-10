@@ -7,6 +7,21 @@ has occurred. The user approved continued UI-first coverage and repair of all
 posted defects, including newly reported defects; passing CI does not close the
 remaining UI/MCP qualification gates.
 
+Concentric UI coverage is also closed on clean matched `93823f6d`: distinct
+radii preserved, shared center, invalid selection/cancel, retained deletion,
+exact Undo/Redo and complete native persistence. Receipt:
+`qualification/concentric-human-ui-20261010.json`. Current UI totals are47 passed,
+332 not run,29 failed,9 needs_recheck,24 in progress,2 restricted. All256 manual
+MCP cases remain not run. Next untouched catalog item is Symmetry.
+
+Deployment remains pending. Multiple recent Vita GUI windows share the canonical
+runtime; only surface-qualification PID21480 is owned here. NATS notice
+`0e11d4b0-8393-4b7a-8454-d62b57ba2f47` requests saved-work readiness before any
+restart. No foreign window was stopped. Bounded lossless compression of inactive
+archived compiler/runtime artifacts restored approximately1.3GiB on C: and3.2GiB
+on D:, with before/after hashes and hardlink identity preserved. No document,
+recovery or session data was moved/deleted; no native build has started.
+
 Adversarial review follow-up: `3221fd94` also guards ordinary tab/window close
 and Save All/Exit against losing unapplied drawing fields. `51850584` borrows
 retained archive JSON during cold-tab restoration; `2bc49000` releases stale
@@ -32,7 +47,7 @@ No repeated local build or passing test sweep was run for this batch.
 Equal UI coverage is closed on matched clean `93823f6d`: line lengths, circle
 radii, invalid mixed geometry/cancel, retained deletion, exact Undo/Redo and
 complete native save/reopen equality pass. See `qualification/equal-human-ui-20261010.json`.
-UI coverage now has46 passed cases; MCP coverage remains pending after UI.
+Equal increased UI coverage to46 passed cases; subsequent Concentric brings the current total to47. MCP coverage remains pending after UI.
 
 Parallel implementation checkpoint: `27ebe7f0` checks face-hosted sketch support
 at its exact history prefix instead of incorrectly requiring the face to survive
