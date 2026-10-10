@@ -31,12 +31,22 @@ retained fillet R5 to R7 to R3 edits, exact Undo/Redo and native save/reopen mod
 persistence. R20 consumed the carrier, R21 rejected without geometry changes,
 and shrinking to R3 restored the exact baseline. A second upper R2 fillet was
 created correctly. See `docs/qualification/fillet-repair-20261010.json`.
-The two-fillet shared-carrier boundary remains pending after Bambu Studio took
-foreground ownership. Rejected dimension Enter also loses text-field focus;
+The two-fillet shared-carrier boundary now passes: lower R19 rejects safely,
+R18 consumes the shared carrier without moving the upper R2 fillet, and shrink
+to R3 restores the exact entities/constraints. The saved two-fillet model equals
+the live model. Rejected dimension Enter also loses text-field focus;
 that separate polish defect has source repair e5afb473, pending hosted checks
 and one targeted UI recheck on a clean deployment.
 No background pointer input or replacement of the separate Roller window was
 attempted. The earlier checkpoints below are retained historical evidence.
+
+Broad UI coverage resumed with Parallel: selection/cancel, two free sloped
+lines, incorrect point selection, retained relation deletion, exact Undo/Redo,
+and native save/reopen pass on the matched 93823f6d pair. See
+`docs/qualification/parallel-human-ui-20261010.json` and the two new UI-built
+checkpoints. UI leaf coverage is 44 passed, 337 not run, 28 failed, nine needing
+recheck, 23 in progress and two restricted; all 256 manual MCP cases remain
+not run. Perpendicular is next. No suite rerun or runtime restart was needed.
 
 The resumed d5af845b native build compiled and linked successfully in 9m16s.
 Promotion correctly stopped because canonical MCP workers remained running.
