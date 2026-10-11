@@ -10,7 +10,6 @@ repository = "https://github.com/limo-cad/Limo-CAD"
 [workspace]
 
 [profile.release]
-lto = "thin"
 strip = "symbols"
 
 [lib]
