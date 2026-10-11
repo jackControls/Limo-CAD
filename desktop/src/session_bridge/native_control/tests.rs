@@ -1,0 +1,430 @@
+use super::*;
+
+struct Fixture {
+    root: PathBuf,
+    state: SessionBridgeState,
+    engine: AppState,
+    owner: DocumentContext,
+    session: String,
+    revision: u64,
+}
+
+impl Fixture {
+    fn new() -> Self {
+        let root = std::env::temp_dir().join(format!("limo-native-admission-{}", Uuid::new_v4()));
+        std::env::set_var("LIMO_CAD_SESSION_DIR", &root);
+        let state = SessionBridgeState::default();
+        let engine = AppState::new();
+        state.with_project_session_transition("main", &engine, || {
+            engine.bind_project_session("original")
+        });
+        let session = state.reserve_for_window("main").unwrap()["session_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let owner = state.native_document_context("main", &engine).unwrap();
+        let revision = state
+            .native_document_receipt(&engine, &owner)
+            .unwrap()
+            .revision;
+        fs::create_dir_all(root.join(&session).join("controls")).unwrap();
+        Self {
+            root,
+            state,
+            engine,
+            owner,
+            session,
+            revision,
+        }
+    }
+
+    fn request(&self, id: &str, expiry: u64) -> PathBuf {
+        let path = self
+            .root
+            .join(&self.session)
+            .join("controls")
+            .join(format!("{id}.request.json"));
+        atomic_write(
+            &path,
+            &json!({"id":id,"expires_ms":expiry,"ui":{"action":"inspect"}}).to_string(),
+        )
+        .unwrap();
+        path
+    }
+
+    fn admit(&self, id: &str) -> Ticket {
+        self.request(id, now_ms() + 30_000);
+        let request = control_for_window_owned(
+            &self.state,
+            "main",
+            &self.engine,
+            None,
+            Some((&self.owner, id)),
+        )
+        .unwrap();
+        assert!(request["id"] == id && request["session_id"] == self.session);
+        ticket_for(&self.state, &self.owner, &self.session, id).unwrap()
+    }
+
+    fn response(&self, id: &str) -> Value {
+        json!({"request_id":id,"session_id":self.session,"status":"applied","value":{"proof":"actual outcome"}})
+    }
+
+    fn read_result(&self, id: &str) -> Value {
+        serde_json::from_str(
+            &fs::read_to_string(
+                self.root
+                    .join(&self.session)
+                    .join("controls")
+                    .join(format!("{id}.result.json")),
+            )
+            .unwrap(),
+        )
+        .unwrap()
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+#[test]
+fn native_admission_retains_actual_completion_after_expiry_and_unlink_once() {
+    super::super::tests::with_isolated_session_test(|| {
+        let f = Fixture::new();
+        let ticket = f.admit("100-1");
+        let marker = marker_path(&ticket);
+        let bytes = fs::read(&marker).unwrap();
+        assert!(bytes.len() <= limo_cad_mcp::NATIVE_CONTROL_ADMISSION_MAX_BYTES);
+        assert!(NativeControlAdmission::decode(std::str::from_utf8(&bytes).unwrap()).is_ok());
+        assert!(!f
+            .root
+            .join(&f.session)
+            .join("controls/100-1.request.json")
+            .exists());
+        validate_start_at(&f.state, &f.engine, &ticket, ticket.marker.expires_ms).unwrap();
+        assert!(validate_start_at(&f.state, &f.engine, &ticket, ticket.marker.expires_ms).is_err());
+        fs::remove_file(&marker).unwrap();
+        let mut response = f.response("100-1");
+        complete_at(
+            &f.state,
+            &f.engine,
+            &ticket,
+            Some((&f.owner, f.revision)),
+            &mut response,
+            ticket.marker.expires_ms + 10_000,
+        )
+        .unwrap();
+        let result = f.read_result("100-1");
+        assert!(result["status"] == "applied" && result["value"]["proof"] == "actual outcome");
+        assert!(result["receipt_published_ms"] == ticket.marker.expires_ms + 10_000);
+        assert!(complete(
+            &f.state,
+            &f.engine,
+            &ticket,
+            Some((&f.owner, f.revision)),
+            &mut response
+        )
+        .is_err());
+        assert!(
+            f.read_result("100-1") == result,
+            "A replay must not overwrite the receipt"
+        );
+    });
+}
+
+#[test]
+fn native_admission_refuses_unadmitted_expired_foreign_and_competing_requests() {
+    super::super::tests::with_isolated_session_test(|| {
+        let f = Fixture::new();
+        assert!(ticket_for(&f.state, &f.owner, &f.session, "200-1").is_err());
+        let expired = f.request("200-1", now_ms().saturating_sub(1));
+        let mut request: Value =
+            serde_json::from_str(&fs::read_to_string(&expired).unwrap()).unwrap();
+        request["session_id"] = json!(f.session);
+        let mut publishers = f.state.publishers.lock().unwrap();
+        assert!(admit(
+            publishers.get_mut("main").unwrap(),
+            &f.engine,
+            &f.state.process_instance_id,
+            &f.owner,
+            f.revision,
+            &expired,
+            &request
+        )
+        .is_err());
+        drop(publishers);
+        let ticket = f.admit("200-2");
+        let mut foreign = f.owner.clone();
+        foreign.epoch += 1;
+        assert!(ticket_for(&f.state, &foreign, &f.session, "200-2").is_err());
+        let mut forged = ticket.clone();
+        forged.nonce = Uuid::new_v4();
+        assert!(validate_start(&f.state, &f.engine, &forged).is_err());
+        f.request("200-3", now_ms() + 30_000);
+        assert!(control_for_window_owned(
+            &f.state,
+            "main",
+            &f.engine,
+            None,
+            Some((&f.owner, "200-3"))
+        )
+        .is_err());
+        assert!(f
+            .root
+            .join(&f.session)
+            .join("controls/200-3.request.json")
+            .exists());
+        let mut response = f.response("200-2");
+        assert!(
+            complete(
+                &f.state,
+                &f.engine,
+                &ticket,
+                Some((&f.owner, f.revision)),
+                &mut response
+            )
+            .is_err(),
+            "An unstarted admission cannot claim application"
+        );
+        assert!(!f
+            .root
+            .join(&f.session)
+            .join("controls/200-2.result.json")
+            .exists());
+    });
+}
+
+#[test]
+fn native_completion_original_ticket_survives_replacement_and_strips_stale_presentation() {
+    super::super::tests::with_isolated_session_test(|| {
+        let f = Fixture::new();
+        let ticket = f.admit("300-1");
+        validate_start(&f.state, &f.engine, &ticket).unwrap();
+        f.state
+            .with_project_session_transition("main", &f.engine, || {
+                f.engine.create_project_session("replacement")
+            });
+        let next = f.state.reserve_for_window("main").unwrap()["session_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        f.state.drop_bound_project_session("main", "original");
+        let mut response = f.response("300-1");
+        response["ui"] = json!({"stale":true});
+        complete_at(
+            &f.state,
+            &f.engine,
+            &ticket,
+            Some((&f.owner, f.revision)),
+            &mut response,
+            ticket.marker.expires_ms + 1,
+        )
+        .unwrap();
+        let result = f.read_result("300-1");
+        assert!(result["status"] == "failed" && result["operation_status"] == "applied");
+        assert!(
+            result["operation_may_have_completed"] == true && result["active_session_id"] == next
+        );
+        assert!(result.get("ui").is_none() && result["value"].is_null());
+
+        let current = f.state.native_document_context("main", &f.engine).unwrap();
+        let revision = f
+            .state
+            .native_document_receipt(&f.engine, &current)
+            .unwrap()
+            .revision;
+        let path = f.root.join(&next).join("controls/300-2.request.json");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        atomic_write(
+            &path,
+            &json!({"id":"300-2","expires_ms":now_ms()+30_000,"ui":{"action":"inspect"}})
+                .to_string(),
+        )
+        .unwrap();
+        control_for_window_owned(&f.state, "main", &f.engine, None, Some((&current, "300-2")))
+            .unwrap();
+        let ticket = ticket_for(&f.state, &current, &next, "300-2").unwrap();
+        validate_start(&f.state, &f.engine, &ticket).unwrap();
+        // A legitimate replacement adopts its produced final presentation owner.
+        f.state
+            .with_project_session_transition("main", &f.engine, || {
+                f.engine.create_project_session("third")
+            });
+        let final_owner = f.state.native_document_context("main", &f.engine).unwrap();
+        let final_revision = f
+            .state
+            .native_document_receipt(&f.engine, &final_owner)
+            .unwrap()
+            .revision;
+        let mut response = json!({"request_id":"300-2","session_id":next,"status":"applied","value":{"opened":true}});
+        complete(
+            &f.state,
+            &f.engine,
+            &ticket,
+            Some((&final_owner, final_revision)),
+            &mut response,
+        )
+        .unwrap();
+        assert!(response["status"] == "applied" && response["session_id"] == next);
+        assert!(revision > 0);
+    });
+}
+
+#[test]
+fn native_owned_query_publishes_exact_read_only_result_and_original_admission() {
+    super::super::tests::with_isolated_session_test(|| {
+        let f = Fixture::new();
+        let id = "600-1";
+        let path = f.root.join(&f.session).join("controls/600-1.request.json");
+        let expected = parse_engine_envelope(f.engine.engine_call("document", "")).unwrap();
+        let before = serde_json::to_string(&f.engine.document_snapshot()).unwrap();
+        let geometry_revision = f.engine.geometry_revision();
+        let owner = json!({"session_id":f.session,"window_id":"main","document_id":f.owner.document_id,
+            "process_instance_id":f.state.process_instance_id,"base_generation":f.revision});
+        atomic_write(
+            &path,
+            &json!({"id":id,"expires_ms":now_ms()+30_000,"owner":owner,
+            "sketch_query":{"method":"document","payload":""}})
+            .to_string(),
+        )
+        .unwrap();
+        control_for_window_owned(&f.state, "main", &f.engine, None, Some((&f.owner, id))).unwrap();
+        assert!(!path.exists());
+        let result = f.read_result(id);
+        assert!(
+            result["status"] == "applied" && result["value"] == expected,
+            "The owned query publishes its exact actual read-only value"
+        );
+        let admission =
+            NativeControlAdmission::decode(&result["control_admission"].to_string()).unwrap();
+        assert!(
+            admission.request_id == id
+                && admission.session_id == f.session
+                && admission.window_id == f.owner.window_id
+                && admission.document_id == f.owner.document_id
+                && admission.epoch == f.owner.epoch
+                && admission.revision == f.revision
+                && admission.process_instance_id == f.state.process_instance_id
+        );
+        assert!(result["active_session_id"] == f.session);
+        assert!(!path.with_file_name("600-1.admitted.json").exists());
+        assert!(!has_pending(&f.state, "main").unwrap());
+        assert!(ticket_for(&f.state, &f.owner, &f.session, id).is_err());
+        assert!(
+            control_for_window_owned(&f.state, "main", &f.engine, None, Some((&f.owner, id)))
+                .unwrap()
+                .is_null()
+        );
+        assert!(
+            f.read_result(id) == result,
+            "A consumed query must retain its original result"
+        );
+        assert!(serde_json::to_string(&f.engine.document_snapshot()).unwrap() == before);
+        assert!(f.engine.geometry_revision() == geometry_revision);
+    });
+}
+
+#[test]
+fn native_rejected_completion_retries_transport_without_restarting_action() {
+    super::super::tests::with_isolated_session_test(|| {
+        let f = Fixture::new();
+        let ticket = f.admit("400-1");
+        let result_path = marker_path(&ticket).with_file_name("400-1.result.json");
+        fs::create_dir(&result_path).unwrap();
+        let mut response = json!({"request_id":"400-1","session_id":f.session,"status":"failed","mutation_applied":false,"error":"rejected before dispatch"});
+        assert!(matches!(
+            complete(&f.state, &f.engine, &ticket, None, &mut response),
+            Err(CompletionError::Publication(_))
+        ));
+        assert!(f.state.publishers.lock().unwrap()["main"]
+            .native_control
+            .as_ref()
+            .unwrap()
+            .pending_receipt
+            .is_some());
+        assert!(
+            validate_start(&f.state, &f.engine, &ticket).is_err(),
+            "A produced rejection awaiting transport cannot start an action"
+        );
+        let mut competing = response.clone();
+        competing["error"] = json!("different outcome");
+        assert!(matches!(
+            complete(&f.state, &f.engine, &ticket, None, &mut competing),
+            Err(CompletionError::Rejected(_))
+        ));
+        fs::remove_dir(&result_path).unwrap();
+        retry_pending(&f.state, &f.engine, "main").unwrap();
+        let result = f.read_result("400-1");
+        assert!(
+            result["error"] == "rejected before dispatch" && result["mutation_applied"] == false
+        );
+        assert!(f.state.publishers.lock().unwrap()["main"]
+            .native_control
+            .is_none());
+
+        // Claim and start first; only then create a publication collision. A
+        // pre-existing result path correctly prevents queue admission entirely.
+        let ticket = f.admit("400-2");
+        validate_start(&f.state, &f.engine, &ticket).unwrap();
+        let produced = parse_engine_envelope(f.engine.engine_call("document", "")).unwrap();
+        let before = serde_json::to_string(&f.engine.document_snapshot()).unwrap();
+        let mut response = json!({"request_id":"400-2","session_id":f.session,
+            "status":"applied","value":produced});
+        let result_path = marker_path(&ticket).with_file_name("400-2.result.json");
+        fs::create_dir(&result_path).unwrap();
+        assert!(matches!(
+            complete(
+                &f.state,
+                &f.engine,
+                &ticket,
+                Some((&f.owner, f.revision)),
+                &mut response
+            ),
+            Err(CompletionError::Publication(_))
+        ));
+        let retained = f.state.publishers.lock().unwrap()["main"]
+            .native_control
+            .as_ref()
+            .unwrap()
+            .pending_receipt
+            .as_ref()
+            .unwrap()
+            .0
+            .clone();
+        assert!(retained["value"] == produced && retained["status"] == "applied");
+        assert!(
+            validate_start(&f.state, &f.engine, &ticket).is_err(),
+            "Retained transport proof never authorizes a second dispatch"
+        );
+        let mut competing = retained.clone();
+        competing["value"] = json!({"different":"outcome"});
+        assert!(matches!(
+            complete(
+                &f.state,
+                &f.engine,
+                &ticket,
+                Some((&f.owner, f.revision)),
+                &mut competing
+            ),
+            Err(CompletionError::Rejected(_))
+        ));
+        fs::remove_dir(&result_path).unwrap();
+        retry_pending(&f.state, &f.engine, "main").unwrap();
+        let result = f.read_result("400-2");
+        assert!(
+            result["status"] == "applied" && result["value"] == produced,
+            "Retry publishes the exact previously produced query outcome"
+        );
+        assert!(serde_json::to_string(&f.engine.document_snapshot()).unwrap() == before);
+        assert!(!has_pending(&f.state, "main").unwrap());
+        assert!(!marker_path(&ticket).exists());
+        assert!(!f
+            .root
+            .join(&f.session)
+            .join("controls/400-2.request.json")
+            .exists());
+    });
+}
