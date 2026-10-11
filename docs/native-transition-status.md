@@ -1,11 +1,33 @@
 # Native transition status
 
-Current checkpoint, **2026-10-10 UTC**: PR124 remains open. Main advanced to
+Current checkpoint, **2026-10-11 UTC**: PR124 remains open. Main advanced to
 54dcab7f after PR338 merged; Bevy includes that history through merge `08cdd6b9`.
 Incoming research/license corrections were preserved. No Bevy merge into main
 has occurred. The user approved known-defect completion and targeted repaired
 acceptance. **Broad exploratory UI coverage and manual MCP mutation coverage
 remain paused**; preserve earlier passes and do not advance to untouched cases.
+
+The later clean source **`35bd6aae`** now contains fourteen commits after 5d:
+original-ticket native admission/completion retention and delivery-only retry,
+guarded caption recovery, camera/error fixes, bounded shortcut diagnostics,
+engine-owned shared drawing intent (partial #333), and explicit reviewed native
+baseline rebinding plus order-stable preview/write (#315). **20 unique focused
+checks passed across their recorded source revisions**: thirteen earlier passes
+were retained, and seven new export/desktop checks passed at 35bd6aae. No passing
+case was rerun. All three new print checks passed; human print acceptance remains
+pending. Both historical test-fixture failures remain preserved and corrected;
+no assertion was deleted or weakened.
+
+The interrupted 962 desktop compile did not establish a compiler/test failure.
+Its separate resume later failed at MSVC link with 164 unresolved anonymous LLVM
+symbols in the sketch dependency, before any of its four tests ran. A fresh
+sketch-package compile without incremental reuse linked successfully at 35bd6aae;
+those four checks and both new print UI checks passed. This supports a generated
+artifact problem, without establishing its cause. The old cache is preserved;
+production regeneration and a fresh live pair remain separate gates. Receipts
+include `coherent-repairs-35bd6aae-tests.json`, both compile status/stderr logs,
+and the original interrupted/failed compile records in the outside evidence
+folder. Installed GUI remains historical 5d; new-source CI/deployment are pending.
 
 The later **clean `5d46045c` deployment succeeded**: all 70 installed payload
 hashes matched; executable SHA256 is
@@ -55,8 +77,8 @@ At **23:37:31 UTC**, exact source 5d and PR merge
 reported no new alerts. `ci-5d46045-terminal-evidence.json` preserves this terminal
 result, with no reruns or dispatches. Later source through `3f46af62` includes
 reviewed camera/completion error isolation, guarded caption focus fallback and
-raw shortcut ingress diagnostics; it is not locally compiled/tested or installed
-at this checkpoint. Green 5d CI does not qualify those later changes.
+raw shortcut ingress diagnostics; at that earlier checkpoint it was not compiled/tested or installed. The later
+35bd6aae source checks above supersede that local source-validation state. Green 5d CI does not qualify those later changes.
 
 The inactive generated debug cache was relocated reversibly, retaining a
 compatibility junction and verifying **all 11,420 SHA256 hashes**. At 23:35:45 UTC
