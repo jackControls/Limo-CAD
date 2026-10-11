@@ -14,6 +14,21 @@ fn font_app() -> App {
     app
 }
 
+#[test]
+fn native_startup_fonts_do_not_eagerly_copy_large_fallback_collections() {
+    let app = font_app();
+    let startup_bytes: usize = app
+        .world()
+        .resource::<Assets<Font>>()
+        .iter()
+        .map(|(_, font)| font.data.len())
+        .sum();
+    assert!(
+        startup_bytes <= 32 * 1024 * 1024,
+        "Startup copied {startup_bytes} font bytes; language and emoji collections must use system discovery"
+    );
+}
+
 fn shape(app: &mut App, value: &str, font: TextFont) -> Vec<(u64, u32, u32, f32)> {
     let entity = app
         .world_mut()

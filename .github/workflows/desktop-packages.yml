@@ -75,7 +75,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     env:
-      CARGO_PROFILE_RELEASE_STRIP: ${{ github.ref_type == 'tag' && 'symbols' || 'none' }}
+      CARGO_PROFILE_RELEASE_STRIP: symbols
 
     steps:
       - name: Check out Limo CAD
@@ -220,7 +220,7 @@ jobs:
     timeout-minutes: 180
     env:
       CARGO_INCREMENTAL: 0
-      CARGO_PROFILE_RELEASE_STRIP: ${{ github.ref_type == 'tag' && 'symbols' || 'none' }}
+      CARGO_PROFILE_RELEASE_STRIP: symbols
 
     steps:
       - name: Check out Limo CAD
@@ -337,7 +337,7 @@ jobs:
     timeout-minutes: 180
     env:
       CARGO_INCREMENTAL: 0
-      CARGO_PROFILE_RELEASE_STRIP: ${{ github.ref_type == 'tag' && 'symbols' || 'none' }}
+      CARGO_PROFILE_RELEASE_STRIP: symbols
       DEBIAN_FRONTEND: noninteractive
       OCCT_ROOT: /opt/opencascade
       LD_LIBRARY_PATH: /opt/opencascade/lib
@@ -606,10 +606,7 @@ jobs:
       MACOS_DISTRIBUTION_BUILD: >-
         ${{ github.ref_type == 'tag' ||
             (github.event_name == 'workflow_dispatch' && inputs.macos_signing == 'production') }}
-      CARGO_PROFILE_RELEASE_STRIP: >-
-        ${{ (github.ref_type == 'tag' ||
-             (github.event_name == 'workflow_dispatch' && inputs.macos_signing == 'production')) &&
-            'symbols' || 'none' }}
+      CARGO_PROFILE_RELEASE_STRIP: symbols
 
     steps:
       - name: Check out Limo CAD

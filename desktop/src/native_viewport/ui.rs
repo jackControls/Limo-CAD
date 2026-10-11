@@ -111,30 +111,12 @@ pub(crate) fn load_system_font(mut commands: Commands, mut fonts: ResMut<Assets<
         .map(|bytes| fonts.add(Font::from_bytes(bytes)));
     #[cfg(not(target_os = "windows"))]
     let semibold = None;
+    // Keep technical symbols ahead of emoji faces. Parley discovers language
+    // and emoji fallback fonts on demand without copying entire collections.
     #[cfg(target_os = "windows")]
-    let fallback_candidates: &[&[&str]] = &[
-        &[r"C:\Windows\Fonts\seguisym.ttf"],
-        &[
-            r"C:\Windows\Fonts\msyh.ttc",
-            r"C:\Windows\Fonts\simsun.ttc",
-            r"C:\Windows\Fonts\YuGothR.ttc",
-        ],
-        &[r"C:\Windows\Fonts\malgun.ttf"],
-        &[r"C:\Windows\Fonts\seguiemj.ttf"],
-    ];
+    let fallback_candidates: &[&[&str]] = &[&[r"C:\Windows\Fonts\seguisym.ttf"]];
     #[cfg(target_os = "macos")]
-    let fallback_candidates: &[&[&str]] = &[
-        &["/System/Library/Fonts/Apple Symbols.ttf"],
-        &[
-            "/System/Library/Fonts/PingFang.ttc",
-            "/System/Library/Fonts/STHeiti Light.ttc",
-            "/System/Library/Fonts/Supplemental/Songti.ttc",
-            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
-            "/Library/Fonts/Arial Unicode.ttf",
-        ],
-        &["/System/Library/Fonts/AppleSDGothicNeo.ttc"],
-        &["/System/Library/Fonts/Apple Color Emoji.ttc"],
-    ];
+    let fallback_candidates: &[&[&str]] = &[&["/System/Library/Fonts/Apple Symbols.ttf"]];
     #[cfg(target_os = "linux")]
     let fallback_candidates: &[&[&str]] = &[
         &[
@@ -144,16 +126,6 @@ pub(crate) fn load_system_font(mut commands: Commands, mut fonts: ResMut<Assets<
         &[
             "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
             "/usr/share/fonts/noto/NotoSansSymbols2-Regular.ttf",
-        ],
-        &[
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
-        ],
-        &[
-            "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
-            "/usr/share/fonts/noto/NotoColorEmoji.ttf",
-            "/usr/share/fonts/google-noto-emoji/NotoColorEmoji.ttf",
         ],
     ];
     let fallbacks = fallback_candidates

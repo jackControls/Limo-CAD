@@ -9,6 +9,10 @@ repository = "https://github.com/limo-cad/Limo-CAD"
 
 [workspace]
 
+[profile.release]
+lto = "thin"
+strip = "symbols"
+
 [lib]
 name = "limo_cad"
 crate-type = ["rlib"]
@@ -60,6 +64,7 @@ bevy = { version = "=0.20.0-rc.2", default-features = false, features = [
   "custom_cursor",
   "system_clipboard",
   "complex_script_segmentation",
+  "system_font_discovery",
   "x11",
   "wayland",
   "accesskit_unix",
