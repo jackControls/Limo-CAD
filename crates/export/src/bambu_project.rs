@@ -54,6 +54,10 @@ pub struct BambuProjectRequest {
     /// Adopt explicitly reviewed native changes as a new inherited baseline before applying CAD overrides.
     #[serde(default)]
     pub accept_native_setting_changes: bool,
+    /// Adopt the inspected native archive with complete reviewed current numeric bindings.
+    /// Missing refresh references and failed stable identities never imply this consent.
+    #[serde(default)]
+    pub start_reviewed_native_baseline: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -688,7 +692,9 @@ pub fn write_bambu_project(
             .entry((*object, *plate))
             .or_insert(0usize) += 1;
     }
-    if reference.is_none() && template.summary.has_identity_manifest {
+    if request.start_reviewed_native_baseline {
+        warnings.push("Explicit reviewed native baseline: current settings and complete numeric bindings replace prior stable identity lineage; automatic refresh remains strict".into());
+    } else if reference.is_none() && template.summary.has_identity_manifest {
         warnings.push("Explicitly reviewed bindings start a new CAD project lineage from a foreign authored template; current native settings are retained as the new baseline".into());
     }
     if same_plate_instances.values().any(|count| *count > 1) {
@@ -1277,6 +1283,14 @@ fn load_reference(
     template: &Template,
     request: &BambuProjectRequest,
 ) -> Result<Option<BambuRefreshReference>, ExportError> {
+    if request.start_reviewed_native_baseline {
+        if request.refresh_reference.is_some() || request.bindings.is_empty() {
+            return fail("A reviewed native baseline requires complete explicit current bindings and no refresh reference");
+        }
+        // Deliberate baseline adoption includes an embedded same-document manifest.
+        // Normal refresh continues to resolve and enforce stable identities below.
+        return Ok(None);
+    }
     let reference = if let Some(reference) = &request.refresh_reference {
         Some(reference.clone())
     } else {
@@ -3816,6 +3830,165 @@ pub(crate) mod tests {
         .0
         .contains("five supported settings"));
     }
+    #[test]
+    fn reviewed_same_document_baseline_recovers_changed_identity_without_weakening_refresh() {
+        let (template, meshes, appearances, instances, structure, intent, mut request) = fixture();
+        let first = write_bambu_project(
+            &template,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        let mut entries = archive(&first.bytes).unwrap();
+        let config = text(&entries, CONFIG).unwrap();
+        assert!(config.contains("key=\"identify_id\" value=\"121\""));
+        entries.insert(
+            CONFIG.into(),
+            config
+                .replace(
+                    "key=\"identify_id\" value=\"121\"",
+                    "key=\"identify_id\" value=\"9\"",
+                )
+                .into_bytes(),
+        );
+        let native = write_archive(&entries).unwrap();
+        assert!(
+            entries.contains_key(MANIFEST),
+            "Retain the stale same-document embedded manifest"
+        );
+        let before_intent = intent.clone();
+        let original_bindings = request.bindings.clone();
+        let failure = write_bambu_project(
+            &native,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .err()
+        .unwrap();
+        assert!(failure.0.contains("identify_id 121"), "{failure:?}");
+        request.start_reviewed_native_baseline = true;
+        request.refresh_reference = Some(first.report.refresh_reference.clone());
+        assert!(
+            write_bambu_project(
+                &native,
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &intent,
+                &request
+            )
+            .is_err(),
+            "Explicit reset cannot retain a conflicting reference"
+        );
+        request.refresh_reference = None;
+        request.bindings.pop();
+        assert!(
+            write_bambu_project(
+                &native,
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &intent,
+                &request
+            )
+            .is_err(),
+            "Every intentional repeated source and target remains mandatory"
+        );
+        request.bindings.clear();
+        assert!(write_bambu_project(
+            &native,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request
+        )
+        .is_err());
+        request.bindings = original_bindings;
+        let rebound = write_bambu_project(
+            &native,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        assert_eq!(
+            rebound.report.refresh_reference.source_document_id,
+            request.source_document_id
+        );
+        assert_eq!(
+            rebound.report.refresh_reference.original_template_sha256,
+            hash(&native)
+        );
+        assert_eq!(rebound.report.refresh_reference.parts.len(), 4);
+        assert!(rebound
+            .report
+            .refresh_reference
+            .parts
+            .iter()
+            .filter(|p| p.binding.instance_id == 1)
+            .all(|p| p.instance_identify_id == 9));
+        assert!(rebound
+            .report
+            .warnings
+            .iter()
+            .any(|w| w.contains("Explicit reviewed native baseline")));
+        assert_eq!(intent, before_intent);
+        assert_eq!(
+            archive(&native).unwrap(),
+            entries,
+            "Original native archive is unchanged"
+        );
+        request.start_reviewed_native_baseline = false;
+        request.bindings.clear();
+        request.refresh_reference = Some(rebound.report.refresh_reference.clone());
+        let refreshed = write_bambu_project(
+            &rebound.bytes,
+            &meshes,
+            &appearances,
+            &instances,
+            &structure,
+            &intent,
+            &request,
+        )
+        .unwrap();
+        assert!(refreshed
+            .report
+            .refresh_reference
+            .parts
+            .iter()
+            .filter(|p| p.binding.instance_id == 1)
+            .all(|p| p.instance_identify_id == 9));
+        request.refresh_reference = Some(first.report.refresh_reference);
+        assert!(
+            write_bambu_project(
+                &native,
+                &meshes,
+                &appearances,
+                &instances,
+                &structure,
+                &intent,
+                &request
+            )
+            .is_err(),
+            "Original strict reference is never repaired implicitly"
+        );
+    }
+
     #[test]
     fn fresh_foreign_template_needs_explicit_complete_bindings_and_starts_new_baseline() {
         let (template, meshes, appearances, instances, structure, mut intent, mut request) =

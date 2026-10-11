@@ -22,6 +22,8 @@ Retained acceptance fixtures exercise upright and horizontal repeated multipart 
 
 Automatic refresh requires preserved stable UUID/instance-identify pairs. A native save that rewrites intentional repeat instance identities requires explicit reviewed rebinding; neither geometry order nor names authorize a guessed refresh.
 
+When a same-document saved archive still embeds an obsolete CAD manifest, clearing a saved handoff alone does not reset automatic refresh. The separate **Start reviewed native baseline with explicit bindings** action requires complete manually reviewed CAD occurrence-to-native volume/instance bindings. Its default-false `start_reviewed_native_baseline` request rejects an accompanying refresh reference, adopts the inspected archive's current settings as a new baseline, and participates in the guarded preview/write review. Selecting another template/handoff or completing the write clears that consent. Existing source/target/group, profile, height and modifier validation remains required; baseline adoption does not promise that every native edit is representable. Ordinary refresh still rejects missing or ambiguous stable identities.
+
 
 ## Bevy editing and qualification
 

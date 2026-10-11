@@ -187,6 +187,61 @@ pub(super) fn intent() -> io::ExportIntent {
 }
 
 #[test]
+fn reviewed_baseline_requires_complete_ui_bindings_and_explicit_preview_intent() {
+    let mut intent = intent();
+    assert!(
+        !request(&intent)
+            .unwrap()
+            .project
+            .start_reviewed_native_baseline
+    );
+    assert!(!reviewed_baseline_bindings_ready(&intent.bambu));
+    for (instance_id, occurrence_id) in [(0, 11), (1, 21)] {
+        intent.bambu.sources.push(Source {
+            body_id: limo_cad_core::BodyId(1),
+            occurrence_id,
+            label: "Repeated part".into(),
+        });
+        intent.bambu.bindings.push(BambuPartBinding {
+            body_id: limo_cad_core::BodyId(1),
+            occurrence_id,
+            object_id: 2,
+            instance_id,
+            part_id: 1,
+        });
+    }
+    assert!(reviewed_baseline_bindings_ready(&intent.bambu));
+    let ordinary = request(&intent).unwrap();
+    assert!(
+        !ordinary.project.start_reviewed_native_baseline,
+        "Complete binds alone never infer reset consent"
+    );
+    let old_review = review_key(&ordinary, &intent.bambu.template().unwrap().summary);
+    intent.bambu.start_reviewed_baseline = true;
+    intent.bambu.invalidate();
+    let reviewed = request(&intent).unwrap();
+    assert!(reviewed.project.start_reviewed_native_baseline);
+    assert!(reviewed.project.refresh_reference.is_none());
+    assert_eq!(reviewed.project.bindings.len(), 2);
+    assert_ne!(
+        old_review,
+        review_key(&reviewed, &intent.bambu.template().unwrap().summary),
+        "Changing baseline consent invalidates the old write review"
+    );
+    intent.bambu.bindings[1].instance_id = 0;
+    assert!(
+        !reviewed_baseline_bindings_ready(&intent.bambu),
+        "Two source repeats cannot map to one target"
+    );
+    intent.bambu.bindings[1].instance_id = 1;
+    intent.bambu.bindings.pop();
+    assert!(
+        !reviewed_baseline_bindings_ready(&intent.bambu),
+        "Incomplete repeated source/target coverage cannot enable the UI action"
+    );
+}
+
+#[test]
 fn explicit_native_targets_preserve_repeated_instances_without_name_matching() {
     let intent = intent();
     let targets = targets(&intent.bambu);

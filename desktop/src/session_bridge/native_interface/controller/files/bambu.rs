@@ -43,6 +43,7 @@ pub(crate) enum Command {
     RemoveHandoff,
     AllowAppearance,
     AcceptNativeChanges,
+    StartReviewedBaseline,
     Write,
     VerifyStart,
     VerifyPoll,
@@ -86,6 +87,7 @@ pub(super) struct Settings {
     reference: Option<BambuRefreshReference>,
     allow_appearance: bool,
     accept_native_changes: bool,
+    start_reviewed_baseline: bool,
     name: String,
     handoff: String,
     output: String,
@@ -162,6 +164,34 @@ fn targets(settings: &Settings) -> Vec<(String, String, (u32, u32, u32))> {
             })
         })
         .collect()
+}
+fn reviewed_baseline_bindings_ready(settings: &Settings) -> bool {
+    use std::collections::BTreeSet;
+    let sources: BTreeSet<_> = settings
+        .sources
+        .iter()
+        .map(|s| (s.body_id, s.occurrence_id))
+        .collect();
+    let bound_sources: BTreeSet<_> = settings
+        .bindings
+        .iter()
+        .map(|b| (b.body_id, b.occurrence_id))
+        .collect();
+    let bound_targets: BTreeSet<_> = settings
+        .bindings
+        .iter()
+        .map(|b| (b.object_id, b.instance_id, b.part_id))
+        .collect();
+    let expected_targets: BTreeSet<_> = targets(settings)
+        .into_iter()
+        .map(|(_, _, target)| target)
+        .collect();
+    settings.reference.is_none()
+        && !sources.is_empty()
+        && sources.len() == settings.bindings.len()
+        && sources == bound_sources
+        && bound_targets.len() == settings.bindings.len()
+        && bound_targets == expected_targets
 }
 fn choices(
     intent: &io::ExportIntent,
@@ -291,6 +321,7 @@ fn request_with_template(
             allow_template_appearance: s.allow_appearance,
             refresh_reference: s.reference.clone(),
             accept_native_setting_changes: s.accept_native_changes,
+            start_reviewed_native_baseline: s.start_reviewed_baseline,
         },
         template_base64: if include_bytes {
             (*template.encoded).clone()
@@ -437,6 +468,7 @@ pub(super) fn after_write(
         s.template=Some(Template{path:path.clone(),encoded:Arc::new(snapshot["encoded"].as_str().ok_or("Missing written template bytes")?.into()),summary:serde_json::from_value(snapshot["summary"].clone()).map_err(|e|e.to_string())?});
         s.path=path.to_string_lossy().into();
         s.reference=Some(report.refresh_reference.clone());
+        s.start_reviewed_baseline=false;
         s.written=Some(report);
         s.handoff.clear();
         s.output.clear();
@@ -572,6 +604,7 @@ pub(super) fn reduce(
                 intent.bambu.written = None;
                 intent.bambu.bindings.clear();
                 intent.bambu.reference = None;
+                intent.bambu.start_reviewed_baseline = false;
             }
             Field::Placement => {
                 intent.bambu.placement = if value == "template" {
@@ -631,6 +664,7 @@ pub(super) fn reduce(
                 };
                 intent.bambu.written = None;
                 intent.bambu.handoff = value.clone();
+                intent.bambu.start_reviewed_baseline = false;
                 intent.bambu.reference = None;
                 intent.bambu.bindings.clear();
                 if let Some(reference) = reference {
@@ -678,6 +712,15 @@ pub(super) fn reduce(
         }
         Command::AcceptNativeChanges => {
             intent.bambu.accept_native_changes = !intent.bambu.accept_native_changes;
+            intent.bambu.invalidate();
+        }
+        Command::StartReviewedBaseline => {
+            if !intent.bambu.start_reviewed_baseline
+                && !reviewed_baseline_bindings_ready(&intent.bambu)
+            {
+                return Err("Choose No saved handoff and review complete replacement bindings before starting a new native baseline".into());
+            }
+            intent.bambu.start_reviewed_baseline = !intent.bambu.start_reviewed_baseline;
             intent.bambu.invalidate();
         }
         Command::Bind => {
@@ -846,7 +889,7 @@ fn inspect(
             let path:PathBuf=serde_json::from_value(result.value["path"].clone()).map_err(|e|e.to_string())?;
             let s=&mut intent.bambu;accept_context(s,&result.value["context"])?;s.path=path.to_string_lossy().into();
             s.template=Some(Template{path,encoded:Arc::new(result.value["encoded"].as_str().ok_or("Missing template bytes")?.into()),summary:summary.clone()});
-                s.written=None;s.bindings.clear();s.reference=None;s.handoff.clear();s.allow_appearance=false;s.accept_native_changes=false;s.target=targets(s).first().map(|t|t.0.clone()).unwrap_or_default();s.invalidate();
+                s.written=None;s.bindings.clear();s.reference=None;s.handoff.clear();s.allow_appearance=false;s.accept_native_changes=false;s.start_reviewed_baseline=false;s.target=targets(s).first().map(|t|t.0.clone()).unwrap_or_default();s.invalidate();
             Ok(json!({"inspected":true,"template":summary,"source_instances":s.sources.len()}))
         })
         },

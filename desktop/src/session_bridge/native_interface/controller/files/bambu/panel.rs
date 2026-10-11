@@ -285,6 +285,18 @@ pub(in super::super) fn paint(
             None,
         ),
         (
+            "Start reviewed native baseline with explicit bindings".into(),
+            None,
+            Some(Command::StartReviewedBaseline),
+            None,
+        ),
+        (
+            "Native baseline review".into(),
+            None,
+            None,
+            Some("Adopt current native settings and manually reviewed complete bindings. Previous embedded identity lineage is replaced only when writing the reviewed preview.".into()),
+        ),
+        (
             "Preview Bambu project".into(),
             None,
             Some(Command::Preview),
@@ -570,6 +582,11 @@ pub(in super::super) fn paint(
         match command {
             Some(Command::AllowAppearance) => control.selected = Some(s.allow_appearance),
             Some(Command::AcceptNativeChanges) => control.selected = Some(s.accept_native_changes),
+            Some(Command::StartReviewedBaseline) => {
+                control.selected = Some(s.start_reviewed_baseline);
+                control.disabled |=
+                    !s.start_reviewed_baseline && !reviewed_baseline_bindings_ready(s);
+            }
             Some(Command::Write) => control.disabled |= check_review(intent).is_err(),
             Some(Command::SaveHandoff) => control.disabled |= s.written.is_none(),
             Some(Command::ApplyProfile) => control.disabled |= s.template.is_none(),

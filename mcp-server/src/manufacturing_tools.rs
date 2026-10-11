@@ -22,6 +22,7 @@ pub fn specs() -> Vec<ToolSpec> {
         "bindings":{"type":"array","maxItems":4096,"items":binding},
         "placement":{"type":"string","enum":["resolved_scene","template"],"default":"resolved_scene"},
         "refresh_reference":reference,
+        "start_reviewed_native_baseline":{"type":"boolean","default":false,"description":"Explicitly adopt the inspected native archive using complete reviewed current numeric bindings. Requires nonempty bindings and no refresh_reference; does not infer missing identities or change automatic refresh."},
         "accept_native_setting_changes":{"type":"boolean","default":false,"description":"Explicitly accept reviewed native edits to the five managed settings as the new inherited baseline; ambiguity and changed profile identity remain errors."},
         "allow_template_appearance":{"type":"boolean","default":false,"description":"Explicitly retain reviewed template filament/color mapping when it differs from CAD appearance."}
     }), &["source_document_id"])}),
