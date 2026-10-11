@@ -187,6 +187,71 @@ pub(super) fn intent() -> io::ExportIntent {
 }
 
 #[test]
+fn accepted_preview_from_reordered_manual_bindings_keeps_exact_write_review() {
+    for reset in [false, true] {
+        let mut intent = intent();
+        intent.bambu.start_reviewed_baseline = reset;
+        intent.bambu.bindings = [1, 0]
+            .into_iter()
+            .map(|instance_id| BambuPartBinding {
+                body_id: limo_cad_core::BodyId(1),
+                occurrence_id: if instance_id == 0 { 11 } else { 21 },
+                object_id: 2,
+                instance_id,
+                part_id: 1,
+            })
+            .collect();
+        let manually_ordered = intent.bambu.bindings.clone();
+        let preview_request = request(&intent).unwrap();
+        assert_ne!(preview_request.project.bindings, manually_ordered);
+        let key = review_key(&preview_request, &intent.bambu.template().unwrap().summary);
+        let parts: Vec<_> = preview_request.project.bindings.iter().map(|binding| json!({
+            "binding":binding,"target_uuid":"reviewed-volume","geometry_sha256":"a".repeat(64),
+            "triangle_count":12,"filament_index":1,"filament_type":"PETG","filament_color":"#000000",
+            "world_transform":[1.,0.,0.,0.,1.,0.,0.,0.,1.,0.,0.,0.],"plate_index":1,
+            "effective_sources":{},"inherited_settings":{},"written_overrides":{},"effective_settings":{}
+        })).collect();
+        let report: BambuProjectReport = serde_json::from_value(json!({
+            "template":intent.bambu.template().unwrap().summary,
+            "source_document_id":preview_request.project.source_document_id,
+            "output_sha256":"b".repeat(64),"placement":"template","parts":parts,"modifiers":[],
+            "invalidated_entries":[],"warnings":[],"metadata_readback_verified":true,
+            "installed_slicer_imported":false,"toolpaths_generated":false,
+            "refresh_reference":{
+                "version":1,"source_document_id":preview_request.project.source_document_id,
+                "original_template_sha256":"a".repeat(64),"profile_sha256":"b".repeat(64),
+                "profile_identity_sha256":"c".repeat(64),"baseline_project_settings":{},
+                "written_project_settings":{},"parts":[],"modifiers":[],"height_objects":[]
+            }
+        }))
+        .unwrap();
+        let generation = intent.bambu.generation;
+        // Exercise the exact production post-worker adoption and write gate.
+        accept_preview(&mut intent, key, report);
+        assert_eq!(intent.bambu.generation, generation + 1);
+        assert_eq!(intent.bambu.bindings, preview_request.project.bindings);
+        check_review(&intent).unwrap();
+        assert_eq!(
+            request_with_template(&intent, false).unwrap().project,
+            preview_request.project
+        );
+        intent.bambu.bindings.reverse();
+        check_review(&intent).unwrap();
+        intent.bambu.bindings[0].occurrence_id = 999;
+        assert!(
+            check_review(&intent).is_err(),
+            "A changed source-to-target mapping is a real choice"
+        );
+        intent.bambu.bindings = manually_ordered;
+        intent.bambu.start_reviewed_baseline = !reset;
+        assert!(
+            check_review(&intent).is_err(),
+            "Baseline consent remains part of the exact write review"
+        );
+    }
+}
+
+#[test]
 fn reviewed_baseline_requires_complete_ui_bindings_and_explicit_preview_intent() {
     let mut intent = intent();
     assert!(

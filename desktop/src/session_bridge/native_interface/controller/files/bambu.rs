@@ -297,6 +297,14 @@ fn request_with_template(
     if s.model.is_empty() {
         return Err("Inspect the template against the current document first".into());
     }
+    // Manual entry order is not a binding choice. Match the writer's report order
+    // so accepting that preview does not invalidate its own write review.
+    let mut bindings = if s.reference.is_some() {
+        vec![]
+    } else {
+        s.bindings.clone()
+    };
+    bindings.sort();
     Ok(BambuExportRequest {
         export: MeshExportRequest {
             expected_model_json: Some(s.model.clone()),
@@ -312,11 +320,7 @@ fn request_with_template(
             source_document_id,
             // Saved UUID/instance identities resolve numeric IDs against the
             // current native file; old object numbers must not override them.
-            bindings: if s.reference.is_some() {
-                vec![]
-            } else {
-                s.bindings.clone()
-            },
+            bindings,
             placement: s.placement,
             allow_template_appearance: s.allow_appearance,
             refresh_reference: s.reference.clone(),
@@ -947,6 +951,12 @@ fn refresh_context(
         },
     )
 }
+fn accept_preview(intent: &mut io::ExportIntent, key: Value, report: BambuProjectReport) {
+    intent.bambu.bindings = report.parts.iter().map(|p| p.binding.clone()).collect();
+    intent.bambu.reviewed = Some((key, report));
+    intent.bambu.generation = intent.bambu.generation.saturating_add(1);
+}
+
 fn preview(
     world: &mut World,
     services: &NativeServices,
@@ -980,10 +990,7 @@ fn preview(
                     let report: BambuProjectReport =
                         serde_json::from_value(result.value["report"].clone())
                             .map_err(|e| e.to_string())?;
-                    intent.bambu.bindings =
-                        report.parts.iter().map(|p| p.binding.clone()).collect();
-                    intent.bambu.reviewed = Some((key, report.clone()));
-                    intent.bambu.generation = intent.bambu.generation.saturating_add(1);
+                    accept_preview(intent, key, report.clone());
                     Ok(json!({"previewed":true,"report":report,"requires_reslicing":true}))
                 },
             )

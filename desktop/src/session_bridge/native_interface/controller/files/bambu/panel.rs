@@ -285,7 +285,7 @@ pub(in super::super) fn paint(
             None,
         ),
         (
-            "Start reviewed native baseline with explicit bindings".into(),
+            "Start reviewed native baseline".into(),
             None,
             Some(Command::StartReviewedBaseline),
             None,
